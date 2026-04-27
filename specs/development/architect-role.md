@@ -4,9 +4,7 @@ This document describes the architect role in the development workflow of this p
 
 ## Overview
 
-The architect creates the design plan.
-
-- It reads and understands the system specification.
+The architect creates the design plan from the system specification.
 
 ## Tasks and Responsibilities
 
@@ -28,25 +26,4 @@ If not overriden by system specificaton constraints, the design should be optimi
 - low memory consumption
 - small code size
 
-??? The features and components in the design plan constitute milestones in the development process. ??? -> project-plan?
-
 If the design plan already exists, review and refine it according to the current progress of the project. Inspect the project code and read the history `/work/history/` to evaluate the current progress.
-
-
-
-
-Define the interfaces
-
-The system architect
-
-As the system architect you understand the system specification in `/specs/system/` and
-
-
-
-
-
-- Consumes
-    - The system specification in `/specs/system/`
-
-- Creates or updates
-    - The project plan in `/tasks/project-plan.md`
