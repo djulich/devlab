@@ -112,13 +112,20 @@ def build_system_prompt(root: Path, role: RoleConfig) -> str:
     return "\n\n---\n\n".join(p for p in parts if p)
 
 
+def _handoff_reminder(role_name: str) -> str:
+    return (
+        f"\n\nIMPORTANT: When done, write your handoff file to "
+        f".session-artifacts/{role_name}/handoff.md using the template from conventions.md."
+    )
+
+
 def build_session_prompt(root: Path, role_name: str) -> str:
     builders = {
         "architect": _build_architect_prompt,
         "planner": _build_planner_prompt,
         "developer": _build_developer_prompt,
     }
-    return builders[role_name](root)
+    return builders[role_name](root) + _handoff_reminder(role_name)
 
 
 def _build_architect_prompt(root: Path) -> str:
@@ -176,10 +183,9 @@ def invoke_session(root: Path, role_name: str, system_prompt: str, session_promp
     cmd = [
         "claude",
         "-p",
+        "--dangerously-skip-permissions",
         "--system-prompt",
         system_prompt,
-        "--permission-mode",
-        "auto",
         session_prompt,
     ]
     print(f"--- Invoking {role_name} session ---")
