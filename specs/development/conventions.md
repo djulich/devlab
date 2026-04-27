@@ -20,9 +20,9 @@
 
 ## Task Template
 
-File: `TXXX_<short-slug>.md` in `work/backlog/` (XXX = zero-padded).
+File: `TXXXX_<short-slug>.md` in `work/backlog/` (XXXX = zero-padded).
 
-    # TXXX: <title>
+    # TXXXX: <title>
     ## Goal
     <one sentence>
     ## Acceptance Criteria
