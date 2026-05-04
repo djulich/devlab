@@ -5,8 +5,8 @@ This documents defines the tooling decisions made for this project.
 ## Required
 
 - Primary programming language: `Python` (version >=3.12)
-- Dependency and environment management: `uv`
-- Build backend: `uv`
+- Python dependency, lockfile, environment, and command management: `uv`
+- Build backend: `uv_build`
 - Linting and formatting: `ruff`
 - Static type checking: `ty`
 - Testing: `pytest`

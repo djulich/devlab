@@ -21,12 +21,17 @@ The developer implements exactly one task from the backlog per session.
 6. Mark all acceptance criteria as checked in the task file.
 7. Write handoff to `.session-artifacts/developer/handoff.md`.
 
+## Tool Usage
+
+- Use `uv sync` when the environment is missing or dependencies changed.
+- Run project commands with `uv run ...`; do not rely on globally installed Python packages.
+
 ## Validation Checklist
 
 Before writing the handoff, confirm:
-- [ ] `ruff check` passes
-- [ ] `ty check` passes
-- [ ] `pytest` passes
+- [ ] `uv run ruff check` passes
+- [ ] `uv run ty check` passes
+- [ ] `uv run pytest` passes
 - [ ] Only files relevant to the task were changed
 - [ ] No unrelated refactoring was introduced
 
