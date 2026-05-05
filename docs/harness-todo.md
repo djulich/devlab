@@ -12,8 +12,25 @@ For more complex target projects (e.g. multi-service platforms) the harness need
 
 Once multiple tasks are complete, someone needs to verify they work together. An integrator session at milestone boundaries would run the full test suite (especially the integration tests) and check for coherence.
 
+### Initial non-goals
+
+Do not yet implement:
+
+- automatic creation of follow-up tasks from integration failures
+- milestone status file
+- architect re-invocation
+- integration command metadata separate from task validation
+- automatic command execution by orchestrator
+- multi-milestone planning policy
+
+Those can come later.
+
 ## Architect Re-invocation
 
 Currently, the orchestrator calls the architect when the design plan is empty, then never again. Design plans evolve — after implementing a few tasks, interfaces may need revision or new components may emerge. There is no trigger to re-invoke the architect mid-project.
 
 A milestone boundary (all tasks for M1 complete) would be a natural point to re-invoke the architect for design review, or run an integrator check, before the planner creates M2 tasks.
+
+## Automatic Version Control
+
+The harness should autonomously commit the repo state after each completed session.
