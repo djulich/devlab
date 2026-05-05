@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from harness.agents import MockProvider
+from harness.agents import AgentCall, MockProvider
 from harness.orchestrator import (
     DESIGN_PLAN,
     HISTORY_DIR,
@@ -209,7 +209,121 @@ class TestBuildSystemPrompt:
         assert "Tooling" in prompt
 
 
+def _checked_task_body(task_id: str, title: str) -> str:
+    return f"# {task_id}: {title}\n\n## Acceptance Criteria\n- [x] Done\n"
+
+
+def _approve_task(call: AgentCall) -> None:
+    task_path = next((call.root / TASKS_DIR).glob("T*.md"))
+    task_path.write_text(task_path.read_text() + "\n## Review\n- [x] Approved\n")
+
+
+def _complete_developer_task(call: AgentCall) -> None:
+    task_path = next((call.root / TASKS_DIR).glob("T*.md"))
+    text = task_path.read_text().replace("- [ ] Done", "- [x] Done")
+    task_path.write_text(text)
+
+
 class TestRunLoop:
+    def test_developer_completed_task_is_marked_in_review(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(tmp_path, "T0001", "First", body=_checked_task_body("T0001", "First"))
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert len(provider.calls) == 1
+        assert provider.calls[0].role_name == "developer"
+        assert 'status = "in_review"' in task.read_text()
+
+    def test_developer_incomplete_task_stays_open(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert provider.calls[0].role_name == "developer"
+        assert 'status = "open"' in task.read_text()
+
+    def test_reviewer_approval_closes_task(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(
+            tmp_path,
+            "T0001",
+            "Review",
+            status="in_review",
+            body=_checked_task_body("T0001", "Review") + "\n## Review\n- [x] Approved\n",
+        )
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert provider.calls[0].role_name == "reviewer"
+        assert 'status = "closed"' in task.read_text()
+
+    def test_reviewer_rejection_sets_changes_requested(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(
+            tmp_path,
+            "T0001",
+            "Review",
+            status="in_review",
+            body=_checked_task_body("T0001", "Review"),
+        )
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: reviewer\n"
+                "## Done\n- Reviewed task.\n"
+                "## Changed Artifacts\n- work/tasks/T0001_review.md (modified)\n"
+                "## Open Issues\n- Fix the implementation.\n"
+                "## Next Session Hint\nAddress requested changes.\n"
+            )
+        )
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert provider.calls[0].role_name == "reviewer"
+        assert 'status = "changes_requested"' in task.read_text()
+
+    def test_invalid_handoff_stops_loop_without_status_change(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(tmp_path, "T0001", "First", body=_checked_task_body("T0001", "First"))
+        provider = MockProvider(write_handoff=False)
+
+        try:
+            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        except SystemExit as exc:
+            assert exc.code == 1
+        else:
+            raise AssertionError("expected SystemExit")
+
+        assert provider.calls[0].role_name == "developer"
+        assert 'status = "open"' in task.read_text()
+
+    def test_two_session_developer_reviewer_happy_path(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(tmp_path, "T0001", "First")
+
+        def on_invoke(call: AgentCall) -> None:
+            if call.role_name == "developer":
+                _complete_developer_task(call)
+            elif call.role_name == "reviewer":
+                _approve_task(call)
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        run_loop(tmp_path, auto=True, max_sessions=2, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["developer", "reviewer"]
+        assert 'status = "closed"' in task.read_text()
+
     def test_uses_role_specific_agent_provider(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")

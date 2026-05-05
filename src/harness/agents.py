@@ -127,6 +127,7 @@ class MockProvider:
     return_code: int = 0
     write_handoff: bool = True
     handoff_text: str | Callable[[AgentCall], str] | None = None
+    on_invoke: Callable[[AgentCall], None] | None = None
     calls: list[AgentCall] = dataclasses.field(default_factory=list)
 
     def invoke(
@@ -144,6 +145,8 @@ class MockProvider:
             session_prompt=session_prompt,
         )
         self.calls.append(call)
+        if self.on_invoke is not None:
+            self.on_invoke(call)
         if self.write_handoff:
             handoff_path = root / ".session-artifacts" / role_name / "handoff.md"
             handoff_path.parent.mkdir(parents=True, exist_ok=True)
