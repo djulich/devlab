@@ -8,7 +8,7 @@
 
 ## Integrator Role
 
-The harness needs integration testing across services. The developer validates a single task in isolation. Nobody verifies that the gateway talks to the backend, or that the frontend renders data from the API.
+For more complex target projects (e.g. multi-service platforms) the harness needs integration testing across services. The developer validates a single task in isolation. Nobody verifies that the gateway talks to the backend, or that the frontend renders data from the API.
 
 Once multiple tasks are complete, someone needs to verify they work together. An integrator session at milestone boundaries would run the full test suite (especially the integration tests) and check for coherence.
 
