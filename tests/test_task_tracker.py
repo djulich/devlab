@@ -74,8 +74,7 @@ class TestFileTaskTrackerParsing:
         assert task.status == TaskStatus.CHANGES_REQUESTED
         assert task.milestone == "M1"
         assert task.depends_on == ("T0000",)
-        assert task.validation == ()
-        assert task.validation_specified is False
+        assert task.validation is None
         assert task.metadata["priority"] == "high"
 
     def test_missing_front_matter_defaults_to_open_task(self, tmp_path: Path) -> None:
@@ -138,7 +137,6 @@ class TestFileTaskTrackerParsing:
         task = FileTaskTracker(tmp_path).get("T0001")
 
         assert task.validation == ("uv run pytest", "cd frontend && npm test")
-        assert task.validation_specified is True
 
     def test_distinguishes_omitted_validation_from_explicit_empty_validation(
         self, tmp_path: Path
@@ -150,10 +148,8 @@ class TestFileTaskTrackerParsing:
         omitted = FileTaskTracker(tmp_path).get("T0001")
         explicit_empty = FileTaskTracker(tmp_path).get("T0002")
 
-        assert omitted.validation == ()
-        assert omitted.validation_specified is False
+        assert omitted.validation is None
         assert explicit_empty.validation == ()
-        assert explicit_empty.validation_specified is True
 
     def test_rejects_non_list_validation(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)

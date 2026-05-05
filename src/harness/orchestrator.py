@@ -208,7 +208,7 @@ def _build_developer_prompt(root: Path) -> str:
             parts.append(
                 f"## Task Validation Commands\n\nRun from the workspace root:\n\n{commands}"
             )
-        elif task.validation_specified:
+        elif task.validation == ():
             parts.append(
                 "## Task Validation Commands\n\n"
                 "Task metadata sets `validation = []`. No validation commands "
