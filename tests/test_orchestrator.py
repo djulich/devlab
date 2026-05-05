@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from harness.agents import AgentCall, MockProvider
 from harness.orchestrator import (
     DESIGN_PLAN,
@@ -213,8 +215,11 @@ def _checked_task_body(task_id: str, title: str) -> str:
     return f"# {task_id}: {title}\n\n## Acceptance Criteria\n- [x] Done\n"
 
 
-def _approve_task(call: AgentCall) -> None:
-    task_path = next((call.root / TASKS_DIR).glob("T*.md"))
+def _approve_task(call: AgentCall, task_id: str | None = None) -> None:
+    if task_id is None:
+        task_path = next((call.root / TASKS_DIR).glob("T*.md"))
+    else:
+        task_path = next((call.root / TASKS_DIR).glob(f"{task_id}_*.md"))
     task_path.write_text(task_path.read_text() + "\n## Review\n- [x] Approved\n")
 
 
@@ -360,6 +365,106 @@ class TestRunLoop:
             assert exc.code == 12
         else:
             raise AssertionError("expected SystemExit")
+
+    def test_unrecoverable_handoff_stops_loop_without_status_change(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(tmp_path, "T0001", "First", body=_checked_task_body("T0001", "First"))
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: developer\n"
+                "## Done\n- Tried work.\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- Unrecoverable: environment broken.\n"
+                "## Next Session Hint\nStop.\n"
+            )
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert exc_info.value.code == 1
+        assert provider.calls[0].role_name == "developer"
+        assert 'status = "open"' in task.read_text()
+
+    def test_blocked_dependency_stops_without_invoking_agent(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Blocked", depends_on=["T9999"])
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert provider.calls == []
+
+    def test_dependency_unlocks_after_reviewed_task_closes(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        dependency = _write_task(
+            tmp_path,
+            "T0002",
+            "Dependency",
+            status="in_review",
+            body=_checked_task_body("T0002", "Dependency"),
+        )
+        dependent = _write_task(tmp_path, "T0001", "Dependent", depends_on=["T0002"])
+
+        def on_invoke(call: AgentCall) -> None:
+            if call.role_name == "reviewer":
+                _approve_task(call, "T0002")
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        run_loop(tmp_path, auto=True, max_sessions=2, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["reviewer", "developer"]
+        assert 'status = "closed"' in dependency.read_text()
+        assert 'status = "open"' in dependent.read_text()
+
+    def test_planner_invoked_when_design_exists_and_no_tasks(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["planner"]
+
+    def test_architect_invoked_when_design_plan_missing(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["architect"]
+
+    def test_successful_session_archives_handoff(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        archived = list((tmp_path / HISTORY_DIR).glob("*_developer_handoff.md"))
+        assert len(archived) == 1
+        assert "Mock session completed" in archived[0].read_text()
+
+    def test_non_auto_mode_stops_when_user_declines(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider(on_invoke=_complete_developer_task)
+        monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+
+        run_loop(tmp_path, auto=False, max_sessions=5, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["developer"]
+        assert 'status = "in_review"' in task.read_text()
 
 
 class TestValidateHandoff:
