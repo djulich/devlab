@@ -1,6 +1,6 @@
 # Tooling
 
-This documents defines the tooling decisions made for this project.
+This document defines the default tooling for this workspace. Task metadata may specify task-specific `validation` commands.
 
 ## Required
 
@@ -12,6 +12,12 @@ This documents defines the tooling decisions made for this project.
 - Testing: `pytest`
 - Version Control: `git`
 - Python package structure: `/src` layout
+
+## Default Validation
+
+- `uv run ruff check`
+- `uv run ty check`
+- `uv run pytest`
 
 ## Optional
 

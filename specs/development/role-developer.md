@@ -25,14 +25,15 @@ The developer implements exactly one eligible task per session.
 ## Tool Usage
 
 - Use `uv sync` when the environment is missing or dependencies changed.
-- Run project commands with `uv run ...`; do not rely on globally installed Python packages.
+- Run project commands through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist
 
 Before writing the handoff, confirm:
-- [ ] `uv run ruff check` passes
-- [ ] `uv run ty check` passes
-- [ ] `uv run pytest` passes
+- [ ] If task `validation` is present and non-empty, all listed commands pass.
+- [ ] If task `validation` is omitted, default validation from `specs/development/tooling.md` passes.
+- [ ] If task `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
+- [ ] Any skipped or inapplicable validation command is explained in the handoff.
 - [ ] Only files relevant to the task were changed
 - [ ] No unrelated refactoring was introduced
 

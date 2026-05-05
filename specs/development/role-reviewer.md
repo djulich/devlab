@@ -31,14 +31,16 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 
 ## Tool Usage
 
-- Run project validation commands with `uv run ...`; do not rely on globally installed Python packages.
+- Run validation through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist
 
 Before approving, confirm:
 
 - [ ] The implementation satisfies all acceptance criteria.
-- [ ] Relevant tests pass, using `uv run ...`, or the handoff explains why they could not be run.
+- [ ] Task `validation` commands pass when present and non-empty.
+- [ ] Default validation passes when task `validation` is omitted.
+- [ ] If task `validation = []`, the developer handoff states whether any validation was run and why.
 - [ ] No unrelated refactoring or broad scope creep was introduced.
 - [ ] The task file has all acceptance criteria checked.
 

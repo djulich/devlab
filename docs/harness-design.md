@@ -179,6 +179,7 @@ title = "Example task"
 status = "open"
 milestone = "M1"
 depends_on = []
+validation = []
 +++
 
 # T0001: Example task
@@ -230,6 +231,14 @@ A task is eligible for development when:
 - all tasks listed in `depends_on` are `closed`.
 
 Dependency blocking is computed rather than stored as a separate persistent status. This avoids stale state: if a dependency closes, dependent tasks automatically become eligible.
+
+## Task-specific validation
+
+Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root.
+
+If `validation` is omitted, agents use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
+
+This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
 
 ## Handoffs and continuity
 

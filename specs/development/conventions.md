@@ -29,6 +29,7 @@ File: `TXXXX_<short-slug>.md` in `work/tasks/` (XXXX = zero-padded).
     status = "open"
     milestone = "M1"
     depends_on = []
+    validation = []
     +++
 
     # TXXXX: <title>
@@ -40,6 +41,8 @@ File: `TXXXX_<short-slug>.md` in `work/tasks/` (XXXX = zero-padded).
     <optional>
 
 Dependencies are task IDs in `depends_on`, for example `depends_on = ["T0001"]`.
+
+Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root. If `validation` is omitted, use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
 
 ## Review Template
 

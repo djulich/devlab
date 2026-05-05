@@ -203,6 +203,18 @@ def _build_developer_prompt(root: Path) -> str:
     if task:
         content = _read_file(task.path)
         parts.append(f"## Assigned Task ({task.path.name})\n\n{content}")
+        if task.validation:
+            commands = "\n".join(f"- `{command}`" for command in task.validation)
+            parts.append(
+                f"## Task Validation Commands\n\nRun from the workspace root:\n\n{commands}"
+            )
+        elif task.validation_specified:
+            parts.append(
+                "## Task Validation Commands\n\n"
+                "Task metadata sets `validation = []`. No validation commands "
+                "are required; state in the handoff whether any validation was "
+                "run and why."
+            )
     else:
         parts.append("No open eligible tasks.")
     handoff = _latest_handoff(root, "developer")

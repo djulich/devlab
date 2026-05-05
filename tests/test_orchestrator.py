@@ -11,6 +11,7 @@ from harness.orchestrator import (
     _task_is_complete,
     _timestamp,
     assess_state,
+    build_session_prompt,
     build_system_prompt,
     close_task,
     select_task,
@@ -36,12 +37,17 @@ def _write_task(
     title: str = "Test task",
     status: str = "open",
     depends_on: list[str] | None = None,
+    validation: list[str] | None = None,
     body: str | None = None,
 ) -> Path:
     depends_on = depends_on or []
     slug = title.lower().replace(" ", "-")
     path = root / TASKS_DIR / f"{task_id}_{slug}.md"
     depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
+    validation_line = ""
+    if validation is not None:
+        validation_commands = ", ".join(f'"{command}"' for command in validation)
+        validation_line = f"validation = [{validation_commands}]\n"
     if body is None:
         body = f"# {task_id}: {title}\n\n## Acceptance Criteria\n- [ ] Done\n"
     path.write_text(
@@ -50,6 +56,7 @@ def _write_task(
         f'title = "{title}"\n'
         f'status = "{status}"\n'
         f"depends_on = [{depends}]\n"
+        f"{validation_line}"
         "+++\n\n"
         f"{body}"
     )
@@ -150,6 +157,40 @@ class TestCloseTask:
         assert 'status = "closed"' in task.read_text()
         history = list((tmp_path / HISTORY_DIR).glob("*_reviewer_closed-task.md"))
         assert history == []
+
+
+class TestBuildSessionPrompt:
+    def test_developer_prompt_includes_task_validation_commands(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "First", validation=["uv run pytest"])
+
+        prompt = build_session_prompt(tmp_path, "developer")
+
+        assert "## Task Validation Commands" in prompt
+        assert "`uv run pytest`" in prompt
+
+    def test_developer_prompt_omits_validation_section_when_validation_is_omitted(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "First")
+
+        prompt = build_session_prompt(tmp_path, "developer")
+
+        assert "## Task Validation Commands" not in prompt
+
+    def test_developer_prompt_explains_explicit_empty_validation(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "First", validation=[])
+
+        prompt = build_session_prompt(tmp_path, "developer")
+
+        assert "## Task Validation Commands" in prompt
+        assert "validation = []" in prompt
+        assert "No validation commands are required" in prompt
+        assert "whether any validation was run and why" in prompt
 
 
 class TestBuildSystemPrompt:
