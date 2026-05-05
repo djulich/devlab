@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from harness.agents import MockProvider
 from harness.orchestrator import (
     DESIGN_PLAN,
     HISTORY_DIR,
@@ -14,6 +15,7 @@ from harness.orchestrator import (
     build_session_prompt,
     build_system_prompt,
     close_task,
+    run_loop,
     select_task,
     validate_handoff,
 )
@@ -179,9 +181,7 @@ class TestBuildSessionPrompt:
 
         assert "## Task Validation Commands" not in prompt
 
-    def test_developer_prompt_explains_explicit_empty_validation(
-        self, tmp_path: Path
-    ) -> None:
+    def test_developer_prompt_explains_explicit_empty_validation(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", validation=[])
 
@@ -207,6 +207,45 @@ class TestBuildSystemPrompt:
         role = ROLES["developer"]
         prompt = build_system_prompt(tmp_path, role)
         assert "Tooling" in prompt
+
+
+class TestRunLoop:
+    def test_uses_role_specific_agent_provider(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Review", status="in_review")
+        default_provider = MockProvider()
+        reviewer_provider = MockProvider()
+
+        run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            agent_providers={"default": default_provider, "reviewer": reviewer_provider},
+            role_agent_providers={"reviewer": "reviewer"},
+        )
+
+        assert default_provider.calls == []
+        assert len(reviewer_provider.calls) == 1
+        assert reviewer_provider.calls[0].role_name == "reviewer"
+
+    def test_stops_when_agent_provider_returns_failure(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider(return_code=12)
+
+        try:
+            run_loop(
+                tmp_path,
+                auto=True,
+                max_sessions=1,
+                agent_providers={"default": provider},
+            )
+        except SystemExit as exc:
+            assert exc.code == 12
+        else:
+            raise AssertionError("expected SystemExit")
 
 
 class TestValidateHandoff:

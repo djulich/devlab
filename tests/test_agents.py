@@ -8,6 +8,7 @@ import pytest
 from harness.agents import (
     AgentResult,
     CliAgentProvider,
+    MockProvider,
     claude_cli_provider,
     codex_cli_provider,
     pi_cli_provider,
@@ -55,6 +56,32 @@ def test_provider_for_role_uses_role_specific_provider() -> None:
 def test_provider_for_role_rejects_unknown_provider() -> None:
     with pytest.raises(KeyError, match="unknown agent provider"):
         provider_for_role("reviewer", {"default": RecordingProvider()}, {"reviewer": "missing"})
+
+
+def test_mock_provider_records_calls_and_writes_valid_handoff(tmp_path: Path) -> None:
+    provider = MockProvider()
+
+    result = provider.invoke(
+        root=tmp_path,
+        role_name="developer",
+        system_prompt="system",
+        session_prompt="session",
+    )
+
+    assert result.return_code == 0
+    assert provider.calls[0].role_name == "developer"
+    assert provider.calls[0].system_prompt == "system"
+    handoff = tmp_path / ".session-artifacts" / "developer" / "handoff.md"
+    assert "## Open Issues" in handoff.read_text()
+
+
+def test_mock_provider_supports_callable_handoff_text(tmp_path: Path) -> None:
+    provider = MockProvider(handoff_text=lambda call: f"handoff for {call.role_name}")
+
+    provider.invoke(root=tmp_path, role_name="reviewer", system_prompt="", session_prompt="")
+
+    handoff = tmp_path / ".session-artifacts" / "reviewer" / "handoff.md"
+    assert handoff.read_text() == "handoff for reviewer"
 
 
 def test_cli_agent_provider_renders_prompt_arguments(

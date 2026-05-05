@@ -3,14 +3,22 @@ from __future__ import annotations
 import dataclasses
 import shlex
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 
 @dataclasses.dataclass(frozen=True)
 class AgentResult:
     return_code: int
+
+
+@dataclasses.dataclass(frozen=True)
+class AgentCall:
+    root: Path
+    role_name: str
+    system_prompt: str
+    session_prompt: str
 
 
 class AgentProvider(Protocol):
@@ -110,6 +118,55 @@ def codex_cli_provider(command: str = "codex exec -") -> CliAgentProvider:
         prompt_args=(),
         stdin_template="{system_prompt}\n\n---\n\n{session_prompt}",
     )
+
+
+@dataclasses.dataclass
+class MockProvider:
+    """Test agent provider that records calls and can write valid handoffs."""
+
+    return_code: int = 0
+    write_handoff: bool = True
+    handoff_text: str | Callable[[AgentCall], str] | None = None
+    calls: list[AgentCall] = dataclasses.field(default_factory=list)
+
+    def invoke(
+        self,
+        *,
+        root: Path,
+        role_name: str,
+        system_prompt: str,
+        session_prompt: str,
+    ) -> AgentResult:
+        call = AgentCall(
+            root=root,
+            role_name=role_name,
+            system_prompt=system_prompt,
+            session_prompt=session_prompt,
+        )
+        self.calls.append(call)
+        if self.write_handoff:
+            handoff_path = root / ".session-artifacts" / role_name / "handoff.md"
+            handoff_path.parent.mkdir(parents=True, exist_ok=True)
+            handoff_path.write_text(self._handoff_for(call))
+        return AgentResult(return_code=self.return_code)
+
+    def _handoff_for(self, call: AgentCall) -> str:
+        if callable(self.handoff_text):
+            handoff_factory = cast("Callable[[AgentCall], str]", self.handoff_text)
+            return handoff_factory(call)
+        if self.handoff_text is not None:
+            return self.handoff_text
+        return (
+            f"# Handoff: {call.role_name}\n"
+            "## Done\n"
+            "- Mock session completed.\n"
+            "## Changed Artifacts\n"
+            "- None\n"
+            "## Open Issues\n"
+            "- None\n"
+            "## Next Session Hint\n"
+            "Continue.\n"
+        )
 
 
 def provider_for_role(
