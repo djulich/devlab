@@ -3,13 +3,12 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import re
-import shlex
 import shutil
-import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from harness.agents import AgentProvider, CliAgentProvider, provider_for_role
 from harness.task_tracker import FileTaskTracker, Task
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
@@ -254,21 +253,21 @@ def invoke_session(
     system_prompt: str,
     session_prompt: str,
     *,
-    agent_cmd: str,
-    dangerous_skip_permissions: bool,
+    agent_provider: AgentProvider,
 ) -> int:
-    cmd = shlex.split(agent_cmd)
-    if dangerous_skip_permissions:
-        cmd.append("--dangerously-skip-permissions")
-    cmd.extend(["--system-prompt", system_prompt, session_prompt])
     print(f"--- Invoking {role_name} session ---")
     try:
-        result = subprocess.run(cmd, cwd=str(root), check=False)
-    except FileNotFoundError:
-        print(f"ERROR: agent command not found: {cmd[0]!r}")
+        result = agent_provider.invoke(
+            root=root,
+            role_name=role_name,
+            system_prompt=system_prompt,
+            session_prompt=session_prompt,
+        )
+    except FileNotFoundError as exc:
+        print(f"ERROR: agent command not found: {exc.filename!r}")
         sys.exit(1)
-    print(f"--- {role_name} session exited with code {result.returncode} ---")
-    return result.returncode
+    print(f"--- {role_name} session exited with code {result.return_code} ---")
+    return result.return_code
 
 
 # ---------------------------------------------------------------------------
@@ -374,8 +373,15 @@ def run_loop(
     max_sessions: int,
     agent_cmd: str = "claude -p",
     dangerous_skip_permissions: bool = False,
+    agent_providers: dict[str, AgentProvider] | None = None,
+    role_agent_providers: dict[str, str] | None = None,
 ) -> None:
     sessions_run = 0
+    if agent_providers is None:
+        extra_args = ("--dangerously-skip-permissions",) if dangerous_skip_permissions else ()
+        agent_providers = {
+            "default": CliAgentProvider.from_command(agent_cmd, extra_args=extra_args)
+        }
 
     while sessions_run < max_sessions:
         role_name = assess_state(root)
@@ -400,8 +406,7 @@ def run_loop(
             role_name,
             system_prompt,
             session_prompt,
-            agent_cmd=agent_cmd,
-            dangerous_skip_permissions=dangerous_skip_permissions,
+            agent_provider=provider_for_role(role_name, agent_providers, role_agent_providers),
         )
         if return_code != 0:
             print(f"ERROR: {role_name} session failed with exit code {return_code}. Stopping.")

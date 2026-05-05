@@ -240,6 +240,14 @@ If `validation` is omitted, agents use the workspace defaults from `specs/develo
 
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
 
+## Agent providers
+
+The orchestrator invokes agents through an agent-provider abstraction. The workflow decides which role to run; the provider owns how a concrete agent is called.
+
+This keeps the orchestrator independent from a specific CLI shape. For example, Claude- and Pi-style CLIs can be represented with system-prompt arguments, while Codex CLI can be represented with stdin-based `codex exec -` invocation. Future configurations can map different roles to different providers or models.
+
+A useful future pattern is to run the developer and reviewer with different providers to reduce shared blind spots, while keeping the default single-provider setup simple.
+
 ## Handoffs and continuity
 
 Each session must write a handoff to:

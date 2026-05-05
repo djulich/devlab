@@ -18,3 +18,4 @@ When changing the harness itself, preserve these design constraints:
 - Treat the harness as a reusable tool that operates on a target workspace; dogfooding in this repo must not add assumptions that the target is the harness repo.
 - Preserve bounded sessions: one role per session, and one task per developer/reviewer session.
 - Keep task storage behind the task-tracker abstraction; do not spread file-backed task assumptions through unrelated code.
+- Keep concrete agent invocation behind the agent-provider abstraction; do not bake one agent CLI into orchestration logic.
