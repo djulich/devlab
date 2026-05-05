@@ -17,6 +17,66 @@ At a high level, the harness should be able to:
 5. invoke agents to review completed work,
 6. preserve enough state in repository files to resume or audit the workflow.
 
+## Harness and target workspace
+
+The harness should be understood as a reusable development tool, not as the product being developed. It operates on a target workspace: a repository that contains the system specification, plans, tasks, history, source code, and tests for the product under development.
+
+During early development, this repository can also be used as a target workspace for dogfooding. That is a convenience, not a design requirement. The harness should continue to work when invoked against another repository, for example:
+
+```bash
+harness --root /path/to/target-project
+```
+
+### Why separate the responsibilities?
+
+Keeping the harness conceptually separate from the target product has several benefits:
+
+- the harness can be reused across multiple projects,
+- generated or target-product code does not become mixed with harness implementation code,
+- a target workspace can use any appropriate technology stack,
+- harness releases can evolve independently from the products they help create,
+- `specs/system/` can describe the target product instead of the harness itself.
+
+### Recommended model
+
+A harness repository contains the reusable tool and default worker instructions:
+
+```text
+harness-repo/
+├── src/harness/
+├── tests/
+├── docs/
+├── specs/development/
+└── examples/
+```
+
+A target workspace contains the product-specific development state:
+
+```text
+target-project/
+├── specs/system/
+├── specs/development/
+├── work/tasks/
+├── work/plans/
+├── work/history/
+├── .session-artifacts/
+└── <product source, tests, and deployment files>
+```
+
+The `specs/development/` files may start from harness-provided defaults, but in a target workspace they are inputs for the worker agents spawned by the harness.
+
+### Design implications
+
+Harness code should avoid assuming that the target workspace is the harness repository. In particular, avoid hard-coded assumptions that:
+
+- the target project is Python-only,
+- target source code lives under `src/harness/`,
+- target validation is always `uv run pytest`,
+- `specs/system/` describes the harness itself,
+- `AGENTS.md` and `specs/development/*.md` serve the same audience.
+
+The guiding principle is: the harness is a reusable tool that operates on a target workspace. Dogfooding in this repository is allowed, but must not leak target-specific assumptions into harness design.
+
 ## Core design principles
 
 ### Repository state is authoritative
@@ -25,7 +85,7 @@ The repository is the system of record. Agents should not depend on conversation
 
 Important workflow state is stored in files, for example:
 
-- `specs/` — role definitions, conventions, tooling choices, and system specifications.
+- `specs/` — target-workspace system specifications and worker-agent instructions.
 - `work/plans/` — design and project plans.
 - `work/tasks/` — task files, including each task's status.
 - `work/history/` — archived session handoffs.
@@ -47,8 +107,8 @@ Agent input files should be concise. The harness should not pre-fill the context
 
 Instead:
 
-- global conventions stay in `specs/development/conventions.md`,
-- tooling decisions stay in `specs/development/tooling.md`,
+- worker-agent conventions stay in `specs/development/conventions.md`,
+- target-workspace tooling decisions stay in `specs/development/tooling.md`,
 - role-specific procedures stay in the matching `role-*.md` file,
 - current work is supplied through the selected task and recent relevant handoff.
 
