@@ -2,21 +2,31 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import re
+import shlex
 import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from harness.task_tracker import FileTaskTracker, Task
+
+DEFAULT_PROJECT_ROOT = Path.cwd()
 
 CONVENTIONS_FILE = "specs/development/conventions.md"
 TOOLING_FILE = "specs/development/tooling.md"
 DESIGN_PLAN = "work/plans/design-plan.md"
 PROJECT_PLAN = "work/plans/project-plan.md"
-BACKLOG_DIR = "work/backlog"
 HISTORY_DIR = "work/history"
 ARTIFACTS_DIR = ".session-artifacts"
+
+REQUIRED_HANDOFF_HEADINGS = (
+    "## Done",
+    "## Changed Artifacts",
+    "## Open Issues",
+    "## Next Session Hint",
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -30,12 +40,11 @@ ROLES: dict[str, RoleConfig] = {
     "architect": RoleConfig(
         "architect", "specs/development/role-architect.md", reads_tooling=True
     ),
-    "planner": RoleConfig(
-        "planner", "specs/development/role-planner.md", reads_tooling=False
-    ),
+    "planner": RoleConfig("planner", "specs/development/role-planner.md", reads_tooling=False),
     "developer": RoleConfig(
         "developer", "specs/development/role-developer.md", reads_tooling=True
     ),
+    "reviewer": RoleConfig("reviewer", "specs/development/role-reviewer.md", reads_tooling=True),
 }
 
 
@@ -55,10 +64,19 @@ def _timestamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
 
 
+def task_tracker(root: Path) -> FileTaskTracker:
+    return FileTaskTracker(root)
+
+
 def select_task(root: Path) -> Path | None:
-    backlog = root / BACKLOG_DIR
-    tasks = sorted(backlog.glob("T*.md"))
-    return tasks[0] if tasks else None
+    """Select the lowest-numbered task eligible for development."""
+    task = task_tracker(root).select_next_development_task()
+    return task.path if task else None
+
+
+def select_review_task(root: Path) -> Path | None:
+    task = task_tracker(root).select_next_review_task()
+    return task.path if task else None
 
 
 def _latest_handoff(root: Path, role_name: str) -> str:
@@ -70,6 +88,9 @@ def _latest_handoff(root: Path, role_name: str) -> str:
 
 
 def _all_milestones_complete(root: Path) -> bool:
+    tracker = task_tracker(root)
+    if tracker.has_tasks():
+        return tracker.all_tasks_closed()
     text = _read_file(root / PROJECT_PLAN)
     checked = text.count("- [x]")
     unchecked = text.count("- [ ]")
@@ -88,13 +109,22 @@ def assess_state(root: Path) -> str | None:
     if not design_plan.exists() or design_plan.stat().st_size == 0:
         return "architect"
 
-    task = select_task(root)
-    if task is None:
-        if _all_milestones_complete(root):
-            return None
-        return "planner"
+    tracker = task_tracker(root)
 
-    return "developer"
+    if tracker.select_next_review_task() is not None:
+        return "reviewer"
+
+    if tracker.select_next_development_task() is not None:
+        return "developer"
+
+    if tracker.blocked_tasks():
+        print("No task is eligible; remaining development tasks are blocked by dependencies.")
+        return None
+
+    if _all_milestones_complete(root):
+        return None
+
+    return "planner"
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +154,7 @@ def build_session_prompt(root: Path, role_name: str) -> str:
         "architect": _build_architect_prompt,
         "planner": _build_planner_prompt,
         "developer": _build_developer_prompt,
+        "reviewer": _build_reviewer_prompt,
     }
     return builders[role_name](root) + _handoff_reminder(role_name)
 
@@ -141,6 +172,14 @@ def _build_architect_prompt(root: Path) -> str:
     return "\n\n".join(parts)
 
 
+def _format_task_listing(tasks: list[Task]) -> str:
+    return "\n".join(
+        f"- {task.id} [{task.status.value}] {task.title} "
+        f"({task.path.relative_to(task.path.parents[2])})"
+        for task in tasks
+    )
+
+
 def _build_planner_prompt(root: Path) -> str:
     parts: list[str] = []
     plan = _read_file(root / DESIGN_PLAN)
@@ -149,11 +188,9 @@ def _build_planner_prompt(root: Path) -> str:
     project = _read_file(root / PROJECT_PLAN)
     if project.strip():
         parts.append(f"## Current Project Plan\n\n{project}")
-    backlog = root / BACKLOG_DIR
-    tasks = sorted(backlog.glob("T*.md"))
+    tasks = task_tracker(root).list_tasks()
     if tasks:
-        listing = "\n".join(f"- {t.name}" for t in tasks)
-        parts.append(f"## Open Tasks in Backlog\n\n{listing}")
+        parts.append(f"## Current Tasks\n\n{_format_task_listing(tasks)}")
     handoff = _latest_handoff(root, "planner")
     if handoff:
         parts.append(f"## Latest Planner Handoff\n\n{handoff}")
@@ -162,15 +199,35 @@ def _build_planner_prompt(root: Path) -> str:
 
 def _build_developer_prompt(root: Path) -> str:
     parts: list[str] = []
-    task_path = select_task(root)
-    if task_path:
-        content = _read_file(task_path)
-        parts.append(f"## Assigned Task ({task_path.name})\n\n{content}")
+    task = task_tracker(root).select_next_development_task()
+    if task:
+        content = _read_file(task.path)
+        parts.append(f"## Assigned Task ({task.path.name})\n\n{content}")
     else:
-        parts.append("No open tasks in backlog.")
+        parts.append("No open eligible tasks.")
     handoff = _latest_handoff(root, "developer")
     if handoff:
         parts.append(f"## Latest Developer Handoff\n\n{handoff}")
+    reviewer_handoff = _latest_handoff(root, "reviewer")
+    if reviewer_handoff:
+        parts.append(f"## Latest Reviewer Handoff\n\n{reviewer_handoff}")
+    return "\n\n".join(parts)
+
+
+def _build_reviewer_prompt(root: Path) -> str:
+    parts: list[str] = []
+    task = task_tracker(root).select_next_review_task()
+    if task:
+        content = _read_file(task.path)
+        parts.append(f"## Task Awaiting Review ({task.path.name})\n\n{content}")
+    else:
+        parts.append("No tasks are awaiting review.")
+    developer_handoff = _latest_handoff(root, "developer")
+    if developer_handoff:
+        parts.append(f"## Latest Developer Handoff\n\n{developer_handoff}")
+    reviewer_handoff = _latest_handoff(root, "reviewer")
+    if reviewer_handoff:
+        parts.append(f"## Latest Reviewer Handoff\n\n{reviewer_handoff}")
     return "\n\n".join(parts)
 
 
@@ -179,20 +236,24 @@ def _build_developer_prompt(root: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def invoke_session(root: Path, role_name: str, system_prompt: str, session_prompt: str) -> int:
-    cmd = [
-        "claude",
-        "-p",
-        "--dangerously-skip-permissions",
-        "--system-prompt",
-        system_prompt,
-        session_prompt,
-    ]
+def invoke_session(
+    root: Path,
+    role_name: str,
+    system_prompt: str,
+    session_prompt: str,
+    *,
+    agent_cmd: str,
+    dangerous_skip_permissions: bool,
+) -> int:
+    cmd = shlex.split(agent_cmd)
+    if dangerous_skip_permissions:
+        cmd.append("--dangerously-skip-permissions")
+    cmd.extend(["--system-prompt", system_prompt, session_prompt])
     print(f"--- Invoking {role_name} session ---")
     try:
-        result = subprocess.run(cmd, cwd=str(root))
+        result = subprocess.run(cmd, cwd=str(root), check=False)
     except FileNotFoundError:
-        print("ERROR: 'claude' command not found. Is Claude Code installed?")
+        print(f"ERROR: agent command not found: {cmd[0]!r}")
         sys.exit(1)
     print(f"--- {role_name} session exited with code {result.returncode} ---")
     return result.returncode
@@ -201,6 +262,21 @@ def invoke_session(root: Path, role_name: str, system_prompt: str, session_promp
 # ---------------------------------------------------------------------------
 # Post-session processing
 # ---------------------------------------------------------------------------
+
+
+def validate_handoff(handoff_path: Path) -> tuple[bool, str]:
+    if not handoff_path.exists():
+        return False, "handoff file does not exist"
+    text = _read_file(handoff_path)
+    if not text.strip():
+        return False, "handoff file is empty"
+    missing = [heading for heading in REQUIRED_HANDOFF_HEADINGS if heading not in text]
+    if missing:
+        return False, f"handoff is missing required heading(s): {', '.join(missing)}"
+    open_issues = text.split("## Open Issues", 1)[1].split("##", 1)[0].lower()
+    if "unrecoverable" in open_issues:
+        return False, "handoff reports an unrecoverable issue"
+    return True, ""
 
 
 def archive_handoff(root: Path, role_name: str) -> Path:
@@ -214,18 +290,47 @@ def archive_handoff(root: Path, role_name: str) -> Path:
 
 def _task_is_complete(task_path: Path) -> bool:
     text = _read_file(task_path)
-    checked = text.count("- [x]")
+    checked = text.count("- [x]") + text.count("- [X]")
     unchecked = text.count("- [ ]")
     return checked > 0 and unchecked == 0
 
 
-def close_task(root: Path, task_path: Path, role_name: str) -> None:
-    history = root / HISTORY_DIR
-    history.mkdir(parents=True, exist_ok=True)
-    dest = history / f"{_timestamp()}_{role_name}_closed-task.md"
-    shutil.copy2(task_path, dest)
-    task_path.unlink()
-    print(f"  Task {task_path.name} closed and archived to {dest.name}")
+def _task_is_approved(task_path: Path) -> bool:
+    text = _read_file(task_path)
+    review_match = re.search(r"^## Review[ \t]*$([\s\S]*?)(?=^##\s|\Z)", text, flags=re.MULTILINE)
+    if not review_match:
+        return False
+    review_text = review_match.group(1).lower()
+    return "- [x] approved" in review_text
+
+
+def mark_task_in_review(root: Path, task_path: Path) -> None:
+    tracker = task_tracker(root)
+    task = tracker.get(task_path.stem.split("_")[0])
+    tracker.mark_in_review(task.id)
+    print(f"  Task {task.path.name} completed by developer; status set to in_review")
+
+
+def mark_task_changes_requested(root: Path, task_path: Path) -> None:
+    tracker = task_tracker(root)
+    task = tracker.get(task_path.stem.split("_")[0])
+    tracker.mark_changes_requested(task.id)
+    print(f"  Task {task.path.name} rejected by reviewer; status set to changes_requested")
+
+
+def close_task(root: Path, task_path: Path, role_name: str = "reviewer") -> None:
+    tracker = task_tracker(root)
+    task = tracker.get(task_path.stem.split("_")[0])
+    tracker.close(task.id)
+    print(f"  Task {task.path.name} closed by {role_name}; status set to closed")
+
+
+def _handoff_has_open_issues(handoff_path: Path) -> bool:
+    text = _read_file(handoff_path)
+    if "## Open Issues" not in text:
+        return False
+    open_issues = text.split("## Open Issues", 1)[1].split("##", 1)[0].strip().lower()
+    return bool(open_issues and "none" not in open_issues)
 
 
 def process_handoff(root: Path, role_name: str) -> None:
@@ -235,7 +340,14 @@ def process_handoff(root: Path, role_name: str) -> None:
     if role_name == "developer":
         task_path = select_task(root)
         if task_path and _task_is_complete(task_path):
+            mark_task_in_review(root, task_path)
+    elif role_name == "reviewer":
+        task_path = select_review_task(root)
+        handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
+        if task_path and _task_is_approved(task_path):
             close_task(root, task_path, role_name)
+        elif task_path and _handoff_has_open_issues(handoff_path):
+            mark_task_changes_requested(root, task_path)
 
 
 # ---------------------------------------------------------------------------
@@ -243,13 +355,20 @@ def process_handoff(root: Path, role_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def run_loop(root: Path, *, auto: bool, max_sessions: int) -> None:
+def run_loop(
+    root: Path,
+    *,
+    auto: bool,
+    max_sessions: int,
+    agent_cmd: str = "claude -p",
+    dangerous_skip_permissions: bool = False,
+) -> None:
     sessions_run = 0
 
     while sessions_run < max_sessions:
         role_name = assess_state(root)
         if role_name is None:
-            print("All milestones complete. Stopping.")
+            print("All milestones complete or no task can proceed. Stopping.")
             break
 
         role = ROLES[role_name]
@@ -264,11 +383,22 @@ def run_loop(root: Path, *, auto: bool, max_sessions: int) -> None:
 
         system_prompt = build_system_prompt(root, role)
         session_prompt = build_session_prompt(root, role_name)
-        invoke_session(root, role_name, system_prompt, session_prompt)
+        return_code = invoke_session(
+            root,
+            role_name,
+            system_prompt,
+            session_prompt,
+            agent_cmd=agent_cmd,
+            dangerous_skip_permissions=dangerous_skip_permissions,
+        )
+        if return_code != 0:
+            print(f"ERROR: {role_name} session failed with exit code {return_code}. Stopping.")
+            sys.exit(return_code)
 
         handoff_path = artifacts_dir / "handoff.md"
-        if not handoff_path.exists():
-            print(f"ERROR: No handoff produced by {role_name}. Stopping.")
+        is_valid, error = validate_handoff(handoff_path)
+        if not is_valid:
+            print(f"ERROR: Invalid handoff produced by {role_name}: {error}. Stopping.")
             sys.exit(1)
 
         process_handoff(root, role_name)
@@ -293,6 +423,12 @@ def main() -> None:
         description="Orchestrate agentic development sessions.",
     )
     parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to operate on (default: current working directory).",
+    )
+    parser.add_argument(
         "--auto",
         action="store_true",
         help="Run autonomously without pausing between sessions.",
@@ -303,8 +439,24 @@ def main() -> None:
         default=20,
         help="Maximum number of sessions to run (default: 20).",
     )
+    parser.add_argument(
+        "--agent-cmd",
+        default="claude -p",
+        help="Agent command prefix (default: 'claude -p').",
+    )
+    parser.add_argument(
+        "--dangerously-skip-permissions",
+        action="store_true",
+        help="Pass --dangerously-skip-permissions to the agent command.",
+    )
     args = parser.parse_args()
-    run_loop(PROJECT_ROOT, auto=args.auto, max_sessions=args.max_sessions)
+    run_loop(
+        args.root.resolve(),
+        auto=args.auto,
+        max_sessions=args.max_sessions,
+        agent_cmd=args.agent_cmd,
+        dangerous_skip_permissions=args.dangerously_skip_permissions,
+    )
 
 
 if __name__ == "__main__":
