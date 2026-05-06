@@ -11,9 +11,9 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 - `specs/development/conventions.md`
 - This file
-- `work/plans/design-plan.md`
-- `work/plans/project-plan.md` (if it exists)
-- `work/tasks/` (existing tasks and their statuses)
+- The design plan
+- The project plan, if it exists
+- Existing task files
 - `.session-artifacts/planner/` (if previous session artifacts exist)
 - Recent planner handoffs in `work/history/`
 
@@ -21,8 +21,8 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 1. Read the design plan and current project plan.
 2. Identify or plan the next milestone that needs tasks.
-3. Break the milestone into tasks (for development, tests, documentation, etc.). Write each task as a file in `work/tasks/` using the task template from `conventions.md`.
-4. Update `work/plans/project-plan.md` with the milestone and its task references.
+3. Break the milestone into tasks (for development, tests, documentation, etc.). Write task files using the task template from `conventions.md`.
+4. Update the project plan with the milestone and its task references.
 5. Write handoff to `.session-artifacts/planner/handoff.md`.
 
 ## Milestone planning

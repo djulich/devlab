@@ -6,27 +6,27 @@ The orchestrator controls the development loop by invoking agent sessions in the
 
 - `specs/development/conventions.md`
 - This file
-- Scan `work/tasks/` for task state
-- Scan `work/history/` for recent handoffs
+- Scan task files for task state
+- Scan archived handoffs
 
 ## Loop
 
 1. Assess project state (design plan exists? tasks exist? tasks open? tasks awaiting review?).
 2. Select the next role using the rules below.
-3. Delete `.session-artifacts/<role>/` for the selected role.
+3. Clear the selected role's session artifacts.
 4. Invoke a session for the selected role.
-5. Verify that `.session-artifacts/<role>/handoff.md` exists, is non-empty, follows the handoff template, and does not report an unrecoverable issue.
-6. Copy the handoff to `work/history/` using the naming convention from `conventions.md`.
+5. Verify that the session handoff exists, is non-empty, follows the handoff template, and does not report an unrecoverable issue.
+6. Archive the handoff using the naming convention from `conventions.md`.
 7. If a developer completed a task, set the task status to `in_review`.
 8. If a reviewer approved a task, set the task status to `closed`; if rejected, set it to `changes_requested`.
-9. If an integrator validates a completed milestone, write an integration marker in `work/history/`; if integration reports Open Issues, stop.
+9. If an integrator validates a completed milestone, write an integration marker in archived handoffs; if integration reports Open Issues, stop.
 10. Repeat from step 1.
 
 ## Role Selection
 
 | Condition | Action |
 |---|---|
-| `work/plans/design-plan.md` is empty or missing | Invoke **architect** |
+| The design plan is empty or missing | Invoke **architect** |
 | Any task has `status = "in_review"` | Invoke **reviewer** |
 | Any completed milestone has no integration marker | Invoke **integrator** |
 | Any task with `status = "open"` or `status = "changes_requested"` has all dependencies closed | Invoke **developer** |
@@ -38,7 +38,7 @@ If a session fails (no handoff produced, or handoff reports an unrecoverable blo
 
 ## Stop Conditions
 
-- All task files in `work/tasks/` have `status = "closed"` and completed milestones are integrated.
+- All task files have `status = "closed"` and completed milestones are integrated.
 - An unrecoverable error is reported in a handoff.
 - An integrator handoff reports Open Issues.
 - No development task is eligible because all remaining development tasks depend on tasks that are not closed.

@@ -7,7 +7,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 - `specs/development/conventions.md`
 - `specs/development/tooling.md`
 - This file
-- The assigned task file from `work/tasks/`
+- The assigned task file
 - The latest developer handoff in `work/history/`
 - Recent reviewer handoffs in `work/history/`
 - The relevant code diff and changed files

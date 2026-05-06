@@ -9,7 +9,7 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 - `specs/development/conventions.md`
 - `specs/development/tooling.md`
 - This file
-- The assigned completed milestone and its task files from `work/tasks/`
+- The assigned completed milestone and its task files
 - Recent developer, reviewer, and integrator handoffs in `work/history/`
 - Relevant source, tests, and deployment/configuration files
 

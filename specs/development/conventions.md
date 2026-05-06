@@ -8,12 +8,14 @@
 - **Session** — one agent invocation in which a single role performs its work.
 - **Handoff** — the artifact a session produces to pass context to the next session.
 
-## Folders
+## Core Artifacts
 
-- `work/tasks/` — task files; each task stores its current status in file metadata.
-- `work/history/` — archived handoffs.
-- `work/plans/` — design plan (architect-owned) and project plan (planner-owned).
-- `.session-artifacts/<role>/` — ephemeral per-session memory, cleared before each session.
+- **System specification** — `specs/system/`
+- **Design plan** — `work/plans/design-plan.md`
+- **Project plan** — `work/plans/project-plan.md`
+- **Task files** — `work/tasks/TXXXX_<short-slug>.md`
+- **Session handoff** (ephemeral per-session memory) — `.session-artifacts/<role>/handoff.md`
+- **Archived handoffs** — `work/history/`
 
 ## History File Naming
 

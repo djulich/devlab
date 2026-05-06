@@ -7,7 +7,7 @@ The developer implements exactly one eligible task per session.
 - `specs/development/conventions.md`
 - `specs/development/tooling.md`
 - This file
-- The assigned task file from `work/tasks/`
+- The assigned task file
 - `.session-artifacts/developer/` (if previous session artifacts exist)
 - The latest developer handoff in `work/history/`
 
