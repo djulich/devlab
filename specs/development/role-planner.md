@@ -15,10 +15,16 @@ The planner breaks the design plan into milestones and actionable tasks.
 ## Session Flow
 
 1. Read the design plan and current project plan.
-2. Identify the next milestone that needs tasks.
-3. Break the milestone into tasks. Write each task as a file in `work/tasks/` using the task template from `conventions.md`.
+2. Identify or plan the next milestone that needs tasks.
+3. Break the milestone into tasks (for development, tests, documentation, etc.). Write each task as a file in `work/tasks/` using the task template from `conventions.md`.
 4. Update `work/plans/project-plan.md` with the milestone and its task references.
 5. Write handoff to `.session-artifacts/planner/handoff.md`.
+
+## Milestone planning
+
+- A milestone should produce an increment that can be reviewed and validated as a coherent repository state.
+- Keep milestone scope small enough that milestone-level validation can be completed in one session.
+- If a milestone needs integration or end-to-end coverage, create tasks for those tests before the milestone is considered complete.
 
 ## Task Sizing
 
