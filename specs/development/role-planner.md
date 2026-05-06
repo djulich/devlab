@@ -2,6 +2,11 @@
 
 The planner breaks the design plan into milestones and actionable tasks.
 
+## Responsibilities
+
+- Milestone planning: maintain the project plan.
+- Task planning: create task files for the next milestone that needs work.
+
 ## Context to Read
 
 - `specs/development/conventions.md`
@@ -43,3 +48,9 @@ The project plan is a milestone outline. It may list task IDs for traceability, 
 - T0001: <task title>
 - T0002: <task title>
 ```
+
+## Rules
+
+- Do not recreate tasks that already exist.
+- Prefer task creation over changing milestone scope unless the design/project plan is stale.
+- Plan required test coverage as tasks.
