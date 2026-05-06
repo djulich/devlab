@@ -51,6 +51,18 @@ Possible state to track:
 - architecture-reviewed status
 - current/planned/complete status
 
+## Harness Workflow Evaluations
+
+Current state: normal tests use deterministic providers such as `MockProvider` and do not call live agents.
+
+Open feature: add opt-in workflow evaluations that run the harness on small target specifications and check observable behavior, not exact generated files.
+
+- Keep live-agent evaluations separate from default tests because they consume tokens and are nondeterministic.
+- Use small specs with objective acceptance checks, e.g. CLI calculator, tiny API, or frontend/backend smoke app.
+- Grade generated systems with black-box checks such as commands, HTTP responses, package builds, and test suites.
+- Record diagnostics such as sessions used, findings created, review rejections, runtime, and final artifacts.
+- Add a deterministic scripted fake-agent provider/evaluation mode first or alongside live evals; it writes canned role outputs/files for known specs and tests the full harness loop without tokens.
+
 ## Automatic Version Control
 
 The harness should eventually be able to commit repository state after completed sessions or workflow gates.
