@@ -167,6 +167,8 @@ class MockProvider:
             "- None\n"
             "## Open Issues\n"
             "- None\n"
+            "## Addressed Findings\n"
+            "- None\n"
             "## Next Session Hint\n"
             "Continue.\n"
         )

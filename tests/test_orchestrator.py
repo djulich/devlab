@@ -291,6 +291,7 @@ class TestRunLoop:
                 "## Done\n- Reviewed task.\n"
                 "## Changed Artifacts\n- work/tasks/T0001_review.md (modified)\n"
                 "## Open Issues\n- Fix the implementation.\n"
+                "## Addressed Findings\n- None\n"
                 "## Next Session Hint\nAddress requested changes.\n"
             )
         )
@@ -388,6 +389,7 @@ class TestRunLoop:
                 "## Done\n- Ran integration checks.\n"
                 "## Changed Artifacts\n- None\n"
                 "## Open Issues\n- Missing frontend/API E2E coverage.\n"
+                "## Addressed Findings\n- None\n"
                 "## Next Session Hint\nPlan follow-up coverage task.\n"
             )
         )
@@ -432,9 +434,9 @@ class TestRunLoop:
                 "## Done\n- Created follow-up task.\n"
                 "## Changed Artifacts\n- work/tasks/T0002_e2e.md (created)\n"
                 "## Open Issues\n- None\n"
-                "## Next Session Hint\nImplement follow-up task.\n"
                 "## Addressed Findings\n"
                 f"- {finding.id}\n"
+                "## Next Session Hint\nImplement follow-up task.\n"
             )
         )
 
@@ -530,6 +532,7 @@ class TestRunLoop:
                 "## Done\n- Tried work.\n"
                 "## Changed Artifacts\n- None\n"
                 "## Open Issues\n- Unrecoverable: environment broken.\n"
+                "## Addressed Findings\n- None\n"
                 "## Next Session Hint\nStop.\n"
             )
         )
@@ -627,6 +630,7 @@ class TestValidateHandoff:
             "## Done\n- Work\n"
             "## Changed Artifacts\n- None\n"
             "## Open Issues\n- None\n"
+            "## Addressed Findings\n- None\n"
             "## Next Session Hint\nContinue\n"
         )
         valid, error = validate_handoff(handoff)

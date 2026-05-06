@@ -47,9 +47,30 @@ Dependencies are task IDs in `depends_on`, for example `depends_on = ["T0001"]`.
 
 Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root. If `validation` is omitted, use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
 
-## Finding Status
+## Finding Template
 
-Findings are active workflow issues discovered by harness roles.
+File: `FXXXX_<short-slug>.md` in `work/findings/` (XXXX = zero-padded).
+
+    +++
+    id = "FXXXX"
+    title = "<title>"
+    status = "open"
+    source = "integrator"
+    milestone = "M1"
+    handoff = "<archived-handoff-file>"
+    +++
+
+    # <title>
+    ## Finding
+    <what is wrong or missing>
+    ## Requested Planning
+    <what kind of follow-up task planning is needed>
+
+Findings are created by the orchestrator from role handoffs.
+
+Planners convert open findings into task files and list addressed finding IDs in their handoff.
+
+### Finding Status
 
 - `open` — needs planner attention
 - `planned` — planner created follow-up task(s)
@@ -73,10 +94,7 @@ File: `.session-artifacts/<role>/handoff.md` (archived to `work/history/` by orc
     - <path> (created|modified|deleted)
     ## Open Issues
     - <unresolved item, or "None">
+    ## Addressed Findings
+    - <finding ID, or "None">
     ## Next Session Hint
     <what the next session for this role should prioritize>
-
-Planner handoffs may also include:
-
-    ## Addressed Findings
-    - FXXXX

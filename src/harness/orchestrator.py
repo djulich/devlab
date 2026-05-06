@@ -26,6 +26,7 @@ REQUIRED_HANDOFF_HEADINGS = (
     "## Done",
     "## Changed Artifacts",
     "## Open Issues",
+    "## Addressed Findings",
     "## Next Session Hint",
 )
 

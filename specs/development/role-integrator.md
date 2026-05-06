@@ -19,7 +19,7 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 2. Inspect the relevant current code paths across components and prior milestones.
 3. Run default validation and relevant integration/end-to-end checks.
 4. If integration passes, write a handoff with Open Issues set to `None`.
-5. If integration fails or required integration/end-to-end coverage is missing, document the issue in Open Issues; the orchestrator will create a finding for planner follow-up.
+5. If integration fails or required integration/end-to-end coverage is missing, document the issue in the handoff's Open Issues; the orchestrator will create a finding for planner follow-up.
 6. Write handoff to `.session-artifacts/integrator/handoff.md`.
 
 ## Constraints
