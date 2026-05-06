@@ -113,6 +113,22 @@ class FileTaskTracker:
         tasks = self.list_tasks()
         return bool(tasks) and all(task.status == TaskStatus.CLOSED for task in tasks)
 
+    def milestones(self) -> list[str]:
+        return sorted(
+            {task.milestone for task in self.list_tasks() if task.milestone is not None},
+            key=_natural_sort_key,
+        )
+
+    def tasks_for_milestone(self, milestone: str) -> list[Task]:
+        return [task for task in self.list_tasks() if task.milestone == milestone]
+
+    def milestone_complete(self, milestone: str) -> bool:
+        tasks = self.tasks_for_milestone(milestone)
+        return bool(tasks) and all(task.status == TaskStatus.CLOSED for task in tasks)
+
+    def completed_milestones(self) -> list[str]:
+        return [milestone for milestone in self.milestones() if self.milestone_complete(milestone)]
+
     def mark_in_review(self, task_id: str) -> None:
         self.set_status(task_id, TaskStatus.IN_REVIEW)
 
@@ -250,3 +266,7 @@ def _title_from_body(body: str, task_id: str) -> str | None:
 def _task_sort_key(task_id: str) -> int:
     match = re.search(r"\d+", task_id)
     return int(match.group(0)) if match else 0
+
+
+def _natural_sort_key(value: str) -> list[int | str]:
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", value)]

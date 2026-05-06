@@ -19,7 +19,8 @@ The orchestrator controls the development loop by invoking agent sessions in the
 6. Copy the handoff to `work/history/` using the naming convention from `conventions.md`.
 7. If a developer completed a task, set the task status to `in_review`.
 8. If a reviewer approved a task, set the task status to `closed`; if rejected, set it to `changes_requested`.
-9. Repeat from step 1.
+9. If an integrator validates a completed milestone, write an integration marker in `work/history/`; if integration reports Open Issues, stop.
+10. Repeat from step 1.
 
 ## Role Selection
 
@@ -27,6 +28,7 @@ The orchestrator controls the development loop by invoking agent sessions in the
 |---|---|
 | `work/plans/design-plan.md` is empty or missing | Invoke **architect** |
 | Any task has `status = "in_review"` | Invoke **reviewer** |
+| Any completed milestone has no integration marker | Invoke **integrator** |
 | Any task with `status = "open"` or `status = "changes_requested"` has all dependencies closed | Invoke **developer** |
 | No active tasks exist and milestones remain to plan | Invoke **planner** |
 | All tasks are closed | Stop |
@@ -36,6 +38,7 @@ If a session fails (no handoff produced, or handoff reports an unrecoverable blo
 
 ## Stop Conditions
 
-- All task files in `work/tasks/` have `status = "closed"`.
+- All task files in `work/tasks/` have `status = "closed"` and completed milestones are integrated.
 - An unrecoverable error is reported in a handoff.
+- An integrator handoff reports Open Issues.
 - No development task is eligible because all remaining development tasks depend on tasks that are not closed.

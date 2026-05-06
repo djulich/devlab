@@ -147,10 +147,11 @@ Typical flow:
 
 1. If no design plan exists, invoke the architect.
 2. If tasks are waiting for review, invoke the reviewer.
-3. If an eligible development task exists, invoke the developer.
-4. If no active tasks exist but planning is incomplete, invoke the planner.
-5. If all tasks are closed, stop.
-6. If remaining tasks are blocked by dependencies, stop and report the blockage.
+3. If a completed milestone needs integration, invoke the integrator.
+4. If an eligible development task exists, invoke the developer.
+5. If no active tasks exist but planning is incomplete, invoke the planner.
+6. If all tasks are closed and completed milestones are integrated, stop.
+7. If remaining tasks are blocked by dependencies, stop and report the blockage.
 
 The active roles are:
 
@@ -160,6 +161,7 @@ The active roles are:
 | Planner | Convert design/project plans into concrete tasks. |
 | Developer | Implement one eligible task. |
 | Reviewer | Validate one task that is in review. |
+| Integrator | Validate the whole repository state at a completed milestone boundary. |
 | Orchestrator | Select roles, invoke sessions, validate handoffs, and update task status. |
 
 ## Task tracking design
@@ -239,6 +241,14 @@ Task files may specify concrete validation commands in the `validation` metadata
 If `validation` is omitted, agents use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
 
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
+
+## Milestone integration
+
+When all tasks for a milestone are closed, the integrator validates the current repository state at that milestone boundary. The goal is to confirm that the milestone's changes work correctly with the previously implemented system, not merely that tasks from the milestone work with each other.
+
+If integration passes, the orchestrator writes an integration marker in `work/history/`. If integration reports Open Issues, the orchestrator treats that as a blocking quality gate and stops without marking the milestone integrated.
+
+A future workflow improvement is file-backed integration findings that the planner can convert into follow-up tasks. Until then, integration issues require human or manual planning intervention.
 
 ## Agent providers
 

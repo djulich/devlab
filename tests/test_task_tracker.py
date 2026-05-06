@@ -16,6 +16,7 @@ def _write_task(
     task_id: str,
     title: str = "Test task",
     status: str = "open",
+    milestone: str | None = None,
     depends_on: list[str] | None = None,
     validation: list[str] | None = None,
     extra_metadata: str = "",
@@ -25,6 +26,7 @@ def _write_task(
     slug = title.lower().replace(" ", "-")
     path = root / TASKS_DIR / f"{task_id}_{slug}.md"
     depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
+    milestone_line = f'milestone = "{milestone}"\n' if milestone is not None else ""
     validation_line = ""
     if validation is not None:
         validation_commands = ", ".join(f'"{command}"' for command in validation)
@@ -36,6 +38,7 @@ def _write_task(
         f'id = "{task_id}"\n'
         f'title = "{title}"\n'
         f'status = "{status}"\n'
+        f"{milestone_line}"
         f"depends_on = [{depends}]\n"
         f"{validation_line}"
         f"{extra_metadata}"
@@ -305,6 +308,43 @@ class TestFileTaskTrackerStatusTransitions:
 
         with pytest.raises(KeyError, match="unknown task id"):
             FileTaskTracker(tmp_path).get("T9999")
+
+
+class TestFileTaskTrackerMilestones:
+    def test_lists_milestones_naturally_and_ignores_tasks_without_milestone(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", milestone="M10")
+        _write_task(tmp_path, "T0002", milestone="M2")
+        _write_task(tmp_path, "T0003")
+
+        assert FileTaskTracker(tmp_path).milestones() == ["M2", "M10"]
+
+    def test_milestone_complete_requires_all_milestone_tasks_closed(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", status="closed", milestone="M1")
+        _write_task(tmp_path, "T0002", status="open", milestone="M1")
+
+        assert FileTaskTracker(tmp_path).milestone_complete("M1") is False
+
+    def test_milestone_complete_when_all_milestone_tasks_closed(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", status="closed", milestone="M1")
+        _write_task(tmp_path, "T0002", status="closed", milestone="M1")
+        _write_task(tmp_path, "T0003", status="open", milestone="M2")
+
+        assert FileTaskTracker(tmp_path).milestone_complete("M1") is True
+
+    def test_completed_milestones_returns_only_complete_milestones(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", status="closed", milestone="M1")
+        _write_task(tmp_path, "T0002", status="closed", milestone="M2")
+        _write_task(tmp_path, "T0003", status="open", milestone="M2")
+
+        assert FileTaskTracker(tmp_path).completed_milestones() == ["M1"]
 
 
 class TestFileTaskTrackerStateSummary:

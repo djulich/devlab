@@ -40,6 +40,7 @@ def _write_task(
     task_id: str,
     title: str = "Test task",
     status: str = "open",
+    milestone: str | None = None,
     depends_on: list[str] | None = None,
     validation: list[str] | None = None,
     body: str | None = None,
@@ -48,6 +49,7 @@ def _write_task(
     slug = title.lower().replace(" ", "-")
     path = root / TASKS_DIR / f"{task_id}_{slug}.md"
     depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
+    milestone_line = f'milestone = "{milestone}"\n' if milestone is not None else ""
     validation_line = ""
     if validation is not None:
         validation_commands = ", ".join(f'"{command}"' for command in validation)
@@ -59,6 +61,7 @@ def _write_task(
         f'id = "{task_id}"\n'
         f'title = "{title}"\n'
         f'status = "{status}"\n'
+        f"{milestone_line}"
         f"depends_on = [{depends}]\n"
         f"{validation_line}"
         "+++\n\n"
@@ -328,6 +331,89 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["developer", "reviewer"]
         assert 'status = "closed"' in task.read_text()
+
+    def test_completed_milestone_selects_integrator(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["integrator"]
+
+    def test_integrated_marker_prevents_integrator_reinvocation(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        (tmp_path / HISTORY_DIR / "integrated_M1.md").write_text("# Integration Complete: M1\n")
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert provider.calls == []
+
+    def test_integrator_runs_before_developer_for_next_milestone(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "M1 Done", status="closed", milestone="M1")
+        _write_task(tmp_path, "T0002", "M2 Open", status="open", milestone="M2")
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["integrator"]
+
+    def test_successful_integrator_handoff_creates_marker(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        marker = tmp_path / HISTORY_DIR / "integrated_M1.md"
+        assert marker.exists()
+        assert "Integration Complete: M1" in marker.read_text()
+
+    def test_integrator_open_issues_stop_without_marker(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: integrator\n"
+                "## Done\n- Ran integration checks.\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- Missing frontend/API E2E coverage.\n"
+                "## Next Session Hint\nPlan follow-up coverage task.\n"
+            )
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert exc_info.value.code == 1
+        assert not (tmp_path / HISTORY_DIR / "integrated_M1.md").exists()
+
+    def test_integrator_prompt_includes_milestone_and_task_content(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path,
+            "T0001",
+            "Done",
+            status="closed",
+            milestone="M1",
+            body="# T0001: Done\n\n## Goal\nImportant integration behavior.\n",
+        )
+
+        prompt = build_session_prompt(tmp_path, "integrator")
+
+        assert "## Assigned Completed Milestone" in prompt
+        assert "M1" in prompt
+        assert "previously implemented system" in prompt
+        assert "Important integration behavior" in prompt
 
     def test_uses_role_specific_agent_provider(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
