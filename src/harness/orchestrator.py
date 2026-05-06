@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from harness.agents import AgentProvider, CliAgentProvider, provider_for_role
+from harness.findings import FileFindingTracker
 from harness.task_tracker import FileTaskTracker, Task
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
@@ -18,6 +19,7 @@ TOOLING_FILE = "specs/development/tooling.md"
 DESIGN_PLAN = "work/plans/design-plan.md"
 PROJECT_PLAN = "work/plans/project-plan.md"
 HISTORY_DIR = "work/history"
+FINDINGS_DIR = "work/findings"
 ARTIFACTS_DIR = ".session-artifacts"
 
 REQUIRED_HANDOFF_HEADINGS = (
@@ -68,6 +70,10 @@ def _timestamp() -> str:
 
 def task_tracker(root: Path) -> FileTaskTracker:
     return FileTaskTracker(root)
+
+
+def finding_tracker(root: Path) -> FileFindingTracker:
+    return FileFindingTracker(root)
 
 
 def select_task(root: Path) -> Path | None:
@@ -135,6 +141,9 @@ def assess_state(root: Path) -> str | None:
 
     if tracker.select_next_review_task() is not None:
         return "reviewer"
+
+    if finding_tracker(root).open_findings():
+        return "planner"
 
     if select_integration_milestone(root) is not None:
         return "integrator"
@@ -217,6 +226,12 @@ def _build_planner_prompt(root: Path) -> str:
     tasks = task_tracker(root).list_tasks()
     if tasks:
         parts.append(f"## Current Tasks\n\n{_format_task_listing(tasks)}")
+    findings = finding_tracker(root).open_findings()
+    if findings:
+        finding_sections = [
+            f"### {finding.path.name}\n\n{_read_file(finding.path)}" for finding in findings
+        ]
+        parts.append("## Open Findings\n\n" + "\n\n".join(finding_sections))
     handoff = _latest_handoff(root, "planner")
     if handoff:
         parts.append(f"## Latest Planner Handoff\n\n{handoff}")
@@ -403,6 +418,38 @@ def _handoff_has_open_issues(handoff_path: Path) -> bool:
     return bool(open_issues and "none" not in open_issues)
 
 
+def _handoff_section(handoff_path: Path, heading: str) -> str:
+    text = _read_file(handoff_path)
+    match = re.search(
+        rf"^## {re.escape(heading)}[ \t]*$([\s\S]*?)(?=^##\s|\Z)",
+        text,
+        flags=re.MULTILINE,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def _addressed_finding_ids(handoff_path: Path) -> list[str]:
+    return re.findall(
+        r"(?<![A-Z0-9])F\d{4,5}(?!\d)",
+        _handoff_section(handoff_path, "Addressed Findings"),
+    )
+
+
+def _mark_addressed_findings_planned(root: Path, handoff_path: Path) -> None:
+    tracker = finding_tracker(root)
+    for finding_id in _addressed_finding_ids(handoff_path):
+        try:
+            tracker.mark_planned(finding_id)
+        except KeyError:
+            print(f"WARNING: planner handoff referenced unknown finding {finding_id}")
+
+
+def _mark_milestone_findings_resolved(root: Path, milestone: str) -> None:
+    tracker = finding_tracker(root)
+    for finding in tracker.planned_findings_for_milestone(milestone):
+        tracker.mark_resolved(finding.id)
+
+
 def _mark_milestone_integrated(root: Path, milestone: str, handoff_path: Path) -> None:
     marker = _integration_marker(root, milestone)
     marker.parent.mkdir(parents=True, exist_ok=True)
@@ -421,6 +468,9 @@ def process_handoff(root: Path, role_name: str) -> None:
         task_path = select_task(root)
         if task_path and _task_is_complete(task_path):
             mark_task_in_review(root, task_path)
+    elif role_name == "planner":
+        handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
+        _mark_addressed_findings_planned(root, handoff_path)
     elif role_name == "reviewer":
         task_path = select_review_task(root)
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
@@ -432,10 +482,16 @@ def process_handoff(root: Path, role_name: str) -> None:
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         milestone = select_integration_milestone(root)
         if _handoff_has_open_issues(handoff_path):
-            print("ERROR: Integration reported open issues. Stopping.")
-            sys.exit(1)
+            finding_tracker(root).create_from_handoff(
+                source="integrator",
+                milestone=milestone,
+                handoff_path=archived,
+            )
+            print("  Integration reported open issues; finding created for planner follow-up")
+            return
         if milestone is not None:
             _mark_milestone_integrated(root, milestone, archived)
+            _mark_milestone_findings_resolved(root, milestone)
 
 
 # ---------------------------------------------------------------------------

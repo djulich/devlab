@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from harness.agents import AgentCall, MockProvider
+from harness.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from harness.orchestrator import (
     DESIGN_PLAN,
     HISTORY_DIR,
@@ -28,6 +29,7 @@ def _setup_tree(root: Path) -> None:
     (root / "work/plans").mkdir(parents=True)
     (root / TASKS_DIR).mkdir(parents=True)
     (root / "work/history").mkdir(parents=True)
+    (root / FINDINGS_DIR).mkdir(parents=True)
     (root / "specs/development").mkdir(parents=True)
     (root / "specs/development/conventions.md").write_text("# Conventions\n")
     (root / "specs/development/tooling.md").write_text("# Tooling\n")
@@ -376,7 +378,7 @@ class TestRunLoop:
         assert marker.exists()
         assert "Integration Complete: M1" in marker.read_text()
 
-    def test_integrator_open_issues_stop_without_marker(self, tmp_path: Path) -> None:
+    def test_integrator_open_issues_create_finding_without_marker(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
@@ -390,11 +392,75 @@ class TestRunLoop:
             )
         )
 
-        with pytest.raises(SystemExit) as exc_info:
-            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
 
-        assert exc_info.value.code == 1
+        findings = FileFindingTracker(tmp_path).open_findings()
+        assert len(findings) == 1
+        assert findings[0].source == "integrator"
+        assert findings[0].milestone == "M1"
+        assert "Missing frontend/API E2E coverage" in findings[0].body
         assert not (tmp_path / HISTORY_DIR / "integrated_M1.md").exists()
+
+    def test_open_finding_selects_planner_before_integrator(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        FileFindingTracker(tmp_path).create(
+            title="Missing E2E coverage",
+            source="integrator",
+            milestone="M1",
+            body="# Finding\n",
+        )
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["planner"]
+
+    def test_planner_addressed_findings_are_marked_planned(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        finding = FileFindingTracker(tmp_path).create(
+            title="Missing E2E coverage",
+            source="integrator",
+            milestone="M1",
+            body="# Finding\n",
+        )
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: planner\n"
+                "## Done\n- Created follow-up task.\n"
+                "## Changed Artifacts\n- work/tasks/T0002_e2e.md (created)\n"
+                "## Open Issues\n- None\n"
+                "## Next Session Hint\nImplement follow-up task.\n"
+                "## Addressed Findings\n"
+                f"- {finding.id}\n"
+            )
+        )
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.PLANNED
+
+    def test_successful_integration_resolves_planned_milestone_findings(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        tracker = FileFindingTracker(tmp_path)
+        finding = tracker.create(
+            title="Missing E2E coverage",
+            source="integrator",
+            milestone="M1",
+            body="# Finding\n",
+        )
+        tracker.mark_planned(finding.id)
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.RESOLVED
 
     def test_integrator_prompt_includes_milestone_and_task_content(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

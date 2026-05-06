@@ -246,9 +246,9 @@ This supports mixed-toolchain workspaces without making every worker-agent role 
 
 When all tasks for a milestone are closed, the integrator validates the current repository state at that milestone boundary. The goal is to confirm that the milestone's changes work correctly with the previously implemented system, not merely that tasks from the milestone work with each other.
 
-If integration passes, the orchestrator writes an integration marker in `work/history/`. If integration reports Open Issues, the orchestrator treats that as a blocking quality gate and stops without marking the milestone integrated.
+If integration passes, the orchestrator writes an integration marker in `work/history/`. If integration reports Open Issues, the orchestrator creates a file-backed finding, leaves the milestone unintegrated, and routes the workflow back to the planner for follow-up task creation.
 
-A future workflow improvement is file-backed integration findings that the planner can convert into follow-up tasks. Until then, integration issues require human or manual planning intervention.
+Findings are active workflow issues stored in `work/findings/`. The planner converts open findings into corrective task files and lists addressed finding IDs in its handoff. The orchestrator then marks those findings as planned. When the milestone later integrates successfully, related planned findings are marked resolved.
 
 ## Agent providers
 

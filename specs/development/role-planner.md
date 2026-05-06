@@ -14,16 +14,18 @@ The planner breaks the design plan into milestones and actionable tasks.
 - The design plan
 - The project plan, if it exists
 - Existing task files
+- Open finding files
 - `.session-artifacts/planner/` (if previous session artifacts exist)
 - Recent planner handoffs in `work/history/`
 
 ## Session Flow
 
 1. Read the design plan and current project plan.
-2. Identify or plan the next milestone that needs tasks.
-3. Break the milestone into tasks (for development, tests, documentation, etc.). Write task files using the task template from `conventions.md`.
-4. Update the project plan with the milestone and its task references.
-5. Write handoff to `.session-artifacts/planner/handoff.md`.
+2. If open findings exist, plan follow-up task(s) for them before other new work.
+3. Identify or plan the next milestone that needs tasks.
+4. Break the milestone into tasks (for development, tests, documentation, etc.). Write task files using the task template from `conventions.md`.
+5. Update the project plan with the milestone and its task references.
+6. Write handoff to `.session-artifacts/planner/handoff.md`.
 
 ## Milestone planning
 
@@ -54,3 +56,4 @@ The project plan is a milestone outline. It may list task IDs for traceability, 
 - Do not recreate tasks that already exist.
 - Prefer task creation over changing milestone scope unless the design/project plan is stale.
 - Plan required test coverage as tasks.
+- When creating follow-up task(s) for findings, list addressed finding IDs in a handoff `## Addressed Findings` section.

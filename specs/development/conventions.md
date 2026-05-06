@@ -14,6 +14,7 @@
 - **Design plan** — `work/plans/design-plan.md`
 - **Project plan** — `work/plans/project-plan.md`
 - **Task files** — `work/tasks/TXXXX_<short-slug>.md`
+- **Finding files** — `work/findings/FXXXX_<short-slug>.md`
 - **Session handoff** (ephemeral per-session memory) — `.session-artifacts/<role>/handoff.md`
 - **Archived handoffs** — `work/history/`
 
@@ -46,6 +47,14 @@ Dependencies are task IDs in `depends_on`, for example `depends_on = ["T0001"]`.
 
 Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root. If `validation` is omitted, use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
 
+## Finding Status
+
+Findings are active workflow issues discovered by harness roles.
+
+- `open` — needs planner attention
+- `planned` — planner created follow-up task(s)
+- `resolved` — the issue was validated as resolved
+
 ## Review Template
 
 Reviewers approve a task by appending or updating this section in the task file:
@@ -66,3 +75,8 @@ File: `.session-artifacts/<role>/handoff.md` (archived to `work/history/` by orc
     - <unresolved item, or "None">
     ## Next Session Hint
     <what the next session for this role should prioritize>
+
+Planner handoffs may also include:
+
+    ## Addressed Findings
+    - FXXXX
