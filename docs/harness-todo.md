@@ -1,15 +1,51 @@
 # Harness TODOs / Features to be implemented
 
-## Tooling Profiles
+## Tooling and Environment Profiles
 
 Current state: task files can specify concrete `validation` commands. If omitted, worker agents use defaults from `specs/development/tooling.md`; if `validation = []`, no validation commands are required. Shared environment lifecycle commands live in `specs/development/environment.toml` and are enforced by the orchestrator for developer/reviewer/integrator sessions.
 
-Open feature: add reusable tooling profiles so tasks can reference concise profile names instead of repeating command lists.
+Open feature: add reusable tooling and environment profiles so tasks and target projects can reference concise profile names instead of repeating command lists and lifecycle commands.
 
-- Define harness-provided profiles for common stacks, e.g. Python CLI, Python FastAPI backend, Python Django backend, React frontend.
+- Define harness-provided profiles for common stacks, e.g. Python CLI, Python FastAPI backend, Python Django backend, React frontend, Postgres service, Redis service, Docker Compose app.
 - Let target workspaces define custom profiles at a discoverable location.
-- Let tasks reference profiles and optionally add task-specific validation commands.
-- Keep profile use agent-facing and declarative; do not make the orchestrator execute arbitrary validation commands yet.
+- Let tasks reference validation profiles and optionally add task-specific validation commands.
+- Let environment configuration compose setup/teardown/service profiles for the target project's components.
+- Keep profile use declarative; do not make the orchestrator execute arbitrary task validation commands yet.
+
+## Target-specific Harness Configuration Location
+
+Current state: mutable target-project workflow configuration still lives under `specs/development/`, e.g. `specs/development/tooling.md` and `specs/development/environment.toml`.
+
+Open feature: separate reusable harness role/spec files from target-specific harness configuration. Prefer a project-local `.harness/` directory for target-specific, versioned harness configuration.
+
+Possible future layout:
+
+```text
+specs/development/
+  conventions.md
+  role-*.md
+
+.harness/
+  tooling.toml
+  environment.toml
+  profiles/
+    python-cli.toml
+    fastapi-postgres.toml
+
+work/
+  tasks/
+  findings/
+  plans/
+  history/
+  environment/
+```
+
+Rationale:
+
+- Different target projects need different tooling, validation, services, and environment lifecycles.
+- `specs/development/` should trend toward reusable harness/agent instructions.
+- `.harness/` should hold target-specific configuration that may evolve during the workflow.
+- `work/` should remain active generated workflow state and logs.
 
 ## Integration Findings and Corrective Planning
 

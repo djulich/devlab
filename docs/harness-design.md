@@ -253,9 +253,11 @@ For roles that need the development environment, the orchestrator enforces an en
 
 Post-session teardown is attempted even when the agent session fails. Pre-session cleanup exists because a prior harness run may have crashed before teardown completed.
 
-Executable lifecycle commands live in `specs/development/environment.toml`. Current managed roles are developer, reviewer, and integrator; planner can find the environment definition through conventions when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
+Executable lifecycle commands currently live in `specs/development/environment.toml`. Current managed roles are developer, reviewer, and integrator; planner can find the environment definition through conventions when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
 
 The planner owns recognizing when upcoming work requires environment changes, but executable environment changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
+
+Longer term, target-specific harness configuration should move out of `specs/development/` into a project-local `.harness/` directory. The role and convention files should trend toward reusable harness instructions, while `.harness/` should hold target-project-specific tooling, validation, environment lifecycle, and profile configuration.
 
 ## Milestone integration
 
@@ -306,7 +308,7 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling choices are documented in `specs/development/tooling.md`. Executable environment lifecycle commands are defined in `specs/development/environment.toml`.
+Current Python tooling choices are documented in `specs/development/tooling.md`. Executable environment lifecycle commands are defined in `specs/development/environment.toml`. These locations are current implementation details; a future layout should move target-specific workflow configuration to `.harness/`.
 
 In short:
 
@@ -316,7 +318,7 @@ In short:
 - `ty` handles static type checking,
 - `pytest` handles tests.
 
-Operational details such as exact validation commands belong in task metadata or the role files that need them, not in the global tooling decision file. Stable environment lifecycle commands belong in the environment configuration so developer, reviewer, and integrator sessions start from a controlled baseline.
+Operational details such as exact validation commands belong in task metadata or target-specific tooling configuration, not in reusable role files. Stable environment lifecycle commands belong in target-specific environment configuration so developer, reviewer, and integrator sessions start from a controlled baseline.
 
 ## Design tradeoffs
 
