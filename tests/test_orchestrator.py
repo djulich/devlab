@@ -8,6 +8,7 @@ from harness.agents import AgentCall, MockProvider
 from harness.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from harness.orchestrator import (
     DESIGN_PLAN,
+    ENVIRONMENT_FILE,
     HISTORY_DIR,
     PROJECT_PLAN,
     ROLES,
@@ -33,6 +34,7 @@ def _setup_tree(root: Path) -> None:
     (root / "specs/development").mkdir(parents=True)
     (root / "specs/development/conventions.md").write_text("# Conventions\n")
     (root / "specs/development/tooling.md").write_text("# Tooling\n")
+    (root / ENVIRONMENT_FILE).write_text("# Environment\n")
     for role in ROLES.values():
         (root / role.role_file).write_text(f"# Role: {role.name}\n")
 
@@ -201,19 +203,27 @@ class TestBuildSessionPrompt:
 
 
 class TestBuildSystemPrompt:
-    def test_includes_conventions_and_role_file(self, tmp_path: Path) -> None:
+    def test_planner_includes_tooling_and_environment(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         role = ROLES["planner"]
         prompt = build_system_prompt(tmp_path, role)
         assert "Conventions" in prompt
         assert "Role: planner" in prompt
-        assert "Tooling" not in prompt
+        assert "Tooling" in prompt
+        assert "Environment" in prompt
 
-    def test_includes_tooling_for_developer(self, tmp_path: Path) -> None:
+    def test_includes_tooling_and_environment_for_developer(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         role = ROLES["developer"]
         prompt = build_system_prompt(tmp_path, role)
         assert "Tooling" in prompt
+        assert "Environment" in prompt
+
+    def test_architect_does_not_include_environment(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        role = ROLES["architect"]
+        prompt = build_system_prompt(tmp_path, role)
+        assert "Environment" not in prompt
 
 
 def _checked_task_body(task_id: str, title: str) -> str:

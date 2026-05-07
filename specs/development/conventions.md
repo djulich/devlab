@@ -15,6 +15,8 @@
 - **Project plan** — `work/plans/project-plan.md`
 - **Task files** — `work/tasks/TXXXX_<short-slug>.md`
 - **Finding files** — `work/findings/FXXXX_<short-slug>.md`
+- **Tooling instructions** — `specs/development/tooling.md`
+- **Environment setup instructions** — `specs/development/environment.md`
 - **Session handoff** (ephemeral per-session memory) — `.session-artifacts/<role>/handoff.md`
 - **Archived handoffs** — `work/history/`
 
@@ -45,7 +47,7 @@ File: `TXXXX_<short-slug>.md` in `work/tasks/` (XXXX = zero-padded).
 
 Dependencies are task IDs in `depends_on`, for example `depends_on = ["T0001"]`.
 
-Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root. If `validation` is omitted, use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
+Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root after applying the relevant setup instructions from `specs/development/environment.md`. If `validation` is omitted, use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
 
 ## Finding Template
 

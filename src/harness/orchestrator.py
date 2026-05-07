@@ -16,6 +16,7 @@ DEFAULT_PROJECT_ROOT = Path.cwd()
 
 CONVENTIONS_FILE = "specs/development/conventions.md"
 TOOLING_FILE = "specs/development/tooling.md"
+ENVIRONMENT_FILE = "specs/development/environment.md"
 DESIGN_PLAN = "work/plans/design-plan.md"
 PROJECT_PLAN = "work/plans/project-plan.md"
 HISTORY_DIR = "work/history"
@@ -36,19 +37,39 @@ class RoleConfig:
     name: str
     role_file: str
     reads_tooling: bool
+    reads_environment: bool
 
 
 ROLES: dict[str, RoleConfig] = {
     "architect": RoleConfig(
-        "architect", "specs/development/role-architect.md", reads_tooling=True
+        "architect",
+        "specs/development/role-architect.md",
+        reads_tooling=True,
+        reads_environment=False,
     ),
-    "planner": RoleConfig("planner", "specs/development/role-planner.md", reads_tooling=False),
+    "planner": RoleConfig(
+        "planner",
+        "specs/development/role-planner.md",
+        reads_tooling=True,
+        reads_environment=True,
+    ),
     "developer": RoleConfig(
-        "developer", "specs/development/role-developer.md", reads_tooling=True
+        "developer",
+        "specs/development/role-developer.md",
+        reads_tooling=True,
+        reads_environment=True,
     ),
-    "reviewer": RoleConfig("reviewer", "specs/development/role-reviewer.md", reads_tooling=True),
+    "reviewer": RoleConfig(
+        "reviewer",
+        "specs/development/role-reviewer.md",
+        reads_tooling=True,
+        reads_environment=True,
+    ),
     "integrator": RoleConfig(
-        "integrator", "specs/development/role-integrator.md", reads_tooling=True
+        "integrator",
+        "specs/development/role-integrator.md",
+        reads_tooling=True,
+        reads_environment=True,
     ),
 }
 
@@ -174,6 +195,8 @@ def build_system_prompt(root: Path, role: RoleConfig) -> str:
     ]
     if role.reads_tooling:
         parts.append(_read_file(root / TOOLING_FILE))
+    if role.reads_environment:
+        parts.append(_read_file(root / ENVIRONMENT_FILE))
     return "\n\n---\n\n".join(p for p in parts if p)
 
 

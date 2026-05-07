@@ -236,7 +236,7 @@ Dependency blocking is computed rather than stored as a separate persistent stat
 
 ## Task-specific validation
 
-Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root.
+Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root after applying relevant setup instructions from `specs/development/environment.md`.
 
 If `validation` is omitted, agents use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
 
@@ -291,7 +291,9 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling choices are documented in `specs/development/tooling.md`. In short:
+Current Python tooling choices are documented in `specs/development/tooling.md`. Shared environment setup instructions are documented in `specs/development/environment.md` and are maintained by the planner when future milestones or tasks introduce new dependencies, services, generated artifacts, or local configuration.
+
+In short:
 
 - `uv` manages dependencies, lockfiles, environments, and command execution,
 - `uv_build` builds the package,
@@ -299,7 +301,7 @@ Current Python tooling choices are documented in `specs/development/tooling.md`.
 - `ty` handles static type checking,
 - `pytest` handles tests.
 
-Operational details such as exact validation commands belong in the role files that need them, not in the global tooling decision file. This keeps agent input concise and avoids duplicated instructions.
+Operational details such as exact validation commands belong in task metadata or the role files that need them, not in the global tooling decision file. Stable environment setup belongs in the environment file so developer, reviewer, and integrator roles share one source of truth.
 
 ## Design tradeoffs
 

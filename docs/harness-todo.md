@@ -2,7 +2,7 @@
 
 ## Tooling Profiles
 
-Current state: task files can specify concrete `validation` commands. If omitted, worker agents use defaults from `specs/development/tooling.md`; if `validation = []`, no validation commands are required.
+Current state: task files can specify concrete `validation` commands. If omitted, worker agents use defaults from `specs/development/tooling.md`; if `validation = []`, no validation commands are required. Shared environment setup lives in `specs/development/environment.md` and is included for planner/developer/reviewer/integrator roles.
 
 Open feature: add reusable tooling profiles so tasks can reference concise profile names instead of repeating command lists.
 
@@ -76,7 +76,7 @@ Open questions:
 
 ## Later / Non-goals for Now
 
-- Automatic execution of task validation commands by the orchestrator.
+- Automatic execution of task validation commands by the orchestrator, instead of just by the worker agent.
 - Automatic generation of follow-up tasks directly by the orchestrator.
 - Multi-agent concurrent sessions.
 - External task tracker backends such as Jira or GitHub Issues.
