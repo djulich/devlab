@@ -8,7 +8,6 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 
 - `specs/development/conventions.md`
 - `specs/development/tooling.md`
-- `specs/development/environment.md`
 - This file
 - The assigned completed milestone and its task files
 - Recent developer, reviewer, and integrator handoffs in `work/history/`

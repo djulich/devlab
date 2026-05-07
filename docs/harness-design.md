@@ -253,7 +253,7 @@ For roles that need the development environment, the orchestrator enforces an en
 
 Post-session teardown is attempted even when the agent session fails. Pre-session cleanup exists because a prior harness run may have crashed before teardown completed.
 
-Executable lifecycle commands live in `specs/development/environment.toml`. Explanatory guidance lives in `specs/development/environment.md`. Current managed roles are developer, reviewer, and integrator; planner reads the environment definition when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
+Executable lifecycle commands live in `specs/development/environment.toml`. Current managed roles are developer, reviewer, and integrator; planner can find the environment definition through conventions when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
 
 The planner owns recognizing when upcoming work requires environment changes, but executable environment changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
 
@@ -306,7 +306,7 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling choices are documented in `specs/development/tooling.md`. Shared environment lifecycle instructions are documented in `specs/development/environment.md`; executable lifecycle commands are defined in `specs/development/environment.toml`.
+Current Python tooling choices are documented in `specs/development/tooling.md`. Executable environment lifecycle commands are defined in `specs/development/environment.toml`.
 
 In short:
 

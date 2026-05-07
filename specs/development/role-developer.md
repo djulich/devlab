@@ -6,7 +6,6 @@ The developer implements exactly one eligible task per session.
 
 - `specs/development/conventions.md`
 - `specs/development/tooling.md`
-- `specs/development/environment.md`
 - This file
 - The assigned task file
 - `.session-artifacts/developer/` (if previous session artifacts exist)
@@ -26,7 +25,7 @@ The developer implements exactly one eligible task per session.
 
 ## Tool Usage
 
-- Treat `specs/development/environment.md` and `specs/development/environment.toml` as the source of truth for workspace environment lifecycle.
+- Treat `specs/development/environment.toml` as the source of truth for workspace environment lifecycle.
 - Run project commands through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist

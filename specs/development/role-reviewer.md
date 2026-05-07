@@ -6,7 +6,6 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 
 - `specs/development/conventions.md`
 - `specs/development/tooling.md`
-- `specs/development/environment.md`
 - This file
 - The assigned task file
 - The latest developer handoff in `work/history/`
@@ -32,7 +31,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 
 ## Tool Usage
 
-- Treat `specs/development/environment.md` and `specs/development/environment.toml` as the source of truth for workspace environment lifecycle.
+- Treat `specs/development/environment.toml` as the source of truth for workspace environment lifecycle.
 - Run validation through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist

@@ -17,7 +17,6 @@ DEFAULT_PROJECT_ROOT = Path.cwd()
 
 CONVENTIONS_FILE = "specs/development/conventions.md"
 TOOLING_FILE = "specs/development/tooling.md"
-ENVIRONMENT_FILE = "specs/development/environment.md"
 DESIGN_PLAN = "work/plans/design-plan.md"
 PROJECT_PLAN = "work/plans/project-plan.md"
 HISTORY_DIR = "work/history"

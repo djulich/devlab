@@ -16,7 +16,6 @@
 - **Task files** — `work/tasks/TXXXX_<short-slug>.md`
 - **Finding files** — `work/findings/FXXXX_<short-slug>.md`
 - **Tooling instructions** — `specs/development/tooling.md`
-- **Environment setup instructions** — `specs/development/environment.md`
 - **Executable environment lifecycle** — `specs/development/environment.toml`
 - **Session handoff** (ephemeral per-session memory) — `.session-artifacts/<role>/handoff.md`
 - **Archived handoffs** — `work/history/`
