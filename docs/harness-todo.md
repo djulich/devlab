@@ -12,40 +12,58 @@ Open feature: add reusable tooling and environment profiles so tasks and target 
 - Let environment configuration compose setup/teardown/service profiles for the target project's components.
 - Keep profile use declarative; do not make the orchestrator execute arbitrary task validation commands yet.
 
-## Target-specific Harness Configuration Location
+## Target-specific Harness Workflow Directory
 
-Current state: mutable target-project workflow configuration still lives under `specs/development/`, e.g. `specs/development/tooling.md` and `specs/development/environment.toml`.
+Current state: target-project workflow artifacts are split across `specs/system/`, `specs/development/tooling.md`, `specs/development/environment.toml`, `work/`, and `.session-artifacts/`.
 
-Open feature: separate reusable harness role/spec files from target-specific harness configuration. Prefer a project-local `.harness/` directory for target-specific, versioned harness configuration.
+Open feature: collect target-project harness workflow artifacts under a committed, project-local `.harness/` directory.
 
-Possible future layout:
+Possible future target-project layout:
 
 ```text
-specs/development/
-  conventions.md
-  role-*.md
-
 .harness/
-  tooling.toml
-  environment.toml
-  profiles/
-    python-cli.toml
-    fastapi-postgres.toml
+  config/
+    tooling.toml
+    environment.toml
+    profiles/
+      python-cli.toml
+      fastapi-postgres.toml
 
-work/
-  tasks/
-  findings/
+  specs/
+    system/
+    deployment/
+
   plans/
+    design-plan.md
+    project-plan.md
+
+  tasks/
+    T0001_...
+
+  findings/
+    F0001_...
+
   history/
-  environment/
+    20260507T235700_developer_handoff.md
+    integrated_M1.md
+
+  logs/
+    environment/
+      20260507T235700_developer_pre_session_1.log
 ```
 
 Rationale:
 
-- Different target projects need different tooling, validation, services, and environment lifecycles.
-- `specs/development/` should trend toward reusable harness/agent instructions.
-- `.harness/` should hold target-specific configuration that may evolve during the workflow.
-- `work/` should remain active generated workflow state and logs.
+- Different target projects need different specs, tooling, validation, services, and environment lifecycles.
+- `.harness/` should be target-project-local and committed by default, including workflow history and logs, to preserve auditability and reproducibility.
+- `specs/development/` should remain harness-owned role/prompt source, analogous to harness `src/`, not target-project workflow state.
+- Generated runtime logs/history are still workflow artifacts; keeping them under `.harness/` makes cleanup, review, and migration easier.
+
+Implementation concerns:
+
+- Add redaction/size controls before committing logs by default in sensitive projects.
+- Plan a migration path from current `work/`, `.session-artifacts/`, and `specs/system/` paths.
+- Keep reusable built-in profiles in the harness package; let `.harness/config/profiles/` define target-specific profiles.
 
 ## Integration Findings and Corrective Planning
 

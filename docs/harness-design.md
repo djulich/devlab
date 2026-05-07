@@ -257,7 +257,7 @@ Executable lifecycle commands currently live in `specs/development/environment.t
 
 The planner owns recognizing when upcoming work requires environment changes, but executable environment changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
 
-Longer term, target-specific harness configuration should move out of `specs/development/` into a project-local `.harness/` directory. The role and convention files should trend toward reusable harness instructions, while `.harness/` should hold target-project-specific tooling, validation, environment lifecycle, and profile configuration.
+Longer term, target-specific harness workflow artifacts should move into a committed, project-local `.harness/` directory. The role and convention files in `specs/development/` should remain harness-owned role/prompt source, analogous to harness `src/`, while `.harness/` should hold target-project-specific specs, tooling, validation, environment lifecycle, profiles, tasks, findings, plans, history, and logs.
 
 ## Milestone integration
 
@@ -274,6 +274,32 @@ The orchestrator invokes agents through an agent-provider abstraction. The workf
 This keeps the orchestrator independent from a specific CLI shape. For example, Claude- and Pi-style CLIs can be represented with system-prompt arguments, while Codex CLI can be represented with stdin-based `codex exec -` invocation. Future configurations can map different roles to different providers or models.
 
 A useful future pattern is to run the developer and reviewer with different providers to reduce shared blind spots, while keeping the default single-provider setup simple.
+
+## Target-project harness directory
+
+The long-term target layout is to collect target-project harness workflow artifacts under `.harness/` in the target repository:
+
+```text
+.harness/
+  config/
+    tooling.toml
+    environment.toml
+    profiles/
+
+  specs/
+    system/
+    deployment/
+
+  plans/
+  tasks/
+  findings/
+  history/
+  logs/
+```
+
+This directory should be committed by default, including history and logs, so the workflow is auditable and reproducible. Sensitive projects may need redaction, size limits, or opt-out policies for logs.
+
+Reusable harness role definitions and conventions should not live in target `.harness/`; they belong to the harness package alongside the orchestrator code.
 
 ## Handoffs and continuity
 
@@ -308,7 +334,7 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling choices are documented in `specs/development/tooling.md`. Executable environment lifecycle commands are defined in `specs/development/environment.toml`. These locations are current implementation details; a future layout should move target-specific workflow configuration to `.harness/`.
+Current Python tooling choices are documented in `specs/development/tooling.md`. Executable environment lifecycle commands are defined in `specs/development/environment.toml`. These locations are current implementation details; a future layout should move target-specific workflow configuration and state to `.harness/`.
 
 In short:
 
