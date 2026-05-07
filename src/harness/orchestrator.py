@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from harness.agents import AgentProvider, CliAgentProvider, provider_for_role
+from harness.environment import EnvironmentCommandError, EnvironmentManager
 from harness.findings import FileFindingTracker
 from harness.task_tracker import FileTaskTracker, Task
 
@@ -37,7 +38,7 @@ class RoleConfig:
     name: str
     role_file: str
     reads_tooling: bool
-    reads_environment: bool
+    needs_environment: bool
 
 
 ROLES: dict[str, RoleConfig] = {
@@ -45,31 +46,31 @@ ROLES: dict[str, RoleConfig] = {
         "architect",
         "specs/development/role-architect.md",
         reads_tooling=True,
-        reads_environment=False,
+        needs_environment=False,
     ),
     "planner": RoleConfig(
         "planner",
         "specs/development/role-planner.md",
         reads_tooling=True,
-        reads_environment=True,
+        needs_environment=False,
     ),
     "developer": RoleConfig(
         "developer",
         "specs/development/role-developer.md",
         reads_tooling=True,
-        reads_environment=True,
+        needs_environment=True,
     ),
     "reviewer": RoleConfig(
         "reviewer",
         "specs/development/role-reviewer.md",
         reads_tooling=True,
-        reads_environment=True,
+        needs_environment=True,
     ),
     "integrator": RoleConfig(
         "integrator",
         "specs/development/role-integrator.md",
         reads_tooling=True,
-        reads_environment=True,
+        needs_environment=True,
     ),
 }
 
@@ -195,8 +196,6 @@ def build_system_prompt(root: Path, role: RoleConfig) -> str:
     ]
     if role.reads_tooling:
         parts.append(_read_file(root / TOOLING_FILE))
-    if role.reads_environment:
-        parts.append(_read_file(root / ENVIRONMENT_FILE))
     return "\n\n---\n\n".join(p for p in parts if p)
 
 
@@ -558,13 +557,34 @@ def run_loop(
 
         system_prompt = build_system_prompt(root, role)
         session_prompt = build_session_prompt(root, role_name)
-        return_code = invoke_session(
-            root,
-            role_name,
-            system_prompt,
-            session_prompt,
-            agent_provider=provider_for_role(role_name, agent_providers, role_agent_providers),
-        )
+        environment = EnvironmentManager(root)
+        manage_environment = role.needs_environment and environment.manages_role(role_name)
+        if manage_environment:
+            try:
+                print(f"--- Preparing environment for {role_name} session ---")
+                environment.pre_session(role_name)
+                environment.setup(role_name)
+            except EnvironmentCommandError as exc:
+                print(f"ERROR: {exc}. Stopping.")
+                sys.exit(1)
+
+        return_code = 0
+        try:
+            return_code = invoke_session(
+                root,
+                role_name,
+                system_prompt,
+                session_prompt,
+                agent_provider=provider_for_role(role_name, agent_providers, role_agent_providers),
+            )
+        finally:
+            if manage_environment:
+                try:
+                    print(f"--- Tearing down environment for {role_name} session ---")
+                    environment.post_session(role_name)
+                except EnvironmentCommandError as exc:
+                    print(f"ERROR: {exc}. Stopping.")
+                    sys.exit(1)
         if return_code != 0:
             print(f"ERROR: {role_name} session failed with exit code {return_code}. Stopping.")
             sys.exit(return_code)

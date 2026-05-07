@@ -18,15 +18,15 @@ The developer implements exactly one eligible task per session.
 2. Read and understand the task's goal, acceptance criteria, and any `## Requested Changes` section.
 3. Search the existing codebase before writing new code.
 4. Implement the task.
-5. Apply the relevant setup instructions from `specs/development/environment.md` before validation if the environment is missing, stale, or dependencies changed.
-6. Validate (see checklist below).
+5. Validate (see checklist below). For managed roles, the orchestrator has already run the environment lifecycle before the session.
+6. If this task changes environment lifecycle commands, validate the updated lifecycle as part of the task.
 7. Mark all acceptance criteria as checked in the task file.
 8. Do not change the task status; the orchestrator sets it to `in_review` after the session.
 9. Write handoff to `.session-artifacts/developer/handoff.md`.
 
 ## Tool Usage
 
-- Follow `specs/development/environment.md` when setting up or refreshing the workspace environment.
+- Treat `specs/development/environment.md` and `specs/development/environment.toml` as the source of truth for workspace environment lifecycle.
 - Run project commands through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist

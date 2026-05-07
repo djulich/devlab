@@ -18,22 +18,21 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 1. Read the assigned task from the session prompt.
 2. Read the task goal, acceptance criteria, and latest developer handoff.
 3. Inspect the changed files and relevant tests.
-4. Apply the relevant setup instructions from `specs/development/environment.md` before validation if the environment is missing or stale.
-5. Validate that the implementation satisfies the task without unrelated changes.
-6. If approved, append or update this section in the task file:
+4. Validate that the implementation satisfies the task without unrelated changes. For managed roles, the orchestrator has already run the environment lifecycle before the session.
+5. If approved, append or update this section in the task file:
 
    ```md
    ## Review
    - [x] Approved
    ```
 
-7. If rejected, do not mark the review approved. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
-8. Do not change the task status manually; the orchestrator owns status transitions.
-9. Write handoff to `.session-artifacts/reviewer/handoff.md`.
+6. If rejected, do not mark the review approved. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
+7. Do not change the task status manually; the orchestrator owns status transitions.
+8. Write handoff to `.session-artifacts/reviewer/handoff.md`.
 
 ## Tool Usage
 
-- Follow `specs/development/environment.md` when setting up or refreshing the workspace environment.
+- Treat `specs/development/environment.md` and `specs/development/environment.toml` as the source of truth for workspace environment lifecycle.
 - Run validation through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist

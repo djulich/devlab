@@ -17,8 +17,10 @@
 - **Finding files** — `work/findings/FXXXX_<short-slug>.md`
 - **Tooling instructions** — `specs/development/tooling.md`
 - **Environment setup instructions** — `specs/development/environment.md`
+- **Executable environment lifecycle** — `specs/development/environment.toml`
 - **Session handoff** (ephemeral per-session memory) — `.session-artifacts/<role>/handoff.md`
 - **Archived handoffs** — `work/history/`
+- **Environment lifecycle logs** — `work/environment/`
 
 ## History File Naming
 
@@ -47,7 +49,7 @@ File: `TXXXX_<short-slug>.md` in `work/tasks/` (XXXX = zero-padded).
 
 Dependencies are task IDs in `depends_on`, for example `depends_on = ["T0001"]`.
 
-Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root after applying the relevant setup instructions from `specs/development/environment.md`. If `validation` is omitted, use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
+Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root after the orchestrator-managed environment lifecycle has established the development environment. If `validation` is omitted, use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
 
 ## Finding Template
 

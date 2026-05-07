@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from harness.agents import AgentCall, MockProvider
+from harness.environment import ENVIRONMENT_CONFIG_FILE
 from harness.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from harness.orchestrator import (
     DESIGN_PLAN,
@@ -35,6 +36,9 @@ def _setup_tree(root: Path) -> None:
     (root / "specs/development/conventions.md").write_text("# Conventions\n")
     (root / "specs/development/tooling.md").write_text("# Tooling\n")
     (root / ENVIRONMENT_FILE).write_text("# Environment\n")
+    (root / ENVIRONMENT_CONFIG_FILE).write_text(
+        'version = 1\nmanaged_roles = ["developer", "reviewer", "integrator"]\n'
+    )
     for role in ROLES.values():
         (root / role.role_file).write_text(f"# Role: {role.name}\n")
 
@@ -203,27 +207,21 @@ class TestBuildSessionPrompt:
 
 
 class TestBuildSystemPrompt:
-    def test_planner_includes_tooling_and_environment(self, tmp_path: Path) -> None:
+    def test_planner_includes_tooling_but_not_environment_file(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         role = ROLES["planner"]
         prompt = build_system_prompt(tmp_path, role)
         assert "Conventions" in prompt
         assert "Role: planner" in prompt
         assert "Tooling" in prompt
-        assert "Environment" in prompt
+        assert "# Environment" not in prompt
 
-    def test_includes_tooling_and_environment_for_developer(self, tmp_path: Path) -> None:
+    def test_developer_includes_tooling_but_not_environment_file(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         role = ROLES["developer"]
         prompt = build_system_prompt(tmp_path, role)
         assert "Tooling" in prompt
-        assert "Environment" in prompt
-
-    def test_architect_does_not_include_environment(self, tmp_path: Path) -> None:
-        _setup_tree(tmp_path)
-        role = ROLES["architect"]
-        prompt = build_system_prompt(tmp_path, role)
-        assert "Environment" not in prompt
+        assert "# Environment" not in prompt
 
 
 def _checked_task_body(task_id: str, title: str) -> str:
@@ -267,6 +265,86 @@ class TestRunLoop:
 
         assert provider.calls[0].role_name == "developer"
         assert 'status = "open"' in task.read_text()
+
+    def test_managed_role_runs_environment_lifecycle_around_session(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
+            'version = 1\n'
+            'managed_roles = ["developer"]\n'
+            'pre_session = ["echo pre >> env-order.log"]\n'
+            'setup = ["echo setup >> env-order.log"]\n'
+            'post_session = ["echo post >> env-order.log"]\n'
+        )
+
+        def on_invoke(call: AgentCall) -> None:
+            with (call.root / "env-order.log").open("a") as file:
+                file.write("agent\n")
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert (tmp_path / "env-order.log").read_text().splitlines() == [
+            "pre",
+            "setup",
+            "agent",
+            "post",
+        ]
+        assert list((tmp_path / "work/environment").glob("*_developer_*.log"))
+
+    def test_unmanaged_planner_does_not_run_environment_lifecycle(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
+            'version = 1\n'
+            'managed_roles = ["planner"]\n'
+            'pre_session = ["echo pre >> env-order.log"]\n'
+            'setup = ["echo setup >> env-order.log"]\n'
+            'post_session = ["echo post >> env-order.log"]\n'
+        )
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert provider.calls[0].role_name == "planner"
+        assert not (tmp_path / "env-order.log").exists()
+
+    def test_environment_setup_failure_prevents_agent_invocation(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
+            'version = 1\nmanaged_roles = ["developer"]\nsetup = ["exit 7"]\n'
+        )
+        provider = MockProvider()
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert exc_info.value.code == 1
+        assert provider.calls == []
+        assert list((tmp_path / "work/environment").glob("*_developer_setup_*.log"))
+
+    def test_environment_teardown_runs_after_agent_failure(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
+            'version = 1\n'
+            'managed_roles = ["developer"]\n'
+            'post_session = ["echo post >> env-order.log"]\n'
+        )
+        provider = MockProvider(return_code=3)
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert exc_info.value.code == 3
+        assert (tmp_path / "env-order.log").read_text().splitlines() == ["post"]
 
     def test_reviewer_approval_closes_task(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

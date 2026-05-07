@@ -18,11 +18,10 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 
 1. Read the assigned completed milestone and its task files.
 2. Inspect the relevant current code paths across components and prior milestones.
-3. Apply the relevant setup instructions from `specs/development/environment.md`, including services needed for milestone-level validation.
-4. Run default validation and relevant integration/end-to-end checks.
-5. If integration passes, write a handoff with Open Issues set to `None`.
-6. If integration fails or required integration/end-to-end coverage is missing, document the issue in the handoff's Open Issues; the orchestrator will create a finding for planner follow-up.
-7. Write handoff to `.session-artifacts/integrator/handoff.md`.
+3. Run default validation and relevant integration/end-to-end checks. The orchestrator has already run the environment lifecycle before the session.
+4. If integration passes, write a handoff with Open Issues set to `None`.
+5. If integration fails or required integration/end-to-end coverage is missing, document the issue in the handoff's Open Issues; the orchestrator will create a finding for planner follow-up.
+6. Write handoff to `.session-artifacts/integrator/handoff.md`.
 
 ## Constraints
 

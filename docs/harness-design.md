@@ -236,11 +236,26 @@ Dependency blocking is computed rather than stored as a separate persistent stat
 
 ## Task-specific validation
 
-Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root after applying relevant setup instructions from `specs/development/environment.md`.
+Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root after the orchestrator-managed environment lifecycle has established the development environment.
 
 If `validation` is omitted, agents use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
 
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
+
+## Environment lifecycle
+
+For roles that need the development environment, the orchestrator enforces an environment lifecycle around each session:
+
+1. `pre_session` cleanup/reset,
+2. `setup`,
+3. agent invocation,
+4. `post_session` teardown.
+
+Post-session teardown is attempted even when the agent session fails. Pre-session cleanup exists because a prior harness run may have crashed before teardown completed.
+
+Executable lifecycle commands live in `specs/development/environment.toml`. Explanatory guidance lives in `specs/development/environment.md`. Current managed roles are developer, reviewer, and integrator; planner reads the environment definition when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
+
+The planner owns recognizing when upcoming work requires environment changes, but executable environment changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
 
 ## Milestone integration
 
@@ -291,7 +306,7 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling choices are documented in `specs/development/tooling.md`. Shared environment setup instructions are documented in `specs/development/environment.md` and are maintained by the planner when future milestones or tasks introduce new dependencies, services, generated artifacts, or local configuration.
+Current Python tooling choices are documented in `specs/development/tooling.md`. Shared environment lifecycle instructions are documented in `specs/development/environment.md`; executable lifecycle commands are defined in `specs/development/environment.toml`.
 
 In short:
 
@@ -301,7 +316,7 @@ In short:
 - `ty` handles static type checking,
 - `pytest` handles tests.
 
-Operational details such as exact validation commands belong in task metadata or the role files that need them, not in the global tooling decision file. Stable environment setup belongs in the environment file so developer, reviewer, and integrator roles share one source of truth.
+Operational details such as exact validation commands belong in task metadata or the role files that need them, not in the global tooling decision file. Stable environment lifecycle commands belong in the environment configuration so developer, reviewer, and integrator sessions start from a controlled baseline.
 
 ## Design tradeoffs
 

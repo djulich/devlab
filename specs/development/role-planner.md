@@ -27,7 +27,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 2. If open findings exist, plan follow-up task(s) for them before other new work.
 3. Identify or plan the next milestone that needs tasks.
 4. Break the milestone into tasks (for development, tests, documentation, etc.). Write task files using the task template from `conventions.md`.
-5. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, or local configuration, update `specs/development/environment.md` or create an explicit setup task to update it.
+5. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, or local configuration, create an explicit task to update the environment lifecycle instructions/configuration.
 6. Update the project plan with the milestone and its task references.
 7. Write handoff to `.session-artifacts/planner/handoff.md`.
 
@@ -47,11 +47,12 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 ## Environment Planning
 
-- `specs/development/environment.md` is the shared source of truth for environment setup.
+- `specs/development/environment.md` explains the shared environment lifecycle.
+- `specs/development/environment.toml` defines executable lifecycle commands.
 - Keep environment instructions concise and role-neutral.
-- Prefer documenting stable setup commands over one-off troubleshooting steps.
-- If a future task requires additional setup, either update the environment instructions directly during planning or create a task whose acceptance criteria include updating them.
-- Do not put task-specific validation commands in the environment file; task validation belongs in task metadata or `specs/development/tooling.md` defaults.
+- Prefer stable lifecycle commands over one-off troubleshooting steps.
+- If future work requires executable lifecycle changes, create a normal task for those changes; do not edit executable environment setup directly during planning.
+- Do not put task-specific validation commands in environment files; task validation belongs in task metadata or `specs/development/tooling.md` defaults.
 
 ## Project Plan Format
 
