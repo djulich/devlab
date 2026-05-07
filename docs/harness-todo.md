@@ -105,6 +105,164 @@ Possible state to track:
 - architecture-reviewed status
 - current/planned/complete status
 
+## Deployment Specification and Verification
+
+Current state: deployment requirements can be described informally in target specs, but the harness has no dedicated deployment spec structure or deployment verification model.
+
+Concrete implementation goal: support deployment requirements under the target-project harness specs, eventually `.harness/specs/deployment/`, and let the normal workflow plan, implement, review, and integrate deployment artifacts.
+
+Required verification layers:
+
+1. **Static/artifact validation**
+   - Build and inspect deployment artifacts without touching external infrastructure.
+   - Examples: `docker build`, image metadata inspection, RPM build, RPM content inspection, static systemd unit validation.
+2. **Local ephemeral deployment**
+   - Run deployment artifacts locally in disposable resources and smoke-test them.
+   - Examples: `docker run`, Docker Compose smoke tests, local disposable databases/services, health checks, teardown through the environment lifecycle.
+3. **Disposable test infrastructure**
+   - Deploy to explicitly configured, isolated, non-production infrastructure and destroy it after verification.
+   - Examples: temporary VM, disposable Kubernetes namespace, test registry, RPM install test in a disposable host/container.
+
+Optional later layer:
+
+4. **Shared staging / production-like deployment**
+   - Possible but not a default implementation goal.
+   - Requires explicit policy, approval, credentials handling, rollback/cleanup rules, and safeguards against state leakage.
+
+Specification direction:
+
+```text
+.harness/specs/deployment/
+  targets.md
+  container.md
+  rpm.md
+  runtime.md
+  validation.md
+  test-infrastructure.md
+```
+
+Example: specs/deployment/targets.md
+
+```md
+# Deployment Targets
+
+The project must support the following deployment targets:
+
+## Container image
+
+- Build a production container image.
+- Image must run without development dependencies.
+- Image must expose port 8080.
+- Image must define a health check.
+- Image must run as a non-root user.
+
+## RPM package
+
+- Build an RPM for RHEL-compatible systems.
+- RPM must install the application under `/opt/example-app`.
+- RPM must install a systemd service named `example-app.service`.
+- RPM must not require internet access during installation.
+```
+
+Example: specs/deployment/container.md
+
+```md
+# Container Deployment
+
+## Requirements
+
+- Provide a `Dockerfile`.
+- Provide `.dockerignore`.
+- Use a minimal runtime image.
+- Do not run as root.
+- Application listens on port 8080.
+- Runtime configuration is provided through environment variables.
+- Container must support graceful shutdown.
+
+## Required validation
+
+- `docker build -t example-app:test .`
+- `docker run --rm example-app:test --help`
+- If the app exposes HTTP:
+  - start the container,
+  - call `/health`,
+  - verify HTTP 200.
+```
+
+Example: specs/deployment/rpm.md
+
+```md
+# RPM Deployment
+
+## Requirements
+
+- Provide RPM packaging for RHEL-compatible systems.
+- Install application files under `/opt/example-app`.
+- Install executable wrapper under `/usr/bin/example-app`.
+- Install systemd unit `example-app.service`.
+- Create dedicated system user `example-app`.
+- Configuration lives under `/etc/example-app/`.
+- Logs go to journald by default.
+
+## Required validation
+
+- RPM can be built in a clean build environment.
+- RPM metadata includes name, version, license, summary, and dependencies.
+- Package contents can be inspected without installing as root.
+- systemd unit passes static validation where possible.
+```
+
+Example: specs/deployment/runtime.md
+
+```md
+# Runtime Configuration
+
+## Environment variables
+
+- `EXAMPLE_APP_HOST`
+- `EXAMPLE_APP_PORT`
+- `EXAMPLE_APP_LOG_LEVEL`
+
+## Secrets
+
+Secrets must not be baked into images or packages.
+
+Allowed secret sources:
+
+- environment variables,
+- mounted files,
+- systemd environment files,
+- orchestrator-specific secret managers added later.
+```
+
+How the harness would use this
+
+The architect reads system + deployment specs and updates the design plan.
+
+The planner creates tasks like:
+
+```text
+  T0010: Add production Dockerfile
+  T0011: Add Docker Compose smoke deployment
+  T0012: Add RPM packaging skeleton
+  T0013: Add systemd service unit
+  T0014: Add deployment validation documentation/tests
+```
+
+The developer implements one task at a time.
+
+The reviewer validates each task.
+
+The integrator validates that the milestone deployability story works as a whole.
+
+
+Design constraints:
+
+- The harness should make projects deployable and verify deployment behavior; it should not deploy to production by default.
+- Test infrastructure use must be explicit, allowlisted, isolated, and aggressively cleaned up.
+- Deployment logs should eventually be written under `.harness/logs/deployment/` and committed by default subject to redaction/size controls.
+- Deployment implementation should remain task-based: architect/planner derive deployment tasks, developer implements them, reviewer validates them, integrator verifies deployment coherence at milestone boundaries.
+
 ## Harness Workflow Evaluations
 
 Current state: normal tests use deterministic providers such as `MockProvider` and do not call live agents.
