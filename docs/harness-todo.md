@@ -59,6 +59,16 @@ Rationale:
 - `specs/development/` should remain harness-owned role/prompt source, analogous to harness `src/`, not target-project workflow state.
 - Generated runtime logs/history are still workflow artifacts; keeping them under `.harness/` makes cleanup, review, and migration easier.
 
+Initialization command:
+
+- Add a `harness init` command, similar to `git init`, that creates the target-project-local `.harness/` structure.
+- Make initialization idempotent and non-destructive by default; never overwrite existing files unless an explicit `--force` option is used.
+- Seed minimal starter files such as `.harness/config/tooling.toml`, `.harness/config/environment.toml`, `.harness/specs/system/README.md`, and `.harness/specs/deployment/README.md`.
+- Create empty workflow directories such as `.harness/plans/`, `.harness/tasks/`, `.harness/findings/`, `.harness/history/`, `.harness/logs/environment/`, and `.harness/logs/deployment/`.
+- Consider `.harness/manifest.toml` or `.harness/VERSION` to record harness layout version and enabled templates.
+- Add template options later, e.g. `harness init --template python-cli` or `harness init --template fastapi-postgres`.
+- Add migration support later, e.g. `harness init --migrate-existing`, for moving current `work/`, `.session-artifacts/`, `specs/system/`, and target-specific config into `.harness/`.
+
 Implementation concerns:
 
 - Add redaction/size controls before committing logs by default in sensitive projects.
