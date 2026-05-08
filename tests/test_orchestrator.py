@@ -27,13 +27,14 @@ from harness.task_tracker import TASKS_DIR
 
 
 def _setup_tree(root: Path) -> None:
-    (root / "work/plans").mkdir(parents=True)
+    (root / ".harness/plans").mkdir(parents=True)
+    (root / ".harness/config").mkdir(parents=True)
     (root / TASKS_DIR).mkdir(parents=True)
-    (root / "work/history").mkdir(parents=True)
+    (root / ".harness/history").mkdir(parents=True)
     (root / FINDINGS_DIR).mkdir(parents=True)
     (root / "specs/development").mkdir(parents=True)
     (root / "specs/development/conventions.md").write_text("# Conventions\n")
-    (root / "specs/development/tooling.md").write_text("# Tooling\n")
+    (root / ".harness/config/tooling.md").write_text("# Tooling\n")
     (root / ENVIRONMENT_CONFIG_FILE).write_text(
         'version = 1\nmanaged_roles = ["developer", "reviewer", "integrator"]\n'
     )
@@ -290,7 +291,7 @@ class TestRunLoop:
             "agent",
             "post",
         ]
-        assert list((tmp_path / "work/environment").glob("*_developer_*.log"))
+        assert list((tmp_path / ".harness/logs/environment").glob("*_developer_*.log"))
 
     def test_unmanaged_planner_does_not_run_environment_lifecycle(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -323,7 +324,7 @@ class TestRunLoop:
 
         assert exc_info.value.code == 1
         assert provider.calls == []
-        assert list((tmp_path / "work/environment").glob("*_developer_setup_*.log"))
+        assert list((tmp_path / ".harness/logs/environment").glob("*_developer_setup_*.log"))
 
     def test_environment_teardown_runs_after_agent_failure(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -373,7 +374,7 @@ class TestRunLoop:
             handoff_text=(
                 "# Handoff: reviewer\n"
                 "## Done\n- Reviewed task.\n"
-                "## Changed Artifacts\n- work/tasks/T0001_review.md (modified)\n"
+                "## Changed Artifacts\n- .harness/tasks/T0001_review.md (modified)\n"
                 "## Open Issues\n- Fix the implementation.\n"
                 "## Addressed Findings\n- None\n"
                 "## Next Session Hint\nAddress requested changes.\n"
@@ -516,7 +517,7 @@ class TestRunLoop:
             handoff_text=(
                 "# Handoff: planner\n"
                 "## Done\n- Created follow-up task.\n"
-                "## Changed Artifacts\n- work/tasks/T0002_e2e.md (created)\n"
+                "## Changed Artifacts\n- .harness/tasks/T0002_e2e.md (created)\n"
                 "## Open Issues\n- None\n"
                 "## Addressed Findings\n"
                 f"- {finding.id}\n"

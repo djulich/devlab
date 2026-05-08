@@ -7,7 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-FINDINGS_DIR = "work/findings"
+FINDINGS_DIR = ".harness/findings"
 FINDING_ID_RE = re.compile(r"(?<![A-Z0-9])F\d{4,5}(?!\d)")
 _FRONT_MATTER_RE = re.compile(r"\A\+\+\+\n([\s\S]*?)\n\+\+\+\n?", re.MULTILINE)
 

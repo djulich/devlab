@@ -5,18 +5,18 @@ The architect translates the system specification into a design plan.
 ## Context to Read
 
 - `specs/development/conventions.md`
-- `specs/development/tooling.md`
+- `.harness/config/tooling.md`
 - This file
 - The system specification
 - The design plan, if it exists
-- `.session-artifacts/architect/` (if previous session artifacts exist)
-- Recent architect handoffs in `work/history/`
+- `.harness/session-artifacts/architect/` (if previous session artifacts exist)
+- Recent architect handoffs in `.harness/history/`
 
 ## Session Flow
 
 1. Read and understand the system specification.
 2. If no design plan exists, create it. If it exists, review and refine it based on project progress (inspect code and history).
-3. Write handoff to `.session-artifacts/architect/handoff.md`.
+3. Write handoff to `.harness/session-artifacts/architect/handoff.md`.
 
 ## Design Plan Contents
 

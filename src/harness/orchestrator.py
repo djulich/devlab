@@ -16,12 +16,12 @@ from harness.task_tracker import FileTaskTracker, Task
 DEFAULT_PROJECT_ROOT = Path.cwd()
 
 CONVENTIONS_FILE = "specs/development/conventions.md"
-TOOLING_FILE = "specs/development/tooling.md"
-DESIGN_PLAN = "work/plans/design-plan.md"
-PROJECT_PLAN = "work/plans/project-plan.md"
-HISTORY_DIR = "work/history"
-FINDINGS_DIR = "work/findings"
-ARTIFACTS_DIR = ".session-artifacts"
+TOOLING_FILE = ".harness/config/tooling.md"
+DESIGN_PLAN = ".harness/plans/design-plan.md"
+PROJECT_PLAN = ".harness/plans/project-plan.md"
+HISTORY_DIR = ".harness/history"
+FINDINGS_DIR = ".harness/findings"
+ARTIFACTS_DIR = ".harness/session-artifacts"
 
 REQUIRED_HANDOFF_HEADINGS = (
     "## Done",
@@ -200,8 +200,9 @@ def build_system_prompt(root: Path, role: RoleConfig) -> str:
 
 def _handoff_reminder(role_name: str) -> str:
     return (
-        f"\n\nIMPORTANT: When done, write your handoff file to "
-        f".session-artifacts/{role_name}/handoff.md using the template from conventions.md."
+        "\n\nIMPORTANT: When done, write your handoff file to "
+        f".harness/session-artifacts/{role_name}/handoff.md "
+        "using the template from conventions.md."
     )
 
 

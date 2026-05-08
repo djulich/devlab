@@ -35,7 +35,7 @@ Keeping the harness conceptually separate from the target product has several be
 - generated or target-product code does not become mixed with harness implementation code,
 - a target workspace can use any appropriate technology stack,
 - harness releases can evolve independently from the products they help create,
-- `specs/system/` can describe the target product instead of the harness itself.
+- `.harness/specs/system/` can describe the target product instead of the harness itself.
 
 ### Recommended model
 
@@ -50,20 +50,25 @@ harness-repo/
 └── examples/
 ```
 
-A target workspace contains the product-specific development state:
+A target workspace contains product-specific harness workflow artifacts under `.harness/`:
 
 ```text
 target-project/
-├── specs/system/
-├── specs/development/
-├── work/tasks/
-├── work/plans/
-├── work/history/
-├── .session-artifacts/
+├── .harness/
+│   ├── config/
+│   ├── specs/
+│   │   ├── system/
+│   │   └── deployment/
+│   ├── plans/
+│   ├── tasks/
+│   ├── findings/
+│   ├── history/
+│   ├── logs/
+│   └── session-artifacts/
 └── <product source, tests, and deployment files>
 ```
 
-The `specs/development/` files may start from harness-provided defaults, but in a target workspace they are inputs for the worker agents spawned by the harness.
+The `specs/development/` files are harness-owned role and convention sources. They may be present while dogfooding this repository, but they should not become target-project workflow state.
 
 ### Design implications
 
@@ -72,7 +77,7 @@ Harness code should avoid assuming that the target workspace is the harness repo
 - the target project is Python-only,
 - target source code lives under `src/harness/`,
 - target validation is always `uv run pytest`,
-- `specs/system/` describes the harness itself,
+- `.harness/specs/system/` describes the harness itself,
 - `AGENTS.md` and `specs/development/*.md` serve the same audience.
 
 The guiding principle is: the harness is a reusable tool that operates on a target workspace. Dogfooding in this repository is allowed, but must not leak target-specific assumptions into harness design.
@@ -85,11 +90,14 @@ The repository is the system of record. Agents should not depend on conversation
 
 Important workflow state is stored in files, for example:
 
-- `specs/` — target-workspace system specifications and worker-agent instructions.
-- `work/plans/` — design and project plans.
-- `work/tasks/` — task files, including each task's status.
-- `work/history/` — archived session handoffs.
-- `.session-artifacts/<role>/` — temporary output from the current session.
+- `.harness/specs/` — target-workspace system and deployment specifications.
+- `.harness/config/` — target-workspace tooling, environment, profile, and future agent configuration.
+- `.harness/plans/` — design and project plans.
+- `.harness/tasks/` — task files, including each task's status.
+- `.harness/findings/` — file-backed integration and workflow findings.
+- `.harness/history/` — archived session handoffs and workflow markers.
+- `.harness/logs/` — committed workflow logs.
+- `.harness/session-artifacts/<role>/` — output from the current session before it is archived.
 
 This makes the workflow restartable. If an agent session fails or the process stops, the next run can reconstruct the state from the repository.
 
@@ -108,7 +116,7 @@ Agent input files should be concise. The harness should not pre-fill the context
 Instead:
 
 - worker-agent conventions stay in `specs/development/conventions.md`,
-- target-workspace tooling decisions stay in `specs/development/tooling.md`,
+- target-workspace tooling decisions stay in `.harness/config/tooling.md`,
 - role-specific procedures stay in the matching `role-*.md` file,
 - current work is supplied through the selected task and recent relevant handoff.
 
@@ -169,7 +177,7 @@ The active roles are:
 Tasks are file-backed issues. They live in:
 
 ```text
-work/tasks/
+.harness/tasks/
 ```
 
 Each task is a Markdown file with TOML front matter:
@@ -238,7 +246,7 @@ Dependency blocking is computed rather than stored as a separate persistent stat
 
 Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root after the orchestrator-managed environment lifecycle has established the development environment.
 
-If `validation` is omitted, agents use the workspace defaults from `specs/development/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
+If `validation` is omitted, agents use the workspace defaults from `.harness/config/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
 
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
 
@@ -253,19 +261,19 @@ For roles that need the development environment, the orchestrator enforces an en
 
 Post-session teardown is attempted even when the agent session fails. Pre-session cleanup exists because a prior harness run may have crashed before teardown completed.
 
-Executable lifecycle commands currently live in `specs/development/environment.toml`. Current managed roles are developer, reviewer, and integrator; planner can find the environment definition through conventions when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
+Executable lifecycle commands currently live in `.harness/config/environment.toml`. Current managed roles are developer, reviewer, and integrator; planner can find the environment definition through conventions when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
 
 The planner owns recognizing when upcoming work requires environment changes, but executable environment changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
 
-Longer term, target-specific harness workflow artifacts should move into a committed, project-local `.harness/` directory. The role and convention files in `specs/development/` should remain harness-owned role/prompt source, analogous to harness `src/`, while `.harness/` should hold target-project-specific specs, tooling, validation, environment lifecycle, profiles, tasks, findings, plans, history, and logs.
+Target-specific harness workflow artifacts live in the committed, project-local `.harness/` directory. The role and convention files in `specs/development/` remain harness-owned role/prompt source, analogous to harness `src/`.
 
 ## Milestone integration
 
 When all tasks for a milestone are closed, the integrator validates the current repository state at that milestone boundary. The goal is to confirm that the milestone's changes work correctly with the previously implemented system, not merely that tasks from the milestone work with each other.
 
-If integration passes, the orchestrator writes an integration marker in `work/history/`. If integration reports Open Issues, the orchestrator creates a file-backed finding, leaves the milestone unintegrated, and routes the workflow back to the planner for follow-up task creation.
+If integration passes, the orchestrator writes an integration marker in `.harness/history/`. If integration reports Open Issues, the orchestrator creates a file-backed finding, leaves the milestone unintegrated, and routes the workflow back to the planner for follow-up task creation.
 
-Findings are active workflow issues stored in `work/findings/`. The planner converts open findings into corrective task files and lists addressed finding IDs in its handoff. The orchestrator then marks those findings as planned. When the milestone later integrates successfully, related planned findings are marked resolved.
+Findings are active workflow issues stored in `.harness/findings/`. The planner converts open findings into corrective task files and lists addressed finding IDs in its handoff. The orchestrator then marks those findings as planned. When the milestone later integrates successfully, related planned findings are marked resolved.
 
 ## Agent providers
 
@@ -277,12 +285,12 @@ A useful future pattern is to run the developer and reviewer with different prov
 
 ## Target-project harness directory
 
-The long-term target layout is to collect target-project harness workflow artifacts under `.harness/` in the target repository:
+Target-project harness workflow artifacts are collected under `.harness/` in the target repository:
 
 ```text
 .harness/
   config/
-    tooling.toml
+    tooling.md
     environment.toml
     profiles/
 
@@ -295,6 +303,7 @@ The long-term target layout is to collect target-project harness workflow artifa
   findings/
   history/
   logs/
+  session-artifacts/
 ```
 
 This directory should be committed by default, including history and logs, so the workflow is auditable and reproducible. Sensitive projects may need redaction, size limits, or opt-out policies for logs.
@@ -306,13 +315,13 @@ Reusable harness role definitions and conventions should not live in target `.ha
 Each session must write a handoff to:
 
 ```text
-.session-artifacts/<role>/handoff.md
+.harness/session-artifacts/<role>/handoff.md
 ```
 
 The orchestrator validates that the handoff exists, is non-empty, follows the expected structure, and does not report an unrecoverable issue. It then archives the handoff to:
 
 ```text
-work/history/
+.harness/history/
 ```
 
 Handoffs are intentionally structured. They allow the next session to recover context without relying on chat history.
@@ -334,7 +343,7 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling choices are documented in `specs/development/tooling.md`. Executable environment lifecycle commands are defined in `specs/development/environment.toml`. These locations are current implementation details; a future layout should move target-specific workflow configuration and state to `.harness/`.
+Current Python tooling choices are documented in `.harness/config/tooling.md`. Executable environment lifecycle commands are defined in `.harness/config/environment.toml`.
 
 In short:
 

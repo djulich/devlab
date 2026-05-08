@@ -2,7 +2,7 @@
 
 ## Tooling and Environment Profiles
 
-Current state: task files can specify concrete `validation` commands. If omitted, worker agents use defaults from `specs/development/tooling.md`; if `validation = []`, no validation commands are required. Shared environment lifecycle commands live in `specs/development/environment.toml` and are enforced by the orchestrator for developer/reviewer/integrator sessions.
+Current state: task files can specify concrete `validation` commands. If omitted, worker agents use defaults from `.harness/config/tooling.md`; if `validation = []`, no validation commands are required. Shared environment lifecycle commands live in `.harness/config/environment.toml` and are enforced by the orchestrator for developer/reviewer/integrator sessions.
 
 Open feature: add reusable tooling and environment profiles so tasks and target projects can reference concise profile names instead of repeating command lists and lifecycle commands.
 
@@ -14,11 +14,11 @@ Open feature: add reusable tooling and environment profiles so tasks and target 
 
 ## Target-specific Harness Workflow Directory
 
-Current state: target-project workflow artifacts are split across `specs/system/`, `specs/development/tooling.md`, `specs/development/environment.toml`, `work/`, and `.session-artifacts/`.
+Current state: target-project workflow artifacts have been migrated under a committed, project-local `.harness/` directory. Harness-owned role and convention files remain under `specs/development/` in this repository while the layout stabilizes.
 
-Open feature: collect target-project harness workflow artifacts under a committed, project-local `.harness/` directory.
+Open feature: stabilize the `.harness/` layout and add initialization/migration tooling.
 
-Possible future target-project layout:
+Current target-project layout:
 
 ```text
 .harness/
@@ -63,16 +63,16 @@ Initialization command:
 
 - Add a `harness init` command, similar to `git init`, that creates the target-project-local `.harness/` structure.
 - Make initialization idempotent and non-destructive by default; never overwrite existing files unless an explicit `--force` option is used.
-- Seed minimal starter files such as `.harness/config/tooling.toml`, `.harness/config/environment.toml`, `.harness/specs/system/README.md`, and `.harness/specs/deployment/README.md`.
+- Seed minimal starter files such as `.harness/config/tooling.md`, `.harness/config/environment.toml`, `.harness/specs/system/README.md`, and `.harness/specs/deployment/README.md`.
 - Create empty workflow directories such as `.harness/plans/`, `.harness/tasks/`, `.harness/findings/`, `.harness/history/`, `.harness/logs/environment/`, and `.harness/logs/deployment/`.
 - Consider `.harness/manifest.toml` or `.harness/VERSION` to record harness layout version and enabled templates.
 - Add template options later, e.g. `harness init --template python-cli` or `harness init --template fastapi-postgres`.
-- Add migration support later, e.g. `harness init --migrate-existing`, for moving current `work/`, `.session-artifacts/`, `specs/system/`, and target-specific config into `.harness/`.
+- Add migration support later, e.g. `harness init --migrate-existing`, for moving legacy `work/`, `.session-artifacts/`, `specs/system/`, and target-specific config into `.harness/`.
 
 Implementation concerns:
 
 - Add redaction/size controls before committing logs by default in sensitive projects.
-- Plan a migration path from current `work/`, `.session-artifacts/`, and `specs/system/` paths.
+- Keep a migration path for older target repositories that still use `work/`, `.session-artifacts/`, and `specs/system/` paths.
 - Keep reusable built-in profiles in the harness package; let `.harness/config/profiles/` define target-specific profiles.
 
 ## Target-specific Worker Agent Configuration
@@ -151,7 +151,7 @@ Suggested precedence:
 
 ## Integration Findings and Corrective Planning
 
-Current state: the integrator runs at completed milestone boundaries. If integration passes, the orchestrator writes an integration marker. If integration reports Open Issues, the orchestrator creates a file-backed finding in `work/findings/` and routes the workflow back to the planner.
+Current state: the integrator runs at completed milestone boundaries. If integration passes, the orchestrator writes an integration marker. If integration reports Open Issues, the orchestrator creates a file-backed finding in `.harness/findings/` and routes the workflow back to the planner.
 
 Current state: planner handoffs include `## Addressed Findings`; the orchestrator marks listed findings as `planned`. When the milestone later integrates successfully, related planned findings are marked `resolved`.
 
@@ -170,7 +170,7 @@ Planned feature: after a milestone integrates successfully, invoke the architect
 
 Likely implementation:
 
-- Add architecture-review markers per milestone, e.g. in `work/history/`.
+- Add architecture-review markers per milestone, e.g. in `.harness/history/`.
 - Select architect when a milestone is integrated but not architecture-reviewed.
 - Build an architect prompt focused on milestone-boundary design review, not greenfield design.
 - After architecture review, route to planner if the design/project plan may need adjustment.
@@ -193,7 +193,7 @@ Possible state to track:
 
 Current state: deployment requirements can be described informally in target specs, but the harness has no dedicated deployment spec structure or deployment verification model.
 
-Concrete implementation goal: support deployment requirements under the target-project harness specs, eventually `.harness/specs/deployment/`, and let the normal workflow plan, implement, review, and integrate deployment artifacts.
+Concrete implementation goal: support deployment requirements under `.harness/specs/deployment/` and let the normal workflow plan, implement, review, and integrate deployment artifacts.
 
 Required verification layers:
 
@@ -225,7 +225,7 @@ Specification direction:
   test-infrastructure.md
 ```
 
-Example: specs/deployment/targets.md
+Example: .harness/specs/deployment/targets.md
 
 ```md
 # Deployment Targets
@@ -248,7 +248,7 @@ The project must support the following deployment targets:
 - RPM must not require internet access during installation.
 ```
 
-Example: specs/deployment/container.md
+Example: .harness/specs/deployment/container.md
 
 ```md
 # Container Deployment
@@ -273,7 +273,7 @@ Example: specs/deployment/container.md
   - verify HTTP 200.
 ```
 
-Example: specs/deployment/rpm.md
+Example: .harness/specs/deployment/rpm.md
 
 ```md
 # RPM Deployment
@@ -296,7 +296,7 @@ Example: specs/deployment/rpm.md
 - systemd unit passes static validation where possible.
 ```
 
-Example: specs/deployment/runtime.md
+Example: .harness/specs/deployment/runtime.md
 
 ```md
 # Runtime Configuration

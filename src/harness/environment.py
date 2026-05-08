@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-ENVIRONMENT_CONFIG_FILE = "specs/development/environment.toml"
-ENVIRONMENT_LOG_DIR = "work/environment"
+ENVIRONMENT_CONFIG_FILE = ".harness/config/environment.toml"
+ENVIRONMENT_LOG_DIR = ".harness/logs/environment"
 
 
 @dataclasses.dataclass(frozen=True)

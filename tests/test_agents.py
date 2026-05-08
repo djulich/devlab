@@ -71,7 +71,7 @@ def test_mock_provider_records_calls_and_writes_valid_handoff(tmp_path: Path) ->
     assert result.return_code == 0
     assert provider.calls[0].role_name == "developer"
     assert provider.calls[0].system_prompt == "system"
-    handoff = tmp_path / ".session-artifacts" / "developer" / "handoff.md"
+    handoff = tmp_path / ".harness/session-artifacts" / "developer" / "handoff.md"
     assert "## Open Issues" in handoff.read_text()
 
 
@@ -80,7 +80,7 @@ def test_mock_provider_supports_callable_handoff_text(tmp_path: Path) -> None:
 
     provider.invoke(root=tmp_path, role_name="reviewer", system_prompt="", session_prompt="")
 
-    handoff = tmp_path / ".session-artifacts" / "reviewer" / "handoff.md"
+    handoff = tmp_path / ".harness/session-artifacts" / "reviewer" / "handoff.md"
     assert handoff.read_text() == "handoff for reviewer"
 
 
