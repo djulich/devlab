@@ -1,12 +1,12 @@
-# Harness Evaluation
+# DevLab Evaluation
 
-Assessment of the harness capabilities, limitations, and improvement opportunities.
+Assessment of DevLab capabilities, limitations, and improvement opportunities.
 
 ## Complexity Ceiling
 
-The harness can handle projects where **all components live in one repo and one language**. A moderately complex CLI tool, a single web service with a database, or a library with multiple modules are within reach.
+DevLab can handle projects where **all components live in one repo and one language**. A moderately complex CLI tool, a single web service with a database, or a library with multiple modules are within reach.
 
-A multi-service platform with a REST gateway and web GUI would **break the harness** in several ways:
+A multi-service platform with a REST gateway and web GUI would **break DevLab** in several ways:
 
 - **Task dependencies become blocking.** The planner creates independent tasks, but a gateway service can't be tested until the backend services it proxies exist. The orchestrator picks the lowest-numbered task — it has no concept of dependency ordering.
 - **Multi-language/multi-toolchain.** A React frontend and a Python backend need different tooling. The developer role has one validation checklist (ruff, ty, pytest). A frontend task needs eslint, tsc, vitest.
@@ -51,7 +51,7 @@ The orchestrator currently only checks that a handoff file *exists*. A minimal c
 
 ## Summary
 
-The harness is well-suited for single-language, single-repo projects of moderate size. The role split is right for that scope. To handle anything larger, the highest-leverage additions would be:
+DevLab is well-suited for single-language, single-repo projects of moderate size. The role split is right for that scope. To handle anything larger, the highest-leverage additions would be:
 
 1. Task dependencies (cheap to add)
 2. A reviewer role (medium effort)

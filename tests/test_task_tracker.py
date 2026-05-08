@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
+from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 
 
 def _setup_tasks_dir(root: Path) -> None:

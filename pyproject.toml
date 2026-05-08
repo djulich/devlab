@@ -1,5 +1,5 @@
 [project]
-name = "harness"
+name = "devlab"
 version = "0.1.0"
 requires-python = ">=3.12"
 
@@ -21,4 +21,4 @@ select = ["E", "F", "I", "W", "UP", "B", "SIM", "RUF"]
 testpaths = ["tests"]
 
 [project.scripts]
-harness = "harness.orchestrator:main"
+devlab = "devlab.orchestrator:main"

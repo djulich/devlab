@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
+from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 
 
 def _setup_findings_dir(root: Path) -> None:

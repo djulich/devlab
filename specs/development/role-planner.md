@@ -11,14 +11,14 @@ The planner breaks the design plan into milestones and actionable tasks.
 ## Context to Read
 
 - `specs/development/conventions.md`
-- `.harness/config/tooling.md`
+- `.devlab/config/tooling.md`
 - This file
 - The design plan
 - The project plan, if it exists
 - Existing task files
 - Open finding files
-- `.harness/session-artifacts/planner/` (if previous session artifacts exist)
-- Recent planner handoffs in `.harness/history/`
+- `.devlab/session-artifacts/planner/` (if previous session artifacts exist)
+- Recent planner handoffs in `.devlab/history/`
 
 ## Session Flow
 
@@ -26,9 +26,9 @@ The planner breaks the design plan into milestones and actionable tasks.
 2. If open findings exist, plan follow-up task(s) for them before other new work.
 3. Identify or plan the next milestone that needs tasks.
 4. Break the milestone into tasks (for development, tests, documentation, etc.). Write task files using the task template from `conventions.md`.
-5. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, or local configuration, create an explicit task to update `.harness/config/environment.toml`.
+5. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, or local configuration, create an explicit task to update `.devlab/config/environment.toml`.
 6. Update the project plan with the milestone and its task references.
-7. Write handoff to `.harness/session-artifacts/planner/handoff.md`.
+7. Write handoff to `.devlab/session-artifacts/planner/handoff.md`.
 
 ## Milestone planning
 
@@ -46,10 +46,10 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 ## Environment Planning
 
-- `.harness/config/environment.toml` defines executable lifecycle commands.
+- `.devlab/config/environment.toml` defines executable lifecycle commands.
 - Prefer stable lifecycle commands over one-off troubleshooting steps.
 - If future work requires executable lifecycle changes, create a normal task for those changes; do not edit executable environment setup directly during planning.
-- Do not put task-specific validation commands in environment files; task validation belongs in task metadata or `.harness/config/tooling.md` defaults.
+- Do not put task-specific validation commands in environment files; task validation belongs in task metadata or `.devlab/config/tooling.md` defaults.
 
 ## Project Plan Format
 

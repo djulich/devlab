@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from harness.agents import (
+from devlab.agents import (
     AgentResult,
     CliAgentProvider,
     MockProvider,
@@ -71,7 +71,7 @@ def test_mock_provider_records_calls_and_writes_valid_handoff(tmp_path: Path) ->
     assert result.return_code == 0
     assert provider.calls[0].role_name == "developer"
     assert provider.calls[0].system_prompt == "system"
-    handoff = tmp_path / ".harness/session-artifacts" / "developer" / "handoff.md"
+    handoff = tmp_path / ".devlab/session-artifacts" / "developer" / "handoff.md"
     assert "## Open Issues" in handoff.read_text()
 
 
@@ -80,7 +80,7 @@ def test_mock_provider_supports_callable_handoff_text(tmp_path: Path) -> None:
 
     provider.invoke(root=tmp_path, role_name="reviewer", system_prompt="", session_prompt="")
 
-    handoff = tmp_path / ".harness/session-artifacts" / "reviewer" / "handoff.md"
+    handoff = tmp_path / ".devlab/session-artifacts" / "reviewer" / "handoff.md"
     assert handoff.read_text() == "handoff for reviewer"
 
 
@@ -97,7 +97,7 @@ def test_cli_agent_provider_renders_prompt_arguments(
 
         return Result()
 
-    monkeypatch.setattr("harness.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
     provider = CliAgentProvider.from_command("pi -p", extra_args=["--no-context-files"])
 
     result = provider.invoke(
@@ -148,7 +148,7 @@ def test_cli_agent_provider_supports_stdin_prompt_mode(
 
         return Result()
 
-    monkeypatch.setattr("harness.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
     provider = CliAgentProvider.from_command(
         "agent run",
         prompt_args=["--role", "{role_name}"],
@@ -181,7 +181,7 @@ def test_codex_cli_provider_uses_exec_stdin_mode(
 
         return Result()
 
-    monkeypatch.setattr("harness.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
     provider = codex_cli_provider()
 
     provider.invoke(

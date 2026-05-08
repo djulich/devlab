@@ -7,7 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-TASKS_DIR = ".harness/tasks"
+TASKS_DIR = ".devlab/tasks"
 TASK_ID_RE = re.compile(r"(?<![A-Z0-9])T\d{3,5}(?!\d)")
 _FRONT_MATTER_RE = re.compile(r"\A\+\+\+\n([\s\S]*?)\n\+\+\+\n?", re.MULTILINE)
 
@@ -48,7 +48,7 @@ class Task:
 class FileTaskTracker:
     """File-backed task tracker using one Markdown file per task.
 
-    Task state is stored in TOML front matter in files under ``.harness/tasks``.
+    Task state is stored in TOML front matter in files under ``.devlab/tasks``.
     The tracker is the abstraction boundary between orchestration logic and the
     current file-based backend.
     """

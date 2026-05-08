@@ -8,20 +8,20 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from harness.agents import AgentProvider, CliAgentProvider, provider_for_role
-from harness.environment import EnvironmentCommandError, EnvironmentManager
-from harness.findings import FileFindingTracker
-from harness.task_tracker import FileTaskTracker, Task
+from devlab.agents import AgentProvider, CliAgentProvider, provider_for_role
+from devlab.environment import EnvironmentCommandError, EnvironmentManager
+from devlab.findings import FileFindingTracker
+from devlab.task_tracker import FileTaskTracker, Task
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
 
 CONVENTIONS_FILE = "specs/development/conventions.md"
-TOOLING_FILE = ".harness/config/tooling.md"
-DESIGN_PLAN = ".harness/plans/design-plan.md"
-PROJECT_PLAN = ".harness/plans/project-plan.md"
-HISTORY_DIR = ".harness/history"
-FINDINGS_DIR = ".harness/findings"
-ARTIFACTS_DIR = ".harness/session-artifacts"
+TOOLING_FILE = ".devlab/config/tooling.md"
+DESIGN_PLAN = ".devlab/plans/design-plan.md"
+PROJECT_PLAN = ".devlab/plans/project-plan.md"
+HISTORY_DIR = ".devlab/history"
+FINDINGS_DIR = ".devlab/findings"
+ARTIFACTS_DIR = ".devlab/session-artifacts"
 
 REQUIRED_HANDOFF_HEADINGS = (
     "## Done",
@@ -201,7 +201,7 @@ def build_system_prompt(root: Path, role: RoleConfig) -> str:
 def _handoff_reminder(role_name: str) -> str:
     return (
         "\n\nIMPORTANT: When done, write your handoff file to "
-        f".harness/session-artifacts/{role_name}/handoff.md "
+        f".devlab/session-artifacts/{role_name}/handoff.md "
         "using the template from conventions.md."
     )
 
@@ -613,7 +613,7 @@ def run_loop(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="harness",
+        prog="devlab",
         description="Orchestrate agentic development sessions.",
     )
     parser.add_argument(

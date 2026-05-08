@@ -7,7 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-FINDINGS_DIR = ".harness/findings"
+FINDINGS_DIR = ".devlab/findings"
 FINDING_ID_RE = re.compile(r"(?<![A-Z0-9])F\d{4,5}(?!\d)")
 _FRONT_MATTER_RE = re.compile(r"\A\+\+\+\n([\s\S]*?)\n\+\+\+\n?", re.MULTILINE)
 
@@ -32,7 +32,7 @@ class Finding:
 
 
 class FileFindingTracker:
-    """File-backed workflow findings discovered by harness roles."""
+    """File-backed workflow findings discovered by DevLab roles."""
 
     def __init__(self, root: Path, findings_dir: str = FINDINGS_DIR) -> None:
         self.root = root

@@ -5,11 +5,11 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 ## Context to Read
 
 - `specs/development/conventions.md`
-- `.harness/config/tooling.md`
+- `.devlab/config/tooling.md`
 - This file
 - The assigned task file
-- The latest developer handoff in `.harness/history/`
-- Recent reviewer handoffs in `.harness/history/`
+- The latest developer handoff in `.devlab/history/`
+- Recent reviewer handoffs in `.devlab/history/`
 - The relevant code diff and changed files
 
 ## Session Flow
@@ -27,11 +27,11 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 
 6. If rejected, do not mark the review approved. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
 7. Do not change the task status manually; the orchestrator owns status transitions.
-8. Write handoff to `.harness/session-artifacts/reviewer/handoff.md`.
+8. Write handoff to `.devlab/session-artifacts/reviewer/handoff.md`.
 
 ## Tool Usage
 
-- Treat `.harness/config/environment.toml` as the source of truth for workspace environment lifecycle.
+- Treat `.devlab/config/environment.toml` as the source of truth for workspace environment lifecycle.
 - Run validation through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist

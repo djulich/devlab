@@ -1,14 +1,14 @@
-# Harness Design Overview
+# DevLab Design Overview
 
-This document explains the design of the harness for human readers. It is intentionally broader than the role-specific agent instructions in `specs/development/`: those files tell agents what to do in a session, while this document explains why the system is shaped this way.
+This document explains the design of DevLab for human readers. It is intentionally broader than the role-specific agent instructions in `specs/development/`: those files tell agents what to do in a session, while this document explains why the system is shaped this way.
 
 ## Purpose
 
-The harness is a small orchestration system for agentic software development. Its long-term goal is to take a system specification as input and drive a software development lifecycle toward a usable product or release.
+DevLab is a small orchestration system for agentic software development. Its long-term goal is to take a system specification as input and drive a software development lifecycle toward a usable product or release.
 
-The harness does not try to make one large agent session do all work. Instead, it turns development into a sequence of small, bounded sessions. Each session has a role, a narrow objective, explicit inputs, and explicit outputs.
+DevLab does not try to make one large agent session do all work. Instead, it turns development into a sequence of small, bounded sessions. Each session has a role, a narrow objective, explicit inputs, and explicit outputs.
 
-At a high level, the harness should be able to:
+At a high level, DevLab should be able to:
 
 1. create a design plan from the system specification,
 2. create a project plan and milestones from the design plan,
@@ -17,44 +17,44 @@ At a high level, the harness should be able to:
 5. invoke agents to review completed work,
 6. preserve enough state in repository files to resume or audit the workflow.
 
-## Harness and target workspace
+## DevLab and target workspace
 
-The harness should be understood as a reusable development tool, not as the product being developed. It operates on a target workspace: a repository that contains the system specification, plans, tasks, history, source code, and tests for the product under development.
+DevLab should be understood as a reusable development tool, not as the product being developed. It operates on a target workspace: a repository that contains the system specification, plans, tasks, history, source code, and tests for the product under development.
 
-During early development, this repository can also be used as a target workspace for dogfooding. That is a convenience, not a design requirement. The harness should continue to work when invoked against another repository, for example:
+During early development, this repository can also be used as a target workspace for dogfooding. That is a convenience, not a design requirement. DevLab should continue to work when invoked against another repository, for example:
 
 ```bash
-harness --root /path/to/target-project
+devlab --root /path/to/target-project
 ```
 
 ### Why separate the responsibilities?
 
-Keeping the harness conceptually separate from the target product has several benefits:
+Keeping DevLab conceptually separate from the target product has several benefits:
 
-- the harness can be reused across multiple projects,
-- generated or target-product code does not become mixed with harness implementation code,
+- DevLab can be reused across multiple projects,
+- generated or target-product code does not become mixed with DevLab implementation code,
 - a target workspace can use any appropriate technology stack,
-- harness releases can evolve independently from the products they help create,
-- `.harness/specs/system/` can describe the target product instead of the harness itself.
+- DevLab releases can evolve independently from the products they help create,
+- `.devlab/specs/system/` can describe the target product instead of DevLab itself.
 
 ### Recommended model
 
-A harness repository contains the reusable tool and default worker instructions:
+A DevLab repository contains the reusable tool and default worker instructions:
 
 ```text
-harness-repo/
-├── src/harness/
+devlab-repo/
+├── src/devlab/
 ├── tests/
 ├── docs/
 ├── specs/development/
 └── examples/
 ```
 
-A target workspace contains product-specific harness workflow artifacts under `.harness/`:
+A target workspace contains product-specific DevLab workflow artifacts under `.devlab/`:
 
 ```text
 target-project/
-├── .harness/
+├── .devlab/
 │   ├── config/
 │   ├── specs/
 │   │   ├── system/
@@ -68,19 +68,19 @@ target-project/
 └── <product source, tests, and deployment files>
 ```
 
-The `specs/development/` files are harness-owned role and convention sources. They may be present while dogfooding this repository, but they should not become target-project workflow state.
+The `specs/development/` files are DevLab-owned role and convention sources. They may be present while dogfooding this repository, but they should not become target-project workflow state.
 
 ### Design implications
 
-Harness code should avoid assuming that the target workspace is the harness repository. In particular, avoid hard-coded assumptions that:
+DevLab code should avoid assuming that the target workspace is DevLab repository. In particular, avoid hard-coded assumptions that:
 
 - the target project is Python-only,
-- target source code lives under `src/harness/`,
+- target source code lives under `src/devlab/`,
 - target validation is always `uv run pytest`,
-- `.harness/specs/system/` describes the harness itself,
+- `.devlab/specs/system/` describes DevLab itself,
 - `AGENTS.md` and `specs/development/*.md` serve the same audience.
 
-The guiding principle is: the harness is a reusable tool that operates on a target workspace. Dogfooding in this repository is allowed, but must not leak target-specific assumptions into harness design.
+The guiding principle is: DevLab is a reusable tool that operates on a target workspace. Dogfooding in this repository is allowed, but must not leak target-specific assumptions into DevLab design.
 
 ## Core design principles
 
@@ -90,14 +90,14 @@ The repository is the system of record. Agents should not depend on conversation
 
 Important workflow state is stored in files, for example:
 
-- `.harness/specs/` — target-workspace system and deployment specifications.
-- `.harness/config/` — target-workspace tooling, environment, profile, and future agent configuration.
-- `.harness/plans/` — design and project plans.
-- `.harness/tasks/` — task files, including each task's status.
-- `.harness/findings/` — file-backed integration and workflow findings.
-- `.harness/history/` — archived session handoffs and workflow markers.
-- `.harness/logs/` — committed workflow logs.
-- `.harness/session-artifacts/<role>/` — output from the current session before it is archived.
+- `.devlab/specs/` — target-workspace system and deployment specifications.
+- `.devlab/config/` — target-workspace tooling, environment, profile, and future agent configuration.
+- `.devlab/plans/` — design and project plans.
+- `.devlab/tasks/` — task files, including each task's status.
+- `.devlab/findings/` — file-backed integration and workflow findings.
+- `.devlab/history/` — archived session handoffs and workflow markers.
+- `.devlab/logs/` — committed workflow logs.
+- `.devlab/session-artifacts/<role>/` — output from the current session before it is archived.
 
 This makes the workflow restartable. If an agent session fails or the process stops, the next run can reconstruct the state from the repository.
 
@@ -111,12 +111,12 @@ The most important example is the developer role: a developer session implements
 
 ### Context should be minimal
 
-Agent input files should be concise. The harness should not pre-fill the context window with every design decision, every historical handoff, or every possible instruction.
+Agent input files should be concise. DevLab should not pre-fill the context window with every design decision, every historical handoff, or every possible instruction.
 
 Instead:
 
 - worker-agent conventions stay in `specs/development/conventions.md`,
-- target-workspace tooling decisions stay in `.harness/config/tooling.md`,
+- target-workspace tooling decisions stay in `.devlab/config/tooling.md`,
 - role-specific procedures stay in the matching `role-*.md` file,
 - current work is supplied through the selected task and recent relevant handoff.
 
@@ -137,7 +137,7 @@ The orchestrator changes these statuses after validating the relevant session ou
 
 ### Human review remains possible
 
-Even though the harness aims at autonomous development, it is designed to remain inspectable by humans. A human should be able to read the repo and understand:
+Even though DevLab aims at autonomous development, it is designed to remain inspectable by humans. A human should be able to read the repo and understand:
 
 - what the system is supposed to become,
 - what tasks exist,
@@ -177,7 +177,7 @@ The active roles are:
 Tasks are file-backed issues. They live in:
 
 ```text
-.harness/tasks/
+.devlab/tasks/
 ```
 
 Each task is a Markdown file with TOML front matter:
@@ -246,7 +246,7 @@ Dependency blocking is computed rather than stored as a separate persistent stat
 
 Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root after the orchestrator-managed environment lifecycle has established the development environment.
 
-If `validation` is omitted, agents use the workspace defaults from `.harness/config/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
+If `validation` is omitted, agents use the workspace defaults from `.devlab/config/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
 
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
 
@@ -259,21 +259,21 @@ For roles that need the development environment, the orchestrator enforces an en
 3. agent invocation,
 4. `post_session` teardown.
 
-Post-session teardown is attempted even when the agent session fails. Pre-session cleanup exists because a prior harness run may have crashed before teardown completed.
+Post-session teardown is attempted even when the agent session fails. Pre-session cleanup exists because a prior devlab run may have crashed before teardown completed.
 
-Executable lifecycle commands currently live in `.harness/config/environment.toml`. Current managed roles are developer, reviewer, and integrator; planner can find the environment definition through conventions when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
+Executable lifecycle commands currently live in `.devlab/config/environment.toml`. Current managed roles are developer, reviewer, and integrator; planner can find the environment definition through conventions when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
 
 The planner owns recognizing when upcoming work requires environment changes, but executable environment changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
 
-Target-specific harness workflow artifacts live in the committed, project-local `.harness/` directory. The role and convention files in `specs/development/` remain harness-owned role/prompt source, analogous to harness `src/`.
+Target-specific DevLab workflow artifacts live in the committed, project-local `.devlab/` directory. The role and convention files in `specs/development/` remain DevLab-owned role/prompt source, analogous to DevLab's `src/`.
 
 ## Milestone integration
 
 When all tasks for a milestone are closed, the integrator validates the current repository state at that milestone boundary. The goal is to confirm that the milestone's changes work correctly with the previously implemented system, not merely that tasks from the milestone work with each other.
 
-If integration passes, the orchestrator writes an integration marker in `.harness/history/`. If integration reports Open Issues, the orchestrator creates a file-backed finding, leaves the milestone unintegrated, and routes the workflow back to the planner for follow-up task creation.
+If integration passes, the orchestrator writes an integration marker in `.devlab/history/`. If integration reports Open Issues, the orchestrator creates a file-backed finding, leaves the milestone unintegrated, and routes the workflow back to the planner for follow-up task creation.
 
-Findings are active workflow issues stored in `.harness/findings/`. The planner converts open findings into corrective task files and lists addressed finding IDs in its handoff. The orchestrator then marks those findings as planned. When the milestone later integrates successfully, related planned findings are marked resolved.
+Findings are active workflow issues stored in `.devlab/findings/`. The planner converts open findings into corrective task files and lists addressed finding IDs in its handoff. The orchestrator then marks those findings as planned. When the milestone later integrates successfully, related planned findings are marked resolved.
 
 ## Agent providers
 
@@ -283,12 +283,12 @@ This keeps the orchestrator independent from a specific CLI shape. For example, 
 
 A useful future pattern is to run the developer and reviewer with different providers to reduce shared blind spots, while keeping the default single-provider setup simple.
 
-## Target-project harness directory
+## Target-project DevLab directory
 
-Target-project harness workflow artifacts are collected under `.harness/` in the target repository:
+Target-project DevLab workflow artifacts are collected under `.devlab/` in the target repository:
 
 ```text
-.harness/
+.devlab/
   config/
     tooling.md
     environment.toml
@@ -308,27 +308,27 @@ Target-project harness workflow artifacts are collected under `.harness/` in the
 
 This directory should be committed by default, including history and logs, so the workflow is auditable and reproducible. Sensitive projects may need redaction, size limits, or opt-out policies for logs.
 
-Reusable harness role definitions and conventions should not live in target `.harness/`; they belong to the harness package alongside the orchestrator code.
+Reusable DevLab role definitions and conventions should not live in target `.devlab/`; they belong to the DevLab package alongside the orchestrator code.
 
 ## Handoffs and continuity
 
 Each session must write a handoff to:
 
 ```text
-.harness/session-artifacts/<role>/handoff.md
+.devlab/session-artifacts/<role>/handoff.md
 ```
 
 The orchestrator validates that the handoff exists, is non-empty, follows the expected structure, and does not report an unrecoverable issue. It then archives the handoff to:
 
 ```text
-.harness/history/
+.devlab/history/
 ```
 
 Handoffs are intentionally structured. They allow the next session to recover context without relying on chat history.
 
 ## Why Markdown and simple files?
 
-The harness is intentionally file-based because files are:
+DevLab is intentionally file-based because files are:
 
 - visible to humans,
 - easy for agents to read and edit,
@@ -343,7 +343,7 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling choices are documented in `.harness/config/tooling.md`. Executable environment lifecycle commands are defined in `.harness/config/environment.toml`.
+Current Python tooling choices are documented in `.devlab/config/tooling.md`. Executable environment lifecycle commands are defined in `.devlab/config/environment.toml`.
 
 In short:
 
@@ -359,7 +359,7 @@ Operational details such as exact validation commands belong in task metadata or
 
 ### Strict workflow vs. flexibility
 
-The harness is intentionally strict: one role, one task, one handoff, explicit status transitions. This can feel slower than asking an agent to do many things at once, but it improves control, auditability, and recovery.
+DevLab is intentionally strict: one role, one task, one handoff, explicit status transitions. This can feel slower than asking an agent to do many things at once, but it improves control, auditability, and recovery.
 
 ### File-backed issues vs. external issue tracker
 
@@ -373,7 +373,7 @@ Agents may sometimes need to search the repository to find missing detail. That 
 
 ## Current non-goals
 
-The harness is not currently trying to be:
+DevLab is not currently trying to be:
 
 - a full replacement for Jira,
 - a general CI/CD system,
@@ -385,7 +385,7 @@ Those capabilities may become relevant later, but the current design focuses on 
 
 ## Summary
 
-The harness is designed to make long-running agentic development practical by reducing reliance on fragile conversational context.
+DevLab is designed to make long-running agentic development practical by reducing reliance on fragile conversational context.
 
 It does this by combining:
 

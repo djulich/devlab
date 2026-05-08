@@ -22,7 +22,7 @@ class AgentCall:
 
 
 class AgentProvider(Protocol):
-    """Invokes an agent for one harness role session."""
+    """Invokes an agent for one DevLab role session."""
 
     def invoke(
         self,
@@ -148,7 +148,7 @@ class MockProvider:
         if self.on_invoke is not None:
             self.on_invoke(call)
         if self.write_handoff:
-            handoff_path = root / ".harness/session-artifacts" / role_name / "handoff.md"
+            handoff_path = root / ".devlab/session-artifacts" / role_name / "handoff.md"
             handoff_path.parent.mkdir(parents=True, exist_ok=True)
             handoff_path.write_text(self._handoff_for(call))
         return AgentResult(return_code=self.return_code)

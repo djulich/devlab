@@ -10,17 +10,17 @@
 
 ## Core Artifacts
 
-- **System specification** — `.harness/specs/system/`
-- **Deployment specification** — `.harness/specs/deployment/`
-- **Design plan** — `.harness/plans/design-plan.md`
-- **Project plan** — `.harness/plans/project-plan.md`
-- **Task files** — `.harness/tasks/TXXXX_<short-slug>.md`
-- **Finding files** — `.harness/findings/FXXXX_<short-slug>.md`
-- **Tooling instructions** — `.harness/config/tooling.md`
-- **Executable environment lifecycle** — `.harness/config/environment.toml`
-- **Session handoff** (per-session memory) — `.harness/session-artifacts/<role>/handoff.md`
-- **Archived handoffs** — `.harness/history/`
-- **Environment lifecycle logs** — `.harness/logs/environment/`
+- **System specification** — `.devlab/specs/system/`
+- **Deployment specification** — `.devlab/specs/deployment/`
+- **Design plan** — `.devlab/plans/design-plan.md`
+- **Project plan** — `.devlab/plans/project-plan.md`
+- **Task files** — `.devlab/tasks/TXXXX_<short-slug>.md`
+- **Finding files** — `.devlab/findings/FXXXX_<short-slug>.md`
+- **Tooling instructions** — `.devlab/config/tooling.md`
+- **Executable environment lifecycle** — `.devlab/config/environment.toml`
+- **Session handoff** (per-session memory) — `.devlab/session-artifacts/<role>/handoff.md`
+- **Archived handoffs** — `.devlab/history/`
+- **Environment lifecycle logs** — `.devlab/logs/environment/`
 
 ## History File Naming
 
@@ -28,7 +28,7 @@
 
 ## Task Template
 
-File: `TXXXX_<short-slug>.md` in `.harness/tasks/` (XXXX = zero-padded).
+File: `TXXXX_<short-slug>.md` in `.devlab/tasks/` (XXXX = zero-padded).
 
     +++
     id = "TXXXX"
@@ -49,11 +49,11 @@ File: `TXXXX_<short-slug>.md` in `.harness/tasks/` (XXXX = zero-padded).
 
 Dependencies are task IDs in `depends_on`, for example `depends_on = ["T0001"]`.
 
-Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root after the orchestrator-managed environment lifecycle has established the development environment. If `validation` is omitted, use the workspace defaults from `.harness/config/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
+Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root after the orchestrator-managed environment lifecycle has established the development environment. If `validation` is omitted, use the workspace defaults from `.devlab/config/tooling.md`. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
 
 ## Finding Template
 
-File: `FXXXX_<short-slug>.md` in `.harness/findings/` (XXXX = zero-padded).
+File: `FXXXX_<short-slug>.md` in `.devlab/findings/` (XXXX = zero-padded).
 
     +++
     id = "FXXXX"
@@ -89,7 +89,7 @@ Reviewers approve a task by appending or updating this section in the task file:
 
 ## Handoff Template
 
-File: `.harness/session-artifacts/<role>/handoff.md` (archived to `.harness/history/` by orchestrator).
+File: `.devlab/session-artifacts/<role>/handoff.md` (archived to `.devlab/history/` by orchestrator).
 
     # Handoff: <role>
     ## Done

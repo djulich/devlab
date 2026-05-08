@@ -1,6 +1,6 @@
-# Harness Evaluation by Pi
+# DevLab Evaluation by Pi
 
-This repo is a small Python “agentic development harness.” It defines a workflow where separate LLM/Claude sessions act as different software-development roles: architect, planner, and developer.
+This repo is a small Python “agentic development system.” It defines a workflow where separate LLM/Claude sessions act as different software-development roles: architect, planner, and developer.
 
 ## What It Contains
 
@@ -8,13 +8,13 @@ This repo is a small Python “agentic development harness.” It defines a work
 
 Main implementation:
 
-- `src/harness/orchestrator.py`
+- `src/devlab/orchestrator.py`
 
 This is a CLI orchestrator exposed as:
 
 ```toml
 [project.scripts]
-harness = "harness.orchestrator:main"
+devlab = "devlab.orchestrator:main"
 ```
 
 It repeatedly:
@@ -120,11 +120,11 @@ The tests are small but useful. They validate the core orchestration behavior wi
 
 ### 5. Documentation Is Honest About Limitations
 
-`docs/harness-evaluation.md` is especially good. It identifies realistic limits around dependencies, multi-service projects, integration testing, and lack of reviewer/integrator roles.
+`docs/devlab-evaluation.md` is especially good. It identifies realistic limits around dependencies, multi-service projects, integration testing, and lack of reviewer/integrator roles.
 
 ## What It Does Not Do So Well
 
-### 1. The Project Is Currently Empty as a Harness Instance
+### 1. The Project Is Currently Empty as a DevLab Instance
 
 The template exists, but the actual desired system is unspecified:
 
@@ -132,7 +132,7 @@ The template exists, but the actual desired system is unspecified:
 - `design-plan.md` is empty.
 - `project-plan.md` is empty.
 
-So running the harness now would invoke the architect with no real product requirements.
+So running DevLab now would invoke the architect with no real product requirements.
 
 ### 2. Hardcoded Claude Dependency
 
@@ -142,7 +142,7 @@ So running the harness now would invoke the architect with no real product requi
 cmd = ["claude", "-p", "--dangerously-skip-permissions", ...]
 ```
 
-There is no abstraction for providers, models, or dry-run/test mode. This makes the harness tightly coupled to one local tool.
+There is no abstraction for providers, models, or dry-run/test mode. This makes DevLab tightly coupled to one local tool.
 
 ### 3. `PROJECT_ROOT` Is Brittle
 
@@ -155,7 +155,7 @@ This works in the source checkout, but if installed as a package it may resolve 
 A better CLI would accept:
 
 ```bash
-harness --root /path/to/project
+devlab --root /path/to/project
 ```
 
 or default to `Path.cwd()`.

@@ -5,11 +5,11 @@ The developer implements exactly one eligible task per session.
 ## Context to Read
 
 - `specs/development/conventions.md`
-- `.harness/config/tooling.md`
+- `.devlab/config/tooling.md`
 - This file
 - The assigned task file
-- `.harness/session-artifacts/developer/` (if previous session artifacts exist)
-- The latest developer handoff in `.harness/history/`
+- `.devlab/session-artifacts/developer/` (if previous session artifacts exist)
+- The latest developer handoff in `.devlab/history/`
 
 ## Session Flow
 
@@ -21,18 +21,18 @@ The developer implements exactly one eligible task per session.
 6. If this task changes environment lifecycle commands, validate the updated lifecycle as part of the task.
 7. Mark all acceptance criteria as checked in the task file.
 8. Do not change the task status; the orchestrator sets it to `in_review` after the session.
-9. Write handoff to `.harness/session-artifacts/developer/handoff.md`.
+9. Write handoff to `.devlab/session-artifacts/developer/handoff.md`.
 
 ## Tool Usage
 
-- Treat `.harness/config/environment.toml` as the source of truth for workspace environment lifecycle.
+- Treat `.devlab/config/environment.toml` as the source of truth for workspace environment lifecycle.
 - Run project commands through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist
 
 Before writing the handoff, confirm:
 - [ ] If task `validation` is present and non-empty, all listed commands pass.
-- [ ] If task `validation` is omitted, default validation from `.harness/config/tooling.md` passes.
+- [ ] If task `validation` is omitted, default validation from `.devlab/config/tooling.md` passes.
 - [ ] If task `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
 - [ ] Any skipped or inapplicable validation command is explained in the handoff.
 - [ ] Only files relevant to the task were changed
