@@ -75,6 +75,80 @@ Implementation concerns:
 - Plan a migration path from current `work/`, `.session-artifacts/`, and `specs/system/` paths.
 - Keep reusable built-in profiles in the harness package; let `.harness/config/profiles/` define target-specific profiles.
 
+## Target-specific Worker Agent Configuration
+
+Current state: agent providers are configured through harness code and runtime options, while target-project-specific role/provider/model policy is not represented as a committed workflow artifact.
+
+Open feature: add `.harness/config/agents.toml` so each target project can configure worker agent behavior per role.
+
+Goals:
+
+- Configure provider, model, effort, timeout, and similar options per role.
+- Support defaults plus per-role overrides.
+- Let reviewer use a different provider/model from developer to reduce shared blind spots.
+- Keep known provider integrations in the harness package, e.g. `pi`, `codex`, `claude`, `mock`, `scripted`.
+- Avoid arbitrary command execution by default; custom provider commands require an explicit trust model or advanced mode.
+- Allow CLI overrides for temporary experiments without editing committed config.
+- Log the resolved agent configuration for each session for auditability.
+
+Example role configuration:
+
+```toml
+[defaults]
+provider = "pi"
+model = "gpt-5-codex"
+effort = "medium"
+timeout_seconds = 3600
+
+[roles.architect]
+model = "gpt-5"
+effort = "high"
+
+[roles.planner]
+model = "gpt-5"
+effort = "medium"
+
+[roles.developer]
+provider = "codex"
+model = "gpt-5-codex"
+effort = "medium"
+
+[roles.reviewer]
+provider = "claude"
+model = "claude-sonnet-4.5"
+effort = "high"
+
+[roles.integrator]
+provider = "pi"
+model = "gpt-5-codex"
+effort = "high"
+timeout_seconds = 7200
+```
+
+Possible provider-specific configuration:
+
+```toml
+[providers.pi]
+command = "pi"
+args = ["--model", "{model}", "--effort", "{effort}"]
+
+[providers.codex]
+command = "codex"
+args = ["exec", "-", "--model", "{model}"]
+
+[providers.claude]
+command = "claude"
+args = ["--model", "{model}"]
+```
+
+Risk note: provider-specific command configuration is executable target-project configuration. The safe default should be known provider names with harness-owned invocation code. Arbitrary custom commands should require explicit opt-in, review, and logging.
+
+Suggested precedence:
+
+1. CLI override for the current run.
+2. `.harness/config/agents.toml`.
+3. Harness defaults.
+
 ## Integration Findings and Corrective Planning
 
 Current state: the integrator runs at completed milestone boundaries. If integration passes, the orchestrator writes an integration marker. If integration reports Open Issues, the orchestrator creates a file-backed finding in `work/findings/` and routes the workflow back to the planner.
