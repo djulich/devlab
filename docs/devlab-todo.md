@@ -162,6 +162,22 @@ Open features:
 - Add reporting for open/planned/resolved findings.
 - Consider allowing reviewer/developer/architect roles to create findings, not only the integrator.
 
+## Starting workflow on an existing project
+
+DevLab shall support operation on an already existing project which was developed outside DevLab.
+
+IN that case, the system spec would be more of a feature spec, and DevLab adds the features from the system spec to the existing project with the same workflow it used to develop a system from scratch.
+
+## Sync project status periodically with design plan and system spec
+
+Davlab shall guard the project progress so that it doesn't drift away from the design plan or from the system spec.
+
+One possible way to implement this:
+- At the start of the DevLab run or after a mileston has been reached, the architect role (or planner? or a new role?) evaluates the current system status (from the code, and possibly from git and devlab artifacts?) and verifies that it is still aligned with the project plan, the design plan and the system spec.
+- If DevLab decides that the current project status drifts away from the plan or the spec, it will initiate a correction. One idea on how to do that would be to perform a git rollback to the previous milestone, describe the concern about the project drift as a finding (and / or as a hint in the session handoff?), and invoke the next seesion with the planner role. Since the project plan has also rolled back to the previous milestone, the current milestone will be planned (and ultimately implemented) again, but now the planner has the additional knowledge (from findings) of the project drift introduced by the previous try.
+
+To support clean milestone version rollbacks, we should think about the best branching strategy for the workflow. Maybe a feature branch for each milestone, which gets merged into main after the integrator approved the milestone?
+
 ## Architect Re-invocation
 
 Current state: the orchestrator calls the architect when the design plan is empty, then never again. Design plans evolve — after implementing milestones, interfaces may need revision or new components may emerge.
