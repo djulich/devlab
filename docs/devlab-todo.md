@@ -1,17 +1,5 @@
 # DevLab TODOs / Features to be implemented
 
-## Tooling and Environment Profiles
-
-Current state: task files can specify one `profile`; if omitted, `default` is used. Profiles live in `.devlab/config/profiles/` and define tooling summaries, default validation commands, and environment lifecycle commands. Task-specific `validation` commands override profile defaults; if `validation = []`, no validation commands are required. `.devlab/config/tooling.md` contains human/agent-readable tooling policy.
-
-Open feature: mature profile management so target projects can safely evolve reusable task profiles for multiple components and services.
-
-- Define DevLab-provided profiles for common stacks, e.g. Python CLI, Python FastAPI backend, Python Django backend, React frontend, Postgres service, Redis service, Docker Compose app.
-- Let target workspaces define custom profiles at a discoverable location.
-- Let tasks reference one reusable profile and optionally add task-specific validation commands.
-- Let target projects create dedicated profiles for task types that need combined setup/teardown/service behavior.
-- Keep profile use declarative; do not make the orchestrator execute arbitrary task validation commands yet.
-
 ## Target-specific DevLab Workflow Directory
 
 Current state: target-project workflow artifacts have been migrated under a committed, project-local `.devlab/` directory. DevLab-owned role and convention files remain under `specs/development/` in this repository while the layout stabilizes.
