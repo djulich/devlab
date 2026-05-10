@@ -27,7 +27,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 2. If open findings exist, plan follow-up task(s) for them before other new work.
 3. Identify or plan the next milestone that needs tasks.
 4. Break the milestone into tasks (for development, tests, documentation, etc.). Write task files using the task template from `conventions.md`.
-5. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, local configuration, or tooling/environment behavior not covered by an existing profile, create an explicit task to add or update a suitable profile in `.devlab/config/profiles/` before creating tasks that depend on it.
+5. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, local configuration, or tooling/environment behavior not covered by an existing profile, create an explicit task to add or update a suitable profile in `.devlab/config/profiles/` before creating tasks that depend on it. Profile tasks must require the resulting profile to follow `.devlab/config/tooling.md` policy.
 6. Assign each task at most one profile with task metadata `profile = "<profile-id>"`; omit `profile` only when the default profile is appropriate.
 7. Update the project plan with the milestone and its task references.
 8. Write handoff to `.devlab/session-artifacts/planner/handoff.md`.
@@ -49,6 +49,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 ## Profile and Environment Planning
 
 - Task profiles live in `.devlab/config/profiles/` and define tooling, default validation, and executable lifecycle commands for a task type.
+- New or updated profiles must follow `.devlab/config/tooling.md` policy. For example, if the tooling policy says GUI work uses React, profile tasks for GUI work must require React-oriented tooling and validation.
 - Every task uses at most one profile. If a task needs combined tooling/environment behavior, plan a dedicated profile for that task type.
 - Prefer stable lifecycle commands over one-off troubleshooting steps.
 - If future work requires executable lifecycle changes, create a normal task to add or update a profile; do not edit executable environment setup directly during planning.

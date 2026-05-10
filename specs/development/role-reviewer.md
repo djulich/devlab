@@ -43,6 +43,7 @@ Before approving, confirm:
 - [ ] Task `validation` commands pass when present and non-empty.
 - [ ] Default validation from the resolved task profile passes when task `validation` is omitted.
 - [ ] If task `validation = []`, the developer handoff states whether any validation was run and why.
+- [ ] If the task creates or changes a profile, the profile follows `.devlab/config/tooling.md` policy.
 - [ ] No unrelated refactoring or broad scope creep was introduced.
 - [ ] The task file has all acceptance criteria checked.
 
