@@ -49,7 +49,7 @@ devlab-repo/
 ├── src/devlab/
 ├── tests/
 ├── docs/
-├── specs/development/
+├── src/devlab/resources/prompts/
 └── examples/
 ```
 
@@ -71,7 +71,7 @@ target-project/
 └── <product source, tests, and deployment files>
 ```
 
-The `specs/development/` files are DevLab-owned role and convention sources. They may be present while dogfooding this repository, but they should not become target-project workflow state.
+The packaged prompt files under `src/devlab/resources/prompts/` are DevLab-owned role and convention sources. They are installed with DevLab and should not become target-project workflow state.
 
 ### Design implications
 
@@ -81,7 +81,7 @@ DevLab code should avoid assuming that the target workspace is DevLab repository
 - target source code lives under `src/devlab/`,
 - target validation is always `uv run pytest`,
 - `.devlab/specs/system/` describes DevLab itself,
-- `AGENTS.md` and `specs/development/*.md` serve the same audience.
+- `AGENTS.md` and packaged DevLab prompt resources serve the same audience.
 
 The guiding principle is: DevLab is a reusable tool that operates on a target workspace. Dogfooding in this repository is allowed, but must not leak target-specific assumptions into DevLab design.
 
@@ -118,7 +118,7 @@ Agent input files should be concise. DevLab should not pre-fill the context wind
 
 Instead:
 
-- worker-agent conventions stay in `specs/development/conventions.md`,
+- worker-agent conventions stay in packaged DevLab prompt resources,
 - target-workspace tooling decisions stay in `.devlab/config/tooling.md`,
 - role-specific procedures stay in the matching `role-*.md` file,
 - current work is supplied through the selected task and recent relevant handoff.
@@ -268,7 +268,7 @@ Executable lifecycle commands live in task profiles under `.devlab/config/profil
 
 The planner owns recognizing when upcoming work requires tooling or environment changes, but executable profile changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
 
-Target-specific DevLab workflow artifacts live in the committed, project-local `.devlab/` directory. The role and convention files in `specs/development/` remain DevLab-owned role/prompt source, analogous to DevLab's `src/`.
+Target-specific DevLab workflow artifacts live in the committed, project-local `.devlab/` directory. Role and convention prompt files remain DevLab-owned package resources under `src/devlab/resources/prompts/`.
 
 ## Milestone integration
 

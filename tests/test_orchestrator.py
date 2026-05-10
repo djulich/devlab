@@ -31,8 +31,6 @@ def _setup_tree(root: Path) -> None:
     (root / TASKS_DIR).mkdir(parents=True)
     (root / ".devlab/history").mkdir(parents=True)
     (root / FINDINGS_DIR).mkdir(parents=True)
-    (root / "specs/development").mkdir(parents=True)
-    (root / "specs/development/conventions.md").write_text("# Conventions\n")
     (root / ".devlab/config/tooling.md").write_text("# Tooling\n")
     (root / ".devlab/config/profiles").mkdir(parents=True)
     (root / ".devlab/config/profiles/default.toml").write_text(
@@ -42,8 +40,6 @@ def _setup_tree(root: Path) -> None:
         '\n[environment]\n'
         'managed_roles = ["developer", "reviewer", "integrator"]\n'
     )
-    for role in ROLES.values():
-        (root / role.role_file).write_text(f"# Role: {role.name}\n")
 
 
 def _write_task(
@@ -265,7 +261,7 @@ class TestBuildSystemPrompt:
         role = ROLES["planner"]
         prompt = build_system_prompt(tmp_path, role)
         assert "Conventions" in prompt
-        assert "Role: planner" in prompt
+        assert "Role: Planner" in prompt
         assert "Tooling" in prompt
 
     def test_developer_includes_tooling(self, tmp_path: Path) -> None:

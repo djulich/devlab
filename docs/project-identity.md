@@ -34,7 +34,7 @@ Long-term model:
 ```text
 devlab-package/
   src/devlab/
-  specs/development/role-*.md
+    resources/prompts/role-*.md
   docs/
   tests/
 
@@ -171,7 +171,7 @@ The project should continue moving toward these principles:
 
 - DevLab runs in a target repository rather than assuming the target is DevLab implementation repo.
 - `.devlab/` is the target-project-local workflow root.
-- `specs/development/` remains DevLab-owned role/prompt source, analogous to DevLab's `src/`.
+- DevLab-owned role/prompt sources remain package resources under `src/devlab/resources/prompts/`.
 - Target-specific specs, config, plans, tasks, findings, history, logs, and session artifacts belong under `.devlab/`.
 - Workflow rules should live in code where practical, not only in prompts.
 - The repository remains the system of record.

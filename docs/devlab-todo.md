@@ -1,17 +1,5 @@
 # DevLab TODOs / Features to be implemented
 
-## Package DevLab-owned Role Resources
-
-Current state: `devlab init` creates the target-project-local `.devlab/` workflow directory from package templates. Target workflow artifacts are no longer expected outside `.devlab/`.
-
-Open feature: finish reusable-package separation for DevLab-owned role and convention files.
-
-- Move or package `specs/development/conventions.md` and `specs/development/role-*.md` as DevLab package resources.
-- Make prompt assembly load those resources from the installed DevLab package instead of from the target repository root.
-- Keep target repositories free of DevLab-owned role/prompt source files.
-- Keep `.devlab/` target-owned and committed by default.
-- No migration path is required until real legacy target repositories exist.
-
 ## Target-specific Worker Agent Configuration
 
 Current state: agent providers are configured through DevLab code and runtime options, while target-project-specific role/provider/model policy is not represented as a committed workflow artifact.

@@ -11,11 +11,12 @@ from devlab.agents import AgentProvider, CliAgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.findings import FileFindingTracker
 from devlab.profiles import Profile, ProfileNotFoundError, load_profile
+from devlab.prompt_resources import read_prompt_resource
 from devlab.task_tracker import FileTaskTracker, Task
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
 
-CONVENTIONS_FILE = "specs/development/conventions.md"
+CONVENTIONS_RESOURCE = "conventions.md"
 TOOLING_FILE = ".devlab/config/tooling.md"
 DESIGN_PLAN = ".devlab/plans/design-plan.md"
 PROJECT_PLAN = ".devlab/plans/project-plan.md"
@@ -35,7 +36,7 @@ REQUIRED_HANDOFF_HEADINGS = (
 @dataclasses.dataclass(frozen=True)
 class RoleConfig:
     name: str
-    role_file: str
+    prompt_resource: str
     reads_tooling: bool
     needs_environment: bool
 
@@ -43,31 +44,31 @@ class RoleConfig:
 ROLES: dict[str, RoleConfig] = {
     "architect": RoleConfig(
         "architect",
-        "specs/development/role-architect.md",
+        "role-architect.md",
         reads_tooling=True,
         needs_environment=False,
     ),
     "planner": RoleConfig(
         "planner",
-        "specs/development/role-planner.md",
+        "role-planner.md",
         reads_tooling=True,
         needs_environment=False,
     ),
     "developer": RoleConfig(
         "developer",
-        "specs/development/role-developer.md",
+        "role-developer.md",
         reads_tooling=True,
         needs_environment=True,
     ),
     "reviewer": RoleConfig(
         "reviewer",
-        "specs/development/role-reviewer.md",
+        "role-reviewer.md",
         reads_tooling=True,
         needs_environment=True,
     ),
     "integrator": RoleConfig(
         "integrator",
-        "specs/development/role-integrator.md",
+        "role-integrator.md",
         reads_tooling=True,
         needs_environment=True,
     ),
@@ -190,8 +191,8 @@ def assess_state(root: Path) -> str | None:
 
 def build_system_prompt(root: Path, role: RoleConfig) -> str:
     parts: list[str] = [
-        _read_file(root / CONVENTIONS_FILE),
-        _read_file(root / role.role_file),
+        read_prompt_resource(CONVENTIONS_RESOURCE),
+        read_prompt_resource(role.prompt_resource),
     ]
     if role.reads_tooling:
         parts.append(_read_file(root / TOOLING_FILE))
