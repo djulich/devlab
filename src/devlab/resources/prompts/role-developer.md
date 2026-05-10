@@ -4,10 +4,10 @@ The developer implements exactly one eligible task per session.
 
 ## Context to Read
 
-- `specs/development/conventions.md`
+- The conventions included in this system prompt
 - `.devlab/config/tooling.md`
 - The assigned task's resolved profile in `.devlab/config/profiles/`
-- This file
+- These role instructions
 - The assigned task file
 - `.devlab/session-artifacts/developer/` (if previous session artifacts exist)
 - The latest developer handoff in `.devlab/history/`

@@ -6,9 +6,9 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 
 ## Context to Read
 
-- `specs/development/conventions.md`
+- The conventions included in this system prompt
 - `.devlab/config/tooling.md`
-- This file
+- These role instructions
 - The assigned completed milestone and its task files
 - Recent developer, reviewer, and integrator handoffs in `.devlab/history/`
 - Relevant source, tests, and deployment/configuration files

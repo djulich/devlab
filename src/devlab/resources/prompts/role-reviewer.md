@@ -4,10 +4,10 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 
 ## Context to Read
 
-- `specs/development/conventions.md`
+- The conventions included in this system prompt
 - `.devlab/config/tooling.md`
 - The assigned task's resolved profile in `.devlab/config/profiles/`
-- This file
+- These role instructions
 - The assigned task file
 - The latest developer handoff in `.devlab/history/`
 - Recent reviewer handoffs in `.devlab/history/`

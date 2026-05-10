@@ -1,6 +1,6 @@
 # DevLab Design Overview
 
-This document explains the design of DevLab for human readers. It is intentionally broader than the role-specific agent instructions in `specs/development/`: those files tell agents what to do in a session, while this document explains why the system is shaped this way.
+This document explains the design of DevLab for human readers. It is intentionally broader than the role-specific packaged prompt resources in `src/devlab/resources/prompts/`: those files tell agents what to do in a session, while this document explains why the system is shaped this way.
 
 ## Purpose
 

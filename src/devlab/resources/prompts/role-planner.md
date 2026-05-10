@@ -12,9 +12,9 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 ## Context to Read
 
-- `specs/development/conventions.md`
+- The conventions included in this system prompt
 - `.devlab/config/tooling.md`
-- This file
+- These role instructions
 - The design plan
 - The project plan, if it exists
 - Existing task files

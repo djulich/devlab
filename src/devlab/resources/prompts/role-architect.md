@@ -4,9 +4,9 @@ The architect translates the system specification into a design plan.
 
 ## Context to Read
 
-- `specs/development/conventions.md`
+- The conventions included in this system prompt
 - `.devlab/config/tooling.md`
-- This file
+- These role instructions
 - The system specification
 - The design plan, if it exists
 - `.devlab/session-artifacts/architect/` (if previous session artifacts exist)
