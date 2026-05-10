@@ -1,26 +1,13 @@
-# Tooling
+# Tooling Policy
 
-This document defines the default tooling for this workspace. Task metadata may specify task-specific `validation` commands.
+## Python
 
-## Required
+Use:
 
-- Primary programming language: `Python` (version >=3.12)
-- Python dependency, lockfile, environment, and command management: `uv`
-- Build backend: `uv_build`
-- Linting and formatting: `ruff`
-- Static type checking: `ty`
-- Testing: `pytest`
-- Version Control: `git`
-- Python package structure: `/src` layout
+- `uv` for dependency, lockfile, environment, and command management
+- `uv_build` as the build backend
+- `ruff` for linting and formatting
+- `ty` for static type checking
+- `pytest` for testing
 
-## Default Validation
-
-- `uv run ruff check`
-- `uv run ty check`
-- `uv run pytest`
-
-## Optional
-
-- Coverage reporting: `coverage.py`
-- Local hook enforcement: `pre-commit`
-- Development process cli: `make`
+Do not introduce alternative Python tooling such as Poetry, Pipenv, tox, mypy, Black, Flake8, or unittest unless explicitly required by an approved task.

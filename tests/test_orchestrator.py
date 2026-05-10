@@ -48,6 +48,7 @@ def _write_task(
     title: str = "Test task",
     status: str = "open",
     milestone: str | None = None,
+    profile: str | None = None,
     depends_on: list[str] | None = None,
     validation: list[str] | None = None,
     body: str | None = None,
@@ -57,6 +58,7 @@ def _write_task(
     path = root / TASKS_DIR / f"{task_id}_{slug}.md"
     depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
     milestone_line = f'milestone = "{milestone}"\n' if milestone is not None else ""
+    profile_line = f'profile = "{profile}"\n' if profile is not None else ""
     validation_line = ""
     if validation is not None:
         validation_commands = ", ".join(f'"{command}"' for command in validation)
@@ -69,10 +71,34 @@ def _write_task(
         f'title = "{title}"\n'
         f'status = "{status}"\n'
         f"{milestone_line}"
+        f"{profile_line}"
         f"depends_on = [{depends}]\n"
         f"{validation_line}"
         "+++\n\n"
         f"{body}"
+    )
+    return path
+
+
+def _write_profile(
+    root: Path,
+    profile_id: str,
+    *,
+    validation: list[str] | None = None,
+    environment: str = "",
+) -> Path:
+    profiles = root / ".devlab/config/profiles"
+    profiles.mkdir(parents=True, exist_ok=True)
+    validation = validation or []
+    validation_text = ", ".join(f'"{command}"' for command in validation)
+    path = profiles / f"{profile_id}.toml"
+    path.write_text(
+        "version = 1\n"
+        f"id = \"{profile_id}\"\n"
+        f"title = \"{profile_id}\"\n"
+        "\n[tooling]\n"
+        f"default_validation = [{validation_text}]\n"
+        f"{environment}"
     )
     return path
 
@@ -193,6 +219,19 @@ class TestBuildSessionPrompt:
 
         assert "## Task Validation Commands" not in prompt
 
+    def test_developer_prompt_uses_profile_default_validation_when_validation_is_omitted(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_profile(tmp_path, "api", validation=["uv run pytest tests/api"])
+        _write_task(tmp_path, "T0001", "First", profile="api")
+
+        prompt = build_session_prompt(tmp_path, "developer")
+
+        assert "Profile: `api`" in prompt
+        assert "default validation from profile `api`" in prompt
+        assert "`uv run pytest tests/api`" in prompt
+
     def test_developer_prompt_explains_explicit_empty_validation(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", validation=[])
@@ -292,6 +331,32 @@ class TestRunLoop:
             "post",
         ]
         assert list((tmp_path / ".devlab/logs/environment").glob("*_developer_*.log"))
+
+    def test_profile_environment_lifecycle_overrides_legacy_environment_for_task(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First", profile="api")
+        _write_profile(
+            tmp_path,
+            "api",
+            environment=(
+                '\n[environment]\n'
+                'managed_roles = ["developer"]\n'
+                'setup = ["echo profile >> env-order.log"]\n'
+            ),
+        )
+        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
+            'version = 1\n'
+            'managed_roles = ["developer"]\n'
+            'setup = ["echo legacy >> env-order.log"]\n'
+        )
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert (tmp_path / "env-order.log").read_text().splitlines() == ["profile"]
 
     def test_unmanaged_planner_does_not_run_environment_lifecycle(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

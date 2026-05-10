@@ -11,6 +11,7 @@ from pathlib import Path
 from devlab.agents import AgentProvider, CliAgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.findings import FileFindingTracker
+from devlab.profiles import Profile, ProfileNotFoundError, load_profile
 from devlab.task_tracker import FileTaskTracker, Task
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
@@ -238,6 +239,43 @@ def _format_task_listing(tasks: list[Task]) -> str:
     )
 
 
+def _session_profile(root: Path, task: Task | None) -> Profile:
+    return load_profile(root, task.profile if task is not None else None)
+
+
+def _profile_prompt_sections(root: Path, task: Task) -> list[str]:
+    profile = _session_profile(root, task)
+    lines = [
+        f"Profile: `{profile.id}`",
+        f"Title: {profile.title}",
+    ]
+    if profile.tooling.summary:
+        lines.extend(["", profile.tooling.summary])
+    return ["## Task Profile\n\n" + "\n".join(lines)]
+
+
+def _validation_prompt_section(task: Task, profile: Profile) -> str:
+    if task.validation is None:
+        commands = profile.tooling.default_validation
+        if commands:
+            command_lines = "\n".join(f"- `{command}`" for command in commands)
+            return (
+                "## Task Validation Commands\n\n"
+                f"Task metadata omits `validation`; use default validation from "
+                f"profile `{profile.id}`. Run from the workspace root:\n\n{command_lines}"
+            )
+        return ""
+    if task.validation:
+        commands = "\n".join(f"- `{command}`" for command in task.validation)
+        return f"## Task Validation Commands\n\nRun from the workspace root:\n\n{commands}"
+    return (
+        "## Task Validation Commands\n\n"
+        "Task metadata sets `validation = []`. No validation commands "
+        "are required; state in the handoff whether any validation was "
+        "run and why."
+    )
+
+
 def _build_planner_prompt(root: Path) -> str:
     parts: list[str] = []
     plan = _read_file(root / DESIGN_PLAN)
@@ -267,18 +305,10 @@ def _build_developer_prompt(root: Path) -> str:
     if task:
         content = _read_file(task.path)
         parts.append(f"## Assigned Task ({task.path.name})\n\n{content}")
-        if task.validation:
-            commands = "\n".join(f"- `{command}`" for command in task.validation)
-            parts.append(
-                f"## Task Validation Commands\n\nRun from the workspace root:\n\n{commands}"
-            )
-        elif task.validation == ():
-            parts.append(
-                "## Task Validation Commands\n\n"
-                "Task metadata sets `validation = []`. No validation commands "
-                "are required; state in the handoff whether any validation was "
-                "run and why."
-            )
+        parts.extend(_profile_prompt_sections(root, task))
+        validation_section = _validation_prompt_section(task, _session_profile(root, task))
+        if validation_section:
+            parts.append(validation_section)
     else:
         parts.append("No open eligible tasks.")
     handoff = _latest_handoff(root, "developer")
@@ -328,6 +358,10 @@ def _build_reviewer_prompt(root: Path) -> str:
     if task:
         content = _read_file(task.path)
         parts.append(f"## Task Awaiting Review ({task.path.name})\n\n{content}")
+        parts.extend(_profile_prompt_sections(root, task))
+        validation_section = _validation_prompt_section(task, _session_profile(root, task))
+        if validation_section:
+            parts.append(validation_section)
     else:
         parts.append("No tasks are awaiting review.")
     developer_handoff = _latest_handoff(root, "developer")
@@ -522,6 +556,21 @@ def process_handoff(root: Path, role_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _task_for_role(root: Path, role_name: str) -> Task | None:
+    tracker = task_tracker(root)
+    if role_name == "developer":
+        return tracker.select_next_development_task()
+    if role_name == "reviewer":
+        return tracker.select_next_review_task()
+    return None
+
+
+def _environment_for_session(root: Path, role_name: str) -> EnvironmentManager:
+    task = _task_for_role(root, role_name)
+    profile = load_profile(root, task.profile if task is not None else None)
+    return EnvironmentManager(root, profile.environment)
+
+
 def run_loop(
     root: Path,
     *,
@@ -555,9 +604,13 @@ def run_loop(
             shutil.rmtree(artifacts_dir)
         artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-        system_prompt = build_system_prompt(root, role)
-        session_prompt = build_session_prompt(root, role_name)
-        environment = EnvironmentManager(root)
+        try:
+            system_prompt = build_system_prompt(root, role)
+            session_prompt = build_session_prompt(root, role_name)
+            environment = _environment_for_session(root, role_name)
+        except ProfileNotFoundError as exc:
+            print(f"ERROR: {exc}. Stopping.")
+            sys.exit(1)
         manage_environment = role.needs_environment and environment.manages_role(role_name)
         if manage_environment:
             try:

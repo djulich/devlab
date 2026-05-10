@@ -34,6 +34,7 @@ class Task:
     status: TaskStatus
     path: Path
     milestone: str | None
+    profile: str | None
     depends_on: tuple[str, ...]
     # None means validation metadata is omitted; () means explicit validation = [].
     validation: tuple[str, ...] | None
@@ -146,6 +147,10 @@ class FileTaskTracker:
         metadata["status"] = status.value
         if task.milestone is not None:
             metadata["milestone"] = task.milestone
+        if task.profile is not None:
+            metadata["profile"] = task.profile
+        else:
+            metadata.pop("profile", None)
         metadata["depends_on"] = list(task.depends_on)
         if task.validation is None:
             metadata.pop("validation", None)
@@ -162,6 +167,7 @@ class FileTaskTracker:
         title = str(metadata.get("title") or _title_from_body(body, task_id) or task_id)
         status = _parse_status(metadata.get("status"))
         milestone = metadata.get("milestone")
+        profile = metadata.get("profile")
         depends_on = _parse_depends_on(metadata.get("depends_on"), body)
         validation = (
             _parse_validation(metadata.get("validation")) if "validation" in metadata else None
@@ -178,6 +184,7 @@ class FileTaskTracker:
             status=status,
             path=path,
             milestone=str(milestone) if milestone is not None else None,
+            profile=str(profile) if profile is not None else None,
             depends_on=tuple(depends_on),
             validation=tuple(validation) if validation is not None else None,
             body=body,
@@ -195,14 +202,14 @@ def _split_front_matter(text: str) -> tuple[dict[str, Any], str]:
 
 def _format_task_file(metadata: dict[str, Any], body: str) -> str:
     lines = ["+++"]
-    for key in ("id", "title", "status", "milestone", "depends_on", "validation"):
+    for key in ("id", "title", "status", "milestone", "profile", "depends_on", "validation"):
         if key not in metadata:
             continue
         value = metadata[key]
         if value is None:
             continue
         lines.append(f"{key} = {_toml_value(value)}")
-    known_keys = {"id", "title", "status", "milestone", "depends_on", "validation"}
+    known_keys = {"id", "title", "status", "milestone", "profile", "depends_on", "validation"}
     for key in sorted(k for k in metadata if k not in known_keys):
         lines.append(f"{key} = {_toml_value(metadata[key])}")
     lines.append("+++")

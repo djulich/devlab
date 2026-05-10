@@ -67,7 +67,7 @@ class TestFileTaskTrackerParsing:
             "First",
             status="changes_requested",
             depends_on=["T0000"],
-            extra_metadata='milestone = "M1"\npriority = "high"\n',
+            extra_metadata='milestone = "M1"\nprofile = "api"\npriority = "high"\n',
         )
 
         task = FileTaskTracker(tmp_path).get("T0001")
@@ -76,6 +76,7 @@ class TestFileTaskTrackerParsing:
         assert task.title == "First"
         assert task.status == TaskStatus.CHANGES_REQUESTED
         assert task.milestone == "M1"
+        assert task.profile == "api"
         assert task.depends_on == ("T0000",)
         assert task.validation is None
         assert task.metadata["priority"] == "high"
@@ -276,7 +277,7 @@ class TestFileTaskTrackerStatusTransitions:
             "T0001",
             "First",
             validation=["uv run pytest"],
-            extra_metadata='owner = "agent"\n',
+            extra_metadata='profile = "api"\nowner = "agent"\n',
             body="# T0001: First\n\n## Goal\nKeep this body.\n",
         )
 
@@ -284,6 +285,7 @@ class TestFileTaskTrackerStatusTransitions:
 
         text = path.read_text()
         assert 'validation = ["uv run pytest"]' in text
+        assert 'profile = "api"' in text
         assert 'owner = "agent"' in text
         assert "## Goal\nKeep this body." in text
 

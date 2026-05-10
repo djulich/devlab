@@ -6,7 +6,8 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 - Milestone planning: maintain the project plan.
 - Task planning: create task files for the next milestone that needs work.
-- Environment planning: plan changes to the executable development environment lifecycle.
+- Profile planning: create tasks for new DevLab tooling/environment profiles when upcoming work needs them.
+- Environment planning: plan changes to executable development environment lifecycle through profile tasks.
 
 ## Context to Read
 
@@ -26,9 +27,10 @@ The planner breaks the design plan into milestones and actionable tasks.
 2. If open findings exist, plan follow-up task(s) for them before other new work.
 3. Identify or plan the next milestone that needs tasks.
 4. Break the milestone into tasks (for development, tests, documentation, etc.). Write task files using the task template from `conventions.md`.
-5. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, or local configuration, create an explicit task to update `.devlab/config/environment.toml`.
-6. Update the project plan with the milestone and its task references.
-7. Write handoff to `.devlab/session-artifacts/planner/handoff.md`.
+5. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, local configuration, or tooling/environment behavior not covered by an existing profile, create an explicit task to add or update a suitable profile in `.devlab/config/profiles/` before creating tasks that depend on it.
+6. Assign each task at most one profile with task metadata `profile = "<profile-id>"`; omit `profile` only when the default profile is appropriate.
+7. Update the project plan with the milestone and its task references.
+8. Write handoff to `.devlab/session-artifacts/planner/handoff.md`.
 
 ## Milestone planning
 
@@ -44,12 +46,13 @@ The planner breaks the design plan into milestones and actionable tasks.
 - If a task depends on another, add the dependency task IDs to the task metadata's `depends_on` array.
 - New tasks start with `status = "open"`.
 
-## Environment Planning
+## Profile and Environment Planning
 
-- `.devlab/config/environment.toml` defines executable lifecycle commands.
+- Task profiles live in `.devlab/config/profiles/` and define tooling, default validation, and executable lifecycle commands for a task type.
+- Every task uses at most one profile. If a task needs combined tooling/environment behavior, plan a dedicated profile for that task type.
 - Prefer stable lifecycle commands over one-off troubleshooting steps.
-- If future work requires executable lifecycle changes, create a normal task for those changes; do not edit executable environment setup directly during planning.
-- Do not put task-specific validation commands in environment files; task validation belongs in task metadata or `.devlab/config/tooling.md` defaults.
+- If future work requires executable lifecycle changes, create a normal task to add or update a profile; do not edit executable environment setup directly during planning.
+- Do not put task-specific validation commands in profile environment commands; task-specific validation belongs in task metadata.
 
 ## Project Plan Format
 
