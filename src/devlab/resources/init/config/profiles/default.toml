@@ -1,0 +1,24 @@
+version = 1
+id = "default"
+title = "Default Python workflow"
+
+[tooling]
+summary = "Python package workflow using uv, uv_build, pytest, ruff, ty, and a src/ package layout."
+default_validation = [
+  "uv run ruff check",
+  "uv run ty check",
+  "uv run pytest",
+]
+
+[environment]
+managed_roles = ["developer", "reviewer", "integrator"]
+pre_session = []
+setup = [
+  "uv sync",
+]
+post_session = []
+
+[timeouts]
+pre_session = 300
+setup = 600
+post_session = 300

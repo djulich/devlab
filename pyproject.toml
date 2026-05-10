@@ -21,4 +21,4 @@ select = ["E", "F", "I", "W", "UP", "B", "SIM", "RUF"]
 testpaths = ["tests"]
 
 [project.scripts]
-devlab = "devlab.orchestrator:main"
+devlab = "devlab.cli:main"

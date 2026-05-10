@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import dataclasses
 import re
 import shutil
@@ -677,47 +676,3 @@ def run_loop(
     print(f"\nOrchestrator finished after {sessions_run} session(s).")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="devlab",
-        description="Orchestrate agentic development sessions.",
-    )
-    parser.add_argument(
-        "--root",
-        type=Path,
-        default=DEFAULT_PROJECT_ROOT,
-        help="Project root to operate on (default: current working directory).",
-    )
-    parser.add_argument(
-        "--auto",
-        action="store_true",
-        help="Run autonomously without pausing between sessions.",
-    )
-    parser.add_argument(
-        "--max-sessions",
-        type=int,
-        default=20,
-        help="Maximum number of sessions to run (default: 20).",
-    )
-    parser.add_argument(
-        "--agent-cmd",
-        default="claude -p",
-        help="Agent command prefix (default: 'claude -p').",
-    )
-    parser.add_argument(
-        "--dangerously-skip-permissions",
-        action="store_true",
-        help="Pass --dangerously-skip-permissions to the agent command.",
-    )
-    args = parser.parse_args()
-    run_loop(
-        args.root.resolve(),
-        auto=args.auto,
-        max_sessions=args.max_sessions,
-        agent_cmd=args.agent_cmd,
-        dangerous_skip_permissions=args.dangerously_skip_permissions,
-    )
-
-
-if __name__ == "__main__":
-    main()

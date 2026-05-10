@@ -24,7 +24,10 @@ DevLab should be understood as a reusable development tool, not as the product b
 During early development, this repository can also be used as a target workspace for dogfooding. That is a convenience, not a design requirement. DevLab should continue to work when invoked against another repository, for example:
 
 ```bash
-devlab --root /path/to/target-project
+cd /path/to/target-project
+devlab init
+devlab status
+devlab run --auto
 ```
 
 ### Why separate the responsibilities?

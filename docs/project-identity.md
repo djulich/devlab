@@ -163,7 +163,7 @@ devlab status
 devlab doctor
 ```
 
-`devlab init` is intentionally deferred for now, but remains part of the long-term product shape.
+`devlab init`, `devlab run`, and `devlab status` are implemented; `devlab doctor` remains future validation tooling.
 
 ## Design Implications
 

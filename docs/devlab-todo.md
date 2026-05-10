@@ -2,9 +2,9 @@
 
 ## Target-specific DevLab Workflow Directory
 
-Current state: target-project workflow artifacts have been migrated under a committed, project-local `.devlab/` directory. DevLab-owned role and convention files remain under `specs/development/` in this repository while the layout stabilizes.
+Current state: target-project workflow artifacts live under a committed, project-local `.devlab/` directory. `devlab init` creates the starter `.devlab/` layout from DevLab package templates. DevLab-owned role and convention files remain under `specs/development/` in this repository while the layout stabilizes.
 
-Open feature: stabilize the `.devlab/` layout and add initialization/migration tooling.
+Open feature: finish reusable-package separation and add migration/template tooling.
 
 Current target-project layout:
 
@@ -48,15 +48,19 @@ Rationale:
 - `specs/development/` should remain DevLab-owned role/prompt source, analogous to DevLab's `src/`, not target-project workflow state.
 - Generated runtime logs/history are still workflow artifacts; keeping them under `.devlab/` makes cleanup, review, and migration easier.
 
-Initialization command:
+Implemented initialization command:
 
-- Add a `devlab init` command, similar to `git init`, that creates the target-project-local `.devlab/` structure.
-- Make initialization idempotent and non-destructive by default; never overwrite existing files unless an explicit `--force` option is used.
-- Seed minimal starter files such as `.devlab/config/README.md`, `.devlab/config/tooling.md`, `.devlab/config/profiles/default.toml`, `.devlab/specs/system/README.md`, and `.devlab/specs/deployment/README.md`.
-- Create empty workflow directories such as `.devlab/plans/`, `.devlab/tasks/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/logs/environment/`, and `.devlab/logs/deployment/`.
-- Consider `.devlab/manifest.toml` or `.devlab/VERSION` to record DevLab layout version and enabled templates.
-- Add template options later, e.g. `devlab init --template python-cli` or `devlab init --template fastapi-postgres`.
-- Add migration support later, e.g. `devlab init --migrate-existing`, for moving legacy `work/`, `.session-artifacts/`, `specs/system/`, and target-specific config into `.devlab/`.
+- `devlab init` creates the target-project-local `.devlab/` structure.
+- Initialization is idempotent and non-destructive by default; `--force` overwrites starter files.
+- Starter files include `.devlab/config/README.md`, `.devlab/config/tooling.md`, `.devlab/config/profiles/default.toml`, `.devlab/specs/system/README.md`, and `.devlab/specs/deployment/README.md`.
+- Workflow directories include `.devlab/plans/`, `.devlab/tasks/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/logs/environment/`, and `.devlab/logs/deployment/`.
+- `.devlab/manifest.toml` records the layout version.
+
+Remaining initialization/migration work:
+
+- Add starter options later if needed, e.g. `devlab init --starter minimal`.
+- Add profile helper commands later if useful, e.g. `devlab profile add <builtin-profile>`.
+- Add migration support later, e.g. `devlab migrate`, for moving legacy `work/`, `.session-artifacts/`, `specs/system/`, and target-specific config into `.devlab/` if legacy target repositories ever exist.
 
 Implementation concerns:
 
