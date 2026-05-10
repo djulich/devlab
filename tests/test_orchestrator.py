@@ -200,6 +200,17 @@ class TestCloseTask:
 
 
 class TestBuildSessionPrompt:
+    def test_planner_prompt_includes_existing_profiles(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_profile(tmp_path, "api", validation=["uv run pytest tests/api"])
+
+        prompt = build_session_prompt(tmp_path, "planner")
+
+        assert "## Existing Profiles" in prompt
+        assert "api.toml" in prompt
+        assert "uv run pytest tests/api" in prompt
+
     def test_developer_prompt_includes_task_validation_commands(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", validation=["uv run pytest"])

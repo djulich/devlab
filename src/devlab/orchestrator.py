@@ -276,6 +276,16 @@ def _validation_prompt_section(task: Task, profile: Profile) -> str:
     )
 
 
+def _format_profile_listing(root: Path) -> str:
+    profiles_dir = root / ".devlab/config/profiles"
+    if not profiles_dir.exists():
+        return ""
+    lines: list[str] = []
+    for path in sorted(profiles_dir.glob("*.toml")):
+        lines.append(f"### {path.name}\n\n{_read_file(path).strip()}")
+    return "\n\n".join(lines)
+
+
 def _build_planner_prompt(root: Path) -> str:
     parts: list[str] = []
     plan = _read_file(root / DESIGN_PLAN)
@@ -287,6 +297,9 @@ def _build_planner_prompt(root: Path) -> str:
     tasks = task_tracker(root).list_tasks()
     if tasks:
         parts.append(f"## Current Tasks\n\n{_format_task_listing(tasks)}")
+    profile_listing = _format_profile_listing(root)
+    if profile_listing:
+        parts.append(f"## Existing Profiles\n\n{profile_listing}")
     findings = finding_tracker(root).open_findings()
     if findings:
         finding_sections = [
