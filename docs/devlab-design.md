@@ -261,9 +261,9 @@ For roles that need the development environment, the orchestrator enforces an en
 
 Post-session teardown is attempted even when the agent session fails. Pre-session cleanup exists because a prior devlab run may have crashed before teardown completed.
 
-Executable lifecycle commands currently live in `.devlab/config/environment.toml`. Current managed roles are developer, reviewer, and integrator; planner can find the environment definition through conventions when planning but does not run inside the managed environment by default, and architect does not receive environment context in its system prompt.
+Executable lifecycle commands live in task profiles under `.devlab/config/profiles/`. Each task resolves to exactly one profile; if task metadata omits `profile`, DevLab uses `default`. Planner and architect sessions do not run inside a task profile environment by default.
 
-The planner owns recognizing when upcoming work requires environment changes, but executable environment changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
+The planner owns recognizing when upcoming work requires tooling or environment changes, but executable profile changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
 
 Target-specific DevLab workflow artifacts live in the committed, project-local `.devlab/` directory. The role and convention files in `specs/development/` remain DevLab-owned role/prompt source, analogous to DevLab's `src/`.
 
@@ -290,9 +290,10 @@ Target-project DevLab workflow artifacts are collected under `.devlab/` in the t
 ```text
 .devlab/
   config/
+    README.md
     tooling.md
-    environment.toml
     profiles/
+      default.toml
 
   specs/
     system/
@@ -343,7 +344,7 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling choices are documented in `.devlab/config/tooling.md`. Executable environment lifecycle commands are defined in `.devlab/config/environment.toml`.
+Current Python tooling policy is documented in `.devlab/config/tooling.md`. Default validation commands and executable environment lifecycle commands are defined in `.devlab/config/profiles/default.toml`.
 
 In short:
 
@@ -353,7 +354,7 @@ In short:
 - `ty` handles static type checking,
 - `pytest` handles tests.
 
-Operational details such as exact validation commands belong in task metadata or target-specific tooling configuration, not in reusable role files. Stable environment lifecycle commands belong in target-specific environment configuration so developer, reviewer, and integrator sessions start from a controlled baseline.
+Operational details such as exact validation commands belong in task metadata or target-specific profiles, not in reusable role files. Stable environment lifecycle commands belong in target-specific profiles so developer, reviewer, and integrator sessions start from a controlled baseline.
 
 ## Design tradeoffs
 

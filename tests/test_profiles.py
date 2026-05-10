@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from devlab.environment import ENVIRONMENT_CONFIG_FILE
 from devlab.profiles import ProfileNotFoundError, effective_profile_id, load_profile
 
 
@@ -55,18 +54,9 @@ def test_missing_sections_default_to_empty_noop(tmp_path: Path) -> None:
     assert profile.environment.setup == ()
 
 
-def test_default_profile_falls_back_to_legacy_environment_config(tmp_path: Path) -> None:
-    (tmp_path / ".devlab/config").mkdir(parents=True)
-    (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
-        'version = 1\nmanaged_roles = ["developer"]\nsetup = ["uv sync"]\n'
-    )
-
-    profile = load_profile(tmp_path, None)
-
-    assert profile.id == "default"
-    assert profile.path is None
-    assert profile.environment.managed_roles == ("developer",)
-    assert profile.environment.setup == ("uv sync",)
+def test_default_profile_must_exist(tmp_path: Path) -> None:
+    with pytest.raises(ProfileNotFoundError, match="default"):
+        load_profile(tmp_path, None)
 
 
 def test_named_missing_profile_is_rejected(tmp_path: Path) -> None:

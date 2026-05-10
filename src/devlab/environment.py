@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 import subprocess
-import tomllib
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-ENVIRONMENT_CONFIG_FILE = ".devlab/config/environment.toml"
 ENVIRONMENT_LOG_DIR = ".devlab/logs/environment"
 
 
@@ -26,25 +24,6 @@ class EnvironmentConfig:
     setup: tuple[str, ...] = ()
     post_session: tuple[str, ...] = ()
     timeouts: EnvironmentTimeouts = EnvironmentTimeouts()
-
-    @classmethod
-    def load(cls, root: Path) -> EnvironmentConfig:
-        path = root / ENVIRONMENT_CONFIG_FILE
-        if not path.exists():
-            return cls()
-        data = tomllib.loads(path.read_text())
-        return cls(
-            managed_roles=_string_tuple(data, "managed_roles"),
-            pre_session=_string_tuple(data, "pre_session"),
-            setup=_string_tuple(data, "setup"),
-            post_session=_string_tuple(data, "post_session"),
-            timeouts=EnvironmentTimeouts(
-                pre_session=_int_value(data.get("timeouts", {}), "pre_session", 300),
-                setup=_int_value(data.get("timeouts", {}), "setup", 600),
-                post_session=_int_value(data.get("timeouts", {}), "post_session", 300),
-            ),
-        )
-
 
 @dataclasses.dataclass(frozen=True)
 class EnvironmentCommandError(RuntimeError):
@@ -64,7 +43,7 @@ class EnvironmentCommandError(RuntimeError):
 class EnvironmentManager:
     def __init__(self, root: Path, config: EnvironmentConfig | None = None) -> None:
         self.root = root
-        self.config = config or EnvironmentConfig.load(root)
+        self.config = config or EnvironmentConfig()
 
     def manages_role(self, role_name: str) -> bool:
         return role_name in self.config.managed_roles

@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from devlab.agents import AgentCall, MockProvider
-from devlab.environment import ENVIRONMENT_CONFIG_FILE
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.orchestrator import (
     DESIGN_PLAN,
@@ -35,8 +34,13 @@ def _setup_tree(root: Path) -> None:
     (root / "specs/development").mkdir(parents=True)
     (root / "specs/development/conventions.md").write_text("# Conventions\n")
     (root / ".devlab/config/tooling.md").write_text("# Tooling\n")
-    (root / ENVIRONMENT_CONFIG_FILE).write_text(
-        'version = 1\nmanaged_roles = ["developer", "reviewer", "integrator"]\n'
+    (root / ".devlab/config/profiles").mkdir(parents=True)
+    (root / ".devlab/config/profiles/default.toml").write_text(
+        'version = 1\n'
+        'id = "default"\n'
+        'title = "Default"\n'
+        '\n[environment]\n'
+        'managed_roles = ["developer", "reviewer", "integrator"]\n'
     )
     for role in ROLES.values():
         (root / role.role_file).write_text(f"# Role: {role.name}\n")
@@ -319,12 +323,16 @@ class TestRunLoop:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "First")
-        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
-            'version = 1\n'
-            'managed_roles = ["developer"]\n'
-            'pre_session = ["echo pre >> env-order.log"]\n'
-            'setup = ["echo setup >> env-order.log"]\n'
-            'post_session = ["echo post >> env-order.log"]\n'
+        _write_profile(
+            tmp_path,
+            "default",
+            environment=(
+                '\n[environment]\n'
+                'managed_roles = ["developer"]\n'
+                'pre_session = ["echo pre >> env-order.log"]\n'
+                'setup = ["echo setup >> env-order.log"]\n'
+                'post_session = ["echo post >> env-order.log"]\n'
+            ),
         )
 
         def on_invoke(call: AgentCall) -> None:
@@ -343,9 +351,7 @@ class TestRunLoop:
         ]
         assert list((tmp_path / ".devlab/logs/environment").glob("*_developer_*.log"))
 
-    def test_profile_environment_lifecycle_overrides_legacy_environment_for_task(
-        self, tmp_path: Path
-    ) -> None:
+    def test_task_profile_environment_lifecycle_is_used(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "First", profile="api")
@@ -358,11 +364,6 @@ class TestRunLoop:
                 'setup = ["echo profile >> env-order.log"]\n'
             ),
         )
-        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
-            'version = 1\n'
-            'managed_roles = ["developer"]\n'
-            'setup = ["echo legacy >> env-order.log"]\n'
-        )
         provider = MockProvider()
 
         run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
@@ -372,12 +373,16 @@ class TestRunLoop:
     def test_unmanaged_planner_does_not_run_environment_lifecycle(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
-            'version = 1\n'
-            'managed_roles = ["planner"]\n'
-            'pre_session = ["echo pre >> env-order.log"]\n'
-            'setup = ["echo setup >> env-order.log"]\n'
-            'post_session = ["echo post >> env-order.log"]\n'
+        _write_profile(
+            tmp_path,
+            "default",
+            environment=(
+                '\n[environment]\n'
+                'managed_roles = ["planner"]\n'
+                'pre_session = ["echo pre >> env-order.log"]\n'
+                'setup = ["echo setup >> env-order.log"]\n'
+                'post_session = ["echo post >> env-order.log"]\n'
+            ),
         )
         provider = MockProvider()
 
@@ -390,8 +395,14 @@ class TestRunLoop:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "First")
-        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
-            'version = 1\nmanaged_roles = ["developer"]\nsetup = ["exit 7"]\n'
+        _write_profile(
+            tmp_path,
+            "default",
+            environment=(
+                '\n[environment]\n'
+                'managed_roles = ["developer"]\n'
+                'setup = ["exit 7"]\n'
+            ),
         )
         provider = MockProvider()
 
@@ -406,10 +417,14 @@ class TestRunLoop:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "First")
-        (tmp_path / ENVIRONMENT_CONFIG_FILE).write_text(
-            'version = 1\n'
-            'managed_roles = ["developer"]\n'
-            'post_session = ["echo post >> env-order.log"]\n'
+        _write_profile(
+            tmp_path,
+            "default",
+            environment=(
+                '\n[environment]\n'
+                'managed_roles = ["developer"]\n'
+                'post_session = ["echo post >> env-order.log"]\n'
+            ),
         )
         provider = MockProvider(return_code=3)
 

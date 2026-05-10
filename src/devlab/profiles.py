@@ -50,8 +50,6 @@ def load_profile(root: Path, profile_id: str | None) -> Profile:
     path = profile_path(root, resolved_id)
     if path.exists():
         return _read_profile(path, resolved_id)
-    if resolved_id == DEFAULT_PROFILE:
-        return _legacy_default_profile(root)
     raise ProfileNotFoundError(resolved_id, path)
 
 
@@ -87,21 +85,6 @@ def _read_profile(path: Path, expected_id: str) -> Profile:
         path=path,
     )
 
-
-def _legacy_default_profile(root: Path) -> Profile:
-    """Compatibility profile backed by existing global environment config.
-
-    This keeps repositories using only `.devlab/config/environment.toml` working while
-    new repositories can put lifecycle and validation defaults in
-    `.devlab/config/profiles/default.toml`.
-    """
-    return Profile(
-        id=DEFAULT_PROFILE,
-        title="Default",
-        tooling=ToolingConfig(),
-        environment=EnvironmentConfig.load(root),
-        path=None,
-    )
 
 
 def _table(data: dict[str, Any], key: str) -> dict[str, Any]:

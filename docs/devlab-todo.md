@@ -2,14 +2,14 @@
 
 ## Tooling and Environment Profiles
 
-Current state: task files can specify concrete `validation` commands. If omitted, worker agents use defaults from `.devlab/config/tooling.md`; if `validation = []`, no validation commands are required. Shared environment lifecycle commands live in `.devlab/config/environment.toml` and are enforced by the orchestrator for developer/reviewer/integrator sessions.
+Current state: task files can specify one `profile`; if omitted, `default` is used. Profiles live in `.devlab/config/profiles/` and define tooling summaries, default validation commands, and environment lifecycle commands. Task-specific `validation` commands override profile defaults; if `validation = []`, no validation commands are required. `.devlab/config/tooling.md` contains human/agent-readable tooling policy.
 
-Open feature: add reusable tooling and environment profiles so tasks and target projects can reference concise profile names instead of repeating command lists and lifecycle commands.
+Open feature: mature profile management so target projects can safely evolve reusable task profiles for multiple components and services.
 
 - Define DevLab-provided profiles for common stacks, e.g. Python CLI, Python FastAPI backend, Python Django backend, React frontend, Postgres service, Redis service, Docker Compose app.
 - Let target workspaces define custom profiles at a discoverable location.
-- Let tasks reference validation profiles and optionally add task-specific validation commands.
-- Let environment configuration compose setup/teardown/service profiles for the target project's components.
+- Let tasks reference one reusable profile and optionally add task-specific validation commands.
+- Let target projects create dedicated profiles for task types that need combined setup/teardown/service behavior.
 - Keep profile use declarative; do not make the orchestrator execute arbitrary task validation commands yet.
 
 ## Target-specific DevLab Workflow Directory
@@ -23,9 +23,10 @@ Current target-project layout:
 ```text
 .devlab/
   config/
-    tooling.toml
-    environment.toml
+    README.md
+    tooling.md
     profiles/
+      default.toml
       python-cli.toml
       fastapi-postgres.toml
 
@@ -63,7 +64,7 @@ Initialization command:
 
 - Add a `devlab init` command, similar to `git init`, that creates the target-project-local `.devlab/` structure.
 - Make initialization idempotent and non-destructive by default; never overwrite existing files unless an explicit `--force` option is used.
-- Seed minimal starter files such as `.devlab/config/tooling.md`, `.devlab/config/environment.toml`, `.devlab/specs/system/README.md`, and `.devlab/specs/deployment/README.md`.
+- Seed minimal starter files such as `.devlab/config/README.md`, `.devlab/config/tooling.md`, `.devlab/config/profiles/default.toml`, `.devlab/specs/system/README.md`, and `.devlab/specs/deployment/README.md`.
 - Create empty workflow directories such as `.devlab/plans/`, `.devlab/tasks/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/logs/environment/`, and `.devlab/logs/deployment/`.
 - Consider `.devlab/manifest.toml` or `.devlab/VERSION` to record DevLab layout version and enabled templates.
 - Add template options later, e.g. `devlab init --template python-cli` or `devlab init --template fastapi-postgres`.
