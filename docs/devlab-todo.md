@@ -1,72 +1,16 @@
 # DevLab TODOs / Features to be implemented
 
-## Target-specific DevLab Workflow Directory
+## Package DevLab-owned Role Resources
 
-Current state: target-project workflow artifacts live under a committed, project-local `.devlab/` directory. `devlab init` creates the starter `.devlab/` layout from DevLab package templates. DevLab-owned role and convention files remain under `specs/development/` in this repository while the layout stabilizes.
+Current state: `devlab init` creates the target-project-local `.devlab/` workflow directory from package templates. Target workflow artifacts are no longer expected outside `.devlab/`.
 
-Open feature: finish reusable-package separation and add migration/template tooling.
+Open feature: finish reusable-package separation for DevLab-owned role and convention files.
 
-Current target-project layout:
-
-```text
-.devlab/
-  config/
-    README.md
-    tooling.md
-    profiles/
-      default.toml
-      python-cli.toml
-      fastapi-postgres.toml
-
-  specs/
-    system/
-    deployment/
-
-  plans/
-    design-plan.md
-    project-plan.md
-
-  tasks/
-    T0001_...
-
-  findings/
-    F0001_...
-
-  history/
-    20260507T235700_developer_handoff.md
-    integrated_M1.md
-
-  logs/
-    environment/
-      20260507T235700_developer_pre_session_1.log
-```
-
-Rationale:
-
-- Different target projects need different specs, tooling, validation, services, and environment lifecycles.
-- `.devlab/` should be target-project-local and committed by default, including workflow history and logs, to preserve auditability and reproducibility.
-- `specs/development/` should remain DevLab-owned role/prompt source, analogous to DevLab's `src/`, not target-project workflow state.
-- Generated runtime logs/history are still workflow artifacts; keeping them under `.devlab/` makes cleanup, review, and migration easier.
-
-Implemented initialization command:
-
-- `devlab init` creates the target-project-local `.devlab/` structure.
-- Initialization is idempotent and non-destructive by default; `--force` overwrites starter files.
-- Starter files include `.devlab/config/README.md`, `.devlab/config/tooling.md`, `.devlab/config/profiles/default.toml`, `.devlab/specs/system/README.md`, and `.devlab/specs/deployment/README.md`.
-- Workflow directories include `.devlab/plans/`, `.devlab/tasks/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/logs/environment/`, and `.devlab/logs/deployment/`.
-- `.devlab/manifest.toml` records the layout version.
-
-Remaining initialization/migration work:
-
-- Add starter options later if needed, e.g. `devlab init --starter minimal`.
-- Add profile helper commands later if useful, e.g. `devlab profile add <builtin-profile>`.
-- Add migration support later, e.g. `devlab migrate`, for moving legacy `work/`, `.session-artifacts/`, `specs/system/`, and target-specific config into `.devlab/` if legacy target repositories ever exist.
-
-Implementation concerns:
-
-- Add redaction/size controls before committing logs by default in sensitive projects.
-- Keep a migration path for older target repositories that still use `work/`, `.session-artifacts/`, and `specs/system/` paths.
-- Keep reusable built-in profiles in DevLab package; let `.devlab/config/profiles/` define target-specific profiles.
+- Move or package `specs/development/conventions.md` and `specs/development/role-*.md` as DevLab package resources.
+- Make prompt assembly load those resources from the installed DevLab package instead of from the target repository root.
+- Keep target repositories free of DevLab-owned role/prompt source files.
+- Keep `.devlab/` target-owned and committed by default.
+- No migration path is required until real legacy target repositories exist.
 
 ## Target-specific Worker Agent Configuration
 
