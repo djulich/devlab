@@ -3,7 +3,7 @@ id = "default"
 title = "Default Python workflow"
 
 [tooling]
-summary = "Python package workflow using uv, pytest, ruff, and ty."
+summary = "Python package workflow using uv, uv_build, pytest, ruff, ty, and a src/ package layout."
 default_validation = [
   "uv run ruff check",
   "uv run ty check",
