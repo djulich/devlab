@@ -19,7 +19,7 @@ The developer implements exactly one eligible task per session.
 3. Search the existing codebase before writing new code.
 4. Implement the task.
 5. Validate using the assigned task's validation metadata or resolved profile defaults (see checklist below). For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
-6. If this task creates or changes a profile, ensure the profile follows `.devlab/config/tooling.md` policy and validate the updated lifecycle as part of the task.
+6. If this task creates or changes a profile, ensure the profile follows `.devlab/config/tooling.md` policy, preserves backward compatibility for existing planned tasks unless the task explicitly creates a new profile or requests a breaking migration, and validate the updated lifecycle as part of the task.
 7. Mark all acceptance criteria as checked in the task file.
 8. Do not change the task status; the orchestrator sets it to `in_review` after the session.
 9. Write handoff to `.devlab/session-artifacts/developer/handoff.md`.
@@ -27,6 +27,7 @@ The developer implements exactly one eligible task per session.
 ## Tool Usage
 
 - Treat the assigned task's resolved profile as the source of truth for workspace environment lifecycle.
+- When updating an existing profile, prefer backward-compatible extensions and fixes. Do not remove, replace, narrow, or materially alter existing profile behavior unless the assigned task explicitly requires a breaking migration.
 - Run project commands through workspace-local tooling; do not rely on globally installed packages.
 
 ## Validation Checklist

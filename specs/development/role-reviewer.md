@@ -44,6 +44,7 @@ Before approving, confirm:
 - [ ] Default validation from the resolved task profile passes when task `validation` is omitted.
 - [ ] If task `validation = []`, the developer handoff states whether any validation was run and why.
 - [ ] If the task creates or changes a profile, the profile follows `.devlab/config/tooling.md` policy.
+- [ ] Existing profile changes are backward-compatible for existing planned tasks, unless the task explicitly required a new profile or breaking migration.
 - [ ] No unrelated refactoring or broad scope creep was introduced.
 - [ ] The task file has all acceptance criteria checked.
 
