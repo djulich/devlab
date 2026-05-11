@@ -22,15 +22,85 @@ Possible implementation:
 - Consider summarizing profile listings for planner prompts instead of embedding full profile TOML by default.
 - Keep role prompts procedural and minimal; prefer enforcing workflow rules in code where practical.
 
-## Agent Configuration Refinements
+## Agent Configuration Closure Plan
 
 Current state: `.devlab/config/agents.toml` configures worker agent provider, command, model, effort, timeout, prompt arguments, and stdin prompt delivery. `devlab init` creates a documented starter file, CLI overrides are supported, resolved agent configuration is logged under `.devlab/logs/agents/`, and the reference lives in `docs/agent-configuration.md`.
 
-Possible follow-up refinements:
+Remaining work to close the feature:
 
-- Add `devlab doctor` validation for malformed `agents.toml`, unknown roles, missing providers, and unresolved placeholders.
-- Add more provider examples if new CLIs are used in practice.
-- Improve resolved agent config reporting in `devlab status --verbose`.
+### `devlab doctor`
+
+Add a workspace validation command that reports configuration/layout problems without running agent sessions.
+
+Agent-configuration checks:
+
+- `.devlab/config/agents.toml` parses as TOML.
+- `[defaults]`, `[roles]`, and `[providers]` are tables when present.
+- Every configured role name is known: `architect`, `planner`, `developer`, `reviewer`, or `integrator`.
+- Every resolved role references an existing provider.
+- Every provider has a string `command`.
+- `args` and `prompt_args` are lists of strings when present.
+- `stdin_template` is a string when present.
+- `timeout_seconds` is an integer when present.
+- Provider templates only reference supported placeholders: `{role_name}`, `{provider}`, `{model}`, `{effort}`, `{system_prompt}`, and `{session_prompt}`.
+- Each role can be resolved into an invokable provider configuration.
+
+Suggested output:
+
+```text
+DevLab doctor: OK
+```
+
+or:
+
+```text
+DevLab doctor: 2 problem(s)
+- .devlab/config/agents.toml: providers.review.command must be a string
+- .devlab/config/agents.toml: roles.reviewer.provider references missing provider "review"
+```
+
+Implementation sketch:
+
+- Add `src/devlab/doctor.py` with a small `DoctorProblem` dataclass and `check_workspace(root) -> list[DoctorProblem]`.
+- Reuse `agent_config.py` parsing/resolution logic where practical, but make doctor collect multiple problems instead of failing fast on the first exception.
+- Add `devlab doctor [--root PATH]` to `cli.py`.
+- Return exit code `0` when no problems exist and `1` when problems are found.
+
+### `devlab status --verbose`
+
+Extend status reporting with resolved agent configuration, without printing prompts.
+
+Verbose output should include:
+
+- next selected role,
+- selected provider for each role,
+- model,
+- effort,
+- timeout,
+- command shape,
+- whether prompts are sent through stdin,
+- path to `.devlab/config/agents.toml` or note that built-in fallback defaults are used.
+
+Example:
+
+```text
+Next role: developer
+
+Agent configuration:
+- architect: default model="" effort="" timeout=3600 command=["claude", "-p"] stdin=false
+- planner: default model="" effort="" timeout=3600 command=["claude", "-p"] stdin=false
+- developer: codex model="gpt-5-codex" effort="medium" timeout=3600 command=["codex", "exec", "-", "--model", "gpt-5-codex"] stdin=true
+- reviewer: claude model="claude-sonnet-4.5" effort="high" timeout=3600 command=["claude", "-p", "--model", "claude-sonnet-4.5"] stdin=false
+- integrator: default model="" effort="" timeout=3600 command=["claude", "-p"] stdin=false
+```
+
+Implementation sketch:
+
+- Add `status.py` if status output grows beyond simple CLI formatting.
+- Reuse `load_agent_configuration()` and `format_resolved_agent_config()` or add a compact formatter.
+- Keep prompt contents out of status output.
+
+After these two items are implemented, consider target-specific worker agent configuration complete. Future provider examples can be added opportunistically when real usage requires them.
 
 ## Integration Findings and Corrective Planning
 
