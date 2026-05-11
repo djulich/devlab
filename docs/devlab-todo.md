@@ -53,13 +53,13 @@ To support clean milestone version rollbacks, we should think about the best bra
 
 ## Architect Re-invocation
 
-Current state: the orchestrator invokes the architect when the design plan is empty and after integrated milestones that have not been architecture-reviewed. Milestone-boundary architect prompts ask the architect to verify that the design plan still matches the implemented system, system/deployment specs, and future project direction.
+Current state: the orchestrator invokes the architect when the design plan is empty and after integrated milestones that have not been architecture-approved. Milestone-boundary architect prompts ask the architect to verify that the design plan still matches the implemented system, system/deployment specs, and future project direction.
 
 Implemented behavior:
 
-- `.devlab/milestones/<milestone-id>.toml` tracks `architecture_reviewed` and `architecture_review_handoff`.
-- Architect is selected when a milestone is integrated but not architecture-reviewed.
-- Successful architecture review marks the milestone architecture-reviewed.
+- `.devlab/milestones/<milestone-id>.toml` tracks `architecture_approved` and `architecture_review_handoff`.
+- Architect is selected when a milestone is integrated but not architecture-approved.
+- Successful architecture review marks the milestone architecture-approved.
 - Architecture review Open Issues create architect-sourced findings and route to planner.
 
 Possible follow-up:
@@ -77,15 +77,15 @@ Implemented phases 1-3:
 - `FileMilestoneTracker` abstraction.
 - Creation of missing milestone files from task metadata, with project-plan headings used for titles when available.
 - Preservation of existing milestone workflow state when adding newly discovered task IDs.
-- State mutation helpers for marking tasks complete, integrated, integration failed, and architecture reviewed.
+- State mutation helpers for marking tasks complete, integrated, integration failed, and architecture approved.
 - Integration selection uses milestone state instead of `.devlab/history/integrated_<milestone>.md` marker files.
 - Successful integration records `integrated = true`, `status = "integrated"`, and the archived integration handoff on the milestone.
 - Failed integration records `status = "integration_failed"`, keeps `integrated = false`, and stores the created finding ID on the milestone.
 - Architecture review selection uses milestone state.
 - Milestone-boundary architect prompts include the integrated milestone, relevant tasks, integration handoff, design plan, project plan, and system/deployment specs.
-- Successful architecture review records `architecture_reviewed = true`, `status = "architecture_reviewed"`, and the archived architect handoff on the milestone.
-- Architecture review Open Issues create architect-sourced findings and leave `architecture_reviewed = false` so review can run again after corrective work.
-- Adding newly discovered task IDs to an integrated milestone resets `integrated = false` and `architecture_reviewed = false`, forcing reintegration and re-review after corrective tasks.
+- Successful architecture review records `architecture_approved = true`, `status = "architecture_approved"`, and the archived architect handoff on the milestone.
+- Architecture review Open Issues create architect-sourced findings and leave `architecture_approved = false` so review can run again after corrective work.
+- Adding newly discovered task IDs to an integrated milestone resets `integrated = false` and `architecture_approved = false`, forcing reintegration and re-review after corrective tasks.
 
 Milestone file shape:
 
@@ -96,7 +96,7 @@ title = "Foundation"
 status = "planned"
 integration_required = true
 integrated = false
-architecture_reviewed = false
+architecture_approved = false
 task_ids = ["T0001", "T0002"]
 integration_handoff = ""
 architecture_review_handoff = ""
@@ -111,7 +111,7 @@ Remaining phase 4: status and doctor support.
   - milestone references unknown task,
   - duplicate or malformed milestone IDs,
   - integrated milestone without integration handoff,
-  - architecture-reviewed milestone without architecture handoff,
+  - architecture-approved milestone without architecture handoff,
   - finding IDs listed on milestones but missing from `.devlab/findings/`.
 
 Future extensions enabled by explicit milestone state:

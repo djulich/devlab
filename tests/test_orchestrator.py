@@ -88,13 +88,13 @@ def _write_milestone(
     milestone_id: str,
     *,
     integrated: bool = False,
-    architecture_reviewed: bool = False,
+    architecture_approved: bool = False,
     task_ids: list[str] | None = None,
 ) -> Path:
     path = root / ".devlab/milestones" / f"{milestone_id}.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    if architecture_reviewed:
-        status = "architecture_reviewed"
+    if architecture_approved:
+        status = "architecture_approved"
     elif integrated:
         status = "integrated"
     else:
@@ -107,7 +107,7 @@ def _write_milestone(
         f'status = "{status}"\n'
         "integration_required = true\n"
         f"integrated = {str(integrated).lower()}\n"
-        f"architecture_reviewed = {str(architecture_reviewed).lower()}\n"
+        f"architecture_approved = {str(architecture_approved).lower()}\n"
         f"task_ids = [{task_ids_text}]\n"
         'integration_handoff = ""\n'
         'architecture_review_handoff = ""\n'
@@ -553,7 +553,7 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["integrator"]
 
-    def test_integrated_architecture_reviewed_milestone_stops(
+    def test_integrated_architecture_approved_milestone_stops(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
@@ -563,7 +563,7 @@ class TestRunLoop:
             tmp_path,
             "M1",
             integrated=True,
-            architecture_reviewed=True,
+            architecture_approved=True,
             task_ids=["T0001"],
         )
         provider = MockProvider()
@@ -656,7 +656,7 @@ class TestRunLoop:
         assert [call.role_name for call in provider.calls] == ["integrator", "architect"]
         milestone = FileMilestoneTracker(tmp_path).get("M1")
         assert milestone.integrated is True
-        assert milestone.architecture_reviewed is True
+        assert milestone.architecture_approved is True
 
     def test_integrated_milestone_selects_architect_review(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -678,8 +678,8 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["architect"]
         milestone = FileMilestoneTracker(tmp_path).get("M1")
-        assert milestone.status == MilestoneStatus.ARCHITECTURE_REVIEWED
-        assert milestone.architecture_reviewed is True
+        assert milestone.status == MilestoneStatus.ARCHITECTURE_APPROVED
+        assert milestone.architecture_approved is True
         assert milestone.architecture_review_handoff.endswith("_architect_handoff.md")
 
     def test_architect_review_open_issues_create_finding(self, tmp_path: Path) -> None:
@@ -705,7 +705,7 @@ class TestRunLoop:
         assert findings[0].source == "architect"
         assert findings[0].milestone == "M1"
         assert "Design plan misses implemented boundary" in findings[0].body
-        assert FileMilestoneTracker(tmp_path).get("M1").architecture_reviewed is False
+        assert FileMilestoneTracker(tmp_path).get("M1").architecture_approved is False
 
     def test_architecture_review_prompt_includes_milestone_context(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

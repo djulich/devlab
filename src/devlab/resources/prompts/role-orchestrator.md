@@ -30,7 +30,7 @@ The orchestrator controls the development loop by invoking agent sessions in the
 | The design plan is empty or missing | Invoke **architect** |
 | Any task has `status = "in_review"` | Invoke **reviewer** |
 | Any finding has `status = "open"` | Invoke **planner** |
-| Any integrated milestone is not architecture-reviewed in `.devlab/milestones/` | Invoke **architect** |
+| Any integrated milestone is not architecture-approved in `.devlab/milestones/` | Invoke **architect** |
 | Any completed milestone is not integrated in `.devlab/milestones/` | Invoke **integrator** |
 | Any task with `status = "open"` or `status = "changes_requested"` has all dependencies closed | Invoke **developer** |
 | No active tasks exist and milestones remain to plan | Invoke **planner** |
@@ -41,6 +41,6 @@ If a session fails (no handoff produced, or handoff reports an unrecoverable blo
 
 ## Stop Conditions
 
-- All task files have `status = "closed"` and completed milestones are integrated and architecture-reviewed in `.devlab/milestones/`.
+- All task files have `status = "closed"` and completed milestones are integrated and architecture-approved in `.devlab/milestones/`.
 - An unrecoverable error is reported in a handoff.
 - No development task is eligible because all remaining development tasks depend on tasks that are not closed.

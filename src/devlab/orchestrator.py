@@ -153,7 +153,7 @@ def select_integration_milestone(root: Path) -> str | None:
 def select_architecture_review_milestone(root: Path) -> str | None:
     _sync_milestones(root)
     for milestone in milestone_tracker(root).list_milestones():
-        if milestone.integrated and not milestone.architecture_reviewed:
+        if milestone.integrated and not milestone.architecture_approved:
             return milestone.id
     return None
 
@@ -621,8 +621,8 @@ def process_handoff(root: Path, role_name: str) -> None:
                 )
                 print("  Architecture review reported open issues; finding created")
             else:
-                milestone_tracker(root).mark_architecture_reviewed(milestone, archived)
-                print(f"  Milestone {milestone} marked architecture-reviewed")
+                milestone_tracker(root).mark_architecture_approved(milestone, archived)
+                print(f"  Milestone {milestone} marked architecture-approved")
     elif role_name == "developer":
         task_path = select_task(root)
         if task_path and _task_is_complete(task_path):

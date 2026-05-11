@@ -20,7 +20,7 @@ class MilestoneStatus(StrEnum):
     TASKS_COMPLETE = "tasks_complete"
     INTEGRATION_FAILED = "integration_failed"
     INTEGRATED = "integrated"
-    ARCHITECTURE_REVIEWED = "architecture_reviewed"
+    ARCHITECTURE_APPROVED = "architecture_approved"
     COMPLETE = "complete"
 
 
@@ -31,7 +31,7 @@ class Milestone:
     status: MilestoneStatus
     integration_required: bool
     integrated: bool
-    architecture_reviewed: bool
+    architecture_approved: bool
     task_ids: tuple[str, ...]
     integration_handoff: str
     architecture_review_handoff: str
@@ -45,7 +45,7 @@ class FileMilestoneTracker:
 
     Task files remain the source of truth for task status. Milestone files track
     workflow state around a milestone, such as integration and architecture
-    review state.
+    approval state.
     """
 
     def __init__(self, root: Path, milestones_dir: str = MILESTONES_DIR) -> None:
@@ -100,7 +100,7 @@ class FileMilestoneTracker:
                     if milestone.integrated:
                         metadata["status"] = MilestoneStatus.ACTIVE.value
                         metadata["integrated"] = False
-                        metadata["architecture_reviewed"] = False
+                        metadata["architecture_approved"] = False
                     path.write_text(_format_milestone_file(metadata))
                     milestone = self._read_milestone(path)
             else:
@@ -141,11 +141,11 @@ class FileMilestoneTracker:
         metadata["findings"] = findings
         milestone.path.write_text(_format_milestone_file(metadata))
 
-    def mark_architecture_reviewed(self, milestone_id: str, handoff_path: Path) -> None:
+    def mark_architecture_approved(self, milestone_id: str, handoff_path: Path) -> None:
         milestone = self.get(milestone_id)
         metadata = dict(milestone.metadata)
-        metadata["status"] = MilestoneStatus.ARCHITECTURE_REVIEWED.value
-        metadata["architecture_reviewed"] = True
+        metadata["status"] = MilestoneStatus.ARCHITECTURE_APPROVED.value
+        metadata["architecture_approved"] = True
         metadata["architecture_review_handoff"] = handoff_path.name
         milestone.path.write_text(_format_milestone_file(metadata))
 
@@ -162,7 +162,7 @@ class FileMilestoneTracker:
         normalized["status"] = status.value
         normalized["integration_required"] = bool(metadata.get("integration_required", True))
         normalized["integrated"] = bool(metadata.get("integrated", False))
-        normalized["architecture_reviewed"] = bool(metadata.get("architecture_reviewed", False))
+        normalized["architecture_approved"] = bool(metadata.get("architecture_approved", False))
         normalized["task_ids"] = list(task_ids)
         normalized["integration_handoff"] = str(metadata.get("integration_handoff", ""))
         normalized["architecture_review_handoff"] = str(
@@ -175,7 +175,7 @@ class FileMilestoneTracker:
             status=status,
             integration_required=normalized["integration_required"],
             integrated=normalized["integrated"],
-            architecture_reviewed=normalized["architecture_reviewed"],
+            architecture_approved=normalized["architecture_approved"],
             task_ids=task_ids,
             integration_handoff=normalized["integration_handoff"],
             architecture_review_handoff=normalized["architecture_review_handoff"],
@@ -195,7 +195,7 @@ def _default_milestone_metadata(
         "status": MilestoneStatus.PLANNED.value,
         "integration_required": True,
         "integrated": False,
-        "architecture_reviewed": False,
+        "architecture_approved": False,
         "task_ids": sorted(task_ids, key=_natural_sort_key),
         "integration_handoff": "",
         "architecture_review_handoff": "",
@@ -211,7 +211,7 @@ def _format_milestone_file(metadata: dict[str, Any]) -> str:
         "status",
         "integration_required",
         "integrated",
-        "architecture_reviewed",
+        "architecture_approved",
         "task_ids",
         "integration_handoff",
         "architecture_review_handoff",

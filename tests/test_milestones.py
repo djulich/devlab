@@ -25,7 +25,7 @@ def test_upsert_from_tasks_creates_missing_milestone_files(tmp_path: Path) -> No
     assert milestone.status == MilestoneStatus.PLANNED
     assert milestone.integration_required is True
     assert milestone.integrated is False
-    assert milestone.architecture_reviewed is False
+    assert milestone.architecture_approved is False
     assert milestone.task_ids == ("T0001", "T0002")
     assert (tmp_path / ".devlab/milestones/M1.toml").exists()
 
@@ -42,7 +42,7 @@ def test_upsert_from_tasks_resets_integrated_state_when_adding_task_ids(
         'status = "integrated"\n'
         'integration_required = true\n'
         'integrated = true\n'
-        'architecture_reviewed = false\n'
+        'architecture_approved = false\n'
         'task_ids = ["T0001"]\n'
         'integration_handoff = "handoff.md"\n'
         'architecture_review_handoff = ""\n'
@@ -70,10 +70,10 @@ def test_upsert_from_tasks_resets_integration_when_new_task_added(
         'version = 1\n'
         'id = "M1"\n'
         'title = "Existing"\n'
-        'status = "architecture_reviewed"\n'
+        'status = "architecture_approved"\n'
         'integration_required = true\n'
         'integrated = true\n'
-        'architecture_reviewed = true\n'
+        'architecture_approved = true\n'
         'task_ids = ["T0001"]\n'
         'integration_handoff = "integrator.md"\n'
         'architecture_review_handoff = "architect.md"\n'
@@ -88,7 +88,7 @@ def test_upsert_from_tasks_resets_integration_when_new_task_added(
 
     assert milestone.status == MilestoneStatus.ACTIVE
     assert milestone.integrated is False
-    assert milestone.architecture_reviewed is False
+    assert milestone.architecture_approved is False
     assert milestone.task_ids == ("T0001", "T0002")
 
 
@@ -118,16 +118,16 @@ def test_mark_integration_failed_records_finding_once(tmp_path: Path) -> None:
     assert milestone.findings == ("F0001",)
 
 
-def test_mark_architecture_reviewed_records_state_and_handoff(tmp_path: Path) -> None:
+def test_mark_architecture_approved_records_state_and_handoff(tmp_path: Path) -> None:
     _write_milestone(tmp_path, "M1")
 
-    FileMilestoneTracker(tmp_path).mark_architecture_reviewed(
+    FileMilestoneTracker(tmp_path).mark_architecture_approved(
         "M1", tmp_path / ".devlab/history/20260101T000000_architect_handoff.md"
     )
 
     milestone = FileMilestoneTracker(tmp_path).get("M1")
-    assert milestone.status == MilestoneStatus.ARCHITECTURE_REVIEWED
-    assert milestone.architecture_reviewed is True
+    assert milestone.status == MilestoneStatus.ARCHITECTURE_APPROVED
+    assert milestone.architecture_approved is True
     assert milestone.architecture_review_handoff == "20260101T000000_architect_handoff.md"
 
 
@@ -165,7 +165,7 @@ def _write_milestone(root: Path, milestone_id: str) -> None:
         'status = "planned"\n'
         "integration_required = true\n"
         "integrated = false\n"
-        "architecture_reviewed = false\n"
+        "architecture_approved = false\n"
         "task_ids = []\n"
         'integration_handoff = ""\n'
         'architecture_review_handoff = ""\n'
