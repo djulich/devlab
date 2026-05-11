@@ -1,5 +1,27 @@
 # DevLab TODOs / Features to be implemented
 
+## Prompt Context Size Monitoring
+
+Current state: packaged prompt resources are modest in size. Approximate current fixed system prompt sizes are architect ~1.4k tokens, planner ~2.4k, developer ~1.8k, reviewer ~1.8k, and integrator ~1.5k. This is acceptable for current models, but context growth should be monitored because DevLab intentionally runs bounded, role-specific sessions.
+
+Open feature: add prompt size reporting and guardrails so role context remains small as target repositories grow.
+
+Risks:
+
+- Shared `conventions.md` is injected into every role, including sections not every role needs.
+- Planner context includes profile information and may grow as target repositories add profiles.
+- Integrator context may grow with milestone tasks, handoffs, and findings.
+- Long handoffs, large task files, or verbose role prompts can erode bounded-session benefits and increase context drift.
+
+Possible implementation:
+
+- Add a reusable prompt size estimator for system prompt, session prompt, and selected repository context per role.
+- Surface the report through `devlab status --verbose` or a future `devlab doctor` command.
+- Warn when a role's initial context exceeds configurable thresholds.
+- Consider splitting shared conventions into smaller prompt resources, e.g. core, tasks, findings, reviews, and handoffs, then include only role-relevant sections.
+- Consider summarizing profile listings for planner prompts instead of embedding full profile TOML by default.
+- Keep role prompts procedural and minimal; prefer enforcing workflow rules in code where practical.
+
 ## Target-specific Worker Agent Configuration
 
 Current state: agent providers are configured through DevLab code and runtime options, while target-project-specific role/provider/model policy is not represented as a committed workflow artifact.
