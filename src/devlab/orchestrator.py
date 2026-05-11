@@ -15,6 +15,7 @@ from devlab.agent_config import (
 from devlab.agents import AgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.findings import FileFindingTracker
+from devlab.milestones import FileMilestoneTracker
 from devlab.profiles import Profile, ProfileNotFoundError, load_profile
 from devlab.prompt_resources import read_prompt_resource
 from devlab.task_tracker import FileTaskTracker, Task
@@ -105,6 +106,17 @@ def finding_tracker(root: Path) -> FileFindingTracker:
     return FileFindingTracker(root)
 
 
+def milestone_tracker(root: Path) -> FileMilestoneTracker:
+    return FileMilestoneTracker(root)
+
+
+def _sync_milestones(root: Path) -> None:
+    milestone_tracker(root).upsert_from_tasks(
+        task_tracker(root).list_tasks(),
+        project_plan_text=_read_file(root / PROJECT_PLAN),
+    )
+
+
 def _log_resolved_agent_config(root: Path, role_name: str, config: ResolvedAgentConfig) -> Path:
     path = root / AGENT_LOG_DIR / f"{_timestamp()}_{role_name}.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -123,23 +135,18 @@ def select_review_task(root: Path) -> Path | None:
     return task.path if task else None
 
 
-def _safe_marker_part(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value)
-
-
-def _integration_marker(root: Path, milestone: str) -> Path:
-    return root / HISTORY_DIR / f"integrated_{_safe_marker_part(milestone)}.md"
-
-
-def _milestone_integrated(root: Path, milestone: str) -> bool:
-    return _integration_marker(root, milestone).exists()
-
-
 def select_integration_milestone(root: Path) -> str | None:
-    tracker = task_tracker(root)
-    for milestone in tracker.completed_milestones():
-        if not _milestone_integrated(root, milestone):
-            return milestone
+    _sync_milestones(root)
+    tasks = task_tracker(root)
+    milestones = milestone_tracker(root)
+    for milestone in milestones.list_milestones():
+        if (
+            milestone.integration_required
+            and not milestone.integrated
+            and tasks.milestone_complete(milestone.id)
+        ):
+            milestones.mark_tasks_complete(milestone.id)
+            return milestone.id
     return None
 
 
@@ -534,12 +541,7 @@ def _mark_milestone_findings_resolved(root: Path, milestone: str) -> None:
 
 
 def _mark_milestone_integrated(root: Path, milestone: str, handoff_path: Path) -> None:
-    marker = _integration_marker(root, milestone)
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(
-        f"# Integration Complete: {milestone}\n\n"
-        f"- Handoff: {handoff_path.name}\n"
-    )
+    milestone_tracker(root).mark_integrated(milestone, handoff_path)
     print(f"  Milestone {milestone} marked integrated")
 
 
@@ -565,11 +567,13 @@ def process_handoff(root: Path, role_name: str) -> None:
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         milestone = select_integration_milestone(root)
         if _handoff_has_open_issues(handoff_path):
-            finding_tracker(root).create_from_handoff(
+            finding = finding_tracker(root).create_from_handoff(
                 source="integrator",
                 milestone=milestone,
                 handoff_path=archived,
             )
+            if milestone is not None:
+                milestone_tracker(root).mark_integration_failed(milestone, finding.id)
             print("  Integration reported open issues; finding created for planner follow-up")
             return
         if milestone is not None:

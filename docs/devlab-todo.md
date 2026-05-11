@@ -24,7 +24,7 @@ Possible implementation:
 
 ## Integration Findings and Corrective Planning
 
-Current state: the integrator runs at completed milestone boundaries. If integration passes, the orchestrator writes an integration marker. If integration reports Open Issues, the orchestrator creates a file-backed finding in `.devlab/findings/` and routes the workflow back to the planner.
+Current state: the integrator runs at completed milestone boundaries selected from `.devlab/milestones/` state. If integration passes, the orchestrator marks the milestone integrated. If integration reports Open Issues, the orchestrator creates a file-backed finding in `.devlab/findings/`, records the finding on the milestone, marks integration failed, and routes the workflow back to the planner.
 
 Current state: planner handoffs include `## Addressed Findings`; the orchestrator marks listed findings as `planned`. When the milestone later integrates successfully, related planned findings are marked `resolved`.
 
@@ -66,15 +66,18 @@ Likely implementation:
 
 ## Milestone State
 
-Current state: milestone completion is computed from task metadata and integration completion is still tracked by marker files in orchestration behavior. The first milestone-state foundation exists: `src/devlab/milestones.py` defines file-backed milestone metadata under `.devlab/milestones/<milestone-id>.toml`, and `devlab init` creates `.devlab/milestones/`.
+Current state: milestone completion is computed from task metadata, while integration workflow state is tracked explicitly in `.devlab/milestones/<milestone-id>.toml`. `src/devlab/milestones.py` defines the file-backed milestone tracker, and `devlab init` creates `.devlab/milestones/`.
 
-Implemented phase 1:
+Implemented phases 1-2:
 
 - `Milestone` and `MilestoneStatus` model.
 - `FileMilestoneTracker` abstraction.
 - Creation of missing milestone files from task metadata, with project-plan headings used for titles when available.
 - Preservation of existing milestone workflow state when adding newly discovered task IDs.
-- State mutation helpers for marking integrated, integration failed, and architecture reviewed.
+- State mutation helpers for marking tasks complete, integrated, integration failed, and architecture reviewed.
+- Integration selection uses milestone state instead of `.devlab/history/integrated_<milestone>.md` marker files.
+- Successful integration records `integrated = true`, `status = "integrated"`, and the archived integration handoff on the milestone.
+- Failed integration records `status = "integration_failed"`, keeps `integrated = false`, and stores the created finding ID on the milestone.
 
 Milestone file shape:
 
@@ -91,15 +94,6 @@ integration_handoff = ""
 architecture_review_handoff = ""
 findings = []
 ```
-
-Remaining phase 2: replace integration marker selection.
-
-- Replace `.devlab/history/integrated_<milestone>.md` marker checks with milestone tracker state.
-- When all tasks for a milestone are closed, mark or select it as `tasks_complete`.
-- Select integrator from milestone state instead of recomputing only from task metadata and marker files.
-- On successful integration, call `mark_integrated(milestone_id, archived_handoff)`.
-- On failed integration, create a finding and call `mark_integration_failed(milestone_id, finding_id)`.
-- Keep task files as the source of truth for task status; milestone files should track group workflow state only.
 
 Remaining phase 3: architecture review at milestone boundaries.
 

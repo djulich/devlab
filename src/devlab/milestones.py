@@ -110,6 +110,14 @@ class FileMilestoneTracker:
             milestones.append(milestone)
         return milestones
 
+    def mark_tasks_complete(self, milestone_id: str) -> None:
+        milestone = self.get(milestone_id)
+        if milestone.integrated:
+            return
+        metadata = dict(milestone.metadata)
+        metadata["status"] = MilestoneStatus.TASKS_COMPLETE.value
+        milestone.path.write_text(_format_milestone_file(metadata))
+
     def mark_integrated(self, milestone_id: str, handoff_path: Path) -> None:
         milestone = self.get(milestone_id)
         metadata = dict(milestone.metadata)

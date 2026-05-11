@@ -274,7 +274,7 @@ Target-specific DevLab workflow artifacts live in the committed, project-local `
 
 When all tasks for a milestone are closed, the integrator validates the current repository state at that milestone boundary. The goal is to confirm that the milestone's changes work correctly with the previously implemented system, not merely that tasks from the milestone work with each other.
 
-If integration passes, the orchestrator writes an integration marker in `.devlab/history/`. If integration reports Open Issues, the orchestrator creates a file-backed finding, leaves the milestone unintegrated, and routes the workflow back to the planner for follow-up task creation.
+If integration passes, the orchestrator marks the milestone integrated in `.devlab/milestones/` and records the archived integration handoff. If integration reports Open Issues, the orchestrator creates a file-backed finding, records it on the milestone, marks integration failed, and routes the workflow back to the planner for follow-up task creation.
 
 Findings are active workflow issues stored in `.devlab/findings/`. The planner converts open findings into corrective task files and lists addressed finding IDs in its handoff. The orchestrator then marks those findings as planned. When the milestone later integrates successfully, related planned findings are marked resolved.
 

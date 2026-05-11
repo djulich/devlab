@@ -7,6 +7,7 @@ import pytest
 
 from devlab.agents import AgentCall, MockProvider
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
+from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import (
     DESIGN_PLAN,
     HISTORY_DIR,
@@ -77,6 +78,26 @@ def _write_task(
         f"{validation_line}"
         "+++\n\n"
         f"{body}"
+    )
+    return path
+
+
+def _write_milestone(root: Path, milestone_id: str, *, integrated: bool = False) -> Path:
+    path = root / ".devlab/milestones" / f"{milestone_id}.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    status = "integrated" if integrated else "planned"
+    path.write_text(
+        "version = 1\n"
+        f'id = "{milestone_id}"\n'
+        f'title = "{milestone_id}"\n'
+        f'status = "{status}"\n'
+        "integration_required = true\n"
+        f"integrated = {str(integrated).lower()}\n"
+        "architecture_reviewed = false\n"
+        "task_ids = []\n"
+        'integration_handoff = ""\n'
+        'architecture_review_handoff = ""\n'
+        "findings = []\n"
     )
     return path
 
@@ -518,11 +539,13 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["integrator"]
 
-    def test_integrated_marker_prevents_integrator_reinvocation(self, tmp_path: Path) -> None:
+    def test_integrated_milestone_state_prevents_integrator_reinvocation(
+        self, tmp_path: Path
+    ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
-        (tmp_path / HISTORY_DIR / "integrated_M1.md").write_text("# Integration Complete: M1\n")
+        _write_milestone(tmp_path, "M1", integrated=True)
         provider = MockProvider()
 
         run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
@@ -540,7 +563,9 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["integrator"]
 
-    def test_successful_integrator_handoff_creates_marker(self, tmp_path: Path) -> None:
+    def test_successful_integrator_handoff_marks_milestone_integrated(
+        self, tmp_path: Path
+    ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
@@ -548,11 +573,14 @@ class TestRunLoop:
 
         run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
 
-        marker = tmp_path / HISTORY_DIR / "integrated_M1.md"
-        assert marker.exists()
-        assert "Integration Complete: M1" in marker.read_text()
+        milestone = FileMilestoneTracker(tmp_path).get("M1")
+        assert milestone.status == MilestoneStatus.INTEGRATED
+        assert milestone.integrated is True
+        assert milestone.integration_handoff.endswith("_integrator_handoff.md")
 
-    def test_integrator_open_issues_create_finding_without_marker(self, tmp_path: Path) -> None:
+    def test_integrator_open_issues_create_finding_and_mark_milestone_failed(
+        self, tmp_path: Path
+    ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
@@ -574,7 +602,10 @@ class TestRunLoop:
         assert findings[0].source == "integrator"
         assert findings[0].milestone == "M1"
         assert "Missing frontend/API E2E coverage" in findings[0].body
-        assert not (tmp_path / HISTORY_DIR / "integrated_M1.md").exists()
+        milestone = FileMilestoneTracker(tmp_path).get("M1")
+        assert milestone.status == MilestoneStatus.INTEGRATION_FAILED
+        assert milestone.integrated is False
+        assert milestone.findings == (findings[0].id,)
 
     def test_open_finding_selects_planner_before_integrator(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
