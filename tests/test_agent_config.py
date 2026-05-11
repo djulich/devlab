@@ -10,12 +10,12 @@ from devlab.agents import CliAgentProvider
 
 
 def test_missing_config_uses_fallback_cli_command(tmp_path: Path) -> None:
-    config = load_agent_configuration(tmp_path, agent_cmd="agent run")
+    config = load_agent_configuration(tmp_path)
 
     provider = config.providers[config.role_providers["developer"]]
 
     assert isinstance(provider, CliAgentProvider)
-    assert provider.argv == ("agent", "run")
+    assert provider.argv == ("claude", "-p")
     assert config.resolved["developer"].provider == "default"
 
 
@@ -162,7 +162,7 @@ def test_unknown_provider_raises_clear_error(tmp_path: Path) -> None:
 
 
 def test_format_resolved_agent_config_does_not_include_prompts(tmp_path: Path) -> None:
-    config = load_agent_configuration(tmp_path, agent_cmd="agent run")
+    config = load_agent_configuration(tmp_path)
 
     text = format_resolved_agent_config(config.resolved["developer"])
 

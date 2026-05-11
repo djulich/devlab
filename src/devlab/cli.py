@@ -46,11 +46,6 @@ def main() -> None:
         help="Maximum number of sessions to run (default: 20).",
     )
     run_parser.add_argument(
-        "--agent-cmd",
-        default=None,
-        help="Override the configured agent command for this run.",
-    )
-    run_parser.add_argument(
         "--provider",
         default=None,
         help="Override the configured provider for this run.",
@@ -89,7 +84,6 @@ def main() -> None:
             root,
             auto=args.auto,
             max_sessions=args.max_sessions,
-            agent_cmd=args.agent_cmd,
             provider=args.provider,
             model=args.model,
             effort=args.effort,

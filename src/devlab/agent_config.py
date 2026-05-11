@@ -34,7 +34,6 @@ class AgentConfiguration:
 def load_agent_configuration(
     root: Path,
     *,
-    agent_cmd: str | None = None,
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
@@ -42,11 +41,7 @@ def load_agent_configuration(
 ) -> AgentConfiguration:
     data = _load_config(root)
     if data is None:
-        data = _fallback_config(agent_cmd or "claude -p")
-    elif agent_cmd is not None:
-        data = _with_cli_command(data, agent_cmd)
-        if provider is None:
-            provider = "cli"
+        data = _fallback_config()
 
     defaults = _table(data.get("defaults", {}), "defaults")
     roles = _table(data.get("roles", {}), "roles")
@@ -141,30 +136,17 @@ def _load_config(root: Path) -> dict[str, Any] | None:
     return _table(data, AGENTS_CONFIG)
 
 
-def _fallback_config(command: str) -> dict[str, Any]:
+def _fallback_config() -> dict[str, Any]:
     return {
         "defaults": {"provider": "default"},
         "providers": {
             "default": {
-                "command": command,
+                "command": "claude -p",
                 "args": [],
                 "prompt_args": ["--system-prompt", "{system_prompt}", "{session_prompt}"],
             }
         },
     }
-
-
-def _with_cli_command(data: dict[str, Any], command: str) -> dict[str, Any]:
-    copied = dict(data)
-    copied["defaults"] = {**_table(copied.get("defaults", {}), "defaults"), "provider": "cli"}
-    providers = dict(_table(copied.get("providers", {}), "providers"))
-    providers["cli"] = {
-        "command": command,
-        "args": [],
-        "prompt_args": ["--system-prompt", "{system_prompt}", "{session_prompt}"],
-    }
-    copied["providers"] = providers
-    return copied
 
 
 def _render_command(command: str, args: list[str], values: Mapping[str, str]) -> list[str]:

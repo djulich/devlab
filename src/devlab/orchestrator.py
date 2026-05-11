@@ -602,7 +602,6 @@ def run_loop(
     *,
     auto: bool,
     max_sessions: int,
-    agent_cmd: str | None = None,
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
@@ -615,7 +614,6 @@ def run_loop(
     if agent_providers is None:
         agent_configuration = load_agent_configuration(
             root,
-            agent_cmd=agent_cmd,
             provider=provider,
             model=model,
             effort=effort,
