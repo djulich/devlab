@@ -150,6 +150,14 @@ def select_integration_milestone(root: Path) -> str | None:
     return None
 
 
+def select_architecture_review_milestone(root: Path) -> str | None:
+    _sync_milestones(root)
+    for milestone in milestone_tracker(root).list_milestones():
+        if milestone.integrated and not milestone.architecture_reviewed:
+            return milestone.id
+    return None
+
+
 def _latest_handoff(root: Path, role_name: str) -> str:
     history = root / HISTORY_DIR
     handoffs = sorted(history.glob(f"*_{role_name}_handoff.md"))
@@ -187,6 +195,9 @@ def assess_state(root: Path) -> str | None:
 
     if finding_tracker(root).open_findings():
         return "planner"
+
+    if select_architecture_review_milestone(root) is not None:
+        return "architect"
 
     if select_integration_milestone(root) is not None:
         return "integrator"
@@ -240,15 +251,65 @@ def build_session_prompt(root: Path, role_name: str) -> str:
 
 def _build_architect_prompt(root: Path) -> str:
     parts: list[str] = []
+    review_milestone = select_architecture_review_milestone(root)
+    if review_milestone is not None:
+        parts.extend(_architecture_review_prompt_sections(root, review_milestone))
     plan = _read_file(root / DESIGN_PLAN)
     if plan.strip():
         parts.append(f"## Current Design Plan\n\n{plan}")
+    project = _read_file(root / PROJECT_PLAN)
+    if project.strip():
+        parts.append(f"## Current Project Plan\n\n{project}")
     handoff = _latest_handoff(root, "architect")
     if handoff:
         parts.append(f"## Latest Architect Handoff\n\n{handoff}")
     if not parts:
         parts.append("No design plan exists yet. Create one from the system specification.")
     return "\n\n".join(parts)
+
+
+def _architecture_review_prompt_sections(root: Path, milestone_id: str) -> list[str]:
+    milestone = milestone_tracker(root).get(milestone_id)
+    parts = [
+        "## Assigned Integrated Milestone for Architecture Review\n\n"
+        f"{milestone.id}: {milestone.title}\n\n"
+        "Review whether the design plan still matches the implemented system, "
+        "the system/deployment specifications, and the future project direction. "
+        "Update the design plan if needed. If follow-up implementation or planning "
+        "is required, report it in the handoff's Open Issues section."
+    ]
+    if milestone.integration_handoff:
+        integration_handoff = root / HISTORY_DIR / milestone.integration_handoff
+        handoff_text = _read_file(integration_handoff)
+        if handoff_text.strip():
+            parts.append(f"## Integration Handoff\n\n{handoff_text}")
+    task_sections = [
+        f"### {task.path.name}\n\n{_read_file(task.path)}"
+        for task in task_tracker(root).tasks_for_milestone(milestone_id)
+    ]
+    if task_sections:
+        parts.append("## Milestone Task Files\n\n" + "\n\n".join(task_sections))
+    specs = _format_spec_sections(root)
+    if specs:
+        parts.append(specs)
+    return parts
+
+
+def _format_spec_sections(root: Path) -> str:
+    sections: list[str] = []
+    specs_root = root / ".devlab/specs"
+    for spec_dir in (specs_root / "system", specs_root / "deployment"):
+        if not spec_dir.exists():
+            continue
+        files = sorted(path for path in spec_dir.rglob("*.md") if path.is_file())
+        if files:
+            file_sections = [
+                f"### {path.relative_to(root)}\n\n{_read_file(path)}" for path in files
+            ]
+            sections.append(
+                f"## {spec_dir.name.title()} Specification\n\n" + "\n\n".join(file_sections)
+            )
+    return "\n\n".join(sections)
 
 
 def _format_task_listing(tasks: list[Task]) -> str:
@@ -549,7 +610,20 @@ def process_handoff(root: Path, role_name: str) -> None:
     archived = archive_handoff(root, role_name)
     print(f"  Handoff archived to {archived.name}")
 
-    if role_name == "developer":
+    if role_name == "architect":
+        milestone = select_architecture_review_milestone(root)
+        if milestone is not None:
+            if _handoff_has_open_issues(archived):
+                finding_tracker(root).create_from_handoff(
+                    source="architect",
+                    milestone=milestone,
+                    handoff_path=archived,
+                )
+                print("  Architecture review reported open issues; finding created")
+            else:
+                milestone_tracker(root).mark_architecture_reviewed(milestone, archived)
+                print(f"  Milestone {milestone} marked architecture-reviewed")
+    elif role_name == "developer":
         task_path = select_task(root)
         if task_path and _task_is_complete(task_path):
             mark_task_in_review(root, task_path)

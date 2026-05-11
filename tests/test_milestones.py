@@ -30,7 +30,9 @@ def test_upsert_from_tasks_creates_missing_milestone_files(tmp_path: Path) -> No
     assert (tmp_path / ".devlab/milestones/M1.toml").exists()
 
 
-def test_upsert_from_tasks_preserves_existing_state_and_adds_task_ids(tmp_path: Path) -> None:
+def test_upsert_from_tasks_resets_integrated_state_when_adding_task_ids(
+    tmp_path: Path,
+) -> None:
     milestones_dir = tmp_path / ".devlab/milestones"
     milestones_dir.mkdir(parents=True)
     (milestones_dir / "M1.toml").write_text(
@@ -53,9 +55,40 @@ def test_upsert_from_tasks_preserves_existing_state_and_adds_task_ids(tmp_path: 
         FileTaskTracker(tmp_path).list_tasks()
     )[0]
 
-    assert milestone.status == MilestoneStatus.INTEGRATED
-    assert milestone.integrated is True
+    assert milestone.status == MilestoneStatus.ACTIVE
+    assert milestone.integrated is False
     assert milestone.integration_handoff == "handoff.md"
+    assert milestone.task_ids == ("T0001", "T0002")
+
+
+def test_upsert_from_tasks_resets_integration_when_new_task_added(
+    tmp_path: Path,
+) -> None:
+    milestones_dir = tmp_path / ".devlab/milestones"
+    milestones_dir.mkdir(parents=True)
+    (milestones_dir / "M1.toml").write_text(
+        'version = 1\n'
+        'id = "M1"\n'
+        'title = "Existing"\n'
+        'status = "architecture_reviewed"\n'
+        'integration_required = true\n'
+        'integrated = true\n'
+        'architecture_reviewed = true\n'
+        'task_ids = ["T0001"]\n'
+        'integration_handoff = "integrator.md"\n'
+        'architecture_review_handoff = "architect.md"\n'
+        'findings = []\n'
+    )
+    _write_task(tmp_path, "T0001", "First", milestone="M1")
+    _write_task(tmp_path, "T0002", "Second", milestone="M1")
+
+    milestone = FileMilestoneTracker(tmp_path).upsert_from_tasks(
+        FileTaskTracker(tmp_path).list_tasks()
+    )[0]
+
+    assert milestone.status == MilestoneStatus.ACTIVE
+    assert milestone.integrated is False
+    assert milestone.architecture_reviewed is False
     assert milestone.task_ids == ("T0001", "T0002")
 
 

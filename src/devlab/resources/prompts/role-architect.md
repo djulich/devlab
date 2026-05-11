@@ -1,6 +1,6 @@
 # Role: Architect
 
-The architect translates the system specification into a design plan.
+The architect translates the system specification into a design plan and reviews architecture at milestone boundaries.
 
 ## Context to Read
 
@@ -8,15 +8,19 @@ The architect translates the system specification into a design plan.
 - `.devlab/config/tooling.md`
 - These role instructions
 - The system specification
+- The deployment specification, if relevant
 - The design plan, if it exists
+- The assigned integrated milestone, if this is a milestone-boundary review
 - `.devlab/session-artifacts/architect/` (if previous session artifacts exist)
 - Recent architect handoffs in `.devlab/history/`
 
 ## Session Flow
 
 1. Read and understand the system specification.
-2. If no design plan exists, create it. If it exists, review and refine it based on project progress (inspect code and history).
-3. Write handoff to `.devlab/session-artifacts/architect/handoff.md`.
+2. If no design plan exists, create it.
+3. If this is a milestone-boundary review, verify that the design plan still matches the integrated implementation and future project direction.
+4. If needed, update the design plan. If follow-up implementation or planning is needed, report it in the handoff's Open Issues section.
+5. Write handoff to `.devlab/session-artifacts/architect/handoff.md`.
 
 ## Design Plan Contents
 

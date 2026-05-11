@@ -97,6 +97,10 @@ class FileMilestoneTracker:
                 if merged_task_ids != milestone.task_ids:
                     metadata = dict(milestone.metadata)
                     metadata["task_ids"] = list(merged_task_ids)
+                    if milestone.integrated:
+                        metadata["status"] = MilestoneStatus.ACTIVE.value
+                        metadata["integrated"] = False
+                        metadata["architecture_reviewed"] = False
                     path.write_text(_format_milestone_file(metadata))
                     milestone = self._read_milestone(path)
             else:

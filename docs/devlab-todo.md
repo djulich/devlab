@@ -53,22 +53,25 @@ To support clean milestone version rollbacks, we should think about the best bra
 
 ## Architect Re-invocation
 
-Current state: the orchestrator calls the architect when the design plan is empty, then never again. Design plans evolve — after implementing milestones, interfaces may need revision or new components may emerge.
+Current state: the orchestrator invokes the architect when the design plan is empty and after integrated milestones that have not been architecture-reviewed. Milestone-boundary architect prompts ask the architect to verify that the design plan still matches the implemented system, system/deployment specs, and future project direction.
 
-Planned feature: after a milestone integrates successfully, invoke the architect once to review whether the design plan still matches the implemented system and future project direction.
+Implemented behavior:
 
-Likely implementation:
+- `.devlab/milestones/<milestone-id>.toml` tracks `architecture_reviewed` and `architecture_review_handoff`.
+- Architect is selected when a milestone is integrated but not architecture-reviewed.
+- Successful architecture review marks the milestone architecture-reviewed.
+- Architecture review Open Issues create architect-sourced findings and route to planner.
 
-- Use `.devlab/milestones/<milestone-id>.toml` state instead of architecture-review marker files.
-- Select architect when a milestone is integrated but not architecture-reviewed.
-- Build an architect prompt focused on milestone-boundary design review, not greenfield design.
-- After architecture review, route to planner if the design/project plan may need adjustment.
+Possible follow-up:
+
+- Improve finding titles/bodies generated from architecture review handoffs.
+- Decide whether architecture review should also update a separate design/spec sync state.
 
 ## Milestone State
 
 Current state: milestone completion is computed from task metadata, while integration workflow state is tracked explicitly in `.devlab/milestones/<milestone-id>.toml`. `src/devlab/milestones.py` defines the file-backed milestone tracker, and `devlab init` creates `.devlab/milestones/`.
 
-Implemented phases 1-2:
+Implemented phases 1-3:
 
 - `Milestone` and `MilestoneStatus` model.
 - `FileMilestoneTracker` abstraction.
@@ -78,6 +81,11 @@ Implemented phases 1-2:
 - Integration selection uses milestone state instead of `.devlab/history/integrated_<milestone>.md` marker files.
 - Successful integration records `integrated = true`, `status = "integrated"`, and the archived integration handoff on the milestone.
 - Failed integration records `status = "integration_failed"`, keeps `integrated = false`, and stores the created finding ID on the milestone.
+- Architecture review selection uses milestone state.
+- Milestone-boundary architect prompts include the integrated milestone, relevant tasks, integration handoff, design plan, project plan, and system/deployment specs.
+- Successful architecture review records `architecture_reviewed = true`, `status = "architecture_reviewed"`, and the archived architect handoff on the milestone.
+- Architecture review Open Issues create architect-sourced findings and leave `architecture_reviewed = false` so review can run again after corrective work.
+- Adding newly discovered task IDs to an integrated milestone resets `integrated = false` and `architecture_reviewed = false`, forcing reintegration and re-review after corrective tasks.
 
 Milestone file shape:
 
@@ -94,13 +102,6 @@ integration_handoff = ""
 architecture_review_handoff = ""
 findings = []
 ```
-
-Remaining phase 3: architecture review at milestone boundaries.
-
-- Select architect when a milestone is integrated and `architecture_reviewed = false`.
-- Build a milestone-boundary architect prompt with the integrated milestone, relevant tasks, integration handoff, design plan, project plan, and system/deployment specs.
-- After architect handoff, call `mark_architecture_reviewed(milestone_id, archived_handoff)`.
-- If architect handoff reports open issues, create a finding and route to planner.
 
 Remaining phase 4: status and doctor support.
 

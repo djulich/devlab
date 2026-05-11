@@ -21,6 +21,7 @@ from devlab.orchestrator import (
     build_system_prompt,
     close_task,
     run_loop,
+    select_architecture_review_milestone,
     select_task,
     validate_handoff,
 )
@@ -82,10 +83,23 @@ def _write_task(
     return path
 
 
-def _write_milestone(root: Path, milestone_id: str, *, integrated: bool = False) -> Path:
+def _write_milestone(
+    root: Path,
+    milestone_id: str,
+    *,
+    integrated: bool = False,
+    architecture_reviewed: bool = False,
+    task_ids: list[str] | None = None,
+) -> Path:
     path = root / ".devlab/milestones" / f"{milestone_id}.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    status = "integrated" if integrated else "planned"
+    if architecture_reviewed:
+        status = "architecture_reviewed"
+    elif integrated:
+        status = "integrated"
+    else:
+        status = "planned"
+    task_ids_text = ", ".join(f'"{task_id}"' for task_id in (task_ids or []))
     path.write_text(
         "version = 1\n"
         f'id = "{milestone_id}"\n'
@@ -93,8 +107,8 @@ def _write_milestone(root: Path, milestone_id: str, *, integrated: bool = False)
         f'status = "{status}"\n'
         "integration_required = true\n"
         f"integrated = {str(integrated).lower()}\n"
-        "architecture_reviewed = false\n"
-        "task_ids = []\n"
+        f"architecture_reviewed = {str(architecture_reviewed).lower()}\n"
+        f"task_ids = [{task_ids_text}]\n"
         'integration_handoff = ""\n'
         'architecture_review_handoff = ""\n'
         "findings = []\n"
@@ -539,20 +553,42 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["integrator"]
 
-    def test_integrated_milestone_state_prevents_integrator_reinvocation(
+    def test_integrated_architecture_reviewed_milestone_stops(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
-        _write_milestone(tmp_path, "M1", integrated=True)
+        _write_milestone(
+            tmp_path,
+            "M1",
+            integrated=True,
+            architecture_reviewed=True,
+            task_ids=["T0001"],
+        )
         provider = MockProvider()
 
         run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
 
         assert provider.calls == []
 
-    def test_integrator_runs_before_developer_for_next_milestone(self, tmp_path: Path) -> None:
+    def test_architect_review_runs_before_developer_for_next_milestone(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "M1 Done", status="closed", milestone="M1")
+        _write_task(tmp_path, "T0002", "M2 Open", status="open", milestone="M2")
+        _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["architect"]
+
+    def test_integrator_runs_before_developer_for_next_milestone_without_architecture_review(
+        self, tmp_path: Path
+    ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "M1 Done", status="closed", milestone="M1")
@@ -606,6 +642,93 @@ class TestRunLoop:
         assert milestone.status == MilestoneStatus.INTEGRATION_FAILED
         assert milestone.integrated is False
         assert milestone.findings == (findings[0].id,)
+
+    def test_successful_integration_then_architecture_review_in_next_session(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=2, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["integrator", "architect"]
+        milestone = FileMilestoneTracker(tmp_path).get("M1")
+        assert milestone.integrated is True
+        assert milestone.architecture_reviewed is True
+
+    def test_integrated_milestone_selects_architect_review(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
+
+        assert assess_state(tmp_path) == "architect"
+        assert select_architecture_review_milestone(tmp_path) == "M1"
+
+    def test_architect_review_handoff_marks_milestone_reviewed(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
+        provider = MockProvider()
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        assert [call.role_name for call in provider.calls] == ["architect"]
+        milestone = FileMilestoneTracker(tmp_path).get("M1")
+        assert milestone.status == MilestoneStatus.ARCHITECTURE_REVIEWED
+        assert milestone.architecture_reviewed is True
+        assert milestone.architecture_review_handoff.endswith("_architect_handoff.md")
+
+    def test_architect_review_open_issues_create_finding(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: architect\n"
+                "## Done\n- Reviewed architecture.\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- Design plan misses implemented boundary.\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nPlan design correction.\n"
+            )
+        )
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        findings = FileFindingTracker(tmp_path).open_findings()
+        assert len(findings) == 1
+        assert findings[0].source == "architect"
+        assert findings[0].milestone == "M1"
+        assert "Design plan misses implemented boundary" in findings[0].body
+        assert FileMilestoneTracker(tmp_path).get("M1").architecture_reviewed is False
+
+    def test_architecture_review_prompt_includes_milestone_context(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        (tmp_path / PROJECT_PLAN).write_text("## M1: Foundation\n- T0001\n")
+        (tmp_path / ".devlab/specs/system/README.md").parent.mkdir(parents=True)
+        (tmp_path / ".devlab/specs/system/README.md").write_text("# System Spec\n")
+        _write_task(
+            tmp_path,
+            "T0001",
+            "Done",
+            status="closed",
+            milestone="M1",
+            body="# T0001: Done\n\n## Goal\nImportant architecture behavior.\n",
+        )
+        _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
+
+        prompt = build_session_prompt(tmp_path, "architect")
+
+        assert "## Assigned Integrated Milestone for Architecture Review" in prompt
+        assert "M1" in prompt
+        assert "Important architecture behavior" in prompt
+        assert "# System Spec" in prompt
 
     def test_open_finding_selects_planner_before_integrator(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
