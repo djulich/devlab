@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -654,6 +655,54 @@ class TestRunLoop:
         assert "M1" in prompt
         assert "previously implemented system" in prompt
         assert "Important integration behavior" in prompt
+
+    def test_logs_resolved_agent_config_for_configured_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        (tmp_path / ".devlab/config/agents.toml").write_text(
+            "[defaults]\n"
+            'provider = "mock-cli"\n'
+            'model = "test-model"\n'
+            'effort = "medium"\n'
+            "\n[providers.mock-cli]\n"
+            'command = "mock-agent"\n'
+            'args = ["--role", "{role_name}", "--model", "{model}"]\n'
+        )
+
+        def fake_run(*args: Any, **kwargs: Any) -> object:
+            handoff = (
+                Path(kwargs["cwd"])
+                / ".devlab/session-artifacts/developer/handoff.md"
+            )
+            handoff.parent.mkdir(parents=True, exist_ok=True)
+            handoff.write_text(
+                "# Handoff: developer\n"
+                "## Done\n- done\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- None\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nContinue.\n"
+            )
+
+            class Result:
+                returncode = 0
+
+            return Result()
+
+        monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+
+        run_loop(tmp_path, auto=True, max_sessions=1)
+
+        logs = list((tmp_path / ".devlab/logs/agents").glob("*_developer.toml"))
+        assert len(logs) == 1
+        text = logs[0].read_text()
+        assert 'role = "developer"' in text
+        assert 'provider = "mock-cli"' in text
+        assert 'model = "test-model"' in text
+        assert "system_prompt" not in text
 
     def test_uses_role_specific_agent_provider(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

@@ -21,6 +21,7 @@ def test_cli_init_creates_devlab_tree(
     assert "created: .devlab/manifest.toml" in output
     assert (tmp_path / ".devlab/manifest.toml").exists()
     assert (tmp_path / ".devlab/config/profiles/default.toml").exists()
+    assert (tmp_path / ".devlab/config/agents.toml").exists()
 
 
 def test_cli_init_force_overwrites_starter_file(

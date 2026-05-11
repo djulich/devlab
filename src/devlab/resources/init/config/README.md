@@ -5,11 +5,18 @@ This directory contains target-local DevLab configuration. These files are part 
 ## Files
 
 - `tooling.md` — human/agent-readable tooling policy and preferences.
+- `agents.toml` — human-owned worker agent provider/model/command configuration.
 - `profiles/*.toml` — task profiles defining tooling summaries, default validation, and executable environment lifecycle.
 
 ## Tooling Policy
 
 `tooling.md` guides agents when planning, implementing, and reviewing work. Profile tasks must follow this policy. For example, if `tooling.md` says GUI work uses React, GUI profiles should use React-oriented tooling and validation.
+
+## Agent Configuration
+
+`agents.toml` controls how DevLab invokes worker agents for each role. It supports defaults, per-role overrides, provider command templates, model/effort settings, and stdin-based prompt delivery for CLIs that require it.
+
+The file is intended to be edited by the human operator. See `docs/agent-configuration.md` in the DevLab repository for a full reference.
 
 ## Profiles
 

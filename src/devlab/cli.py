@@ -47,8 +47,23 @@ def main() -> None:
     )
     run_parser.add_argument(
         "--agent-cmd",
-        default="claude -p",
-        help="Agent command prefix (default: 'claude -p').",
+        default=None,
+        help="Override the configured agent command for this run.",
+    )
+    run_parser.add_argument(
+        "--provider",
+        default=None,
+        help="Override the configured provider for this run.",
+    )
+    run_parser.add_argument(
+        "--model",
+        default=None,
+        help="Override the configured model for this run.",
+    )
+    run_parser.add_argument(
+        "--effort",
+        default=None,
+        help="Override the configured effort for this run.",
     )
     run_parser.add_argument(
         "--dangerously-skip-permissions",
@@ -75,6 +90,9 @@ def main() -> None:
             auto=args.auto,
             max_sessions=args.max_sessions,
             agent_cmd=args.agent_cmd,
+            provider=args.provider,
+            model=args.model,
+            effort=args.effort,
             dangerous_skip_permissions=args.dangerously_skip_permissions,
         )
     elif args.command == "status":

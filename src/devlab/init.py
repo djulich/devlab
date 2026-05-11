@@ -10,6 +10,7 @@ _TEMPLATE_PACKAGE = "devlab.resources.init"
 TEMPLATE_FILES = (
     "config/README.md",
     "config/tooling.md",
+    "config/agents.toml",
     "config/profiles/default.toml",
     "specs/system/README.md",
     "specs/deployment/README.md",
@@ -26,6 +27,7 @@ GITKEEP_DIRS = (
     "history",
     "logs/environment",
     "logs/deployment",
+    "logs/agents",
     "session-artifacts",
 )
 

@@ -12,6 +12,7 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
         ".devlab/manifest.toml",
         ".devlab/config/README.md",
         ".devlab/config/tooling.md",
+        ".devlab/config/agents.toml",
         ".devlab/config/profiles/default.toml",
         ".devlab/specs/system/README.md",
         ".devlab/specs/deployment/README.md",
@@ -22,6 +23,7 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
         ".devlab/history/.gitkeep",
         ".devlab/logs/environment/.gitkeep",
         ".devlab/logs/deployment/.gitkeep",
+        ".devlab/logs/agents/.gitkeep",
         ".devlab/session-artifacts/.gitkeep",
     ]
     for relative in expected_files:
@@ -29,6 +31,7 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
 
     assert 'layout_version = 1' in (tmp_path / ".devlab/manifest.toml").read_text()
     assert 'id = "default"' in (tmp_path / ".devlab/config/profiles/default.toml").read_text()
+    assert '[providers.default]' in (tmp_path / ".devlab/config/agents.toml").read_text()
     assert result.created
     assert not result.overwritten
 

@@ -7,7 +7,12 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from devlab.agents import AgentProvider, CliAgentProvider, provider_for_role
+from devlab.agent_config import (
+    ResolvedAgentConfig,
+    format_resolved_agent_config,
+    load_agent_configuration,
+)
+from devlab.agents import AgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.findings import FileFindingTracker
 from devlab.profiles import Profile, ProfileNotFoundError, load_profile
@@ -23,6 +28,7 @@ PROJECT_PLAN = ".devlab/plans/project-plan.md"
 HISTORY_DIR = ".devlab/history"
 FINDINGS_DIR = ".devlab/findings"
 ARTIFACTS_DIR = ".devlab/session-artifacts"
+AGENT_LOG_DIR = ".devlab/logs/agents"
 
 REQUIRED_HANDOFF_HEADINGS = (
     "## Done",
@@ -97,6 +103,13 @@ def task_tracker(root: Path) -> FileTaskTracker:
 
 def finding_tracker(root: Path) -> FileFindingTracker:
     return FileFindingTracker(root)
+
+
+def _log_resolved_agent_config(root: Path, role_name: str, config: ResolvedAgentConfig) -> Path:
+    path = root / AGENT_LOG_DIR / f"{_timestamp()}_{role_name}.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(format_resolved_agent_config(config))
+    return path
 
 
 def select_task(root: Path) -> Path | None:
@@ -589,17 +602,28 @@ def run_loop(
     *,
     auto: bool,
     max_sessions: int,
-    agent_cmd: str = "claude -p",
+    agent_cmd: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
     dangerous_skip_permissions: bool = False,
     agent_providers: dict[str, AgentProvider] | None = None,
     role_agent_providers: dict[str, str] | None = None,
 ) -> None:
     sessions_run = 0
+    resolved_agent_configs = None
     if agent_providers is None:
-        extra_args = ("--dangerously-skip-permissions",) if dangerous_skip_permissions else ()
-        agent_providers = {
-            "default": CliAgentProvider.from_command(agent_cmd, extra_args=extra_args)
-        }
+        agent_configuration = load_agent_configuration(
+            root,
+            agent_cmd=agent_cmd,
+            provider=provider,
+            model=model,
+            effort=effort,
+            dangerous_skip_permissions=dangerous_skip_permissions,
+        )
+        agent_providers = agent_configuration.providers
+        role_agent_providers = agent_configuration.role_providers
+        resolved_agent_configs = agent_configuration.resolved
 
     while sessions_run < max_sessions:
         role_name = assess_state(root)
@@ -611,6 +635,8 @@ def run_loop(
         print(f"\n{'=' * 60}")
         print(f"Session {sessions_run + 1}: selecting role '{role_name}'")
         print(f"{'=' * 60}")
+        if resolved_agent_configs is not None:
+            _log_resolved_agent_config(root, role_name, resolved_agent_configs[role_name])
 
         artifacts_dir = root / ARTIFACTS_DIR / role_name
         if artifacts_dir.exists():

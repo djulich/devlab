@@ -53,6 +53,8 @@ class CliAgentProvider:
     prompt_args: tuple[str, ...] = ("--system-prompt", "{system_prompt}", "{session_prompt}")
     extra_args: tuple[str, ...] = ()
     stdin_template: str | None = None
+    template_values: Mapping[str, str] = dataclasses.field(default_factory=dict)
+    timeout_seconds: int | None = None
 
     @classmethod
     def from_command(
@@ -62,12 +64,16 @@ class CliAgentProvider:
         extra_args: Sequence[str] = (),
         prompt_args: Sequence[str] = ("--system-prompt", "{system_prompt}", "{session_prompt}"),
         stdin_template: str | None = None,
+        template_values: Mapping[str, str] | None = None,
+        timeout_seconds: int | None = None,
     ) -> CliAgentProvider:
         return cls(
             argv=tuple(shlex.split(command)),
             prompt_args=tuple(prompt_args),
             extra_args=tuple(extra_args),
             stdin_template=stdin_template,
+            template_values=dict(template_values or {}),
+            timeout_seconds=timeout_seconds,
         )
 
     def invoke(
@@ -79,11 +85,12 @@ class CliAgentProvider:
         session_prompt: str,
     ) -> AgentResult:
         values = {
+            **self.template_values,
             "role_name": role_name,
             "system_prompt": system_prompt,
             "session_prompt": session_prompt,
         }
-        cmd = [*self.argv, *self.extra_args]
+        cmd = [*self.argv, *_render_args(self.extra_args, values)]
         stdin: str | None = None
         if self.stdin_template is None:
             cmd.extend(_render_args(self.prompt_args, values))
@@ -97,6 +104,7 @@ class CliAgentProvider:
             input=stdin,
             text=stdin is not None,
             check=False,
+            timeout=self.timeout_seconds,
         )
         return AgentResult(return_code=result.returncode)
 

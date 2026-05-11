@@ -22,79 +22,15 @@ Possible implementation:
 - Consider summarizing profile listings for planner prompts instead of embedding full profile TOML by default.
 - Keep role prompts procedural and minimal; prefer enforcing workflow rules in code where practical.
 
-## Target-specific Worker Agent Configuration
+## Agent Configuration Refinements
 
-Current state: agent providers are configured through DevLab code and runtime options, while target-project-specific role/provider/model policy is not represented as a committed workflow artifact.
+Current state: `.devlab/config/agents.toml` configures worker agent provider, command, model, effort, timeout, prompt arguments, and stdin prompt delivery. `devlab init` creates a documented starter file, CLI overrides are supported, resolved agent configuration is logged under `.devlab/logs/agents/`, and the reference lives in `docs/agent-configuration.md`.
 
-Open feature: add `.devlab/config/agents.toml` so each target project can configure worker agent behavior per role.
+Possible follow-up refinements:
 
-Goals:
-
-- Configure provider, model, effort, timeout, and similar options per role.
-- Support defaults plus per-role overrides.
-- Let reviewer use a different provider/model from developer to reduce shared blind spots.
-- Keep known provider integrations in DevLab package, e.g. `pi`, `codex`, `claude`, `mock`, `scripted`.
-- Avoid arbitrary command execution by default; custom provider commands require an explicit trust model or advanced mode.
-- Allow CLI overrides for temporary experiments without editing committed config.
-- Log the resolved agent configuration for each session for auditability.
-
-Example role configuration:
-
-```toml
-[defaults]
-provider = "pi"
-model = "gpt-5-codex"
-effort = "medium"
-timeout_seconds = 3600
-
-[roles.architect]
-model = "gpt-5"
-effort = "high"
-
-[roles.planner]
-model = "gpt-5"
-effort = "medium"
-
-[roles.developer]
-provider = "codex"
-model = "gpt-5-codex"
-effort = "medium"
-
-[roles.reviewer]
-provider = "claude"
-model = "claude-sonnet-4.5"
-effort = "high"
-
-[roles.integrator]
-provider = "pi"
-model = "gpt-5-codex"
-effort = "high"
-timeout_seconds = 7200
-```
-
-Possible provider-specific configuration:
-
-```toml
-[providers.pi]
-command = "pi"
-args = ["--model", "{model}", "--effort", "{effort}"]
-
-[providers.codex]
-command = "codex"
-args = ["exec", "-", "--model", "{model}"]
-
-[providers.claude]
-command = "claude"
-args = ["--model", "{model}"]
-```
-
-Risk note: provider-specific command configuration is executable target-project configuration. The safe default should be known provider names with DevLab-owned invocation code. Arbitrary custom commands should require explicit opt-in, review, and logging.
-
-Suggested precedence:
-
-1. CLI override for the current run.
-2. `.devlab/config/agents.toml`.
-3. DevLab defaults.
+- Add `devlab doctor` validation for malformed `agents.toml`, unknown roles, missing providers, and unresolved placeholders.
+- Add more provider examples if new CLIs are used in practice.
+- Improve resolved agent config reporting in `devlab status --verbose`.
 
 ## Integration Findings and Corrective Planning
 

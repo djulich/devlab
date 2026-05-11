@@ -1,0 +1,59 @@
+# DevLab worker agent configuration.
+#
+# This file is owned by the human operator of the target repository. It controls
+# how DevLab invokes agent sessions for each role.
+#
+# Values in [defaults] apply to every role. A [roles.<role>] table overrides
+# defaults for one role. Supported roles are:
+# architect, planner, developer, reviewer, integrator.
+#
+# Provider command templates may use these placeholders:
+# {role_name}, {provider}, {model}, {effort}, {system_prompt}, {session_prompt}
+#
+# See docs/agent-configuration.md in the DevLab repository for full reference.
+
+[defaults]
+provider = "default"
+model = ""
+effort = ""
+timeout_seconds = 3600
+
+[providers.default]
+command = "claude"
+args = ["-p"]
+prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+
+# Example: Pi-style CLI invocation.
+# [defaults]
+# provider = "pi"
+# model = "gpt-5-codex"
+# effort = "medium"
+#
+# [providers.pi]
+# command = "pi"
+# args = ["-p", "--model", "{model}", "--effort", "{effort}"]
+# prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+
+# Example: Claude-style CLI invocation.
+# [providers.claude]
+# command = "claude"
+# args = ["-p", "--model", "{model}"]
+# prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+
+# Example: Codex-style stdin invocation.
+# [providers.codex]
+# command = "codex"
+# args = ["exec", "-", "--model", "{model}"]
+# prompt_args = []
+# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+
+# Example: use a different provider/model for review to reduce shared blind spots.
+# [roles.developer]
+# provider = "codex"
+# model = "gpt-5-codex"
+# effort = "medium"
+#
+# [roles.reviewer]
+# provider = "claude"
+# model = "claude-sonnet-4.5"
+# effort = "high"
