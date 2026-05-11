@@ -59,24 +59,72 @@ Planned feature: after a milestone integrates successfully, invoke the architect
 
 Likely implementation:
 
-- Add architecture-review markers per milestone, e.g. in `.devlab/history/`.
+- Use `.devlab/milestones/<milestone-id>.toml` state instead of architecture-review marker files.
 - Select architect when a milestone is integrated but not architecture-reviewed.
 - Build an architect prompt focused on milestone-boundary design review, not greenfield design.
 - After architecture review, route to planner if the design/project plan may need adjustment.
 
 ## Milestone State
 
-Current state: milestone completion is computed from task metadata and integration completion is tracked by marker files.
+Current state: milestone completion is computed from task metadata and integration completion is still tracked by marker files in orchestration behavior. The first milestone-state foundation exists: `src/devlab/milestones.py` defines file-backed milestone metadata under `.devlab/milestones/<milestone-id>.toml`, and `devlab init` creates `.devlab/milestones/`.
 
-Open feature: introduce explicit milestone metadata/state if marker files and project-plan text become insufficient.
+Implemented phase 1:
 
-Possible state to track:
+- `Milestone` and `MilestoneStatus` model.
+- `FileMilestoneTracker` abstraction.
+- Creation of missing milestone files from task metadata, with project-plan headings used for titles when available.
+- Preservation of existing milestone workflow state when adding newly discovered task IDs.
+- State mutation helpers for marking integrated, integration failed, and architecture reviewed.
 
-- milestone id/title
-- integration required or skipped
-- integrated status
-- architecture-reviewed status
-- current/planned/complete status
+Milestone file shape:
+
+```toml
+version = 1
+id = "M1"
+title = "Foundation"
+status = "planned"
+integration_required = true
+integrated = false
+architecture_reviewed = false
+task_ids = ["T0001", "T0002"]
+integration_handoff = ""
+architecture_review_handoff = ""
+findings = []
+```
+
+Remaining phase 2: replace integration marker selection.
+
+- Replace `.devlab/history/integrated_<milestone>.md` marker checks with milestone tracker state.
+- When all tasks for a milestone are closed, mark or select it as `tasks_complete`.
+- Select integrator from milestone state instead of recomputing only from task metadata and marker files.
+- On successful integration, call `mark_integrated(milestone_id, archived_handoff)`.
+- On failed integration, create a finding and call `mark_integration_failed(milestone_id, finding_id)`.
+- Keep task files as the source of truth for task status; milestone files should track group workflow state only.
+
+Remaining phase 3: architecture review at milestone boundaries.
+
+- Select architect when a milestone is integrated and `architecture_reviewed = false`.
+- Build a milestone-boundary architect prompt with the integrated milestone, relevant tasks, integration handoff, design plan, project plan, and system/deployment specs.
+- After architect handoff, call `mark_architecture_reviewed(milestone_id, archived_handoff)`.
+- If architect handoff reports open issues, create a finding and route to planner.
+
+Remaining phase 4: status and doctor support.
+
+- Show milestone state in `devlab status --verbose`, including task counts derived from task files and workflow flags from milestone files.
+- Add `devlab doctor` checks for milestone/task consistency:
+  - task references unknown or missing milestone file,
+  - milestone references unknown task,
+  - duplicate or malformed milestone IDs,
+  - integrated milestone without integration handoff,
+  - architecture-reviewed milestone without architecture handoff,
+  - finding IDs listed on milestones but missing from `.devlab/findings/`.
+
+Future extensions enabled by explicit milestone state:
+
+- Design/spec sync reviews after milestone integration.
+- Milestone branch/rollback metadata such as base ref, integration ref, rollback ref, and branch name.
+- Richer reporting for integration failures and corrective planning.
+
 
 ## Deployment Specification and Verification
 

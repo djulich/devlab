@@ -23,6 +23,7 @@ EMPTY_FILES = (
 
 GITKEEP_DIRS = (
     "tasks",
+    "milestones",
     "findings",
     "history",
     "logs/environment",

@@ -19,6 +19,7 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
         ".devlab/plans/design-plan.md",
         ".devlab/plans/project-plan.md",
         ".devlab/tasks/.gitkeep",
+        ".devlab/milestones/.gitkeep",
         ".devlab/findings/.gitkeep",
         ".devlab/history/.gitkeep",
         ".devlab/logs/environment/.gitkeep",
