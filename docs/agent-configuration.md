@@ -136,8 +136,14 @@ Resolved agent settings should use this precedence:
 3. Defaults in `.devlab/config/agents.toml`.
 4. DevLab built-in fallback defaults.
 
+## Inspection and Validation
+
+Use `devlab status --verbose` to inspect the resolved provider, model, effort, timeout, command shape, and stdin mode for each role. Prompt contents are not printed.
+
+Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
+
 ## Logging
 
-DevLab should log resolved agent configuration for each session under `.devlab/logs/agents/`.
+DevLab logs resolved agent configuration for each session under `.devlab/logs/agents/`.
 
-The log should include provider name, role, model, effort, timeout, and rendered command shape, but should not include full system or session prompts.
+The log includes provider name, role, model, effort, timeout, and rendered command shape, but does not include full system or session prompts.

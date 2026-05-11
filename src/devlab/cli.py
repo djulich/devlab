@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from devlab.doctor import check_workspace, format_doctor_report
 from devlab.init import format_init_result, init_workspace
-from devlab.orchestrator import DEFAULT_PROJECT_ROOT, assess_state, run_loop
+from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop
+from devlab.status import format_status
 
 
 def main() -> None:
@@ -66,8 +68,23 @@ def main() -> None:
         help="Pass --dangerously-skip-permissions to the agent command.",
     )
 
-    status_parser = subparsers.add_parser("status", help="Show the next selected role.")
+    status_parser = subparsers.add_parser("status", help="Show workspace status.")
     status_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to inspect (default: current working directory).",
+    )
+    status_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show resolved agent configuration details.",
+    )
+
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="Validate DevLab workspace configuration."
+    )
+    doctor_parser.add_argument(
         "--root",
         type=Path,
         default=DEFAULT_PROJECT_ROOT,
@@ -90,11 +107,12 @@ def main() -> None:
             dangerous_skip_permissions=args.dangerously_skip_permissions,
         )
     elif args.command == "status":
-        role_name = assess_state(root)
-        if role_name is None:
-            print("No role selected; workflow is complete or blocked.")
-        else:
-            print(f"Next role: {role_name}")
+        print(format_status(root, verbose=args.verbose))
+    elif args.command == "doctor":
+        problems = check_workspace(root)
+        print(format_doctor_report(problems))
+        if problems:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

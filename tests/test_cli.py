@@ -48,3 +48,42 @@ def test_cli_status_reports_next_role_for_initialized_workspace(
     _run_cli(monkeypatch, "status", "--root", str(tmp_path))
 
     assert capsys.readouterr().out.strip() == "Next role: architect"
+
+
+def test_cli_status_verbose_reports_agent_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(monkeypatch, "status", "--verbose", "--root", str(tmp_path))
+
+    output = capsys.readouterr().out
+    assert "Next role: architect" in output
+    assert "Agent configuration:" in output
+    assert "Source: .devlab/config/agents.toml" in output
+
+
+def test_cli_doctor_reports_ok_for_initialized_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(monkeypatch, "doctor", "--root", str(tmp_path))
+
+    assert capsys.readouterr().out.strip() == "DevLab doctor: OK"
+
+
+def test_cli_doctor_exits_nonzero_for_invalid_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    (tmp_path / ".devlab/config/agents.toml").write_text("[defaults\n")
+
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "doctor", "--root", str(tmp_path))
+
+    assert exc.value.code == 1
+    assert "DevLab doctor: 1 problem(s)" in capsys.readouterr().out
