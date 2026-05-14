@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES, load_agent_configuration
+from devlab.findings import FileFindingTracker
+from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
+from devlab.task_tracker import FileTaskTracker
 
 _SUPPORTED_PLACEHOLDERS = {
     "role_name",
@@ -27,6 +30,7 @@ class DoctorProblem:
 def check_workspace(root: Path) -> list[DoctorProblem]:
     problems: list[DoctorProblem] = []
     problems.extend(_check_agents_config(root))
+    problems.extend(_check_milestones(root))
     return problems
 
 
@@ -86,6 +90,120 @@ def _check_agents_config(root: Path) -> list[DoctorProblem]:
         except (ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
             problems.append(DoctorProblem(display_path, str(exc)))
     return problems
+
+
+def _check_milestones(root: Path) -> list[DoctorProblem]:
+    problems: list[DoctorProblem] = []
+    tasks = FileTaskTracker(root).list_tasks()
+    task_by_id = {task.id: task for task in tasks}
+    milestone_dir = root / MILESTONES_DIR
+    milestone_files = sorted(milestone_dir.glob("M*.toml")) if milestone_dir.exists() else []
+    milestone_by_id = {}
+    seen_ids: dict[str, str] = {}
+
+    for path in milestone_files:
+        display_path = _display_path(path, root)
+        if not MILESTONE_ID_RE.fullmatch(path.stem):
+            problems.append(
+                DoctorProblem(display_path, f"filename {path.name!r} is not a valid milestone ID")
+            )
+        try:
+            milestone = FileMilestoneTracker(root).get(path.stem)
+        except (tomllib.TOMLDecodeError, ValueError) as exc:
+            problems.append(DoctorProblem(display_path, str(exc)))
+            continue
+        if milestone.id != path.stem:
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    f"id {milestone.id!r} does not match filename {path.stem!r}",
+                )
+            )
+        if milestone.id in seen_ids:
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    f"duplicate milestone id {milestone.id!r}; first seen in "
+                    f"{seen_ids[milestone.id]}",
+                )
+            )
+        seen_ids[milestone.id] = display_path
+        milestone_by_id[milestone.id] = milestone
+
+    for task in tasks:
+        if task.milestone is None:
+            continue
+        milestone = milestone_by_id.get(task.milestone)
+        task_path = _display_path(task.path, root)
+        if milestone is None:
+            problems.append(
+                DoctorProblem(task_path, f"references missing milestone {task.milestone!r}")
+            )
+        elif task.id not in milestone.task_ids:
+            problems.append(
+                DoctorProblem(
+                    _display_path(milestone.path, root),
+                    f"does not list task {task.id!r} referenced by {task_path}",
+                )
+            )
+
+    finding_ids = {finding.id: finding for finding in FileFindingTracker(root).list_findings()}
+    for milestone in milestone_by_id.values():
+        display_path = _display_path(milestone.path, root)
+        for task_id in milestone.task_ids:
+            task = task_by_id.get(task_id)
+            if task is None:
+                problems.append(
+                    DoctorProblem(display_path, f"task_ids references unknown task {task_id!r}")
+                )
+            elif task.milestone != milestone.id:
+                problems.append(
+                    DoctorProblem(
+                        display_path,
+                        f"task_ids references {task_id!r} but task milestone is "
+                        f"{task.milestone!r}",
+                    )
+                )
+        if milestone.integrated and not milestone.integration_handoff:
+            problems.append(
+                DoctorProblem(display_path, "integrated milestone is missing integration_handoff")
+            )
+        if milestone.architecture_approved and not milestone.integrated:
+            problems.append(
+                DoctorProblem(display_path, "architecture-approved milestone is not integrated")
+            )
+        if milestone.architecture_approved and not milestone.architecture_review_handoff:
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    "architecture-approved milestone is missing architecture_review_handoff",
+                )
+            )
+        for finding_id in milestone.findings:
+            finding = finding_ids.get(finding_id)
+            if finding is None:
+                problems.append(
+                    DoctorProblem(
+                        display_path,
+                        f"findings references unknown finding {finding_id!r}",
+                    )
+                )
+            elif finding.milestone != milestone.id:
+                problems.append(
+                    DoctorProblem(
+                        display_path,
+                        f"findings references {finding_id!r} but finding milestone is "
+                        f"{finding.milestone!r}",
+                    )
+                )
+    return problems
+
+
+def _display_path(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
 
 
 def _optional_table(

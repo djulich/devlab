@@ -15,7 +15,7 @@ from devlab.agent_config import (
 from devlab.agents import AgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.findings import FileFindingTracker
-from devlab.milestones import FileMilestoneTracker
+from devlab.milestones import FileMilestoneTracker, sync_milestones_from_tasks
 from devlab.profiles import Profile, ProfileNotFoundError, load_profile
 from devlab.prompt_resources import read_prompt_resource
 from devlab.task_tracker import FileTaskTracker, Task
@@ -111,10 +111,7 @@ def milestone_tracker(root: Path) -> FileMilestoneTracker:
 
 
 def _sync_milestones(root: Path) -> None:
-    milestone_tracker(root).upsert_from_tasks(
-        task_tracker(root).list_tasks(),
-        project_plan_text=_read_file(root / PROJECT_PLAN),
-    )
+    sync_milestones_from_tasks(root, project_plan_text=_read_file(root / PROJECT_PLAN))
 
 
 def _log_resolved_agent_config(root: Path, role_name: str, config: ResolvedAgentConfig) -> Path:

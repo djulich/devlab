@@ -7,7 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from devlab.task_tracker import Task
+from devlab.task_tracker import FileTaskTracker, Task
 
 MILESTONES_DIR = ".devlab/milestones"
 MILESTONE_ID_RE = re.compile(r"(?<![A-Z0-9])M\d{1,5}(?!\d)")
@@ -183,6 +183,17 @@ class FileMilestoneTracker:
             path=path,
             metadata=normalized,
         )
+
+
+def sync_milestones_from_tasks(
+    root: Path,
+    *,
+    project_plan_text: str = "",
+) -> list[Milestone]:
+    return FileMilestoneTracker(root).upsert_from_tasks(
+        FileTaskTracker(root).list_tasks(),
+        project_plan_text=project_plan_text,
+    )
 
 
 def _default_milestone_metadata(

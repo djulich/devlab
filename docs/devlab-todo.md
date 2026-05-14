@@ -71,7 +71,7 @@ Possible follow-up:
 
 Current state: milestone completion is computed from task metadata, while integration workflow state is tracked explicitly in `.devlab/milestones/<milestone-id>.toml`. `src/devlab/milestones.py` defines the file-backed milestone tracker, and `devlab init` creates `.devlab/milestones/`.
 
-Implemented phases 1-3:
+Implemented phases 1-4:
 
 - `Milestone` and `MilestoneStatus` model.
 - `FileMilestoneTracker` abstraction.
@@ -86,6 +86,8 @@ Implemented phases 1-3:
 - Successful architecture review records `architecture_approved = true`, `status = "architecture_approved"`, and the archived architect handoff on the milestone.
 - Architecture review Open Issues create architect-sourced findings and leave `architecture_approved = false` so review can run again after corrective work.
 - Adding newly discovered task IDs to an integrated milestone resets `integrated = false` and `architecture_approved = false`, forcing reintegration and re-review after corrective tasks.
+- `devlab status --verbose` reports milestone state, derived task counts, workflow flags, handoffs, and finding IDs.
+- `devlab doctor` validates milestone/task/finding consistency without mutating milestone files.
 
 Milestone file shape:
 
@@ -102,17 +104,6 @@ integration_handoff = ""
 architecture_review_handoff = ""
 findings = []
 ```
-
-Remaining phase 4: status and doctor support.
-
-- Show milestone state in `devlab status --verbose`, including task counts derived from task files and workflow flags from milestone files.
-- Add `devlab doctor` checks for milestone/task consistency:
-  - task references unknown or missing milestone file,
-  - milestone references unknown task,
-  - duplicate or malformed milestone IDs,
-  - integrated milestone without integration handoff,
-  - architecture-approved milestone without architecture handoff,
-  - finding IDs listed on milestones but missing from `.devlab/findings/`.
 
 Future extensions enabled by explicit milestone state:
 

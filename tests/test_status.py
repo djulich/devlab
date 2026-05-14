@@ -40,6 +40,42 @@ def test_status_verbose_reports_fallback_source(tmp_path: Path) -> None:
     assert '- developer: default model="" effort=""' in text
 
 
+def test_status_verbose_includes_milestone_state(tmp_path: Path) -> None:
+    _setup_minimal_workspace(tmp_path)
+    (tmp_path / ".devlab/plans/project-plan.md").write_text("## M1: Foundation\n")
+    _write_task(tmp_path, "T0001", "closed", "M1")
+    _write_task(tmp_path, "T0002", "open", "M1")
+    _write_milestone(
+        tmp_path,
+        "M1",
+        status="integrated",
+        integrated=True,
+        architecture_approved=False,
+        task_ids=["T0001", "T0002"],
+        integration_handoff="20260101T000000_integrator_handoff.md",
+        findings=["F0001"],
+    )
+
+    text = format_status(tmp_path, verbose=True)
+
+    assert "Milestones:" in text
+    assert "- M1: Foundation" in text
+    assert "  status: integrated" in text
+    assert "  tasks: 2 total, 1 closed, 1 active" in text
+    assert "  integrated: true" in text
+    assert "  architecture_approved: false" in text
+    assert "  integration_handoff: 20260101T000000_integrator_handoff.md" in text
+    assert "  findings: F0001" in text
+
+
+def test_status_verbose_reports_no_milestones(tmp_path: Path) -> None:
+    _setup_minimal_workspace(tmp_path)
+
+    text = format_status(tmp_path, verbose=True)
+
+    assert "Milestones: none" in text
+
+
 def _setup_minimal_workspace(root: Path) -> None:
     (root / ".devlab/plans").mkdir(parents=True)
     (root / ".devlab/config/profiles").mkdir(parents=True)
@@ -49,4 +85,50 @@ def _setup_minimal_workspace(root: Path) -> None:
     (root / ".devlab/config/tooling.md").write_text("# Tooling\n")
     (root / ".devlab/config/profiles/default.toml").write_text(
         'version = 1\nid = "default"\ntitle = "Default"\n'
+    )
+
+
+def _write_task(root: Path, task_id: str, status: str, milestone: str) -> None:
+    path = root / ".devlab/tasks" / f"{task_id}_task.md"
+    path.write_text(
+        "+++\n"
+        f'id = "{task_id}"\n'
+        f'title = "{task_id}"\n'
+        f'status = "{status}"\n'
+        f'milestone = "{milestone}"\n'
+        "depends_on = []\n"
+        "+++\n\n"
+        f"# {task_id}\n"
+    )
+
+
+def _write_milestone(
+    root: Path,
+    milestone_id: str,
+    *,
+    status: str,
+    integrated: bool,
+    architecture_approved: bool,
+    task_ids: list[str],
+    integration_handoff: str = "",
+    architecture_review_handoff: str = "",
+    findings: list[str] | None = None,
+) -> None:
+    findings = findings or []
+    task_ids_text = ", ".join(f'"{task_id}"' for task_id in task_ids)
+    findings_text = ", ".join(f'"{finding_id}"' for finding_id in findings)
+    path = root / ".devlab/milestones" / f"{milestone_id}.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "version = 1\n"
+        f'id = "{milestone_id}"\n'
+        'title = "Foundation"\n'
+        f'status = "{status}"\n'
+        "integration_required = true\n"
+        f"integrated = {str(integrated).lower()}\n"
+        f"architecture_approved = {str(architecture_approved).lower()}\n"
+        f"task_ids = [{task_ids_text}]\n"
+        f'integration_handoff = "{integration_handoff}"\n'
+        f'architecture_review_handoff = "{architecture_review_handoff}"\n'
+        f"findings = [{findings_text}]\n"
     )
