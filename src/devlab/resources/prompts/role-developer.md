@@ -30,10 +30,10 @@ The developer implements exactly one eligible task per session.
 - When updating an existing profile, prefer backward-compatible extensions and fixes. Do not remove, replace, narrow, or materially alter existing profile behavior unless the assigned task explicitly requires a breaking migration.
 - Run project commands through workspace-local tooling; do not rely on globally installed packages.
 
-## Implementation Quality
+## Coding Standards
 
 - Prefer simple, explicit code that follows existing project patterns.
-- Preserve separation of concerns: put behavior in the owning module/abstraction and avoid leaking file formats, workflow rules, provider details, or environment assumptions into unrelated code.
+- Preserve separation of concerns: put behavior in the owning module/abstraction and avoid leaking storage formats, external service details, environment assumptions, or workflow rules into unrelated code.
 - Use clear domain names and add comments/docstrings only when they clarify purpose, contracts, invariants, or design tradeoffs.
 
 ## Validation Checklist
