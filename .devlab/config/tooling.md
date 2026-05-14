@@ -1,5 +1,12 @@
 # Tooling Policy
 
+## Coding Standards
+
+- Prefer readable, explicit code over cleverness.
+- Preserve separation of concerns: put behavior in the owning module/abstraction and avoid leaking storage formats, external service details, environment assumptions, or workflow rules into unrelated code.
+- Add focused tests for behavior changes.
+- Add comments/docstrings only when they clarify purpose, contracts, invariants, or design tradeoffs.
+
 ## Python
 
 Use:

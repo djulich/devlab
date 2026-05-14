@@ -45,6 +45,8 @@ Before approving, confirm:
 - [ ] If task `validation = []`, the developer handoff states whether any validation was run and why.
 - [ ] If the task creates or changes a profile, the profile follows `.devlab/config/tooling.md` policy.
 - [ ] Existing profile changes are backward-compatible for existing planned tasks, unless the task explicitly required a new profile or breaking migration.
+- [ ] The implementation preserves separation of concerns: behavior is in the owning module/abstraction, without leaking file formats, workflow rules, provider details, or environment assumptions into unrelated code.
+- [ ] The implementation is readable, follows existing project patterns, and uses comments/docstrings only when they clarify purpose, contracts, invariants, or design tradeoffs.
 - [ ] No unrelated refactoring or broad scope creep was introduced.
 - [ ] The task file has all acceptance criteria checked.
 
