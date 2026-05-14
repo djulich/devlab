@@ -94,9 +94,10 @@ The repository is the system of record. Agents should not depend on conversation
 Important workflow state is stored in files, for example:
 
 - `.devlab/specs/` — target-workspace system and deployment specifications.
-- `.devlab/config/` — target-workspace tooling, environment, profile, and future agent configuration.
+- `.devlab/config/` — target-workspace tooling, agent, profile, and environment lifecycle configuration.
 - `.devlab/plans/` — design and project plans.
 - `.devlab/tasks/` — task files, including each task's status.
+- `.devlab/milestones/` — milestone workflow state.
 - `.devlab/findings/` — file-backed integration and workflow findings.
 - `.devlab/history/` — archived session handoffs and workflow markers.
 - `.devlab/logs/` — committed workflow logs.
@@ -161,7 +162,7 @@ Typical flow:
 3. If a completed milestone needs integration, invoke the integrator.
 4. If an eligible development task exists, invoke the developer.
 5. If no active tasks exist but planning is incomplete, invoke the planner.
-6. If all tasks are closed and completed milestones are integrated, stop.
+6. If all tasks are closed and completed milestones are integrated and architecture-approved, stop.
 7. If remaining tasks are blocked by dependencies, stop and report the blockage.
 
 The active roles are:
@@ -191,6 +192,7 @@ id = "T0001"
 title = "Example task"
 status = "open"
 milestone = "M1"
+profile = "default"
 depends_on = []
 validation = []
 +++
@@ -295,6 +297,7 @@ Target-project DevLab workflow artifacts are collected under `.devlab/` in the t
   config/
     README.md
     tooling.md
+    agents.toml
     profiles/
       default.toml
 
@@ -304,6 +307,7 @@ Target-project DevLab workflow artifacts are collected under `.devlab/` in the t
 
   plans/
   tasks/
+  milestones/
   findings/
   history/
   logs/
@@ -398,7 +402,7 @@ It does this by combining:
 - explicit task statuses,
 - structured handoffs,
 - minimal agent context,
-- simple Python tooling,
+- profile-based tooling,
 - a backend abstraction for task tracking.
 
 The result should be a workflow that can run incrementally, recover from failures, remain understandable to humans, and evolve toward more capable development automation over time.
