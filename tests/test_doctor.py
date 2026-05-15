@@ -31,6 +31,30 @@ def test_doctor_reports_multiple_agents_config_problems(tmp_path: Path) -> None:
     assert any("references missing provider 'missing'" in message for message in messages)
 
 
+def test_doctor_reports_prompt_context_configuration_problems(tmp_path: Path) -> None:
+    path = tmp_path / ".devlab/config/agents.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "[prompt_context]\n"
+        "warning_tokens = 100\n"
+        "critical_tokens = 50\n"
+        "\n[prompt_context.roles.unknown]\n"
+        "warning_tokens = 10\n"
+        "critical_tokens = 20\n"
+        "\n[prompt_context.roles.planner]\n"
+        'warning_tokens = "many"\n'
+    )
+
+    messages = _messages(tmp_path)
+
+    assert (
+        "prompt_context.critical_tokens must be greater than or equal to warning_tokens"
+        in messages
+    )
+    assert "prompt_context.roles.unknown is not a known role" in messages
+    assert "prompt_context.roles.planner.warning_tokens must be an integer" in messages
+
+
 def test_doctor_report_formats_success_and_failure(tmp_path: Path) -> None:
     assert format_doctor_report([]) == "DevLab doctor: OK"
 

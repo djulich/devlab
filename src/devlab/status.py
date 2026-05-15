@@ -4,6 +4,7 @@ from pathlib import Path
 
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
 from devlab.milestones import Milestone, sync_milestones_from_tasks
+from devlab.prompt_context import PromptContextReport, build_prompt_context_report
 from devlab.task_tracker import FileTaskTracker, Task, TaskStatus
 from devlab.workspace import PROJECT_PLAN, assess_state, read_file
 
@@ -18,6 +19,7 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
 
     if verbose:
         lines.extend(["", *_format_agent_configuration(root)])
+        lines.extend(["", *_format_prompt_context(root)])
         lines.extend(["", *_format_milestone_status(root)])
     return "\n".join(lines)
 
@@ -32,6 +34,28 @@ def _format_agent_configuration(root: Path) -> list[str]:
         lines.append("Source: built-in fallback defaults")
     for role_name in sorted(config.resolved):
         lines.append(_format_role_agent(config.resolved[role_name]))
+    return lines
+
+
+def _format_prompt_context(root: Path) -> list[str]:
+    report = build_prompt_context_report(root)
+    return _format_prompt_context_report(report)
+
+
+def _format_prompt_context_report(report: PromptContextReport) -> list[str]:
+    lines = ["Prompt context:"]
+    for role in report.roles:
+        if role.status == "ok":
+            status_text = "OK"
+        elif role.status == "warning":
+            status_text = f"WARNING over {_format_count(role.thresholds.warning_tokens)}"
+        else:
+            status_text = f"CRITICAL over {_format_count(role.thresholds.critical_tokens)}"
+        lines.append(
+            f"- {role.role_name}: total ~{_format_count(role.total.estimated_tokens)} tokens "
+            f"(system ~{_format_count(role.system.estimated_tokens)}, "
+            f"session ~{_format_count(role.session.estimated_tokens)}) {status_text}"
+        )
     return lines
 
 
@@ -72,9 +96,12 @@ def _format_milestone(milestone: Milestone, tasks: list[Task]) -> list[str]:
     return lines
 
 
-
 def _bool_text(value: bool) -> str:
     return "true" if value else "false"
+
+
+def _format_count(value: int) -> str:
+    return f"{value:,}"
 
 
 def _format_role_agent(config: ResolvedAgentConfig) -> str:

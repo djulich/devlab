@@ -60,6 +60,7 @@ def _check_agents_config(root: Path) -> list[DoctorProblem]:
     defaults = _optional_table(config, "defaults", display_path, problems)
     roles = _optional_table(config, "roles", display_path, problems)
     providers = _optional_table(config, "providers", display_path, problems)
+    prompt_context = _optional_table(config, "prompt_context", display_path, problems)
 
     if defaults is not None:
         _check_role_values(defaults, "defaults", display_path, problems)
@@ -83,6 +84,8 @@ def _check_agents_config(root: Path) -> list[DoctorProblem]:
                 _check_provider(provider_name, provider_table, display_path, problems)
 
     _check_provider_references(defaults, roles, providers, display_path, problems)
+    if prompt_context is not None:
+        _check_prompt_context(prompt_context, display_path, problems)
 
     if not problems:
         try:
@@ -197,6 +200,110 @@ def _check_milestones(root: Path) -> list[DoctorProblem]:
                     )
                 )
     return problems
+
+
+def _check_prompt_context(
+    prompt_context: dict[str, Any], display_path: str, problems: list[DoctorProblem]
+) -> None:
+    warning_tokens = _check_positive_int(
+        prompt_context,
+        "warning_tokens",
+        "prompt_context.warning_tokens",
+        display_path,
+        problems,
+    )
+    critical_tokens = _check_positive_int(
+        prompt_context,
+        "critical_tokens",
+        "prompt_context.critical_tokens",
+        display_path,
+        problems,
+    )
+    _check_threshold_order(
+        warning_tokens,
+        critical_tokens,
+        "prompt_context",
+        display_path,
+        problems,
+    )
+    roles = _optional_table(prompt_context, "roles", display_path, problems)
+    if roles is None:
+        return
+    for role_name, role_value in roles.items():
+        if role_name not in ROLE_NAMES:
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    f"prompt_context.roles.{role_name} is not a known role",
+                )
+            )
+            continue
+        role_table = _require_table(
+            role_value,
+            f"prompt_context.roles.{role_name}",
+            display_path,
+            problems,
+        )
+        if role_table is None:
+            continue
+        role_warning = _check_positive_int(
+            role_table,
+            "warning_tokens",
+            f"prompt_context.roles.{role_name}.warning_tokens",
+            display_path,
+            problems,
+        )
+        role_critical = _check_positive_int(
+            role_table,
+            "critical_tokens",
+            f"prompt_context.roles.{role_name}.critical_tokens",
+            display_path,
+            problems,
+        )
+        _check_threshold_order(
+            role_warning,
+            role_critical,
+            f"prompt_context.roles.{role_name}",
+            display_path,
+            problems,
+        )
+
+
+def _check_positive_int(
+    values: dict[str, Any],
+    key: str,
+    name: str,
+    display_path: str,
+    problems: list[DoctorProblem],
+) -> int | None:
+    value = values.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int):
+        problems.append(DoctorProblem(display_path, f"{name} must be an integer"))
+        return None
+    if value <= 0:
+        problems.append(DoctorProblem(display_path, f"{name} must be greater than zero"))
+        return None
+    return value
+
+
+def _check_threshold_order(
+    warning_tokens: int | None,
+    critical_tokens: int | None,
+    name: str,
+    display_path: str,
+    problems: list[DoctorProblem],
+) -> None:
+    if warning_tokens is None or critical_tokens is None:
+        return
+    if critical_tokens < warning_tokens:
+        problems.append(
+            DoctorProblem(
+                display_path,
+                f"{name}.critical_tokens must be greater than or equal to warning_tokens",
+            )
+        )
 
 
 def _display_path(path: Path, root: Path) -> str:

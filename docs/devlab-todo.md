@@ -12,17 +12,15 @@ The scripted deterministic provider also serves as the foundation for future wor
 
 ## 2. Prompt Context Size Monitoring
 
-Priority: high. DevLab's core promise is bounded sessions. If prompt size silently grows past model limits, sessions degrade without warning.
+Status: **initial monitoring implemented**. DevLab now estimates system, session, and total prompt size per role using the actual prompt builders. `devlab status --verbose` reports approximate token counts and OK/WARNING/CRITICAL threshold status. Thresholds are configurable in `.devlab/config/agents.toml` via `[prompt_context]` and `[prompt_context.roles.<role>]`, and `devlab doctor` validates the threshold configuration.
 
-Current state: packaged prompt resources are modest. Approximate fixed system prompt sizes are architect ~1.4k tokens, planner ~2.4k, developer ~1.8k, reviewer ~1.8k, integrator ~1.5k. But session prompts grow with plans, task listings, findings, and profile content.
+Follow-up work required to complete the broader feature:
 
-Implementation direction:
-
-- Add a prompt size estimator for system prompt, session prompt, and selected repository context per role.
-- Surface the report through `devlab status --verbose` or a future `devlab doctor` command.
-- Warn when a role's initial context exceeds configurable thresholds.
+- Refactor prompt-relevant selectors so prompt sizing can be fully read-only. Some current prompt builders call workflow selectors that may sync milestone state; this blocks stricter `doctor` checks that inspect live prompt sizes without side effects.
+- Add doctor warnings for oversized live prompts once prompt sizing is non-mutating.
+- Add prompt reduction strategies for oversized contexts, especially summarizing profile listings for planner prompts, limiting historical handoffs, and including only role-relevant parts of conventions.
 - Consider splitting `conventions.md` into role-relevant sections (core, tasks, findings, reviews, handoffs) and including only what each role needs.
-- Consider summarizing profile listings for planner prompts instead of embedding full TOML.
+- Consider model-specific tokenizers or provider-specific context windows if approximate sizing proves insufficient.
 
 ## 3. Error Recovery and Structured Results
 

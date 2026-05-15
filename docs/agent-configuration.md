@@ -136,9 +136,27 @@ Resolved agent settings should use this precedence:
 3. Defaults in `.devlab/config/agents.toml`.
 4. DevLab built-in fallback defaults.
 
+## Prompt Context Thresholds
+
+`devlab status --verbose` reports approximate prompt context sizes for each role. The estimate is intentionally dependency-free and uses roughly four characters per token.
+
+Configure warning thresholds in `.devlab/config/agents.toml`:
+
+```toml
+[prompt_context]
+warning_tokens = 60000
+critical_tokens = 100000
+
+[prompt_context.roles.planner]
+warning_tokens = 50000
+critical_tokens = 90000
+```
+
+Role-specific thresholds inherit the global values when omitted. If the section is omitted entirely, DevLab uses `60000` warning tokens and `100000` critical tokens.
+
 ## Inspection and Validation
 
-Use `devlab status --verbose` to inspect the resolved provider, model, effort, timeout, command shape, and stdin mode for each role. Prompt contents are not printed.
+Use `devlab status --verbose` to inspect the resolved provider, model, effort, timeout, command shape, stdin mode, and approximate prompt context size for each role. Prompt contents are not printed.
 
 Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
 

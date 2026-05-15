@@ -24,6 +24,8 @@ def test_status_verbose_includes_agent_configuration_without_prompts(tmp_path: P
 
     assert "Next role: architect" in text
     assert "Agent configuration:" in text
+    assert "Prompt context:" in text
+    assert "- architect: total ~" in text
     assert "Source: .devlab/config/agents.toml" in text
     assert '- developer: codex model="gpt-5-codex" effort="medium"' in text
     assert "stdin=true" in text
