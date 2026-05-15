@@ -10,7 +10,7 @@ This file is for agents changing DevLab itself. Packaged prompt resources in `sr
 
 ## DevLab Development Principles
 
-When changing DevLab itself, preserve these design constraints:
+The orchestrator decides *what* to do; providers decide *how* to invoke agents; trackers decide *how* to store state. When changing DevLab itself, preserve these design constraints:
 
 - Keep packaged agent prompt files in `src/devlab/resources/prompts/` minimal. Do not add explanatory detail there unless the invoked role needs it to act correctly.
 - Prefer implementing workflow rules in code over adding prompt instructions. The orchestrator/task tracker should enforce selection, status transitions, and validation where practical.
@@ -20,11 +20,16 @@ When changing DevLab itself, preserve these design constraints:
 - Keep task storage behind the task-tracker abstraction; do not spread file-backed task assumptions through unrelated code.
 - Keep concrete agent invocation behind the agent-provider abstraction; do not bake one agent CLI into orchestration logic.
 
+### Key module boundaries
+
+- `orchestrator.py` owns the workflow loop (role selection, session lifecycle, handoff processing). Prompt assembly currently lives here but is a candidate for extraction.
+- `task_tracker.py` owns task file parsing and status transitions. Other modules should use the `FileTaskTracker` API, not parse task files directly.
+- `agents.py` owns agent invocation. Provider-specific logic (CLI flags, stdin protocols) belongs here, not in the orchestrator.
+- `milestones.py`, `findings.py`, `profiles.py` each own their respective file-backed state. The orchestrator coordinates between them but should not duplicate their parsing or mutation logic.
+
 ## Coding Standards
 
-- Prefer readable, explicit code over explanatory comments. Add concise docstrings/comments for public modules, classes, and non-trivial functions when they clarify purpose, responsibility, contracts, invariants, or design tradeoffs.
-- Comments should explain why the code is shaped a certain way, not restate what nearby code does.
-- Avoid comment noise for obvious variables, simple helpers, or implementation details that are clear from names and structure.
+- Add concise docstrings for public modules, classes, and non-trivial functions. Docstrings should clarify purpose, contracts, invariants, or design tradeoffs — not restate what the code does.
 - Preserve separation of concerns: put behavior in the module or abstraction that owns it, and avoid duplicating or leaking file formats, workflow rules, provider details, or environment assumptions across unrelated code.
 - Prefer clear domain names over generic names. Use names that expose workflow concepts such as task, milestone, finding, profile, handoff, provider, and workspace.
 - Add or update focused tests for behavior changes, especially state transitions, file formats, CLI output, and validation errors.
