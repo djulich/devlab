@@ -6,11 +6,9 @@ Items are ordered by priority: workflow reliability first, then observability, t
 
 ## 1. End-to-End Workflow Test with MockProvider
 
-Priority: highest. The `run_loop` function is tested only indirectly through unit tests of its component functions. There is no test that exercises the full orchestration loop.
+Status: **implemented**. `tests/test_orchestrator_e2e.py` initializes a target workspace with `init_workspace`, runs `run_loop` with scripted `MockProvider` behavior, and verifies full workflow state transitions. Coverage includes both the happy path (`architect → planner → developer → reviewer → integrator → architect approval`) and an integration-finding corrective loop (`integrator finding → planner corrective task → developer/reviewer → reintegration → architecture approval`).
 
-Goal: create a test that sets up a workspace with a system spec, configures `MockProvider` to write canned handoffs and task files per role, and runs `run_loop` from architect through closed tasks. Verify that state transitions (task status, milestone state, findings) proceed correctly across multiple sessions.
-
-A scripted deterministic provider that writes known outputs for known specs would also serve as the foundation for workflow evaluations (see item 8).
+The scripted deterministic provider also serves as the foundation for future workflow evaluations (see item 8).
 
 ## 2. Prompt Context Size Monitoring
 

@@ -24,7 +24,7 @@
 
 ## History File Naming
 
-`<YYYYMMDDThhmmss>_<role>_handoff.md`
+`<YYYYMMDDThhmmss>_<role>_handoff.md`, with an added numeric suffix after the timestamp if multiple handoffs are archived in the same second.
 
 ## Task Template
 

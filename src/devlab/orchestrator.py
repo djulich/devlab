@@ -134,7 +134,12 @@ def archive_handoff(root: Path, role_name: str) -> Path:
     src = root / ARTIFACTS_DIR / role_name / "handoff.md"
     history = root / HISTORY_DIR
     history.mkdir(parents=True, exist_ok=True)
-    dest = history / f"{_timestamp()}_{role_name}_handoff.md"
+    timestamp = _timestamp()
+    dest = history / f"{timestamp}_{role_name}_handoff.md"
+    counter = 2
+    while dest.exists():
+        dest = history / f"{timestamp}_{counter}_{role_name}_handoff.md"
+        counter += 1
     shutil.copy2(src, dest)
     return dest
 
