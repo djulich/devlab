@@ -16,7 +16,6 @@ Status: **initial monitoring implemented**. DevLab now estimates system, session
 
 Follow-up work required to complete the broader feature:
 
-- Add doctor warnings for oversized live prompts. Prompt sizing is now non-mutating, but doctor still only validates threshold configuration.
 - Add prompt reduction strategies for oversized contexts, especially summarizing profile listings for planner prompts, limiting historical handoffs, and including only role-relevant parts of conventions.
 - Consider splitting `conventions.md` into role-relevant sections (core, tasks, findings, reviews, handoffs) and including only what each role needs.
 - Consider model-specific tokenizers or provider-specific context windows if approximate sizing proves insufficient.

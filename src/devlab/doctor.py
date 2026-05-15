@@ -9,6 +9,7 @@ from typing import Any, cast
 from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES, load_agent_configuration
 from devlab.findings import FileFindingTracker
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
+from devlab.prompt_context import RolePromptContext, build_prompt_context_report
 from devlab.task_tracker import FileTaskTracker
 
 _SUPPORTED_PLACEHOLDERS = {
@@ -29,7 +30,10 @@ class DoctorProblem:
 
 def check_workspace(root: Path) -> list[DoctorProblem]:
     problems: list[DoctorProblem] = []
-    problems.extend(_check_agents_config(root))
+    agent_problems = _check_agents_config(root)
+    problems.extend(agent_problems)
+    if not agent_problems:
+        problems.extend(_check_prompt_context_sizes(root))
     problems.extend(_check_milestones(root))
     return problems
 
@@ -93,6 +97,35 @@ def _check_agents_config(root: Path) -> list[DoctorProblem]:
         except (ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
             problems.append(DoctorProblem(display_path, str(exc)))
     return problems
+
+
+def _check_prompt_context_sizes(root: Path) -> list[DoctorProblem]:
+    try:
+        report = build_prompt_context_report(root)
+    except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
+        return [DoctorProblem(".devlab", f"could not build prompt context report: {exc}")]
+    problems: list[DoctorProblem] = []
+    for role in report.roles:
+        if role.status != "ok":
+            problems.append(_prompt_context_problem(role))
+    return problems
+
+
+def _prompt_context_problem(role: RolePromptContext) -> DoctorProblem:
+    total = _format_count(role.total.estimated_tokens)
+    if role.status == "critical":
+        threshold = _format_count(role.thresholds.critical_tokens)
+        return DoctorProblem(
+            ".devlab",
+            f"{role.role_name} prompt context is critical: ~{total} tokens exceeds "
+            f"critical threshold {threshold}",
+        )
+    threshold = _format_count(role.thresholds.warning_tokens)
+    return DoctorProblem(
+        ".devlab",
+        f"{role.role_name} prompt context warning: ~{total} tokens exceeds "
+        f"warning threshold {threshold}",
+    )
 
 
 def _check_milestones(root: Path) -> list[DoctorProblem]:
@@ -304,6 +337,10 @@ def _check_threshold_order(
                 f"{name}.critical_tokens must be greater than or equal to warning_tokens",
             )
         )
+
+
+def _format_count(value: int) -> str:
+    return f"{value:,}"
 
 
 def _display_path(path: Path, root: Path) -> str:

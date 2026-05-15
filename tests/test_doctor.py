@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from devlab.doctor import check_workspace, format_doctor_report
+from devlab.init import init_workspace
 
 
 def test_doctor_accepts_missing_agents_config(tmp_path: Path) -> None:
@@ -67,6 +68,34 @@ def test_doctor_report_formats_success_and_failure(tmp_path: Path) -> None:
     assert report.startswith("DevLab doctor: 1 problem(s)")
     assert ".devlab/config/agents.toml" in report
     assert "invalid TOML" in report
+
+
+def test_doctor_reports_oversized_prompt_context(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    path = tmp_path / ".devlab/config/agents.toml"
+    path.write_text(
+        path.read_text()
+        + "\n[prompt_context]\n"
+        + "warning_tokens = 1\n"
+        + "critical_tokens = 1_000_000\n"
+        + "\n[prompt_context.roles.planner]\n"
+        + "warning_tokens = 1\n"
+        + "critical_tokens = 2\n"
+    )
+
+    messages = _messages(tmp_path)
+
+    assert any(message.startswith("architect prompt context warning") for message in messages)
+    assert any(message.startswith("planner prompt context is critical") for message in messages)
+
+
+def test_doctor_prompt_context_check_does_not_sync_milestone_files(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    _write_task(tmp_path, "T0001", milestone="M1")
+
+    check_workspace(tmp_path)
+
+    assert not (tmp_path / ".devlab/milestones/M1.toml").exists()
 
 
 def test_doctor_reports_task_referencing_missing_milestone(tmp_path: Path) -> None:
@@ -136,6 +165,7 @@ def test_doctor_reports_missing_milestone_finding(tmp_path: Path) -> None:
 
 
 def test_doctor_accepts_consistent_milestone_state(tmp_path: Path) -> None:
+    _write_default_profile(tmp_path)
     _write_task(tmp_path, "T0001", milestone="M1")
     _write_milestone(
         tmp_path,
@@ -153,6 +183,12 @@ def test_doctor_accepts_consistent_milestone_state(tmp_path: Path) -> None:
 
 def _messages(root: Path) -> list[str]:
     return [problem.message for problem in check_workspace(root)]
+
+
+def _write_default_profile(root: Path) -> None:
+    path = root / ".devlab/config/profiles/default.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('version = 1\nid = "default"\ntitle = "Default"\n')
 
 
 def _write_task(root: Path, task_id: str, *, milestone: str) -> None:
