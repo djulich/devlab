@@ -438,10 +438,14 @@ class TestRunLoop:
         )
         provider = MockProvider()
 
-        with pytest.raises(SystemExit) as exc_info:
-            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        result = run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
 
-        assert exc_info.value.code == 1
+        assert result.exit_code == 1
+        assert result.completed is False
+        assert result.errors[0].phase == "environment_setup"
         assert provider.calls == []
         assert list((tmp_path / ".devlab/logs/environment").glob("*_developer_setup_*.log"))
 
@@ -460,10 +464,14 @@ class TestRunLoop:
         )
         provider = MockProvider(return_code=3)
 
-        with pytest.raises(SystemExit) as exc_info:
-            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        result = run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
 
-        assert exc_info.value.code == 3
+        assert result.exit_code == 3
+        assert result.completed is False
+        assert result.errors[0].phase == "agent_invocation"
         assert (tmp_path / "env-order.log").read_text().splitlines() == ["post"]
 
     def test_reviewer_approval_closes_task(self, tmp_path: Path) -> None:
@@ -515,13 +523,14 @@ class TestRunLoop:
         task = _write_task(tmp_path, "T0001", "First", body=_checked_task_body("T0001", "First"))
         provider = MockProvider(write_handoff=False)
 
-        try:
-            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
-        except SystemExit as exc:
-            assert exc.code == 1
-        else:
-            raise AssertionError("expected SystemExit")
+        result = run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
 
+        assert result.exit_code == 1
+        assert result.completed is False
+        assert result.errors[0].phase == "handoff_validation"
         assert provider.calls[0].role_name == "developer"
         assert 'status = "open"' in task.read_text()
 
@@ -538,8 +547,14 @@ class TestRunLoop:
 
         provider = MockProvider(on_invoke=on_invoke)
 
-        run_loop(tmp_path, auto=True, max_sessions=2, agent_providers={"default": provider})
+        result = run_loop(
+            tmp_path, auto=True, max_sessions=2,
+            agent_providers={"default": provider},
+        )
 
+        assert result.completed is True
+        assert result.exit_code == 0
+        assert result.errors == ()
         assert [call.role_name for call in provider.calls] == ["developer", "reviewer"]
         assert 'status = "closed"' in task.read_text()
 
@@ -883,17 +898,16 @@ class TestRunLoop:
         _write_task(tmp_path, "T0001", "First")
         provider = MockProvider(return_code=12)
 
-        try:
-            run_loop(
-                tmp_path,
-                auto=True,
-                max_sessions=1,
-                agent_providers={"default": provider},
-            )
-        except SystemExit as exc:
-            assert exc.code == 12
-        else:
-            raise AssertionError("expected SystemExit")
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 12
+        assert result.completed is False
+        assert result.errors[0].phase == "agent_invocation"
 
     def test_unrecoverable_handoff_stops_loop_without_status_change(
         self, tmp_path: Path
@@ -912,10 +926,14 @@ class TestRunLoop:
             )
         )
 
-        with pytest.raises(SystemExit) as exc_info:
-            run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        result = run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
 
-        assert exc_info.value.code == 1
+        assert result.exit_code == 1
+        assert result.completed is False
+        assert result.errors[0].phase == "handoff_validation"
         assert provider.calls[0].role_name == "developer"
         assert 'status = "open"' in task.read_text()
 

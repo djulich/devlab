@@ -28,6 +28,8 @@ Implementation direction:
 
 ## 3. Error Recovery and Structured Results
 
+Status: **implemented**. `run_loop` returns a `RunResult` dataclass (sessions run, completed flag, exit code, error tuple). All six `sys.exit()` calls replaced with structured returns. `cli.py` translates the result to an exit code. Tests migrated from `SystemExit`-catching to `RunResult` assertions.
+
 Priority: high. Currently, any agent failure, handoff failure, or environment error calls `sys.exit()`. This blocks partial recovery, retry logic, and programmatic workflow control.
 
 Goal: `run_loop` should return structured results (sessions run, final state, errors encountered) instead of calling `sys.exit`. Callers can then decide whether to retry, skip, or abort. This is also a prerequisite for the workflow evaluation tests in item 1 — a test cannot assert on behavior if the function under test exits the process.

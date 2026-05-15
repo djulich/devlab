@@ -97,7 +97,7 @@ def main() -> None:
         result = init_workspace(root, force=args.force)
         print(format_init_result(result, root))
     elif args.command == "run":
-        run_loop(
+        result = run_loop(
             root,
             auto=args.auto,
             max_sessions=args.max_sessions,
@@ -106,6 +106,8 @@ def main() -> None:
             effort=args.effort,
             dangerous_skip_permissions=args.dangerously_skip_permissions,
         )
+        if result.exit_code != 0:
+            raise SystemExit(result.exit_code)
     elif args.command == "status":
         print(format_status(root, verbose=args.verbose))
     elif args.command == "doctor":

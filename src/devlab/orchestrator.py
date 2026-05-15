@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 import re
 import shutil
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -46,6 +45,30 @@ class RoleConfig:
     prompt_resource: str
     reads_tooling: bool
     needs_environment: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class SessionError:
+    """An error that stopped the orchestrator loop."""
+
+    phase: str
+    message: str
+    exit_code: int
+
+
+@dataclasses.dataclass(frozen=True)
+class RunResult:
+    """Outcome of a run_loop execution.
+
+    Callers inspect ``completed`` to determine whether the workflow finished
+    normally (all milestones done, max sessions reached, or user quit) or was
+    stopped by an error.
+    """
+
+    sessions_run: int
+    completed: bool
+    exit_code: int
+    errors: tuple[SessionError, ...]
 
 
 ROLES: dict[str, RoleConfig] = {
@@ -477,17 +500,14 @@ def invoke_session(
     *,
     agent_provider: AgentProvider,
 ) -> int:
+    """Invoke an agent session. Raises FileNotFoundError if the agent command is missing."""
     print(f"--- Invoking {role_name} session ---")
-    try:
-        result = agent_provider.invoke(
-            root=root,
-            role_name=role_name,
-            system_prompt=system_prompt,
-            session_prompt=session_prompt,
-        )
-    except FileNotFoundError as exc:
-        print(f"ERROR: agent command not found: {exc.filename!r}")
-        sys.exit(1)
+    result = agent_provider.invoke(
+        root=root,
+        role_name=role_name,
+        system_prompt=system_prompt,
+        session_prompt=session_prompt,
+    )
     print(f"--- {role_name} session exited with code {result.return_code} ---")
     return result.return_code
 
@@ -683,7 +703,8 @@ def run_loop(
     dangerous_skip_permissions: bool = False,
     agent_providers: dict[str, AgentProvider] | None = None,
     role_agent_providers: dict[str, str] | None = None,
-) -> None:
+) -> RunResult:
+    """Run the orchestrator loop, returning a structured result."""
     sessions_run = 0
     resolved_agent_configs = None
     if agent_providers is None:
@@ -722,7 +743,9 @@ def run_loop(
             environment = _environment_for_session(root, role_name)
         except ProfileNotFoundError as exc:
             print(f"ERROR: {exc}. Stopping.")
-            sys.exit(1)
+            return RunResult(sessions_run, False, 1,
+                             (SessionError("profile_resolution", str(exc), 1),))
+
         manage_environment = role.needs_environment and environment.manages_role(role_name)
         if manage_environment:
             try:
@@ -731,9 +754,11 @@ def run_loop(
                 environment.setup(role_name)
             except EnvironmentCommandError as exc:
                 print(f"ERROR: {exc}. Stopping.")
-                sys.exit(1)
+                return RunResult(sessions_run, False, 1,
+                                 (SessionError("environment_setup", str(exc), 1),))
 
         return_code = 0
+        agent_error: SessionError | None = None
         try:
             return_code = invoke_session(
                 root,
@@ -742,23 +767,38 @@ def run_loop(
                 session_prompt,
                 agent_provider=provider_for_role(role_name, agent_providers, role_agent_providers),
             )
-        finally:
-            if manage_environment:
-                try:
-                    print(f"--- Tearing down environment for {role_name} session ---")
-                    environment.post_session(role_name)
-                except EnvironmentCommandError as exc:
-                    print(f"ERROR: {exc}. Stopping.")
-                    sys.exit(1)
+        except FileNotFoundError as exc:
+            print(f"ERROR: agent command not found: {exc.filename!r}")
+            agent_error = SessionError(
+                "agent_invocation", f"agent command not found: {exc.filename!r}", 1,
+            )
+
+        teardown_error: SessionError | None = None
+        if manage_environment:
+            try:
+                print(f"--- Tearing down environment for {role_name} session ---")
+                environment.post_session(role_name)
+            except EnvironmentCommandError as exc:
+                print(f"ERROR: {exc}. Stopping.")
+                teardown_error = SessionError("environment_teardown", str(exc), 1)
+
+        if agent_error is not None:
+            errors = (agent_error,) + ((teardown_error,) if teardown_error else ())
+            return RunResult(sessions_run, False, agent_error.exit_code, errors)
+        if teardown_error is not None:
+            return RunResult(sessions_run, False, return_code or 1, (teardown_error,))
         if return_code != 0:
-            print(f"ERROR: {role_name} session failed with exit code {return_code}. Stopping.")
-            sys.exit(return_code)
+            msg = f"{role_name} session failed with exit code {return_code}"
+            print(f"ERROR: {msg}. Stopping.")
+            return RunResult(sessions_run, False, return_code,
+                             (SessionError("agent_invocation", msg, return_code),))
 
         handoff_path = artifacts_dir / "handoff.md"
         is_valid, error = validate_handoff(handoff_path)
         if not is_valid:
             print(f"ERROR: Invalid handoff produced by {role_name}: {error}. Stopping.")
-            sys.exit(1)
+            return RunResult(sessions_run, False, 1,
+                             (SessionError("handoff_validation", error, 1),))
 
         process_handoff(root, role_name)
         sessions_run += 1
@@ -774,5 +814,6 @@ def run_loop(
                 break
 
     print(f"\nOrchestrator finished after {sessions_run} session(s).")
+    return RunResult(sessions_run, True, 0, ())
 
 
