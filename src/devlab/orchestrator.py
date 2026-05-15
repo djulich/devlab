@@ -29,6 +29,7 @@ from devlab.workspace import (
     select_integration_milestone,
     select_review_task,
     select_task,
+    sync_milestone_state,
     task_tracker,
 )
 
@@ -323,10 +324,16 @@ def run_loop(
         resolved_agent_configs = agent_configuration.resolved
 
     while sessions_run < max_sessions:
+        sync_milestone_state(root)
         role_name = assess_state(root)
         if role_name is None:
             print("All milestones complete or no task can proceed. Stopping.")
             break
+
+        if role_name == "integrator":
+            milestone = select_integration_milestone(root)
+            if milestone is not None:
+                milestone_tracker(root).mark_tasks_complete(milestone)
 
         role = ROLES[role_name]
         print(f"\n{'=' * 60}")

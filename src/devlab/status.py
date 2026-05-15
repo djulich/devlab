@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
-from devlab.milestones import Milestone, sync_milestones_from_tasks
+from devlab.milestones import FileMilestoneTracker, Milestone
 from devlab.prompt_context import PromptContextReport, build_prompt_context_report
 from devlab.task_tracker import FileTaskTracker, Task, TaskStatus
-from devlab.workspace import PROJECT_PLAN, assess_state, read_file
+from devlab.workspace import assess_state
 
 
 def format_status(root: Path, *, verbose: bool = False) -> str:
@@ -60,16 +60,26 @@ def _format_prompt_context_report(report: PromptContextReport) -> list[str]:
 
 
 def _format_milestone_status(root: Path) -> list[str]:
-    milestones = sync_milestones_from_tasks(
-        root,
-        project_plan_text=read_file(root / PROJECT_PLAN),
-    )
-    if not milestones:
-        return ["Milestones: none"]
+    milestones = FileMilestoneTracker(root).list_milestones()
     tasks = FileTaskTracker(root).list_tasks()
+    missing_milestones = sorted(
+        {task.milestone for task in tasks if task.milestone is not None}
+        - {milestone.id for milestone in milestones}
+    )
+    if not milestones and not missing_milestones:
+        return ["Milestones: none"]
     lines = ["Milestones:"]
     for milestone in milestones:
         lines.extend(_format_milestone(milestone, tasks))
+    for milestone_id in missing_milestones:
+        task_ids = [task.id for task in tasks if task.milestone == milestone_id]
+        lines.extend(
+            [
+                f"- {milestone_id}: missing milestone state file",
+                "  referenced_by_tasks: " + ", ".join(task_ids),
+                "  note: run devlab run to advance workflow state",
+            ]
+        )
     return lines
 
 

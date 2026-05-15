@@ -93,7 +93,8 @@ def milestone_tracker(root: Path) -> FileMilestoneTracker:
     return FileMilestoneTracker(root)
 
 
-def _sync_milestones(root: Path) -> None:
+def sync_milestone_state(root: Path) -> None:
+    """Mutate milestone files so stored milestone state reflects task references."""
     sync_milestones_from_tasks(root, project_plan_text=read_file(root / PROJECT_PLAN))
 
 
@@ -114,22 +115,18 @@ def select_review_task(root: Path) -> Path | None:
 
 
 def select_integration_milestone(root: Path) -> str | None:
-    _sync_milestones(root)
     tasks = task_tracker(root)
-    milestones = milestone_tracker(root)
-    for milestone in milestones.list_milestones():
+    for milestone in milestone_tracker(root).list_milestones():
         if (
             milestone.integration_required
             and not milestone.integrated
             and tasks.milestone_complete(milestone.id)
         ):
-            milestones.mark_tasks_complete(milestone.id)
             return milestone.id
     return None
 
 
 def select_architecture_review_milestone(root: Path) -> str | None:
-    _sync_milestones(root)
     for milestone in milestone_tracker(root).list_milestones():
         if milestone.integrated and not milestone.architecture_approved:
             return milestone.id

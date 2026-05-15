@@ -42,6 +42,15 @@ def test_prompt_context_report_includes_all_roles(tmp_path: Path) -> None:
     assert all(role.session.estimated_tokens > 0 for role in report.roles)
 
 
+def test_prompt_context_report_does_not_sync_missing_milestone_files(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    _write_task(tmp_path, "T0001", milestone="M1", status="closed")
+
+    build_prompt_context_report(tmp_path)
+
+    assert not (tmp_path / ".devlab/milestones/M1.toml").exists()
+
+
 def test_thresholds_can_be_configured_globally_and_per_role(tmp_path: Path) -> None:
     init_workspace(tmp_path)
     _append_prompt_context_config(
@@ -77,6 +86,20 @@ def test_role_prompt_context_reports_warning_and_critical_status(tmp_path: Path)
 
     assert by_role["architect"].status == "warning"
     assert by_role["planner"].status == "critical"
+
+
+def _write_task(root: Path, task_id: str, *, milestone: str, status: str) -> None:
+    path = root / ".devlab/tasks" / f"{task_id}_task.md"
+    path.write_text(
+        "+++\n"
+        f'id = "{task_id}"\n'
+        f'title = "{task_id}"\n'
+        f'status = "{status}"\n'
+        f'milestone = "{milestone}"\n'
+        "depends_on = []\n"
+        "+++\n\n"
+        f"# {task_id}\n"
+    )
 
 
 def _append_prompt_context_config(root: Path, text: str) -> None:

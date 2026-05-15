@@ -818,6 +818,7 @@ class TestRunLoop:
             milestone="M1",
             body="# T0001: Done\n\n## Goal\nImportant integration behavior.\n",
         )
+        _write_milestone(tmp_path, "M1", task_ids=["T0001"])
 
         prompt = build_session_prompt(tmp_path, "integrator")
 

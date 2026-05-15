@@ -78,6 +78,17 @@ def test_status_verbose_reports_no_milestones(tmp_path: Path) -> None:
     assert "Milestones: none" in text
 
 
+def test_status_verbose_reports_missing_milestone_without_creating_it(tmp_path: Path) -> None:
+    _setup_minimal_workspace(tmp_path)
+    _write_task(tmp_path, "T0001", "closed", "M1")
+
+    text = format_status(tmp_path, verbose=True)
+
+    assert "- M1: missing milestone state file" in text
+    assert "  referenced_by_tasks: T0001" in text
+    assert not (tmp_path / ".devlab/milestones/M1.toml").exists()
+
+
 def _setup_minimal_workspace(root: Path) -> None:
     (root / ".devlab/plans").mkdir(parents=True)
     (root / ".devlab/config/profiles").mkdir(parents=True)
