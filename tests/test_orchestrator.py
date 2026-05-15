@@ -9,23 +9,24 @@ from devlab.agents import AgentCall, MockProvider
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import (
+    _task_is_complete,
+    _timestamp,
+    close_task,
+    run_loop,
+    validate_handoff,
+)
+from devlab.prompts import build_session_prompt, build_system_prompt
+from devlab.task_tracker import TASKS_DIR
+from devlab.workspace import (
     DESIGN_PLAN,
     HISTORY_DIR,
     PROJECT_PLAN,
     ROLES,
     _all_milestones_complete,
-    _task_is_complete,
-    _timestamp,
     assess_state,
-    build_session_prompt,
-    build_system_prompt,
-    close_task,
-    run_loop,
     select_architecture_review_milestone,
     select_task,
-    validate_handoff,
 )
-from devlab.task_tracker import TASKS_DIR
 
 
 def _setup_tree(root: Path) -> None:

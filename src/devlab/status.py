@@ -4,8 +4,8 @@ from pathlib import Path
 
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
 from devlab.milestones import Milestone, sync_milestones_from_tasks
-from devlab.orchestrator import PROJECT_PLAN, assess_state
 from devlab.task_tracker import FileTaskTracker, Task, TaskStatus
+from devlab.workspace import PROJECT_PLAN, assess_state, read_file
 
 
 def format_status(root: Path, *, verbose: bool = False) -> str:
@@ -38,7 +38,7 @@ def _format_agent_configuration(root: Path) -> list[str]:
 def _format_milestone_status(root: Path) -> list[str]:
     milestones = sync_milestones_from_tasks(
         root,
-        project_plan_text=_read_file(root / PROJECT_PLAN),
+        project_plan_text=read_file(root / PROJECT_PLAN),
     )
     if not milestones:
         return ["Milestones: none"]
@@ -71,12 +71,6 @@ def _format_milestone(milestone: Milestone, tasks: list[Task]) -> list[str]:
         lines.append("  findings: none")
     return lines
 
-
-def _read_file(path: Path) -> str:
-    try:
-        return path.read_text()
-    except (FileNotFoundError, OSError):
-        return ""
 
 
 def _bool_text(value: bool) -> str:

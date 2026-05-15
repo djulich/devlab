@@ -22,7 +22,9 @@ The orchestrator decides *what* to do; providers decide *how* to invoke agents; 
 
 ### Key module boundaries
 
-- `orchestrator.py` owns the workflow loop (role selection, session lifecycle, handoff processing). Prompt assembly currently lives here but is a candidate for extraction.
+- `workspace.py` owns shared workspace infrastructure: path constants, role definitions, tracker factories, file utilities, and state query functions used by both the orchestrator and prompt builders.
+- `orchestrator.py` owns the workflow loop (session lifecycle, handoff processing, error recovery).
+- `prompts.py` owns prompt assembly — system prompts and per-role session prompts built from workspace state.
 - `task_tracker.py` owns task file parsing and status transitions. Other modules should use the `FileTaskTracker` API, not parse task files directly.
 - `agents.py` owns agent invocation. Provider-specific logic (CLI flags, stdin protocols) belongs here, not in the orchestrator.
 - `milestones.py`, `findings.py`, `profiles.py` each own their respective file-backed state. The orchestrator coordinates between them but should not duplicate their parsing or mutation logic.

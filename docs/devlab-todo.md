@@ -36,6 +36,8 @@ Goal: `run_loop` should return structured results (sessions run, final state, er
 
 ## 4. Prompt Builder Extraction
 
+Status: **implemented**. Prompt builders extracted to `prompts.py`. Shared workspace infrastructure (constants, tracker factories, state queries, `RoleConfig`, `ROLES`) extracted to `workspace.py` to eliminate a circular import between orchestrator and prompts. Module layering is now: `workspace.py` (state reading) → `prompts.py` (text generation) → `orchestrator.py` (workflow control).
+
 Priority: medium. The `_build_*_prompt` functions (~216 lines) in `orchestrator.py` are a second concern growing inside the workflow engine. Extracting them to a `prompts.py` module would:
 
 - Keep the orchestrator focused on workflow control.
