@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES
 from devlab.prompts import build_session_prompt, build_system_prompt
-from devlab.workspace import ROLES
+from devlab.workspace import ROLES, Workspace, WorkspaceSnapshot
 
 DEFAULT_WARNING_TOKENS = 60_000
 DEFAULT_CRITICAL_TOKENS = 100_000
@@ -63,13 +63,15 @@ def measure_prompt(text: str) -> PromptSize:
     )
 
 
-def build_prompt_context_report(root: Path) -> PromptContextReport:
+def build_prompt_context_report(workspace: Path | WorkspaceSnapshot) -> PromptContextReport:
+    snapshot = _ensure_snapshot(workspace)
+    root = snapshot.root
     thresholds = load_prompt_context_thresholds(root)
     roles: list[RolePromptContext] = []
     for role_name in ROLE_NAMES:
         role = ROLES[role_name]
         system_prompt = build_system_prompt(root, role)
-        session_prompt = build_session_prompt(root, role_name)
+        session_prompt = build_session_prompt(snapshot, role_name)
         role_thresholds = thresholds.get(role_name, thresholds["default"])
         roles.append(
             RolePromptContext(
@@ -81,6 +83,12 @@ def build_prompt_context_report(root: Path) -> PromptContextReport:
             )
         )
     return PromptContextReport(tuple(roles))
+
+
+def _ensure_snapshot(workspace: Path | WorkspaceSnapshot) -> WorkspaceSnapshot:
+    if isinstance(workspace, WorkspaceSnapshot):
+        return workspace
+    return Workspace(workspace).snapshot()
 
 
 def load_prompt_context_thresholds(root: Path) -> dict[str, PromptContextThresholds]:

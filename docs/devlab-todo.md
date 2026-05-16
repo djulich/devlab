@@ -53,9 +53,13 @@ Open improvements:
 
 ## 6. Tracker Caching
 
-Priority: medium. `task_tracker(root)`, `finding_tracker(root)`, and `milestone_tracker(root)` are instantiated fresh on every call, re-parsing all files from disk each time. `assess_state` alone creates 3-4 tracker instances per invocation.
+Status: **initial workspace snapshot caching implemented**. `Workspace` and `WorkspaceSnapshot` now provide a workspace access boundary in `workspace.py`: `Workspace` owns explicit mutating sync behavior, while `WorkspaceSnapshot` is a disposable read-only cached view over tasks, findings, and milestones. Prompt builders, prompt context reporting, status, doctor, and the orchestrator loop now use snapshots for read-heavy paths.
 
-Goal: create tracker instances once per loop iteration in `run_loop` and pass them through, or use a lightweight session-scoped cache. This prevents quadratic file re-parsing as task counts grow beyond ~30.
+Follow-up work:
+
+- Migrate remaining workspace-mutating workflow functions behind `Workspace` methods where this improves clarity.
+- Once mutating workspace operations are centralized, consider automatic snapshot refresh or lazy snapshot recreation after each mutating `Workspace` method.
+- Reconcile temporary compatibility wrappers such as `assess_state(root)`, `select_task(root)`, and tracker factory helpers after call sites have moved to the snapshot API.
 
 ## 7. Starting Workflow on an Existing Project
 

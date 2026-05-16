@@ -11,6 +11,7 @@ from devlab.findings import FileFindingTracker
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
 from devlab.prompt_context import RolePromptContext, build_prompt_context_report
 from devlab.task_tracker import FileTaskTracker
+from devlab.workspace import Workspace, WorkspaceSnapshot
 
 _SUPPORTED_PLACEHOLDERS = {
     "role_name",
@@ -33,7 +34,7 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     agent_problems = _check_agents_config(root)
     problems.extend(agent_problems)
     if not agent_problems:
-        problems.extend(_check_prompt_context_sizes(root))
+        problems.extend(_check_prompt_context_sizes(Workspace(root).snapshot()))
     problems.extend(_check_milestones(root))
     return problems
 
@@ -99,9 +100,9 @@ def _check_agents_config(root: Path) -> list[DoctorProblem]:
     return problems
 
 
-def _check_prompt_context_sizes(root: Path) -> list[DoctorProblem]:
+def _check_prompt_context_sizes(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
     try:
-        report = build_prompt_context_report(root)
+        report = build_prompt_context_report(snapshot)
     except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
         return [DoctorProblem(".devlab", f"could not build prompt context report: {exc}")]
     problems: list[DoctorProblem] = []

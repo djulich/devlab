@@ -16,12 +16,9 @@ from devlab.workspace import (
     HISTORY_DIR,
     PROJECT_PLAN,
     RoleConfig,
-    finding_tracker,
-    milestone_tracker,
+    Workspace,
+    WorkspaceSnapshot,
     read_file,
-    select_architecture_review_milestone,
-    select_integration_milestone,
-    task_tracker,
 )
 
 CONVENTIONS_RESOURCE = "conventions.md"
@@ -38,7 +35,8 @@ def build_system_prompt(root: Path, role: RoleConfig) -> str:
     return "\n\n---\n\n".join(p for p in parts if p)
 
 
-def build_session_prompt(root: Path, role_name: str) -> str:
+def build_session_prompt(workspace: Path | WorkspaceSnapshot, role_name: str) -> str:
+    snapshot = _ensure_snapshot(workspace)
     builders = {
         "architect": _build_architect_prompt,
         "planner": _build_planner_prompt,
@@ -46,7 +44,13 @@ def build_session_prompt(root: Path, role_name: str) -> str:
         "reviewer": _build_reviewer_prompt,
         "integrator": _build_integrator_prompt,
     }
-    return builders[role_name](root) + _handoff_reminder(role_name)
+    return builders[role_name](snapshot) + _handoff_reminder(role_name)
+
+
+def _ensure_snapshot(workspace: Path | WorkspaceSnapshot) -> WorkspaceSnapshot:
+    if isinstance(workspace, WorkspaceSnapshot):
+        return workspace
+    return Workspace(workspace).snapshot()
 
 
 def _handoff_reminder(role_name: str) -> str:
@@ -69,11 +73,12 @@ def _session_profile(root: Path, task: Task | None) -> Profile:
     return load_profile(root, task.profile if task is not None else None)
 
 
-def _build_architect_prompt(root: Path) -> str:
+def _build_architect_prompt(snapshot: WorkspaceSnapshot) -> str:
+    root = snapshot.root
     parts: list[str] = []
-    review_milestone = select_architecture_review_milestone(root)
+    review_milestone = snapshot.select_architecture_review_milestone()
     if review_milestone is not None:
-        parts.extend(_architecture_review_prompt_sections(root, review_milestone))
+        parts.extend(_architecture_review_prompt_sections(snapshot, review_milestone))
     plan = read_file(root / DESIGN_PLAN)
     if plan.strip():
         parts.append(f"## Current Design Plan\n\n{plan}")
@@ -88,8 +93,13 @@ def _build_architect_prompt(root: Path) -> str:
     return "\n\n".join(parts)
 
 
-def _architecture_review_prompt_sections(root: Path, milestone_id: str) -> list[str]:
-    milestone = milestone_tracker(root).get(milestone_id)
+def _architecture_review_prompt_sections(
+    snapshot: WorkspaceSnapshot, milestone_id: str
+) -> list[str]:
+    root = snapshot.root
+    milestone = next(
+        milestone for milestone in snapshot.list_milestones() if milestone.id == milestone_id
+    )
     parts = [
         "## Assigned Integrated Milestone for Architecture Review\n\n"
         f"{milestone.id}: {milestone.title}\n\n"
@@ -105,7 +115,7 @@ def _architecture_review_prompt_sections(root: Path, milestone_id: str) -> list[
             parts.append(f"## Integration Handoff\n\n{handoff_text}")
     task_sections = [
         f"### {task.path.name}\n\n{read_file(task.path)}"
-        for task in task_tracker(root).tasks_for_milestone(milestone_id)
+        for task in snapshot.tasks_for_milestone(milestone_id)
     ]
     if task_sections:
         parts.append("## Milestone Task Files\n\n" + "\n\n".join(task_sections))
@@ -183,7 +193,8 @@ def _format_profile_listing(root: Path) -> str:
     return "\n\n".join(lines)
 
 
-def _build_planner_prompt(root: Path) -> str:
+def _build_planner_prompt(snapshot: WorkspaceSnapshot) -> str:
+    root = snapshot.root
     parts: list[str] = []
     plan = read_file(root / DESIGN_PLAN)
     if plan.strip():
@@ -191,13 +202,13 @@ def _build_planner_prompt(root: Path) -> str:
     project = read_file(root / PROJECT_PLAN)
     if project.strip():
         parts.append(f"## Current Project Plan\n\n{project}")
-    tasks = task_tracker(root).list_tasks()
+    tasks = snapshot.list_tasks()
     if tasks:
         parts.append(f"## Current Tasks\n\n{_format_task_listing(tasks)}")
     profile_listing = _format_profile_listing(root)
     if profile_listing:
         parts.append(f"## Existing Profiles\n\n{profile_listing}")
-    findings = finding_tracker(root).open_findings()
+    findings = snapshot.open_findings()
     if findings:
         finding_sections = [
             f"### {finding.path.name}\n\n{read_file(finding.path)}" for finding in findings
@@ -209,9 +220,10 @@ def _build_planner_prompt(root: Path) -> str:
     return "\n\n".join(parts)
 
 
-def _build_developer_prompt(root: Path) -> str:
+def _build_developer_prompt(snapshot: WorkspaceSnapshot) -> str:
+    root = snapshot.root
     parts: list[str] = []
-    task = task_tracker(root).select_next_development_task()
+    task = snapshot.select_next_development_task()
     if task:
         content = read_file(task.path)
         parts.append(f"## Assigned Task ({task.path.name})\n\n{content}")
@@ -230,10 +242,10 @@ def _build_developer_prompt(root: Path) -> str:
     return "\n\n".join(parts)
 
 
-def _build_integrator_prompt(root: Path) -> str:
+def _build_integrator_prompt(snapshot: WorkspaceSnapshot) -> str:
+    root = snapshot.root
     parts: list[str] = []
-    milestone = select_integration_milestone(root)
-    tracker = task_tracker(root)
+    milestone = snapshot.select_integration_milestone()
     if milestone is None:
         parts.append("No completed milestone requires integration.")
     else:
@@ -245,7 +257,7 @@ def _build_integrator_prompt(root: Path) -> str:
             "previously implemented system."
         )
         task_sections = []
-        for task in tracker.tasks_for_milestone(milestone):
+        for task in snapshot.tasks_for_milestone(milestone):
             task_sections.append(f"### {task.path.name}\n\n{read_file(task.path)}")
         if task_sections:
             parts.append("## Milestone Task Files\n\n" + "\n\n".join(task_sections))
@@ -262,9 +274,10 @@ def _build_integrator_prompt(root: Path) -> str:
     return "\n\n".join(parts)
 
 
-def _build_reviewer_prompt(root: Path) -> str:
+def _build_reviewer_prompt(snapshot: WorkspaceSnapshot) -> str:
+    root = snapshot.root
     parts: list[str] = []
-    task = task_tracker(root).select_next_review_task()
+    task = snapshot.select_next_review_task()
     if task:
         content = read_file(task.path)
         parts.append(f"## Task Awaiting Review ({task.path.name})\n\n{content}")

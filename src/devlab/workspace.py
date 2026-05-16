@@ -10,9 +10,9 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from devlab.findings import FileFindingTracker
-from devlab.milestones import FileMilestoneTracker, sync_milestones_from_tasks
-from devlab.task_tracker import FileTaskTracker
+from devlab.findings import FileFindingTracker, Finding, FindingStatus
+from devlab.milestones import FileMilestoneTracker, Milestone, sync_milestones_from_tasks
+from devlab.task_tracker import DEVELOPABLE_STATUSES, FileTaskTracker, Task, TaskStatus
 
 DESIGN_PLAN = ".devlab/plans/design-plan.md"
 PROJECT_PLAN = ".devlab/plans/project-plan.md"
@@ -77,7 +77,167 @@ def read_file(path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tracker factories
+# Workspace access
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class Workspace:
+    """Target workspace access boundary for explicit workflow mutations."""
+
+    root: Path
+
+    def snapshot(self) -> WorkspaceSnapshot:
+        return WorkspaceSnapshot(
+            root=self.root,
+            task_tracker=FileTaskTracker(self.root),
+            finding_tracker=FileFindingTracker(self.root),
+            milestone_tracker=FileMilestoneTracker(self.root),
+        )
+
+    def sync(self) -> None:
+        """Mutate milestone files so stored milestone state reflects task references."""
+        sync_milestones_from_tasks(
+            self.root,
+            project_plan_text=read_file(self.root / PROJECT_PLAN),
+        )
+
+
+@dataclasses.dataclass
+class WorkspaceSnapshot:
+    """Cached read-only snapshot of DevLab workspace files.
+
+    A snapshot is disposable. Do not reuse it after workspace files may have
+    changed; create a fresh snapshot with ``Workspace.snapshot()`` instead.
+    """
+
+    root: Path
+    task_tracker: FileTaskTracker
+    finding_tracker: FileFindingTracker
+    milestone_tracker: FileMilestoneTracker
+    _tasks: list[Task] | None = dataclasses.field(default=None, init=False, repr=False)
+    _findings: list[Finding] | None = dataclasses.field(default=None, init=False, repr=False)
+    _milestones: list[Milestone] | None = dataclasses.field(default=None, init=False, repr=False)
+
+    def list_tasks(self) -> list[Task]:
+        if self._tasks is None:
+            self._tasks = self.task_tracker.list_tasks()
+        return list(self._tasks)
+
+    def list_findings(self) -> list[Finding]:
+        if self._findings is None:
+            self._findings = self.finding_tracker.list_findings()
+        return list(self._findings)
+
+    def list_milestones(self) -> list[Milestone]:
+        if self._milestones is None:
+            self._milestones = self.milestone_tracker.list_milestones()
+        return list(self._milestones)
+
+    def active_tasks(self) -> list[Task]:
+        return [task for task in self.list_tasks() if task.is_active]
+
+    def select_next_development_task(self) -> Task | None:
+        closed_ids = {task.id for task in self.list_tasks() if task.status == TaskStatus.CLOSED}
+        for task in self.list_tasks():
+            if task.status in DEVELOPABLE_STATUSES and set(task.depends_on).issubset(closed_ids):
+                return task
+        return None
+
+    def select_next_review_task(self) -> Task | None:
+        for task in self.list_tasks():
+            if task.status == TaskStatus.IN_REVIEW:
+                return task
+        return None
+
+    def blocked_tasks(self) -> list[Task]:
+        closed_ids = {task.id for task in self.list_tasks() if task.status == TaskStatus.CLOSED}
+        return [
+            task
+            for task in self.list_tasks()
+            if task.status in DEVELOPABLE_STATUSES
+            and not set(task.depends_on).issubset(closed_ids)
+        ]
+
+    def tasks_for_milestone(self, milestone: str) -> list[Task]:
+        return [task for task in self.list_tasks() if task.milestone == milestone]
+
+    def milestone_complete(self, milestone: str) -> bool:
+        tasks = self.tasks_for_milestone(milestone)
+        return bool(tasks) and all(task.status == TaskStatus.CLOSED for task in tasks)
+
+    def open_findings(self) -> list[Finding]:
+        return [
+            finding for finding in self.list_findings() if finding.status == FindingStatus.OPEN
+        ]
+
+    def select_task(self) -> Path | None:
+        task = self.select_next_development_task()
+        return task.path if task else None
+
+    def select_review_task(self) -> Path | None:
+        task = self.select_next_review_task()
+        return task.path if task else None
+
+    def select_integration_milestone(self) -> str | None:
+        for milestone in self.list_milestones():
+            if (
+                milestone.integration_required
+                and not milestone.integrated
+                and self.milestone_complete(milestone.id)
+            ):
+                return milestone.id
+        return None
+
+    def select_architecture_review_milestone(self) -> str | None:
+        for milestone in self.list_milestones():
+            if milestone.integrated and not milestone.architecture_approved:
+                return milestone.id
+        return None
+
+    def all_milestones_complete(self) -> bool:
+        tasks = self.list_tasks()
+        if tasks:
+            return all(task.status == TaskStatus.CLOSED for task in tasks)
+        text = read_file(self.root / PROJECT_PLAN)
+        checked = text.count("- [x]")
+        unchecked = text.count("- [ ]")
+        if checked == 0 and unchecked == 0:
+            return False
+        return unchecked == 0
+
+    def assess_state(self) -> str | None:
+        design_plan = self.root / DESIGN_PLAN
+        if not design_plan.exists() or design_plan.stat().st_size == 0:
+            return "architect"
+
+        if self.select_next_review_task() is not None:
+            return "reviewer"
+
+        if self.open_findings():
+            return "planner"
+
+        if self.select_architecture_review_milestone() is not None:
+            return "architect"
+
+        if self.select_integration_milestone() is not None:
+            return "integrator"
+
+        if self.select_next_development_task() is not None:
+            return "developer"
+
+        if self.blocked_tasks():
+            print("No task is eligible; remaining development tasks are blocked by dependencies.")
+            return None
+
+        if self.all_milestones_complete():
+            return None
+
+        return "planner"
+
+
+# ---------------------------------------------------------------------------
+# Temporary compatibility wrappers
 # ---------------------------------------------------------------------------
 
 
@@ -94,84 +254,28 @@ def milestone_tracker(root: Path) -> FileMilestoneTracker:
 
 
 def sync_milestone_state(root: Path) -> None:
-    """Mutate milestone files so stored milestone state reflects task references."""
-    sync_milestones_from_tasks(root, project_plan_text=read_file(root / PROJECT_PLAN))
-
-
-# ---------------------------------------------------------------------------
-# State queries
-# ---------------------------------------------------------------------------
+    Workspace(root).sync()
 
 
 def select_task(root: Path) -> Path | None:
-    """Select the lowest-numbered task eligible for development."""
-    task = task_tracker(root).select_next_development_task()
-    return task.path if task else None
+    return Workspace(root).snapshot().select_task()
 
 
 def select_review_task(root: Path) -> Path | None:
-    task = task_tracker(root).select_next_review_task()
-    return task.path if task else None
+    return Workspace(root).snapshot().select_review_task()
 
 
 def select_integration_milestone(root: Path) -> str | None:
-    tasks = task_tracker(root)
-    for milestone in milestone_tracker(root).list_milestones():
-        if (
-            milestone.integration_required
-            and not milestone.integrated
-            and tasks.milestone_complete(milestone.id)
-        ):
-            return milestone.id
-    return None
+    return Workspace(root).snapshot().select_integration_milestone()
 
 
 def select_architecture_review_milestone(root: Path) -> str | None:
-    for milestone in milestone_tracker(root).list_milestones():
-        if milestone.integrated and not milestone.architecture_approved:
-            return milestone.id
-    return None
+    return Workspace(root).snapshot().select_architecture_review_milestone()
 
 
 def _all_milestones_complete(root: Path) -> bool:
-    tracker = task_tracker(root)
-    if tracker.has_tasks():
-        return tracker.all_tasks_closed()
-    text = read_file(root / PROJECT_PLAN)
-    checked = text.count("- [x]")
-    unchecked = text.count("- [ ]")
-    if checked == 0 and unchecked == 0:
-        return False
-    return unchecked == 0
+    return Workspace(root).snapshot().all_milestones_complete()
 
 
 def assess_state(root: Path) -> str | None:
-    design_plan = root / DESIGN_PLAN
-    if not design_plan.exists() or design_plan.stat().st_size == 0:
-        return "architect"
-
-    tracker = task_tracker(root)
-
-    if tracker.select_next_review_task() is not None:
-        return "reviewer"
-
-    if finding_tracker(root).open_findings():
-        return "planner"
-
-    if select_architecture_review_milestone(root) is not None:
-        return "architect"
-
-    if select_integration_milestone(root) is not None:
-        return "integrator"
-
-    if tracker.select_next_development_task() is not None:
-        return "developer"
-
-    if tracker.blocked_tasks():
-        print("No task is eligible; remaining development tasks are blocked by dependencies.")
-        return None
-
-    if _all_milestones_complete(root):
-        return None
-
-    return "planner"
+    return Workspace(root).snapshot().assess_state()

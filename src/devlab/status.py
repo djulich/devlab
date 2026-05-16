@@ -3,15 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
-from devlab.milestones import FileMilestoneTracker, Milestone
+from devlab.milestones import Milestone
 from devlab.prompt_context import PromptContextReport, build_prompt_context_report
-from devlab.task_tracker import FileTaskTracker, Task, TaskStatus
-from devlab.workspace import assess_state
+from devlab.task_tracker import Task, TaskStatus
+from devlab.workspace import Workspace, WorkspaceSnapshot
 
 
 def format_status(root: Path, *, verbose: bool = False) -> str:
     lines: list[str] = []
-    role_name = assess_state(root)
+    snapshot = Workspace(root).snapshot()
+    role_name = snapshot.assess_state()
     if role_name is None:
         lines.append("No role selected; workflow is complete or blocked.")
     else:
@@ -19,8 +20,8 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
 
     if verbose:
         lines.extend(["", *_format_agent_configuration(root)])
-        lines.extend(["", *_format_prompt_context(root)])
-        lines.extend(["", *_format_milestone_status(root)])
+        lines.extend(["", *_format_prompt_context(snapshot)])
+        lines.extend(["", *_format_milestone_status(snapshot)])
     return "\n".join(lines)
 
 
@@ -37,8 +38,8 @@ def _format_agent_configuration(root: Path) -> list[str]:
     return lines
 
 
-def _format_prompt_context(root: Path) -> list[str]:
-    report = build_prompt_context_report(root)
+def _format_prompt_context(snapshot: WorkspaceSnapshot) -> list[str]:
+    report = build_prompt_context_report(snapshot)
     return _format_prompt_context_report(report)
 
 
@@ -59,9 +60,9 @@ def _format_prompt_context_report(report: PromptContextReport) -> list[str]:
     return lines
 
 
-def _format_milestone_status(root: Path) -> list[str]:
-    milestones = FileMilestoneTracker(root).list_milestones()
-    tasks = FileTaskTracker(root).list_tasks()
+def _format_milestone_status(snapshot: WorkspaceSnapshot) -> list[str]:
+    milestones = snapshot.list_milestones()
+    tasks = snapshot.list_tasks()
     missing_milestones = sorted(
         {task.milestone for task in tasks if task.milestone is not None}
         - {milestone.id for milestone in milestones}

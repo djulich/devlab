@@ -21,7 +21,7 @@ from devlab.workspace import (
     ARTIFACTS_DIR,
     HISTORY_DIR,
     ROLES,
-    assess_state,
+    Workspace,
     finding_tracker,
     milestone_tracker,
     read_file,
@@ -29,7 +29,6 @@ from devlab.workspace import (
     select_integration_milestone,
     select_review_task,
     select_task,
-    sync_milestone_state,
     task_tracker,
 )
 
@@ -310,6 +309,7 @@ def run_loop(
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
     sessions_run = 0
+    workspace = Workspace(root)
     resolved_agent_configs = None
     if agent_providers is None:
         agent_configuration = load_agent_configuration(
@@ -324,16 +324,18 @@ def run_loop(
         resolved_agent_configs = agent_configuration.resolved
 
     while sessions_run < max_sessions:
-        sync_milestone_state(root)
-        role_name = assess_state(root)
+        workspace.sync()
+        snapshot = workspace.snapshot()
+        role_name = snapshot.assess_state()
         if role_name is None:
             print("All milestones complete or no task can proceed. Stopping.")
             break
 
         if role_name == "integrator":
-            milestone = select_integration_milestone(root)
+            milestone = snapshot.select_integration_milestone()
             if milestone is not None:
                 milestone_tracker(root).mark_tasks_complete(milestone)
+                snapshot = workspace.snapshot()
 
         role = ROLES[role_name]
         print(f"\n{'=' * 60}")
@@ -349,7 +351,7 @@ def run_loop(
 
         try:
             system_prompt = build_system_prompt(root, role)
-            session_prompt = build_session_prompt(root, role_name)
+            session_prompt = build_session_prompt(snapshot, role_name)
             environment = _environment_for_session(root, role_name)
         except ProfileNotFoundError as exc:
             print(f"ERROR: {exc}. Stopping.")
