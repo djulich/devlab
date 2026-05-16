@@ -55,10 +55,12 @@ Open improvements:
 
 Status: **initial workspace snapshot caching implemented**. `Workspace` and `WorkspaceSnapshot` now provide a workspace access boundary in `workspace.py`: `Workspace` owns explicit mutating sync behavior, while `WorkspaceSnapshot` is a disposable read-only cached view over tasks, findings, and milestones. Prompt builders, prompt context reporting, status, doctor, and the orchestrator loop now use snapshots for read-heavy paths.
 
+First-class workspace handles now exist for mutations: `WorkspaceTask`, `WorkspaceMilestone`, `WorkspaceFinding`, and `WorkspaceFindings`. Orchestration can express atomic domain transitions through handles such as `workspace.task("T0001").close()`, `workspace.milestone("M1").mark_integrated(handoff)`, and `workspace.finding("F0001").mark_resolved()` without importing concrete file trackers.
+
 Follow-up work:
 
-- Migrate remaining workspace-mutating workflow functions behind `Workspace` methods where this improves clarity.
-- Once mutating workspace operations are centralized, consider automatic snapshot refresh or lazy snapshot recreation after each mutating `Workspace` method.
+- Migrate any newly introduced workspace-mutating workflow code behind first-class workspace handles where this improves clarity.
+- Once mutating workspace operations are centralized, consider automatic snapshot refresh or lazy snapshot recreation after each mutating `Workspace` handle method.
 
 ## 7. Starting Workflow on an Existing Project
 

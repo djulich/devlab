@@ -13,11 +13,9 @@ from devlab.agent_config import (
 )
 from devlab.agents import AgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
-from devlab.findings import FileFindingTracker
-from devlab.milestones import FileMilestoneTracker
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompts import build_session_prompt, build_system_prompt
-from devlab.task_tracker import FileTaskTracker, Task
+from devlab.task_tracker import Task
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -157,23 +155,20 @@ def _task_is_approved(task_path: Path) -> bool:
 
 
 def mark_task_in_review(root: Path, task_path: Path) -> None:
-    tracker = FileTaskTracker(root)
-    task = tracker.get(task_path.stem.split("_")[0])
-    tracker.mark_in_review(task.id)
+    task = Workspace(root).task_from_path(task_path)
+    task.mark_in_review()
     print(f"  Task {task.path.name} completed by developer; status set to in_review")
 
 
 def mark_task_changes_requested(root: Path, task_path: Path) -> None:
-    tracker = FileTaskTracker(root)
-    task = tracker.get(task_path.stem.split("_")[0])
-    tracker.mark_changes_requested(task.id)
+    task = Workspace(root).task_from_path(task_path)
+    task.mark_changes_requested()
     print(f"  Task {task.path.name} rejected by reviewer; status set to changes_requested")
 
 
 def close_task(root: Path, task_path: Path, role_name: str = "reviewer") -> None:
-    tracker = FileTaskTracker(root)
-    task = tracker.get(task_path.stem.split("_")[0])
-    tracker.close(task.id)
+    task = Workspace(root).task_from_path(task_path)
+    task.close()
     print(f"  Task {task.path.name} closed by {role_name}; status set to closed")
 
 
@@ -202,43 +197,44 @@ def _addressed_finding_ids(handoff_path: Path) -> list[str]:
     )
 
 
-def _mark_addressed_findings_planned(root: Path, handoff_path: Path) -> None:
-    tracker = FileFindingTracker(root)
+def _mark_addressed_findings_planned(workspace: Workspace, handoff_path: Path) -> None:
     for finding_id in _addressed_finding_ids(handoff_path):
         try:
-            tracker.mark_planned(finding_id)
+            workspace.finding(finding_id).mark_planned()
         except KeyError:
             print(f"WARNING: planner handoff referenced unknown finding {finding_id}")
 
 
-def _mark_milestone_findings_resolved(root: Path, milestone: str) -> None:
-    tracker = FileFindingTracker(root)
-    for finding in tracker.planned_findings_for_milestone(milestone):
-        tracker.mark_resolved(finding.id)
+def _mark_milestone_findings_resolved(workspace: Workspace, milestone: str) -> None:
+    for finding in workspace.milestone(milestone).planned_findings():
+        finding.mark_resolved()
 
 
-def _mark_milestone_integrated(root: Path, milestone: str, handoff_path: Path) -> None:
-    FileMilestoneTracker(root).mark_integrated(milestone, handoff_path)
+def _mark_milestone_integrated(
+    workspace: Workspace, milestone: str, handoff_path: Path
+) -> None:
+    workspace.milestone(milestone).mark_integrated(handoff_path)
     print(f"  Milestone {milestone} marked integrated")
 
 
-def process_handoff(root: Path, role_name: str) -> None:
+def process_handoff(workspace: Workspace, role_name: str) -> None:
+    root = workspace.root
     archived = archive_handoff(root, role_name)
     print(f"  Handoff archived to {archived.name}")
-    snapshot = Workspace(root).snapshot()
+    snapshot = workspace.snapshot()
 
     if role_name == "architect":
         milestone = snapshot.select_architecture_review_milestone()
         if milestone is not None:
             if _handoff_has_open_issues(archived):
-                FileFindingTracker(root).create_from_handoff(
+                workspace.findings().create_from_handoff(
                     source="architect",
                     milestone=milestone,
                     handoff_path=archived,
                 )
                 print("  Architecture review reported open issues; finding created")
             else:
-                FileMilestoneTracker(root).mark_architecture_approved(milestone, archived)
+                workspace.milestone(milestone).mark_architecture_approved(archived)
                 print(f"  Milestone {milestone} marked architecture-approved")
     elif role_name == "developer":
         task_path = snapshot.select_task()
@@ -246,7 +242,7 @@ def process_handoff(root: Path, role_name: str) -> None:
             mark_task_in_review(root, task_path)
     elif role_name == "planner":
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
-        _mark_addressed_findings_planned(root, handoff_path)
+        _mark_addressed_findings_planned(workspace, handoff_path)
     elif role_name == "reviewer":
         task_path = snapshot.select_review_task()
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
@@ -258,18 +254,18 @@ def process_handoff(root: Path, role_name: str) -> None:
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         milestone = snapshot.select_integration_milestone()
         if _handoff_has_open_issues(handoff_path):
-            finding = FileFindingTracker(root).create_from_handoff(
+            finding = workspace.findings().create_from_handoff(
                 source="integrator",
                 milestone=milestone,
                 handoff_path=archived,
             )
             if milestone is not None:
-                FileMilestoneTracker(root).mark_integration_failed(milestone, finding.id)
+                workspace.milestone(milestone).mark_integration_failed(finding.id)
             print("  Integration reported open issues; finding created for planner follow-up")
             return
         if milestone is not None:
-            _mark_milestone_integrated(root, milestone, archived)
-            _mark_milestone_findings_resolved(root, milestone)
+            _mark_milestone_integrated(workspace, milestone, archived)
+            _mark_milestone_findings_resolved(workspace, milestone)
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +328,7 @@ def run_loop(
         if role_name == "integrator":
             milestone = snapshot.select_integration_milestone()
             if milestone is not None:
-                FileMilestoneTracker(root).mark_tasks_complete(milestone)
+                workspace.milestone(milestone).mark_ready_for_integration()
                 snapshot = workspace.snapshot()
 
         role = ROLES[role_name]
@@ -410,7 +406,7 @@ def run_loop(
             return RunResult(sessions_run, False, 1,
                              (SessionError("handoff_validation", error, 1),))
 
-        process_handoff(root, role_name)
+        process_handoff(workspace, role_name)
         sessions_run += 1
 
         if not auto:

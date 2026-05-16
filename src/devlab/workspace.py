@@ -101,6 +101,132 @@ class Workspace:
             self.root,
             project_plan_text=read_file(self.root / PROJECT_PLAN),
         )
+        self._did_mutate()
+
+    def task(self, task_id: str) -> WorkspaceTask:
+        return WorkspaceTask(self, task_id)
+
+    def task_from_path(self, path: Path) -> WorkspaceTask:
+        return self.task(path.stem.split("_")[0])
+
+    def milestone(self, milestone_id: str) -> WorkspaceMilestone:
+        return WorkspaceMilestone(self, milestone_id)
+
+    def finding(self, finding_id: str) -> WorkspaceFinding:
+        return WorkspaceFinding(self, finding_id)
+
+    def findings(self) -> WorkspaceFindings:
+        return WorkspaceFindings(self)
+
+    def _did_mutate(self) -> None:
+        """Hook for future snapshot invalidation when Workspace owns a cached snapshot."""
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceTask:
+    """Mutable task handle bound to a target workspace."""
+
+    workspace: Workspace
+    id: str
+
+    def read(self) -> Task:
+        return FileTaskTracker(self.workspace.root).get(self.id)
+
+    @property
+    def path(self) -> Path:
+        return self.read().path
+
+    def mark_in_review(self) -> None:
+        FileTaskTracker(self.workspace.root).mark_in_review(self.id)
+        self.workspace._did_mutate()
+
+    def mark_changes_requested(self) -> None:
+        FileTaskTracker(self.workspace.root).mark_changes_requested(self.id)
+        self.workspace._did_mutate()
+
+    def close(self) -> None:
+        FileTaskTracker(self.workspace.root).close(self.id)
+        self.workspace._did_mutate()
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceMilestone:
+    """Mutable milestone handle bound to a target workspace."""
+
+    workspace: Workspace
+    id: str
+
+    def read(self) -> Milestone:
+        return FileMilestoneTracker(self.workspace.root).get(self.id)
+
+    def tasks(self) -> list[WorkspaceTask]:
+        task_ids = [task.id for task in self.workspace.snapshot().tasks_for_milestone(self.id)]
+        return [self.workspace.task(task_id) for task_id in task_ids]
+
+    def planned_findings(self) -> list[WorkspaceFinding]:
+        findings = FileFindingTracker(self.workspace.root).planned_findings_for_milestone(
+            self.id
+        )
+        return [self.workspace.finding(finding.id) for finding in findings]
+
+    def mark_ready_for_integration(self) -> None:
+        FileMilestoneTracker(self.workspace.root).mark_tasks_complete(self.id)
+        self.workspace._did_mutate()
+
+    def mark_integrated(self, handoff_path: Path) -> None:
+        FileMilestoneTracker(self.workspace.root).mark_integrated(self.id, handoff_path)
+        self.workspace._did_mutate()
+
+    def mark_integration_failed(self, finding_id: str) -> None:
+        FileMilestoneTracker(self.workspace.root).mark_integration_failed(self.id, finding_id)
+        self.workspace._did_mutate()
+
+    def mark_architecture_approved(self, handoff_path: Path) -> None:
+        FileMilestoneTracker(self.workspace.root).mark_architecture_approved(
+            self.id, handoff_path
+        )
+        self.workspace._did_mutate()
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceFinding:
+    """Mutable finding handle bound to a target workspace."""
+
+    workspace: Workspace
+    id: str
+
+    def read(self) -> Finding:
+        return FileFindingTracker(self.workspace.root).get(self.id)
+
+    def mark_planned(self) -> None:
+        FileFindingTracker(self.workspace.root).mark_planned(self.id)
+        self.workspace._did_mutate()
+
+    def mark_resolved(self) -> None:
+        FileFindingTracker(self.workspace.root).mark_resolved(self.id)
+        self.workspace._did_mutate()
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceFindings:
+    """Finding collection handle for creating workspace findings."""
+
+    workspace: Workspace
+
+    def create_from_handoff(
+        self,
+        *,
+        source: str,
+        milestone: str | None,
+        handoff_path: Path,
+    ) -> Finding:
+        finding = FileFindingTracker(self.workspace.root).create_from_handoff(
+            source=source,
+            milestone=milestone,
+            handoff_path=handoff_path,
+        )
+        self.workspace._did_mutate()
+        return finding
 
 
 @dataclasses.dataclass

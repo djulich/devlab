@@ -186,6 +186,8 @@ DevLab uses a workspace access boundary to keep cross-tracker reads efficient an
 
 `Workspace` represents the target workspace as a mutation boundary. It owns explicit workspace-level mutations such as syncing milestone files from task metadata. A sync reconciles derived durable workflow state with source-of-truth files: for example, tasks reference milestone IDs, and `.devlab/milestones/` stores milestone workflow state such as integration and architecture approval.
 
+Workspace mutations are exposed through first-class handles such as `WorkspaceTask`, `WorkspaceMilestone`, and `WorkspaceFinding`. These handles express atomic domain transitions: a task can be closed, a milestone can be marked integrated, and a finding can be marked resolved. Multi-step workflow policy remains visible in the orchestrator instead of being hidden behind broad convenience methods.
+
 `WorkspaceSnapshot` is a disposable, read-only, cached view of workspace files. It caches task, finding, and milestone listings for the lifetime of the snapshot and exposes cross-tracker queries such as selecting the next role, selecting the next development/review task, selecting integration or architecture-review milestones, and listing open findings.
 
 The cache lifecycle is deliberately simple: after workspace files may have changed, discard the snapshot and create a fresh one. There is no long-lived process-global cache and no fine-grained cache invalidation. This preserves the repository as the durable source of truth while avoiding repeated reparsing during a single workflow decision or prompt-reporting pass.

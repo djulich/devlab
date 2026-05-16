@@ -18,13 +18,13 @@ The orchestrator decides *what* to do; providers decide *how* to invoke agents; 
 - Treat DevLab as a reusable tool that operates on a target workspace; dogfooding in this repo must not add assumptions that the target is DevLab repo.
 - Preserve bounded sessions: one role per session, and one task per developer/reviewer session.
 - Keep task storage behind the task-tracker abstraction; do not spread file-backed task assumptions through unrelated code.
-- Use the workspace access boundary for cross-tracker reads: `Workspace` owns explicit workspace mutations and `WorkspaceSnapshot` owns cached read-only state queries.
+- Use the workspace access boundary for cross-tracker reads and mutations: `WorkspaceSnapshot` owns cached read-only state queries, while `Workspace` exposes first-class mutation handles such as `WorkspaceTask`, `WorkspaceMilestone`, and `WorkspaceFinding`.
 - Keep reporting and validation commands non-mutating. `status`, `doctor`, prompt assembly, and prompt context reporting should read from snapshots rather than syncing or repairing workflow state.
 - Keep concrete agent invocation behind the agent-provider abstraction; do not bake one agent CLI into orchestration logic.
 
 ### Key module boundaries
 
-- `workspace.py` owns shared workspace infrastructure: path constants, role definitions, file utilities, explicit workspace sync via `Workspace`, and cached read-only cross-tracker queries via `WorkspaceSnapshot`.
+- `workspace.py` owns shared workspace infrastructure: path constants, role definitions, file utilities, explicit workspace sync via `Workspace`, first-class mutation handles, and cached read-only cross-tracker queries via `WorkspaceSnapshot`.
 - `orchestrator.py` owns the workflow loop (session lifecycle, handoff processing, error recovery). It may call explicit workspace mutations, but should use fresh snapshots for workflow decisions after mutations.
 - `prompts.py` owns prompt assembly — system prompts and per-role session prompts built from read-only workspace snapshots.
 - `task_tracker.py` owns task file parsing and status transitions. Other modules should use the `FileTaskTracker` API, not parse task files directly.
