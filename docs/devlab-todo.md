@@ -59,7 +59,6 @@ Follow-up work:
 
 - Migrate remaining workspace-mutating workflow functions behind `Workspace` methods where this improves clarity.
 - Once mutating workspace operations are centralized, consider automatic snapshot refresh or lazy snapshot recreation after each mutating `Workspace` method.
-- Reconcile temporary compatibility wrappers such as `assess_state(root)`, `select_task(root)`, and tracker factory helpers after call sites have moved to the snapshot API.
 
 ## 7. Starting Workflow on an Existing Project
 

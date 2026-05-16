@@ -17,16 +17,7 @@ from devlab.orchestrator import (
 )
 from devlab.prompts import build_session_prompt, build_system_prompt
 from devlab.task_tracker import TASKS_DIR
-from devlab.workspace import (
-    DESIGN_PLAN,
-    HISTORY_DIR,
-    PROJECT_PLAN,
-    ROLES,
-    _all_milestones_complete,
-    assess_state,
-    select_architecture_review_milestone,
-    select_task,
-)
+from devlab.workspace import DESIGN_PLAN, HISTORY_DIR, PROJECT_PLAN, ROLES, Workspace
 
 
 def _setup_tree(root: Path) -> None:
@@ -144,68 +135,68 @@ class TestAssessState:
     def test_no_design_plan_returns_architect(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("")
-        assert assess_state(tmp_path) == "architect"
+        assert Workspace(tmp_path).snapshot().assess_state() == "architect"
 
     def test_missing_design_plan_returns_architect(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
-        assert assess_state(tmp_path) == "architect"
+        assert Workspace(tmp_path).snapshot().assess_state() == "architect"
 
     def test_design_plan_exists_no_tasks_returns_planner(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        assert assess_state(tmp_path) == "planner"
+        assert Workspace(tmp_path).snapshot().assess_state() == "planner"
 
     def test_open_tasks_returns_developer(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Setup")
-        assert assess_state(tmp_path) == "developer"
+        assert Workspace(tmp_path).snapshot().assess_state() == "developer"
 
     def test_review_tasks_return_reviewer(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Setup", status="in_review")
-        assert assess_state(tmp_path) == "reviewer"
+        assert Workspace(tmp_path).snapshot().assess_state() == "reviewer"
 
     def test_all_tasks_closed_returns_none(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Done", status="closed")
-        assert assess_state(tmp_path) is None
+        assert Workspace(tmp_path).snapshot().assess_state() is None
 
 
 class TestAllMilestonesComplete:
     def test_empty_plan_is_not_complete(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / PROJECT_PLAN).write_text("")
-        assert _all_milestones_complete(tmp_path) is False
+        assert Workspace(tmp_path).snapshot().all_milestones_complete() is False
 
     def test_all_checked_is_complete_without_task_files(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / PROJECT_PLAN).write_text("## M1: Init\n- [x] T0001: Done\n")
-        assert _all_milestones_complete(tmp_path) is True
+        assert Workspace(tmp_path).snapshot().all_milestones_complete() is True
 
     def test_some_unchecked_is_not_complete_without_task_files(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / PROJECT_PLAN).write_text("- [x] T0001\n- [ ] T0002\n")
-        assert _all_milestones_complete(tmp_path) is False
+        assert Workspace(tmp_path).snapshot().all_milestones_complete() is False
 
     def test_task_files_override_project_plan_checkboxes(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "Done", status="closed")
         (tmp_path / PROJECT_PLAN).write_text("- [ ] T0001\n")
-        assert _all_milestones_complete(tmp_path) is True
+        assert Workspace(tmp_path).snapshot().all_milestones_complete() is True
 
 
 class TestSelectTaskCompatibility:
     def test_no_tasks_returns_none(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
-        assert select_task(tmp_path) is None
+        assert Workspace(tmp_path).snapshot().select_task() is None
 
     def test_returns_task_path(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         path = _write_task(tmp_path, "T0001", "First")
-        assert select_task(tmp_path) == path
+        assert Workspace(tmp_path).snapshot().select_task() == path
 
 
 class TestTaskIsComplete:
@@ -680,8 +671,8 @@ class TestRunLoop:
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
         _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
 
-        assert assess_state(tmp_path) == "architect"
-        assert select_architecture_review_milestone(tmp_path) == "M1"
+        assert Workspace(tmp_path).snapshot().assess_state() == "architect"
+        assert Workspace(tmp_path).snapshot().select_architecture_review_milestone() == "M1"
 
     def test_architect_review_handoff_marks_milestone_reviewed(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

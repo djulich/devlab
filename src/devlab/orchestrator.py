@@ -13,23 +13,19 @@ from devlab.agent_config import (
 )
 from devlab.agents import AgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
+from devlab.findings import FileFindingTracker
+from devlab.milestones import FileMilestoneTracker
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompts import build_session_prompt, build_system_prompt
-from devlab.task_tracker import Task
+from devlab.task_tracker import FileTaskTracker, Task
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
     HISTORY_DIR,
     ROLES,
     Workspace,
-    finding_tracker,
-    milestone_tracker,
+    WorkspaceSnapshot,
     read_file,
-    select_architecture_review_milestone,
-    select_integration_milestone,
-    select_review_task,
-    select_task,
-    task_tracker,
 )
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
@@ -161,21 +157,21 @@ def _task_is_approved(task_path: Path) -> bool:
 
 
 def mark_task_in_review(root: Path, task_path: Path) -> None:
-    tracker = task_tracker(root)
+    tracker = FileTaskTracker(root)
     task = tracker.get(task_path.stem.split("_")[0])
     tracker.mark_in_review(task.id)
     print(f"  Task {task.path.name} completed by developer; status set to in_review")
 
 
 def mark_task_changes_requested(root: Path, task_path: Path) -> None:
-    tracker = task_tracker(root)
+    tracker = FileTaskTracker(root)
     task = tracker.get(task_path.stem.split("_")[0])
     tracker.mark_changes_requested(task.id)
     print(f"  Task {task.path.name} rejected by reviewer; status set to changes_requested")
 
 
 def close_task(root: Path, task_path: Path, role_name: str = "reviewer") -> None:
-    tracker = task_tracker(root)
+    tracker = FileTaskTracker(root)
     task = tracker.get(task_path.stem.split("_")[0])
     tracker.close(task.id)
     print(f"  Task {task.path.name} closed by {role_name}; status set to closed")
@@ -207,7 +203,7 @@ def _addressed_finding_ids(handoff_path: Path) -> list[str]:
 
 
 def _mark_addressed_findings_planned(root: Path, handoff_path: Path) -> None:
-    tracker = finding_tracker(root)
+    tracker = FileFindingTracker(root)
     for finding_id in _addressed_finding_ids(handoff_path):
         try:
             tracker.mark_planned(finding_id)
@@ -216,42 +212,43 @@ def _mark_addressed_findings_planned(root: Path, handoff_path: Path) -> None:
 
 
 def _mark_milestone_findings_resolved(root: Path, milestone: str) -> None:
-    tracker = finding_tracker(root)
+    tracker = FileFindingTracker(root)
     for finding in tracker.planned_findings_for_milestone(milestone):
         tracker.mark_resolved(finding.id)
 
 
 def _mark_milestone_integrated(root: Path, milestone: str, handoff_path: Path) -> None:
-    milestone_tracker(root).mark_integrated(milestone, handoff_path)
+    FileMilestoneTracker(root).mark_integrated(milestone, handoff_path)
     print(f"  Milestone {milestone} marked integrated")
 
 
 def process_handoff(root: Path, role_name: str) -> None:
     archived = archive_handoff(root, role_name)
     print(f"  Handoff archived to {archived.name}")
+    snapshot = Workspace(root).snapshot()
 
     if role_name == "architect":
-        milestone = select_architecture_review_milestone(root)
+        milestone = snapshot.select_architecture_review_milestone()
         if milestone is not None:
             if _handoff_has_open_issues(archived):
-                finding_tracker(root).create_from_handoff(
+                FileFindingTracker(root).create_from_handoff(
                     source="architect",
                     milestone=milestone,
                     handoff_path=archived,
                 )
                 print("  Architecture review reported open issues; finding created")
             else:
-                milestone_tracker(root).mark_architecture_approved(milestone, archived)
+                FileMilestoneTracker(root).mark_architecture_approved(milestone, archived)
                 print(f"  Milestone {milestone} marked architecture-approved")
     elif role_name == "developer":
-        task_path = select_task(root)
+        task_path = snapshot.select_task()
         if task_path and _task_is_complete(task_path):
             mark_task_in_review(root, task_path)
     elif role_name == "planner":
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         _mark_addressed_findings_planned(root, handoff_path)
     elif role_name == "reviewer":
-        task_path = select_review_task(root)
+        task_path = snapshot.select_review_task()
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         if task_path and _task_is_approved(task_path):
             close_task(root, task_path, role_name)
@@ -259,15 +256,15 @@ def process_handoff(root: Path, role_name: str) -> None:
             mark_task_changes_requested(root, task_path)
     elif role_name == "integrator":
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
-        milestone = select_integration_milestone(root)
+        milestone = snapshot.select_integration_milestone()
         if _handoff_has_open_issues(handoff_path):
-            finding = finding_tracker(root).create_from_handoff(
+            finding = FileFindingTracker(root).create_from_handoff(
                 source="integrator",
                 milestone=milestone,
                 handoff_path=archived,
             )
             if milestone is not None:
-                milestone_tracker(root).mark_integration_failed(milestone, finding.id)
+                FileMilestoneTracker(root).mark_integration_failed(milestone, finding.id)
             print("  Integration reported open issues; finding created for planner follow-up")
             return
         if milestone is not None:
@@ -280,17 +277,18 @@ def process_handoff(root: Path, role_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _task_for_role(root: Path, role_name: str) -> Task | None:
-    tracker = task_tracker(root)
+def _task_for_role(snapshot: WorkspaceSnapshot, role_name: str) -> Task | None:
     if role_name == "developer":
-        return tracker.select_next_development_task()
+        return snapshot.select_next_development_task()
     if role_name == "reviewer":
-        return tracker.select_next_review_task()
+        return snapshot.select_next_review_task()
     return None
 
 
-def _environment_for_session(root: Path, role_name: str) -> EnvironmentManager:
-    task = _task_for_role(root, role_name)
+def _environment_for_session(
+    root: Path, snapshot: WorkspaceSnapshot, role_name: str
+) -> EnvironmentManager:
+    task = _task_for_role(snapshot, role_name)
     profile = load_profile(root, task.profile if task is not None else None)
     return EnvironmentManager(root, profile.environment)
 
@@ -334,7 +332,7 @@ def run_loop(
         if role_name == "integrator":
             milestone = snapshot.select_integration_milestone()
             if milestone is not None:
-                milestone_tracker(root).mark_tasks_complete(milestone)
+                FileMilestoneTracker(root).mark_tasks_complete(milestone)
                 snapshot = workspace.snapshot()
 
         role = ROLES[role_name]
@@ -352,7 +350,7 @@ def run_loop(
         try:
             system_prompt = build_system_prompt(root, role)
             session_prompt = build_session_prompt(snapshot, role_name)
-            environment = _environment_for_session(root, role_name)
+            environment = _environment_for_session(root, snapshot, role_name)
         except ProfileNotFoundError as exc:
             print(f"ERROR: {exc}. Stopping.")
             return RunResult(sessions_run, False, 1,
