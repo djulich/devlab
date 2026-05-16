@@ -139,6 +139,8 @@ For example, task files have statuses such as:
 
 The orchestrator changes these statuses after validating the relevant session output. Task files are not moved between folders to represent state.
 
+Reporting paths are intentionally non-mutating. `devlab status`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. Explicit mutation belongs to the workflow path, such as `devlab run`, or to future commands whose purpose is repair/sync.
+
 ### Human review remains possible
 
 Even though DevLab aims at autonomous development, it is designed to remain inspectable by humans. A human should be able to read the repo and understand:
@@ -153,17 +155,19 @@ This is why the design favors Markdown files and simple metadata over opaque dat
 
 ## Main workflow
 
-The orchestrator repeatedly assesses the repository and selects the next role.
+The orchestrator repeatedly syncs explicit workflow state, assesses the repository, and selects the next role. Sync is a mutating operation performed by the workflow path, not by reporting or prompt-building code.
 
 Typical flow:
 
 1. If no design plan exists, invoke the architect.
 2. If tasks are waiting for review, invoke the reviewer.
-3. If a completed milestone needs integration, invoke the integrator.
-4. If an eligible development task exists, invoke the developer.
-5. If no active tasks exist but planning is incomplete, invoke the planner.
-6. If all tasks are closed and completed milestones are integrated and architecture-approved, stop.
-7. If remaining tasks are blocked by dependencies, stop and report the blockage.
+3. If open findings exist, invoke the planner to plan corrective work.
+4. If an integrated milestone is waiting for architecture approval, invoke the architect.
+5. If a completed milestone needs integration, invoke the integrator.
+6. If an eligible development task exists, invoke the developer.
+7. If no active tasks exist but planning is incomplete, invoke the planner.
+8. If all tasks are closed and completed milestones are integrated and architecture-approved, stop.
+9. If remaining tasks are blocked by dependencies, stop and report the blockage.
 
 The active roles are:
 
@@ -175,6 +179,18 @@ The active roles are:
 | Reviewer | Validate one task that is in review. |
 | Integrator | Validate the whole repository state at a completed milestone boundary. |
 | Orchestrator | Select roles, invoke sessions, validate handoffs, and update task status. |
+
+## Workspace access and cached snapshots
+
+DevLab uses a workspace access boundary to keep cross-tracker reads efficient and read/write responsibilities clear.
+
+`Workspace` represents the target workspace as a mutation boundary. It owns explicit workspace-level mutations such as syncing milestone files from task metadata. A sync reconciles derived durable workflow state with source-of-truth files: for example, tasks reference milestone IDs, and `.devlab/milestones/` stores milestone workflow state such as integration and architecture approval.
+
+`WorkspaceSnapshot` is a disposable, read-only, cached view of workspace files. It caches task, finding, and milestone listings for the lifetime of the snapshot and exposes cross-tracker queries such as selecting the next role, selecting the next development/review task, selecting integration or architecture-review milestones, and listing open findings.
+
+The cache lifecycle is deliberately simple: after workspace files may have changed, discard the snapshot and create a fresh one. There is no long-lived process-global cache and no fine-grained cache invalidation. This preserves the repository as the durable source of truth while avoiding repeated reparsing during a single workflow decision or prompt-reporting pass.
+
+Prompt builders, prompt context reporting, `status`, and `doctor` consume snapshots so they remain read-only. The orchestrator uses `Workspace` for explicit mutations and fresh snapshots for decisions and prompt construction.
 
 ## Task tracking design
 
@@ -251,7 +267,7 @@ Dependency blocking is computed rather than stored as a separate persistent stat
 
 Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root after the orchestrator-managed environment lifecycle has established the development environment.
 
-If `validation` is omitted, agents use the workspace defaults from `.devlab/config/tooling.md`. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. The orchestrator does not execute arbitrary task validation commands itself.
+If `validation` is omitted, agents use default validation commands from the task's resolved profile. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. Broader tooling policy remains documented in `.devlab/config/tooling.md`. The orchestrator does not execute arbitrary task validation commands itself.
 
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
 
@@ -284,9 +300,17 @@ Findings are active workflow issues stored in `.devlab/findings/`. The planner c
 
 The orchestrator invokes agents through an agent-provider abstraction. The workflow decides which role to run; the provider owns how a concrete agent is called.
 
-This keeps the orchestrator independent from a specific CLI shape. For example, Claude- and Pi-style CLIs can be represented with system-prompt arguments, while Codex CLI can be represented with stdin-based `codex exec -` invocation. Future configurations can map different roles to different providers or models.
+Target workspaces configure concrete invocation in `.devlab/config/agents.toml`. The committed target config owns command shapes, provider definitions, role overrides, timeouts, and prompt transport. CLI options may override provider, model, and effort for a run, but command templates live in target configuration rather than orchestration code.
 
-A useful future pattern is to run the developer and reviewer with different providers to reduce shared blind spots, while keeping the default single-provider setup simple.
+This keeps the orchestrator independent from a specific CLI shape. For example, Claude- and Pi-style CLIs can be represented with system-prompt arguments, while Codex CLI can be represented with stdin-based `codex exec -` invocation. Configurations can map different roles to different providers or models.
+
+A useful pattern is to run the developer and reviewer with different providers to reduce shared blind spots, while keeping the default single-provider setup simple.
+
+## Prompt context monitoring
+
+DevLab estimates prompt context size per role using the same prompt builders used for sessions. The report separates system prompt, session prompt, and total estimated tokens, and compares totals against configurable warning and critical thresholds from `.devlab/config/agents.toml`.
+
+`devlab status --verbose` shows prompt context sizes without printing prompt contents. `devlab doctor` validates prompt context threshold configuration and reports live prompts whose estimated sizes exceed configured thresholds. Prompt sizing is read-only and uses `WorkspaceSnapshot`; it must not sync milestones or otherwise mutate workflow state.
 
 ## Target-project DevLab directory
 
@@ -294,6 +318,7 @@ Target-project DevLab workflow artifacts are collected under `.devlab/` in the t
 
 ```text
 .devlab/
+  manifest.toml
   config/
     README.md
     tooling.md
@@ -399,11 +424,13 @@ It does this by combining:
 
 - small role-based sessions,
 - repository-backed state,
-- explicit task statuses,
+- explicit task and milestone transitions,
 - structured handoffs,
-- minimal agent context,
+- minimal and monitored agent context,
 - profile-based tooling,
-- a backend abstraction for task tracking.
+- target-owned agent configuration,
+- cached read-only workspace snapshots,
+- backend abstractions for task, milestone, and finding state.
 
 The result should be a workflow that can run incrementally, recover from failures, remain understandable to humans, and evolve toward more capable development automation over time.
 
