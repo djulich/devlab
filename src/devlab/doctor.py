@@ -34,7 +34,7 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     agent_problems = _check_agents_config(root)
     problems.extend(agent_problems)
     if not agent_problems:
-        problems.extend(_check_prompt_context_sizes(Workspace(root).snapshot()))
+        problems.extend(_check_prompt_context_sizes(Workspace(root).snapshot))
     problems.extend(_check_milestones(root))
     return problems
 

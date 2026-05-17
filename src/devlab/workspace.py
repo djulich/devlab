@@ -81,19 +81,31 @@ def read_file(path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
 class Workspace:
-    """Target workspace access boundary for explicit workflow mutations."""
+    """Target workspace access boundary for explicit workflow mutations.
+
+    ``snapshot`` is lazily cached and invalidated only by mutations performed
+    through this ``Workspace`` or its handles. If other code or another process
+    may have changed workspace files, create a new ``Workspace`` instead of
+    trying to refresh this one in place.
+    """
 
     root: Path
+    _snapshot: WorkspaceSnapshot | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
 
+    @property
     def snapshot(self) -> WorkspaceSnapshot:
-        return WorkspaceSnapshot(
-            root=self.root,
-            task_tracker=FileTaskTracker(self.root),
-            finding_tracker=FileFindingTracker(self.root),
-            milestone_tracker=FileMilestoneTracker(self.root),
-        )
+        if self._snapshot is None:
+            self._snapshot = WorkspaceSnapshot(
+                root=self.root,
+                task_tracker=FileTaskTracker(self.root),
+                finding_tracker=FileFindingTracker(self.root),
+                milestone_tracker=FileMilestoneTracker(self.root),
+            )
+        return self._snapshot
 
     def sync(self) -> None:
         """Mutate milestone files so stored milestone state reflects task references."""
@@ -119,7 +131,7 @@ class Workspace:
         return WorkspaceFindings(self)
 
     def _did_mutate(self) -> None:
-        """Hook for future snapshot invalidation when Workspace owns a cached snapshot."""
+        self._snapshot = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -160,7 +172,7 @@ class WorkspaceMilestone:
         return FileMilestoneTracker(self.workspace.root).get(self.id)
 
     def tasks(self) -> list[WorkspaceTask]:
-        task_ids = [task.id for task in self.workspace.snapshot().tasks_for_milestone(self.id)]
+        task_ids = [task.id for task in self.workspace.snapshot.tasks_for_milestone(self.id)]
         return [self.workspace.task(task_id) for task_id in task_ids]
 
     def planned_findings(self) -> list[WorkspaceFinding]:
@@ -233,8 +245,10 @@ class WorkspaceFindings:
 class WorkspaceSnapshot:
     """Cached read-only snapshot of DevLab workspace files.
 
-    A snapshot is disposable. Do not reuse it after workspace files may have
-    changed; create a fresh snapshot with ``Workspace.snapshot()`` instead.
+    A snapshot has no refresh operation. Mutations made through its owning
+    ``Workspace`` invalidate the cached snapshot; accessing ``Workspace.snapshot``
+    then creates a fresh one. If files may have changed outside that ``Workspace``
+    instance, create a new ``Workspace``.
     """
 
     root: Path

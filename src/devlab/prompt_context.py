@@ -88,7 +88,7 @@ def build_prompt_context_report(workspace: Path | WorkspaceSnapshot) -> PromptCo
 def _ensure_snapshot(workspace: Path | WorkspaceSnapshot) -> WorkspaceSnapshot:
     if isinstance(workspace, WorkspaceSnapshot):
         return workspace
-    return Workspace(workspace).snapshot()
+    return Workspace(workspace).snapshot
 
 
 def load_prompt_context_thresholds(root: Path) -> dict[str, PromptContextThresholds]:

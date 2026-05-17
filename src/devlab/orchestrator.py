@@ -221,7 +221,7 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
     root = workspace.root
     archived = archive_handoff(root, role_name)
     print(f"  Handoff archived to {archived.name}")
-    snapshot = workspace.snapshot()
+    snapshot = workspace.snapshot
 
     if role_name == "architect":
         milestone = snapshot.select_architecture_review_milestone()
@@ -319,7 +319,7 @@ def run_loop(
 
     while sessions_run < max_sessions:
         workspace.sync()
-        snapshot = workspace.snapshot()
+        snapshot = workspace.snapshot
         role_name = snapshot.assess_state()
         if role_name is None:
             print("All milestones complete or no task can proceed. Stopping.")
@@ -329,7 +329,7 @@ def run_loop(
             milestone = snapshot.select_integration_milestone()
             if milestone is not None:
                 workspace.milestone(milestone).mark_ready_for_integration()
-                snapshot = workspace.snapshot()
+                snapshot = workspace.snapshot
 
         role = ROLES[role_name]
         print(f"\n{'=' * 60}")

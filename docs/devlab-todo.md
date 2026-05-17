@@ -53,14 +53,11 @@ Open improvements:
 
 ## 6. Tracker Caching
 
-Status: **initial workspace snapshot caching implemented**. `Workspace` and `WorkspaceSnapshot` now provide a workspace access boundary in `workspace.py`: `Workspace` owns explicit mutating sync behavior, while `WorkspaceSnapshot` is a disposable read-only cached view over tasks, findings, and milestones. Prompt builders, prompt context reporting, status, doctor, and the orchestrator loop now use snapshots for read-heavy paths.
+Status: **workspace snapshot caching implemented**. `Workspace` and `WorkspaceSnapshot` now provide a workspace access boundary in `workspace.py`: `Workspace` owns explicit mutating sync behavior, while `WorkspaceSnapshot` is a cached read-only view over tasks, findings, and milestones. `Workspace.snapshot` is lazily created and automatically invalidated by mutating workspace methods. Prompt builders, prompt context reporting, status, doctor, and the orchestrator loop now use snapshots for read-heavy paths.
 
 First-class workspace handles now exist for mutations: `WorkspaceTask`, `WorkspaceMilestone`, `WorkspaceFinding`, and `WorkspaceFindings`. Orchestration can express atomic domain transitions through handles such as `workspace.task("T0001").close()`, `workspace.milestone("M1").mark_integrated(handoff)`, and `workspace.finding("F0001").mark_resolved()` without importing concrete file trackers.
 
-Follow-up work:
-
-- Migrate any newly introduced workspace-mutating workflow code behind first-class workspace handles where this improves clarity.
-- Once mutating workspace operations are centralized, consider automatic snapshot refresh or lazy snapshot recreation after each mutating `Workspace` handle method.
+No open follow-up work remains for this item. Future changes should preserve the current boundary: use `WorkspaceSnapshot` for cached read-only queries, use first-class workspace handles for atomic mutations, and create a new `Workspace` when external file changes need to be observed.
 
 ## 7. Starting Workflow on an Existing Project
 

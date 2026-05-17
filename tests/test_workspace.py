@@ -21,7 +21,7 @@ def test_workspace_snapshot_caches_task_listing(
         return original(self)
 
     monkeypatch.setattr(FileTaskTracker, "list_tasks", counting_list_tasks)
-    snapshot = Workspace(tmp_path).snapshot()
+    snapshot = Workspace(tmp_path).snapshot
 
     assert [task.id for task in snapshot.list_tasks()] == ["T0001"]
     assert [task.id for task in snapshot.list_tasks()] == ["T0001"]
@@ -31,25 +31,27 @@ def test_workspace_snapshot_caches_task_listing(
 def test_workspace_snapshot_is_disposable_after_file_changes(tmp_path: Path) -> None:
     _write_task(tmp_path, "T0001")
     workspace = Workspace(tmp_path)
-    snapshot = workspace.snapshot()
+    snapshot = workspace.snapshot
 
     assert [task.id for task in snapshot.list_tasks()] == ["T0001"]
 
     _write_task(tmp_path, "T0002")
 
     assert [task.id for task in snapshot.list_tasks()] == ["T0001"]
-    assert [task.id for task in workspace.snapshot().list_tasks()] == ["T0001", "T0002"]
+    assert [task.id for task in workspace.snapshot.list_tasks()] == ["T0001"]
+    assert [task.id for task in Workspace(tmp_path).snapshot.list_tasks()] == ["T0001", "T0002"]
 
 
-def test_workspace_task_handle_changes_task_status(tmp_path: Path) -> None:
+def test_workspace_task_handle_invalidates_cached_snapshot(tmp_path: Path) -> None:
     _write_task(tmp_path, "T0001")
     workspace = Workspace(tmp_path)
+    assert workspace.snapshot.list_tasks()[0].status == "open"
 
     workspace.task("T0001").mark_in_review()
-    assert workspace.snapshot().list_tasks()[0].status == "in_review"
+    assert workspace.snapshot.list_tasks()[0].status == "in_review"
 
     workspace.task_from_path(tmp_path / ".devlab/tasks/T0001_task.md").close()
-    assert workspace.snapshot().list_tasks()[0].status == "closed"
+    assert workspace.snapshot.list_tasks()[0].status == "closed"
 
 
 def test_workspace_milestone_handle_exposes_tasks_and_transitions(tmp_path: Path) -> None:

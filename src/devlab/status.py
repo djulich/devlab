@@ -11,7 +11,7 @@ from devlab.workspace import Workspace, WorkspaceSnapshot
 
 def format_status(root: Path, *, verbose: bool = False) -> str:
     lines: list[str] = []
-    snapshot = Workspace(root).snapshot()
+    snapshot = Workspace(root).snapshot
     role_name = snapshot.assess_state()
     if role_name is None:
         lines.append("No role selected; workflow is complete or blocked.")

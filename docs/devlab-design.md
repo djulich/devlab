@@ -190,9 +190,9 @@ Workspace mutations are exposed through first-class handles such as `WorkspaceTa
 
 `WorkspaceSnapshot` is a disposable, read-only, cached view of workspace files. It caches task, finding, and milestone listings for the lifetime of the snapshot and exposes cross-tracker queries such as selecting the next role, selecting the next development/review task, selecting integration or architecture-review milestones, and listing open findings.
 
-The cache lifecycle is deliberately simple: after workspace files may have changed, discard the snapshot and create a fresh one. There is no long-lived process-global cache and no fine-grained cache invalidation. This preserves the repository as the durable source of truth while avoiding repeated reparsing during a single workflow decision or prompt-reporting pass.
+The cache lifecycle is deliberately simple: `Workspace.snapshot` is lazily created and reused until a mutating `Workspace` or workspace-handle method invalidates it. External file changes are observed by creating a new `Workspace` instance. There is no process-global cache and no fine-grained cache invalidation. This preserves the repository as the durable source of truth while avoiding repeated reparsing during a single workflow decision or prompt-reporting pass.
 
-Prompt builders, prompt context reporting, `status`, and `doctor` consume snapshots so they remain read-only. The orchestrator uses `Workspace` for explicit mutations and fresh snapshots for decisions and prompt construction.
+Prompt builders, prompt context reporting, `status`, and `doctor` consume snapshots so they remain read-only. The orchestrator uses `Workspace` for explicit mutations and the `Workspace.snapshot` property for decisions and prompt construction.
 
 ## Task tracking design
 

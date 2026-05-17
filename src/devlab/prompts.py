@@ -50,7 +50,7 @@ def build_session_prompt(workspace: Path | WorkspaceSnapshot, role_name: str) ->
 def _ensure_snapshot(workspace: Path | WorkspaceSnapshot) -> WorkspaceSnapshot:
     if isinstance(workspace, WorkspaceSnapshot):
         return workspace
-    return Workspace(workspace).snapshot()
+    return Workspace(workspace).snapshot
 
 
 def _handoff_reminder(role_name: str) -> str:
