@@ -1,3 +1,3 @@
 # Enforce workflow rules in code rather than packaged prompts
 
-DevLab keeps packaged role prompts focused on the instructions each spawned role needs to act correctly, while workflow selection, status transitions, and validation rules are enforced in code where practical. The trade-off is that workflow behavior takes more implementation effort than prose instructions, but it reduces prompt drift, avoids duplicating policy across Markdown files, and keeps DevLab reusable across target workspaces.
+DevLab enforces workflow selection, status transitions, and validation in code/tests where practical, while keeping packaged role prompts minimal. This costs more implementation work than prose instructions but reduces prompt drift and keeps DevLab reusable across target workspaces.

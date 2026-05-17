@@ -1,3 +1,3 @@
 # Use profile-based environment lifecycle
 
-DevLab uses task profiles to define reusable tooling summaries, default validation commands, and optional setup/cleanup lifecycle commands instead of a single global environment configuration. Profiles make environment behavior explicit per task type, support reusable validation defaults, and let the planner evolve tooling through normal tasks while preserving compatibility for already-planned work.
+DevLab uses task profiles for reusable tooling, validation defaults, and setup/cleanup commands instead of a single global environment config. This makes environment behavior explicit per task type and lets tooling evolve through planned tasks, at the cost of managing profile compatibility.
