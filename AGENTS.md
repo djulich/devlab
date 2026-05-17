@@ -22,6 +22,18 @@ The orchestrator decides *what* to do; providers decide *how* to invoke agents; 
 - Keep reporting and validation commands non-mutating. `status`, `doctor`, prompt assembly, and prompt context reporting should read from snapshots rather than syncing or repairing workflow state.
 - Keep concrete agent invocation behind the agent-provider abstraction; do not bake one agent CLI into orchestration logic.
 
+## Durable Project Knowledge
+
+Durable knowledge needed by future coding agents should not live only in `docs/devlab-design.md`. Treat that file as a human-oriented design overview that may duplicate or summarize authoritative agent-relevant sources.
+
+When changing DevLab itself:
+
+- Put terminology and domain-language clarifications in `CONTEXT.md` when that file exists.
+- Put durable architectural decisions and rationale in `docs/adr/` when the decision is hard to reverse, surprising without context, and the result of a real trade-off.
+- Put operational instructions for coding agents in this `AGENTS.md` file.
+- Put executable workflow rules in code and tests, not prose-only documentation.
+- Keep `docs/devlab-design.md` useful for humans, but do not make it the only place where agent-critical terminology, constraints, or decisions are recorded.
+
 ### Key module boundaries
 
 - `workspace.py` owns shared workspace infrastructure: path constants, role definitions, file utilities, explicit workspace sync via `Workspace`, first-class mutation handles, and cached read-only cross-tracker queries via `WorkspaceSnapshot`.
