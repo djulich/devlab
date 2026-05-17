@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
 from devlab.profiles import Profile, load_profile
 from devlab.prompt_resources import read_prompt_resource
 from devlab.task_tracker import Task
@@ -44,13 +45,30 @@ def build_session_prompt(workspace: Path | WorkspaceSnapshot, role_name: str) ->
         "reviewer": _build_reviewer_prompt,
         "integrator": _build_integrator_prompt,
     }
-    return builders[role_name](snapshot) + _handoff_reminder(role_name)
+    prompt = builders[role_name](snapshot)
+    knowledge = _format_project_knowledge(discover_project_knowledge(snapshot.root))
+    if knowledge:
+        prompt = knowledge + "\n\n" + prompt
+    return prompt + _handoff_reminder(role_name)
 
 
 def _ensure_snapshot(workspace: Path | WorkspaceSnapshot) -> WorkspaceSnapshot:
     if isinstance(workspace, WorkspaceSnapshot):
         return workspace
     return Workspace(workspace).snapshot
+
+
+def _format_project_knowledge(knowledge: ProjectKnowledge) -> str:
+    if not knowledge.has_documents:
+        return ""
+    sections = [
+        f"### {document.display_path}\n\n{document.content.strip()}"
+        for document in knowledge.documents
+        if document.content.strip()
+    ]
+    if not sections:
+        return ""
+    return "## Durable Project Knowledge\n\n" + "\n\n".join(sections)
 
 
 def _handoff_reminder(role_name: str) -> str:

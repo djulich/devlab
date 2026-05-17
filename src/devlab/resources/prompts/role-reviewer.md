@@ -7,6 +7,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 - The conventions included in this system prompt
 - `.devlab/config/tooling.md`
 - The assigned task's resolved profile in `.devlab/config/profiles/`
+- Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present
 - These role instructions
 - The assigned task file
 - The latest developer handoff in `.devlab/history/`
@@ -45,6 +46,7 @@ Before approving, confirm:
 - [ ] If task `validation = []`, the developer handoff states whether any validation was run and why.
 - [ ] If the task creates or changes a profile, the profile follows `.devlab/config/tooling.md` policy.
 - [ ] Existing profile changes are backward-compatible for existing planned tasks, unless the task explicitly required a new profile or breaking migration.
+- [ ] The implementation honors existing `CONTEXT.md` terminology and ADR decisions, or documents a clear contradiction that requires follow-up.
 - [ ] The implementation preserves separation of concerns: behavior is in the owning module/abstraction, without leaking storage formats, external service details, environment assumptions, or workflow rules into unrelated code.
 - [ ] The implementation is readable, follows existing project patterns, and uses comments/docstrings only when they clarify purpose, contracts, invariants, or design tradeoffs.
 - [ ] No unrelated refactoring or broad scope creep was introduced.

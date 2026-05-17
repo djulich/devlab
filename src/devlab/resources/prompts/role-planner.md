@@ -16,6 +16,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 - `.devlab/config/tooling.md`
 - These role instructions
 - The design plan
+- Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present
 - The project plan, if it exists
 - Existing task files
 - Existing profiles in `.devlab/config/profiles/`
@@ -32,8 +33,9 @@ The planner breaks the design plan into milestones and actionable tasks.
 5. Search existing profiles first. Reuse an existing profile whenever it adequately covers the task type's tooling, validation, and environment needs.
 6. If the milestone or follow-up tasks require new dependencies, services, generated artifacts, local configuration, or tooling/environment behavior not covered by an existing profile, create an explicit task to add or update a reusable profile in `.devlab/config/profiles/` before creating tasks that depend on it. Profile tasks must require the resulting profile to follow `.devlab/config/tooling.md` policy and preserve compatibility for existing planned tasks unless a new profile is created.
 7. Assign each task at most one profile with task metadata `profile = "<profile-id>"`; omit `profile` only when the default profile is appropriate.
-8. Update the project plan with the milestone and its task references.
-9. Write handoff to `.devlab/session-artifacts/planner/handoff.md`.
+8. Update `CONTEXT.md` when project-specific language is clarified while planning tasks or corrective work.
+9. Update the project plan with the milestone and its task references.
+10. Write handoff to `.devlab/session-artifacts/planner/handoff.md`.
 
 ## Milestone planning
 

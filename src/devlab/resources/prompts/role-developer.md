@@ -7,6 +7,7 @@ The developer implements exactly one eligible task per session.
 - The conventions included in this system prompt
 - `.devlab/config/tooling.md`
 - The assigned task's resolved profile in `.devlab/config/profiles/`
+- Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present
 - These role instructions
 - The assigned task file
 - `.devlab/session-artifacts/developer/` (if previous session artifacts exist)
@@ -35,6 +36,7 @@ The developer implements exactly one eligible task per session.
 - Prefer simple, explicit code that follows existing project patterns.
 - Preserve separation of concerns: put behavior in the owning module/abstraction and avoid leaking storage formats, external service details, environment assumptions, or workflow rules into unrelated code.
 - Use clear domain names and add comments/docstrings only when they clarify purpose, contracts, invariants, or design tradeoffs.
+- Honor existing `CONTEXT.md` terminology and ADR decisions; flag contradictions in the handoff instead of casually rewriting them.
 
 ## Validation Checklist
 

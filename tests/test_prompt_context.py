@@ -42,6 +42,30 @@ def test_prompt_context_report_includes_all_roles(tmp_path: Path) -> None:
     assert all(role.session.estimated_tokens > 0 for role in report.roles)
 
 
+def test_prompt_context_report_accounts_for_project_knowledge(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    baseline = build_prompt_context_report(tmp_path)
+    (tmp_path / "CONTEXT.md").write_text("# Context\n\nImportant domain language.\n")
+    adr_dir = tmp_path / "docs/adr"
+    adr_dir.mkdir(parents=True)
+    (adr_dir / "0001-important-decision.md").write_text(
+        "# Important Decision\n\nUse this shape.\n"
+    )
+
+    report = build_prompt_context_report(tmp_path)
+
+    by_role = {role.role_name: role for role in report.roles}
+    baseline_by_role = {role.role_name: role for role in baseline.roles}
+    assert (
+        by_role["architect"].session.characters
+        > baseline_by_role["architect"].session.characters
+    )
+    assert (
+        by_role["developer"].session.characters
+        > baseline_by_role["developer"].session.characters
+    )
+
+
 def test_prompt_context_report_does_not_sync_missing_milestone_files(tmp_path: Path) -> None:
     init_workspace(tmp_path)
     _write_task(tmp_path, "T0001", milestone="M1", status="closed")

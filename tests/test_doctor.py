@@ -98,6 +98,23 @@ def test_doctor_prompt_context_check_does_not_sync_milestone_files(tmp_path: Pat
     assert not (tmp_path / ".devlab/milestones/M1.toml").exists()
 
 
+def test_doctor_reports_project_knowledge_problems(tmp_path: Path) -> None:
+    (tmp_path / "CONTEXT-MAP.md").write_text(
+        "# Context Map\n\n- [Missing](./src/missing/CONTEXT.md)\n"
+    )
+    adr_dir = tmp_path / "docs/adr"
+    adr_dir.mkdir(parents=True)
+    (adr_dir / "0001-first.md").write_text("# First\n")
+    (adr_dir / "0001-duplicate.md").write_text("# Duplicate\n")
+    (adr_dir / "bad-name.md").write_text("# Bad\n")
+
+    messages = _messages(tmp_path)
+
+    assert "references missing context file 'src/missing/CONTEXT.md'" in messages
+    assert any("duplicate ADR number 0001" in message for message in messages)
+    assert "ADR filename must match NNNN-lowercase-slug.md" in messages
+
+
 def test_doctor_reports_task_referencing_missing_milestone(tmp_path: Path) -> None:
     _write_task(tmp_path, "T0001", milestone="M1")
 

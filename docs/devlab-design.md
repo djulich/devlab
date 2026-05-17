@@ -153,6 +153,20 @@ Even though DevLab aims at autonomous development, it is designed to remain insp
 
 This is why the design favors Markdown files and simple metadata over opaque databases.
 
+## Durable project knowledge
+
+DevLab treats target-owned project knowledge as durable context for future sessions. If present, role prompts include:
+
+- `CONTEXT.md` for single-context project language,
+- `CONTEXT-MAP.md` and its linked context-specific `CONTEXT.md` files for multi-context projects,
+- `docs/adr/*.md` Architecture Decision Records.
+
+These files live in conventional project locations rather than `.devlab/` because they are useful outside DevLab. Discovery is read-only: prompt assembly, prompt context reporting, and `doctor` must not create or rewrite knowledge files.
+
+`CONTEXT.md` is for project-specific language: terms, relationships, example dialogue, and flagged ambiguities. It should not become an implementation spec or scratchpad. ADRs are for durable architectural rationale and should stay sparse: create one only when a decision is hard to reverse, surprising without context, and the result of a real trade-off.
+
+The architect co-owns `CONTEXT.md` for initial domain framing, context boundaries, and architecture-significant terminology, and owns ADR creation/update. The planner co-owns `CONTEXT.md` when domain language is clarified during planning. Developer, reviewer, and integrator sessions consume the files and flag contradictions rather than broadly rewriting them.
+
 ## Main workflow
 
 The orchestrator repeatedly syncs explicit workflow state, assesses the repository, and selects the next role. Sync is a mutating operation performed by the workflow path, not by reporting or prompt-building code.

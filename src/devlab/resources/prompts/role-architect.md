@@ -9,6 +9,7 @@ The architect translates the system specification into a design plan and reviews
 - These role instructions
 - The system specification
 - The deployment specification, if relevant
+- Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present
 - The design plan, if it exists
 - The assigned integrated milestone, if this is a milestone-boundary review
 - `.devlab/session-artifacts/architect/` (if previous session artifacts exist)
@@ -20,7 +21,9 @@ The architect translates the system specification into a design plan and reviews
 2. If no design plan exists, create it.
 3. If this is a milestone-boundary review, verify that the design plan still matches the integrated implementation and future project direction.
 4. If needed, update the design plan. If follow-up implementation or planning is needed, report it in the handoff's Open Issues section.
-5. Write handoff to `.devlab/session-artifacts/architect/handoff.md`.
+5. Create or update `CONTEXT.md` when initial domain framing, context boundaries, or architecture-significant terminology is clarified.
+6. Create or update an ADR only when a decision is hard to reverse, surprising without context, and the result of a real trade-off.
+7. Write handoff to `.devlab/session-artifacts/architect/handoff.md`.
 
 ## Design Plan Contents
 

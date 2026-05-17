@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES, load_agent_configuration
 from devlab.findings import FileFindingTracker
+from devlab.knowledge import ADR_DIR, ADR_FILENAME_RE, CONTEXT_MAP, context_paths_from_map
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
 from devlab.prompt_context import RolePromptContext, build_prompt_context_report
 from devlab.task_tracker import FileTaskTracker
@@ -36,6 +37,7 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     if not agent_problems:
         problems.extend(_check_prompt_context_sizes(Workspace(root).snapshot))
     problems.extend(_check_milestones(root))
+    problems.extend(_check_project_knowledge(root))
     return problems
 
 
@@ -127,6 +129,58 @@ def _prompt_context_problem(role: RolePromptContext) -> DoctorProblem:
         f"{role.role_name} prompt context warning: ~{total} tokens exceeds "
         f"warning threshold {threshold}",
     )
+
+
+def _check_project_knowledge(root: Path) -> list[DoctorProblem]:
+    problems: list[DoctorProblem] = []
+    problems.extend(_check_context_map(root))
+    problems.extend(_check_adrs(root))
+    return problems
+
+
+def _check_context_map(root: Path) -> list[DoctorProblem]:
+    path = root / CONTEXT_MAP
+    if not path.exists():
+        return []
+    problems: list[DoctorProblem] = []
+    for context_path in context_paths_from_map(root, path.read_text()):
+        if not context_path.exists():
+            problems.append(
+                DoctorProblem(
+                    CONTEXT_MAP,
+                    f"references missing context file {_display_path(context_path, root)!r}",
+                )
+            )
+    return problems
+
+
+def _check_adrs(root: Path) -> list[DoctorProblem]:
+    adr_dir = root / ADR_DIR
+    if not adr_dir.exists():
+        return []
+    problems: list[DoctorProblem] = []
+    seen_numbers: dict[str, str] = {}
+    for path in sorted(adr_dir.glob("*.md")):
+        display_path = _display_path(path, root)
+        match = ADR_FILENAME_RE.fullmatch(path.name)
+        if match is None:
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    "ADR filename must match NNNN-lowercase-slug.md",
+                )
+            )
+            continue
+        number = match.group("number")
+        if number in seen_numbers:
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    f"duplicate ADR number {number}; first seen in {seen_numbers[number]}",
+                )
+            )
+        seen_numbers[number] = display_path
+    return problems
 
 
 def _check_milestones(root: Path) -> list[DoctorProblem]:

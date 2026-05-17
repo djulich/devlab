@@ -7,6 +7,8 @@
 - **Task status** — one of `open`, `in_review`, `changes_requested`, or `closed`.
 - **Session** — one agent invocation in which a single role performs its work.
 - **Handoff** — the artifact a session produces to pass context to the next session.
+- **CONTEXT.md** — target-owned project language glossary for domain terms, relationships, and flagged ambiguities.
+- **ADR** — Architecture Decision Record; a target-owned note in `docs/adr/` explaining an important architectural decision and why it was made.
 
 ## Core Artifacts
 
@@ -21,6 +23,8 @@
 - **Session handoff** (per-session memory) — `.devlab/session-artifacts/<role>/handoff.md`
 - **Archived handoffs** — `.devlab/history/`
 - **Environment lifecycle logs** — `.devlab/logs/environment/`
+- **Project context** — `CONTEXT.md` or `CONTEXT-MAP.md` with linked context files, if present
+- **Architecture Decision Records (ADRs)** — `docs/adr/NNNN-slug.md`, if present
 
 ## History File Naming
 

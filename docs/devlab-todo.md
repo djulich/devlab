@@ -61,6 +61,8 @@ No open follow-up work remains for this item. Future changes should preserve the
 
 ## 7. Durable Project Knowledge: CONTEXT.md and ADRs
 
+Status: **initial implementation complete**. DevLab discovers target-owned `CONTEXT.md`, `CONTEXT-MAP.md`, context-specific `CONTEXT.md` links, and `docs/adr/*.md` files without mutating the workspace. Discovered knowledge is included in role session prompts, prompt context size reporting accounts for it, role prompts define ownership guidance, and `doctor` reports missing context-map targets plus malformed or duplicate ADR filenames.
+
 Priority: medium. DevLab should preserve project language and architectural rationale as durable repository artifacts and feed relevant knowledge back into future role sessions.
 
 Motivation: agent coding quality degrades as repositories grow because important terms, boundaries, constraints, and trade-offs are no longer all visible in the immediate task context. DevLab already persists workflow state in repository files; it should also make domain language and architectural decisions durable rather than relying on conversational memory.
@@ -87,14 +89,10 @@ Role responsibilities:
 - Developer, reviewer, and integrator: read these artifacts and flag contradictions; avoid broad rewrites unless explicitly required by the task or finding.
 - Orchestrator: never authors knowledge files directly; it only discovers, reports, and supplies them to role prompts.
 
-Incremental implementation plan:
+Follow-up work:
 
-1. Implement read-only discovery for `CONTEXT.md`, `CONTEXT-MAP.md`, context-specific `CONTEXT.md` files, and `docs/adr/*.md`.
-2. Include root `CONTEXT.md` and ADR summaries/full text in role prompts while repositories are small.
-3. Extend prompt context reporting and `doctor` prompt-size checks to account for knowledge files.
-4. Add minimal prompt guidance to packaged role prompts: architects may create sparse ADRs; planners may update `CONTEXT.md`; all roles should honor existing terminology and decisions.
-5. Add optional `doctor` checks for duplicate ADR numbers, malformed ADR filenames, and `CONTEXT-MAP.md` links that point to missing files.
-6. Later, if prompt size becomes an issue, switch from including all ADR text to including an ADR index plus role/task-relevant ADRs.
+- Later, if prompt size becomes an issue, switch from including all ADR text to including an ADR index plus role/task-relevant ADRs.
+- Consider adding richer `doctor` checks for `CONTEXT.md` structure if agents start producing glossary/spec hybrids.
 
 ## 8. Starting Workflow on an Existing Project
 
