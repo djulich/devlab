@@ -59,13 +59,50 @@ First-class workspace handles now exist for mutations: `WorkspaceTask`, `Workspa
 
 No open follow-up work remains for this item. Future changes should preserve the current boundary: use `WorkspaceSnapshot` for cached read-only queries, use first-class workspace handles for atomic mutations, and create a new `Workspace` when external file changes need to be observed.
 
-## 7. Starting Workflow on an Existing Project
+## 7. Durable Project Knowledge: CONTEXT.md and ADRs
+
+Priority: medium. DevLab should preserve project language and architectural rationale as durable repository artifacts and feed relevant knowledge back into future role sessions.
+
+Motivation: agent coding quality degrades as repositories grow because important terms, boundaries, constraints, and trade-offs are no longer all visible in the immediate task context. DevLab already persists workflow state in repository files; it should also make domain language and architectural decisions durable rather than relying on conversational memory.
+
+Recommended artifact locations:
+
+- `CONTEXT.md` at the repository root for single-context projects.
+- `CONTEXT-MAP.md` plus context-specific `CONTEXT.md` files for multi-context projects.
+- `docs/adr/NNNN-slug.md` for Architecture Decision Records.
+
+Design direction:
+
+- Add a `knowledge.py` module that discovers project knowledge files without mutating the workspace.
+- Include discovered knowledge in prompt assembly through `WorkspaceSnapshot` or a small read-only knowledge snapshot.
+- Keep `CONTEXT.md` scoped to project-specific language: glossary terms, relationships, example dialogue, and flagged ambiguities. It must not become a spec, implementation guide, or scratchpad.
+- Keep ADRs sparse. Create one only when a decision is hard to reverse, surprising without context, and the result of a real trade-off.
+- Treat these files as target-owned project docs, not hidden `.devlab/` state.
+- Add prompt context accounting for included context and ADR content from the beginning.
+
+Role responsibilities:
+
+- Architect: primary owner of ADR creation/update when architectural decisions meet the ADR criteria; co-owner of `CONTEXT.md` for initial domain framing, context boundaries, and architecture-significant terminology.
+- Planner: co-owner of `CONTEXT.md` updates when domain language is clarified while planning tasks or corrective work.
+- Developer, reviewer, and integrator: read these artifacts and flag contradictions; avoid broad rewrites unless explicitly required by the task or finding.
+- Orchestrator: never authors knowledge files directly; it only discovers, reports, and supplies them to role prompts.
+
+Incremental implementation plan:
+
+1. Implement read-only discovery for `CONTEXT.md`, `CONTEXT-MAP.md`, context-specific `CONTEXT.md` files, and `docs/adr/*.md`.
+2. Include root `CONTEXT.md` and ADR summaries/full text in role prompts while repositories are small.
+3. Extend prompt context reporting and `doctor` prompt-size checks to account for knowledge files.
+4. Add minimal prompt guidance to packaged role prompts: architects may create sparse ADRs; planners may update `CONTEXT.md`; all roles should honor existing terminology and decisions.
+5. Add optional `doctor` checks for duplicate ADR numbers, malformed ADR filenames, and `CONTEXT-MAP.md` links that point to missing files.
+6. Later, if prompt size becomes an issue, switch from including all ADR text to including an ADR index plus role/task-relevant ADRs.
+
+## 8. Starting Workflow on an Existing Project
 
 Priority: medium. DevLab should support operation on a project developed outside DevLab.
 
 In this case, the system spec acts as a feature spec. DevLab adds the specified features to the existing project using the same workflow it uses to develop from scratch. The architect and planner roles need to account for existing code and infrastructure rather than assuming a greenfield project.
 
-## 8. DevLab Workflow Evaluations
+## 9. DevLab Workflow Evaluations
 
 Priority: medium-low. Add opt-in workflow evaluations that run DevLab on small target specifications and check observable behavior.
 
@@ -78,7 +115,7 @@ Direction:
 - Grade generated systems with black-box checks: commands, HTTP responses, package builds, test suites.
 - Record diagnostics: sessions used, findings created, review rejections, runtime, final artifacts.
 
-## 9. Project Status Drift Detection
+## 10. Project Status Drift Detection
 
 Priority: medium-low. DevLab should guard against project progress drifting from the design plan or system spec.
 
@@ -86,7 +123,7 @@ Simpler approach than git rollback: at milestone boundaries (or periodically), t
 
 The more aggressive approach (git rollback to previous milestone, re-plan) is high-risk: it discards working code and creates complex merge scenarios. Defer this unless the finding-based correction proves insufficient.
 
-## 10. Deployment Specification and Verification
+## 11. Deployment Specification and Verification
 
 Priority: low. Well-defined in concept but represents a feature expansion. DevLab should be more reliable on its current scope before taking this on.
 
@@ -104,7 +141,7 @@ Design constraints:
 - Test infrastructure use must be explicit, allowlisted, isolated, and aggressively cleaned up.
 - Deployment implementation should remain task-based through the normal role workflow.
 
-## 11. Automatic Version Control
+## 12. Automatic Version Control
 
 Priority: low. DevLab should eventually commit repository state after completed sessions or workflow gates. Depends on error recovery (item 3) being in place first.
 
