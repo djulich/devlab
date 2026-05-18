@@ -134,17 +134,27 @@ Open questions:
 - How should dirty working tree state before a session be handled?
 - Should DevLab use per-milestone feature branches? Current recommendation: defer branching; use tags first.
 
-## 12. Split Design-Plan creation into multiple sessions if needed
+## 12. Multi-session Architecture Planning for Large Specs
 
-Priority: *untriaged*
+Priority: medium-low. Useful for substantial target systems where one architect session cannot produce a reliable design plan, but lower priority until workflow evaluations show concrete context or quality failures on large specs.
 
-Creating a design plan for a very complex and substantial system spec may exceed the capacity of a single architect agent session. The architect must be able to detect this situation and to distribute the work to multiple design-tasks.
+Open work:
 
-## 13. Add a logging facility
+- Define a durable partial-design state so the architect can stop safely before a complete design plan exists.
+- Let architect sessions explicitly report whether the design plan is complete or needs another architecture-planning session.
+- Avoid overloading implementation tasks for pre-planning work; if design slices are needed, store them as architecture-planning artifacts rather than normal developer tasks.
+- Add tests/evaluations with an intentionally large spec that requires multiple architecture passes.
 
-Priority: *untriaged*
+## 13. DevLab CLI and Library Logging Facility
 
-See docs/logging-plan.md for details.
+Priority: medium-high. Useful and well-scoped. It improves diagnostics and library embedding by replacing direct orchestrator `print()` calls with standard logging, while keeping command output (`status`, `doctor`, `init`) as user-facing prints. This complements, but does not replace, agent stdout/stderr capture in Agent Invocation Observability.
+
+Open work:
+
+- Implement `docs/logging-plan.md` using Python's standard `logging` module and a single `devlab` logger.
+- Add `devlab run` verbosity controls (`--quiet`, `--verbose`) and optional `--log-file`.
+- Keep interactive handoff preview and CLI report output as direct user output, not logs.
+- Add tests for logging configuration and orchestrator log levels.
 
 ## Later / Non-goals for Now
 
