@@ -134,6 +134,18 @@ Open questions:
 - How should dirty working tree state before a session be handled?
 - Should DevLab use per-milestone feature branches? Current recommendation: defer branching; use tags first.
 
+## 12. Split Design-Plan creation into multiple sessions if needed
+
+Priority: *untriaged*
+
+Creating a design plan for a very complex and substantial system spec may exceed the capacity of a single architect agent session. The architect must be able to detect this situation and to distribute the work to multiple design-tasks.
+
+## 13. Add a logging facility
+
+Priority: *untriaged*
+
+See docs/logging-plan.md for details.
+
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator.
