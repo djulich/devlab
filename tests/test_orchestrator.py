@@ -237,7 +237,7 @@ class TestBuildSessionPrompt:
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_profile(tmp_path, "api", validation=["uv run pytest tests/api"])
 
-        prompt = build_session_prompt(tmp_path, "planner")
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "planner")
 
         assert "## Existing Profiles" in prompt
         assert "api.toml" in prompt
@@ -247,7 +247,7 @@ class TestBuildSessionPrompt:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", validation=["uv run pytest"])
 
-        prompt = build_session_prompt(tmp_path, "developer")
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "developer")
 
         assert "## Task Validation Commands" in prompt
         assert "`uv run pytest`" in prompt
@@ -258,7 +258,7 @@ class TestBuildSessionPrompt:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First")
 
-        prompt = build_session_prompt(tmp_path, "developer")
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "developer")
 
         assert "## Task Validation Commands" not in prompt
 
@@ -269,7 +269,7 @@ class TestBuildSessionPrompt:
         _write_profile(tmp_path, "api", validation=["uv run pytest tests/api"])
         _write_task(tmp_path, "T0001", "First", profile="api")
 
-        prompt = build_session_prompt(tmp_path, "developer")
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "developer")
 
         assert "Profile: `api`" in prompt
         assert "default validation from profile `api`" in prompt
@@ -279,7 +279,7 @@ class TestBuildSessionPrompt:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", validation=[])
 
-        prompt = build_session_prompt(tmp_path, "developer")
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "developer")
 
         assert "## Task Validation Commands" in prompt
         assert "validation = []" in prompt
@@ -749,7 +749,7 @@ class TestRunLoop:
         )
         _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
 
-        prompt = build_session_prompt(tmp_path, "architect")
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "architect")
 
         assert "## Assigned Integrated Milestone for Architecture Review" in prompt
         assert "M1" in prompt
@@ -883,7 +883,7 @@ class TestRunLoop:
         )
         _write_milestone(tmp_path, "M1", task_ids=["T0001"])
 
-        prompt = build_session_prompt(tmp_path, "integrator")
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "integrator")
 
         assert "## Assigned Completed Milestone" in prompt
         assert "M1" in prompt

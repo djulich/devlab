@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from devlab._toml import format_toml_value
 from devlab.task_tracker import FileTaskTracker, Task
 
 MILESTONES_DIR = ".devlab/milestones"
@@ -231,9 +232,9 @@ def _format_milestone_file(metadata: dict[str, Any]) -> str:
     lines: list[str] = []
     for key in keys:
         if key in metadata:
-            lines.append(f"{key} = {_toml_value(metadata[key])}")
+            lines.append(f"{key} = {format_toml_value(metadata[key])}")
     for key in sorted(k for k in metadata if k not in keys):
-        lines.append(f"{key} = {_toml_value(metadata[key])}")
+        lines.append(f"{key} = {format_toml_value(metadata[key])}")
     return "\n".join(lines) + "\n"
 
 
@@ -261,20 +262,6 @@ def _milestone_titles_from_project_plan(text: str) -> dict[str, str]:
         for match in _PROJECT_PLAN_HEADING_RE.finditer(text)
     }
 
-
-def _toml_value(value: Any) -> str:
-    if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    if isinstance(value, StrEnum):
-        return _toml_value(value.value)
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int | float):
-        return str(value)
-    if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
-    return _toml_value(str(value))
 
 
 def _natural_sort_key(value: str) -> tuple[str, int, str]:

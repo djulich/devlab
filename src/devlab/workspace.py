@@ -398,7 +398,6 @@ class WorkspaceSnapshot:
             return "developer"
 
         if self.blocked_tasks():
-            print("No task is eligible; remaining development tasks are blocked by dependencies.")
             return None
 
         if self.all_milestones_complete():

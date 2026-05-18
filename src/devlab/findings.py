@@ -7,6 +7,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from devlab._toml import format_toml_value
+
 FINDINGS_DIR = ".devlab/findings"
 FINDING_ID_RE = re.compile(r"(?<![A-Z0-9])F\d{4,5}(?!\d)")
 _FRONT_MATTER_RE = re.compile(r"\A\+\+\+\n([\s\S]*?)\n\+\+\+\n?", re.MULTILINE)
@@ -179,25 +181,13 @@ def _format_finding_file(metadata: dict[str, Any], body: str) -> str:
         value = metadata[key]
         if value is None:
             continue
-        lines.append(f"{key} = {_toml_value(value)}")
+        lines.append(f"{key} = {format_toml_value(value)}")
     known_keys = {"id", "title", "status", "source", "milestone", "handoff"}
     for key in sorted(k for k in metadata if k not in known_keys):
-        lines.append(f"{key} = {_toml_value(metadata[key])}")
+        lines.append(f"{key} = {format_toml_value(metadata[key])}")
     lines.append("+++")
     return "\n".join(lines) + "\n\n" + body.lstrip("\n")
 
-
-def _toml_value(value: Any) -> str:
-    if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    if isinstance(value, FindingStatus):
-        return _toml_value(value.value)
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int | float):
-        return str(value)
-    return _toml_value(str(value))
 
 
 def _parse_status(value: Any) -> FindingStatus:

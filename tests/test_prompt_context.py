@@ -10,6 +10,7 @@ from devlab.prompt_context import (
     load_prompt_context_thresholds,
     measure_prompt,
 )
+from devlab.workspace import Workspace
 
 
 def test_estimate_tokens_uses_stable_character_estimate() -> None:
@@ -29,7 +30,7 @@ def test_measure_prompt_reports_characters_lines_and_tokens() -> None:
 def test_prompt_context_report_includes_all_roles(tmp_path: Path) -> None:
     init_workspace(tmp_path)
 
-    report = build_prompt_context_report(tmp_path)
+    report = build_prompt_context_report(Workspace(tmp_path).snapshot)
 
     assert {role.role_name for role in report.roles} == {
         "architect",
@@ -44,7 +45,7 @@ def test_prompt_context_report_includes_all_roles(tmp_path: Path) -> None:
 
 def test_prompt_context_report_accounts_for_project_knowledge(tmp_path: Path) -> None:
     init_workspace(tmp_path)
-    baseline = build_prompt_context_report(tmp_path)
+    baseline = build_prompt_context_report(Workspace(tmp_path).snapshot)
     (tmp_path / "CONTEXT.md").write_text("# Context\n\nImportant domain language.\n")
     adr_dir = tmp_path / "docs/adr"
     adr_dir.mkdir(parents=True)
@@ -52,7 +53,7 @@ def test_prompt_context_report_accounts_for_project_knowledge(tmp_path: Path) ->
         "# Important Decision\n\nUse this shape.\n"
     )
 
-    report = build_prompt_context_report(tmp_path)
+    report = build_prompt_context_report(Workspace(tmp_path).snapshot)
 
     by_role = {role.role_name: role for role in report.roles}
     baseline_by_role = {role.role_name: role for role in baseline.roles}
@@ -70,7 +71,7 @@ def test_prompt_context_report_does_not_sync_missing_milestone_files(tmp_path: P
     init_workspace(tmp_path)
     _write_task(tmp_path, "T0001", milestone="M1", status="closed")
 
-    build_prompt_context_report(tmp_path)
+    build_prompt_context_report(Workspace(tmp_path).snapshot)
 
     assert not (tmp_path / ".devlab/milestones/M1.toml").exists()
 
@@ -105,7 +106,7 @@ def test_role_prompt_context_reports_warning_and_critical_status(tmp_path: Path)
         "critical_tokens = 2\n",
     )
 
-    report = build_prompt_context_report(tmp_path)
+    report = build_prompt_context_report(Workspace(tmp_path).snapshot)
     by_role = {role.role_name: role for role in report.roles}
 
     assert by_role["architect"].status == "warning"

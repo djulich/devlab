@@ -123,6 +123,54 @@ class CorrectiveWorkflow:
         return _handoff(call.role_name)
 
 
+class ChangesRequestedWorkflow:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.role_counts: dict[str, int] = {}
+
+    def on_invoke(self, call: AgentCall) -> None:
+        self.calls.append(call.role_name)
+        self.role_counts[call.role_name] = self.role_counts.get(call.role_name, 0) + 1
+        count = self.role_counts[call.role_name]
+        if call.role_name == "architect":
+            if count == 1:
+                _design_plan(call.root).write_text("# Design Plan\n\nBuild a tiny CLI.\n")
+            else:
+                assert (
+                    "Assigned Integrated Milestone for Architecture Review"
+                    in call.session_prompt
+                )
+        elif call.role_name == "planner":
+            _project_plan(call.root).write_text(
+                "# Project Plan\n\n"
+                "## M1: Foundation\n"
+                "- T0001: Implement tiny CLI\n"
+            )
+            _write_task(call.root, "T0001", "Implement tiny CLI", "M1")
+        elif call.role_name == "developer":
+            assert "T0001" in call.session_prompt
+            _check_acceptance(call.root, "T0001")
+            if count == 1:
+                (call.root / "tiny_cli.py").write_text("print('hello')\n")
+            else:
+                (call.root / "tiny_cli.py").write_text("print('hello from tiny cli')\n")
+        elif call.role_name == "reviewer":
+            if count == 1:
+                pass
+            else:
+                _approve_review_task(call.root)
+        elif call.role_name == "integrator":
+            assert "## Assigned Completed Milestone" in call.session_prompt
+
+    def handoff_for(self, call: AgentCall) -> str:
+        if call.role_name == "reviewer" and self.role_counts["reviewer"] == 1:
+            return _handoff(
+                call.role_name,
+                open_issues="- CLI output is incomplete, needs full message.",
+            )
+        return _handoff(call.role_name)
+
+
 def test_run_loop_completes_full_happy_path_workflow(tmp_path: Path) -> None:
     _init_target_workspace(tmp_path)
     workflow = HappyPathWorkflow()
@@ -195,6 +243,37 @@ def test_run_loop_replans_after_integration_finding(tmp_path: Path) -> None:
     assert finding.status == FindingStatus.RESOLVED
     assert finding.milestone == "M1"
     assert len(list((tmp_path / ".devlab/history").glob("*_handoff.md"))) == 10
+
+
+def test_run_loop_handles_reviewer_rejection_and_rework(tmp_path: Path) -> None:
+    _init_target_workspace(tmp_path)
+    workflow = ChangesRequestedWorkflow()
+    provider = MockProvider(on_invoke=workflow.on_invoke, handoff_text=workflow.handoff_for)
+
+    result = run_loop(
+        tmp_path,
+        auto=True,
+        max_sessions=10,
+        agent_providers={"default": provider},
+    )
+
+    _assert_successful_result(result, sessions=8)
+    assert workflow.calls == [
+        "architect",
+        "planner",
+        "developer",
+        "reviewer",
+        "developer",
+        "reviewer",
+        "integrator",
+        "architect",
+    ]
+    task = FileTaskTracker(tmp_path).get("T0001")
+    assert task.status == TaskStatus.CLOSED
+    milestone = FileMilestoneTracker(tmp_path).get("M1")
+    assert milestone.status == MilestoneStatus.ARCHITECTURE_REVIEWED
+    assert milestone.integrated is True
+    assert milestone.architecture_reviewed is True
 
 
 def _init_target_workspace(root: Path) -> None:

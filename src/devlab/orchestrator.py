@@ -364,7 +364,14 @@ def run_loop(
         workspace.sync()
         role_name = workspace.snapshot.assess_state()
         if role_name is None:
-            print("All milestones complete or no task can proceed. Stopping.")
+            if workspace.snapshot.blocked_tasks():
+                print(
+                    "No task is eligible; remaining development tasks"
+                    " are blocked by dependencies."
+                )
+            else:
+                print("All milestones complete or no task can proceed.")
+            print("Stopping.")
             break
 
         if role_name == "integrator":

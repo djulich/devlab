@@ -7,6 +7,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from devlab._toml import format_toml_value
+
 TASKS_DIR = ".devlab/tasks"
 TASK_ID_RE = re.compile(r"(?<![A-Z0-9])T\d{3,5}(?!\d)")
 _FRONT_MATTER_RE = re.compile(r"\A\+\+\+\n([\s\S]*?)\n\+\+\+\n?", re.MULTILINE)
@@ -224,7 +226,7 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
         value = metadata[key]
         if value is None:
             continue
-        lines.append(f"{key} = {_toml_value(value)}")
+        lines.append(f"{key} = {format_toml_value(value)}")
     known_keys = {
         "id",
         "title",
@@ -236,24 +238,10 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
         "validation",
     }
     for key in sorted(k for k in metadata if k not in known_keys):
-        lines.append(f"{key} = {_toml_value(metadata[key])}")
+        lines.append(f"{key} = {format_toml_value(metadata[key])}")
     lines.append("+++")
     return "\n".join(lines) + "\n\n" + body.lstrip("\n")
 
-
-def _toml_value(value: Any) -> str:
-    if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    if isinstance(value, TaskStatus):
-        return _toml_value(value.value)
-    if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int | float):
-        return str(value)
-    return _toml_value(str(value))
 
 
 def _parse_status(value: Any) -> TaskStatus:

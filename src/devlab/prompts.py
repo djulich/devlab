@@ -18,7 +18,6 @@ from devlab.workspace import (
     HISTORY_DIR,
     PROJECT_PLAN,
     RoleConfig,
-    Workspace,
     WorkspaceSnapshot,
     read_file,
 )
@@ -37,8 +36,7 @@ def build_system_prompt(root: Path, role: RoleConfig) -> str:
     return "\n\n---\n\n".join(p for p in parts if p)
 
 
-def build_session_prompt(workspace: Path | WorkspaceSnapshot, role_name: str) -> str:
-    snapshot = _ensure_snapshot(workspace)
+def build_session_prompt(snapshot: WorkspaceSnapshot, role_name: str) -> str:
     builders = {
         "architect": _build_architect_prompt,
         "planner": _build_planner_prompt,
@@ -52,11 +50,6 @@ def build_session_prompt(workspace: Path | WorkspaceSnapshot, role_name: str) ->
         prompt = knowledge + "\n\n" + prompt
     return prompt + _handoff_reminder(role_name)
 
-
-def _ensure_snapshot(workspace: Path | WorkspaceSnapshot) -> WorkspaceSnapshot:
-    if isinstance(workspace, WorkspaceSnapshot):
-        return workspace
-    return Workspace(workspace).snapshot
 
 
 def _format_project_knowledge(knowledge: ProjectKnowledge) -> str:
