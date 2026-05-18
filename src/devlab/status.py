@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
+from devlab.findings import Finding
 from devlab.milestones import Milestone
 from devlab.prompt_context import PromptContextReport, build_prompt_context_report
 from devlab.task_tracker import Task, TaskStatus
@@ -22,6 +23,7 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
         lines.extend(["", *_format_agent_configuration(root)])
         lines.extend(["", *_format_prompt_context(snapshot)])
         lines.extend(["", *_format_milestone_status(snapshot)])
+        lines.extend(["", *_format_finding_status(snapshot)])
     return "\n".join(lines)
 
 
@@ -104,6 +106,35 @@ def _format_milestone(milestone: Milestone, tasks: list[Task]) -> list[str]:
         lines.append("  findings: " + ", ".join(milestone.findings))
     else:
         lines.append("  findings: none")
+    return lines
+
+
+def _format_finding_status(snapshot: WorkspaceSnapshot) -> list[str]:
+    findings = snapshot.list_findings()
+    if not findings:
+        return ["Findings: none"]
+    tasks = snapshot.list_tasks()
+    lines = ["Findings:"]
+    for finding in findings:
+        lines.extend(_format_finding(finding, tasks))
+    return lines
+
+
+def _format_finding(finding: Finding, tasks: list[Task]) -> list[str]:
+    addressing_tasks = [task.id for task in tasks if finding.id in task.addresses_findings]
+    lines = [
+        f"- {finding.id}: {finding.title}",
+        f"  status: {finding.status.value}",
+        f"  source: {finding.source}",
+    ]
+    if finding.milestone:
+        lines.append(f"  milestone: {finding.milestone}")
+    if finding.handoff:
+        lines.append(f"  handoff: {finding.handoff}")
+    if addressing_tasks:
+        lines.append("  addressing_tasks: " + ", ".join(addressing_tasks))
+    else:
+        lines.append("  addressing_tasks: none")
     return lines
 
 

@@ -96,6 +96,7 @@ class CorrectiveWorkflow:
                     "Add CLI smoke test",
                     "M1",
                     depends_on=["T0001"],
+                    addresses_findings=["F0001"],
                 )
         elif call.role_name == "developer":
             task = FileTaskTracker(call.root).select_next_development_task()
@@ -118,7 +119,7 @@ class CorrectiveWorkflow:
                 open_issues="- The milestone lacks a smoke test for the CLI.",
             )
         if call.role_name == "planner" and self.role_counts["planner"] == 2:
-            return _handoff(call.role_name, addressed="- F0001")
+            return _handoff(call.role_name, addressed="- F0001: T0002")
         return _handoff(call.role_name)
 
 
@@ -220,9 +221,12 @@ def _write_task(
     milestone: str,
     *,
     depends_on: list[str] | None = None,
+    addresses_findings: list[str] | None = None,
 ) -> Path:
     depends_on = depends_on or []
+    addresses_findings = addresses_findings or []
     depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
+    findings = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
     slug = title.lower().replace(" ", "-")
     path = root / ".devlab/tasks" / f"{task_id}_{slug}.md"
     path.write_text(
@@ -233,6 +237,7 @@ def _write_task(
         f'milestone = "{milestone}"\n'
         'profile = "default"\n'
         f'depends_on = [{depends}]\n'
+        f'addresses_findings = [{findings}]\n'
         'validation = []\n'
         "+++\n\n"
         f"# {task_id}: {title}\n\n"

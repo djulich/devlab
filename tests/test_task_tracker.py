@@ -78,6 +78,7 @@ class TestFileTaskTrackerParsing:
         assert task.milestone == "M1"
         assert task.profile == "api"
         assert task.depends_on == ("T0000",)
+        assert task.addresses_findings == ()
         assert task.validation is None
         assert task.metadata["priority"] == "high"
 
@@ -128,6 +129,25 @@ class TestFileTaskTrackerParsing:
         )
 
         with pytest.raises(ValueError, match="depends_on"):
+            FileTaskTracker(tmp_path).list_tasks()
+
+    def test_reads_addresses_findings(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(
+            tmp_path,
+            "T0001",
+            extra_metadata='addresses_findings = ["F0001", "F0002"]\n',
+        )
+
+        task = FileTaskTracker(tmp_path).get("T0001")
+
+        assert task.addresses_findings == ("F0001", "F0002")
+
+    def test_rejects_non_list_addresses_findings(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", extra_metadata='addresses_findings = "F0001"\n')
+
+        with pytest.raises(ValueError, match="addresses_findings"):
             FileTaskTracker(tmp_path).list_tasks()
 
     def test_reads_validation_commands(self, tmp_path: Path) -> None:
@@ -251,6 +271,19 @@ class TestFileTaskTrackerStatusTransitions:
         FileTaskTracker(tmp_path).mark_in_review("T0001")
 
         assert 'status = "in_review"' in path.read_text()
+
+    def test_status_transition_preserves_addresses_findings(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        path = _write_task(
+            tmp_path,
+            "T0001",
+            "First",
+            extra_metadata='addresses_findings = ["F0001"]\n',
+        )
+
+        FileTaskTracker(tmp_path).mark_in_review("T0001")
+
+        assert 'addresses_findings = ["F0001"]' in path.read_text()
 
     def test_mark_changes_requested_writes_status_to_task_file(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)

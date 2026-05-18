@@ -181,6 +181,59 @@ def test_doctor_reports_missing_milestone_finding(tmp_path: Path) -> None:
     assert "findings references unknown finding 'F0001'" in messages
 
 
+def test_doctor_reports_unknown_finding_referenced_by_task(tmp_path: Path) -> None:
+    _write_task(tmp_path, "T0001", milestone="M1", addresses_findings=["F0001"])
+
+    messages = _messages(tmp_path)
+
+    assert "addresses_findings references unknown finding 'F0001'" in messages
+
+
+def test_doctor_reports_open_finding_with_addressing_tasks(tmp_path: Path) -> None:
+    _write_finding(tmp_path, "F0001", status="open", milestone="M1")
+    _write_task(tmp_path, "T0001", milestone="M1", addresses_findings=["F0001"])
+
+    messages = _messages(tmp_path)
+
+    assert "open finding has addressing tasks but is not planned" in messages
+
+
+def test_doctor_reports_planned_finding_without_addressing_tasks(tmp_path: Path) -> None:
+    _write_finding(tmp_path, "F0001", status="planned", milestone="M1")
+
+    messages = _messages(tmp_path)
+
+    assert "planned finding has no addressing tasks" in messages
+
+
+def test_doctor_reports_planned_finding_with_all_addressing_tasks_closed(
+    tmp_path: Path,
+) -> None:
+    _write_finding(tmp_path, "F0001", status="planned", milestone="M1")
+    _write_task(
+        tmp_path,
+        "T0001",
+        status="closed",
+        milestone="M1",
+        addresses_findings=["F0001"],
+    )
+
+    messages = _messages(tmp_path)
+
+    assert "planned finding has all addressing tasks closed" in messages
+
+
+def test_doctor_reports_task_addressing_finding_from_different_milestone(
+    tmp_path: Path,
+) -> None:
+    _write_finding(tmp_path, "F0001", status="planned", milestone="M1")
+    _write_task(tmp_path, "T0001", milestone="M2", addresses_findings=["F0001"])
+
+    messages = _messages(tmp_path)
+
+    assert "addresses finding 'F0001' from milestone 'M1'" in messages
+
+
 def test_doctor_accepts_consistent_milestone_state(tmp_path: Path) -> None:
     _write_default_profile(tmp_path)
     _write_task(tmp_path, "T0001", milestone="M1")
@@ -208,18 +261,49 @@ def _write_default_profile(root: Path) -> None:
     path.write_text('version = 1\nid = "default"\ntitle = "Default"\n')
 
 
-def _write_task(root: Path, task_id: str, *, milestone: str) -> None:
+def _write_task(
+    root: Path,
+    task_id: str,
+    *,
+    milestone: str,
+    status: str = "open",
+    addresses_findings: list[str] | None = None,
+) -> None:
+    addresses_findings = addresses_findings or []
+    findings_text = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
     path = root / ".devlab/tasks" / f"{task_id}_task.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "+++\n"
         f'id = "{task_id}"\n'
         f'title = "{task_id}"\n'
-        'status = "open"\n'
+        f'status = "{status}"\n'
         f'milestone = "{milestone}"\n'
         "depends_on = []\n"
+        f"addresses_findings = [{findings_text}]\n"
         "+++\n\n"
         f"# {task_id}\n"
+    )
+
+
+def _write_finding(
+    root: Path,
+    finding_id: str,
+    *,
+    status: str,
+    milestone: str,
+) -> None:
+    path = root / ".devlab/findings" / f"{finding_id}_finding.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "+++\n"
+        f'id = "{finding_id}"\n'
+        f'title = "{finding_id}"\n'
+        f'status = "{status}"\n'
+        'source = "integrator"\n'
+        f'milestone = "{milestone}"\n'
+        "+++\n\n"
+        f"# {finding_id}\n"
     )
 
 

@@ -41,6 +41,7 @@ File: `TXXXX_<short-slug>.md` in `.devlab/tasks/` (XXXX = zero-padded).
     milestone = "M1"
     profile = "default"
     depends_on = []
+    addresses_findings = []
     validation = []
     +++
 
@@ -53,6 +54,8 @@ File: `TXXXX_<short-slug>.md` in `.devlab/tasks/` (XXXX = zero-padded).
     <optional>
 
 Dependencies are task IDs in `depends_on`, for example `depends_on = ["T0001"]`.
+
+Follow-up tasks for findings list finding IDs in `addresses_findings`, for example `addresses_findings = ["F0001"]`.
 
 Each task may specify one profile with `profile = "<profile-id>"`; if omitted, `profile = "default"` is used. Profiles live in `.devlab/config/profiles/` and define tooling, default validation, and executable lifecycle commands for task types. If a task needs combined tooling/environment behavior, create a dedicated profile for that task type. Existing profiles may be extended or fixed in backward-compatible ways; breaking behavior changes should use a new profile so already-planned tasks keep their expected execution contract.
 
@@ -79,7 +82,7 @@ File: `FXXXX_<short-slug>.md` in `.devlab/findings/` (XXXX = zero-padded).
 
 Findings are created by the orchestrator from role handoffs.
 
-Planners convert open findings into task files and list addressed finding IDs in their handoff.
+Planners convert open findings into task files. Each follow-up task must list the finding in `addresses_findings`, and the planner handoff must list the complete follow-up task set for each addressed finding.
 
 ### Finding Status
 
@@ -106,6 +109,9 @@ File: `.devlab/session-artifacts/<role>/handoff.md` (archived to `.devlab/histor
     ## Open Issues
     - <unresolved item, or "None">
     ## Addressed Findings
-    - <finding ID, or "None">
+    - <finding ID>: <task ID>[, <task ID>]
+    - None
+
+For planner handoffs, use `- FXXXX: TXXXX[, TXXXX]` to assert the complete follow-up task set for each addressed finding. Use `- None` only when no findings were addressed.
     ## Next Session Hint
     <what the next session for this role should prioritize>

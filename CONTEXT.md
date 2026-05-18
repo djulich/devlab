@@ -36,6 +36,10 @@ _Avoid_: release, sprint
 A repository-backed record of an integration or architecture-review issue that needs planner follow-up.
 _Avoid_: bug report, defect, ticket
 
+**Addressing task**:
+A task whose `addresses_findings` metadata names a finding as corrective work. A finding is planned when the planner asserts the complete addressing task set; it is resolved when all addressing tasks are closed.
+_Avoid_: storing duplicate task lists on the finding
+
 **Profile**:
 A reusable task-type configuration that defines tooling summary, default validation, and optional environment lifecycle commands.
 _Avoid_: environment when referring to the full reusable task configuration
@@ -65,7 +69,7 @@ _Avoid_: project documentation
 - A **Target workspace** contains **Workflow state**.
 - A **Role session** produces a **Handoff**.
 - A **Task** may belong to one **Milestone** and use one **Profile**.
-- A **Finding** may belong to one **Milestone** and is converted into follow-up **Tasks** by the planner.
+- A **Finding** may belong to one **Milestone** and is converted into **Addressing tasks** by the planner.
 - A **Workspace** creates **WorkspaceSnapshots** for read-only decisions and exposes handles for workflow mutations.
 - A **Tracker** owns one storage format; the orchestrator coordinates trackers through workspace boundaries.
 - An **Agent provider** invokes concrete agents without leaking provider details into orchestration logic.

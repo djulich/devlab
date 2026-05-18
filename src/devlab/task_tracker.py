@@ -36,6 +36,7 @@ class Task:
     milestone: str | None
     profile: str | None
     depends_on: tuple[str, ...]
+    addresses_findings: tuple[str, ...]
     # None means validation metadata is omitted; () means explicit validation = [].
     validation: tuple[str, ...] | None
     body: str
@@ -152,6 +153,7 @@ class FileTaskTracker:
         else:
             metadata.pop("profile", None)
         metadata["depends_on"] = list(task.depends_on)
+        metadata["addresses_findings"] = list(task.addresses_findings)
         if task.validation is None:
             metadata.pop("validation", None)
         else:
@@ -169,6 +171,9 @@ class FileTaskTracker:
         milestone = metadata.get("milestone")
         profile = metadata.get("profile")
         depends_on = _parse_depends_on(metadata.get("depends_on"), body)
+        addresses_findings = _parse_string_list(
+            metadata.get("addresses_findings", []), "addresses_findings"
+        )
         validation = (
             _parse_validation(metadata.get("validation")) if "validation" in metadata else None
         )
@@ -176,6 +181,7 @@ class FileTaskTracker:
         normalized_metadata["id"] = task_id
         normalized_metadata["title"] = title
         normalized_metadata["status"] = status.value
+        normalized_metadata["addresses_findings"] = list(addresses_findings)
         if validation is not None:
             normalized_metadata["validation"] = list(validation)
         return Task(
@@ -186,6 +192,7 @@ class FileTaskTracker:
             milestone=str(milestone) if milestone is not None else None,
             profile=str(profile) if profile is not None else None,
             depends_on=tuple(depends_on),
+            addresses_findings=tuple(addresses_findings),
             validation=tuple(validation) if validation is not None else None,
             body=body,
             metadata=normalized_metadata,
@@ -202,14 +209,32 @@ def _split_front_matter(text: str) -> tuple[dict[str, Any], str]:
 
 def _format_task_file(metadata: dict[str, Any], body: str) -> str:
     lines = ["+++"]
-    for key in ("id", "title", "status", "milestone", "profile", "depends_on", "validation"):
+    for key in (
+        "id",
+        "title",
+        "status",
+        "milestone",
+        "profile",
+        "depends_on",
+        "addresses_findings",
+        "validation",
+    ):
         if key not in metadata:
             continue
         value = metadata[key]
         if value is None:
             continue
         lines.append(f"{key} = {_toml_value(value)}")
-    known_keys = {"id", "title", "status", "milestone", "profile", "depends_on", "validation"}
+    known_keys = {
+        "id",
+        "title",
+        "status",
+        "milestone",
+        "profile",
+        "depends_on",
+        "addresses_findings",
+        "validation",
+    }
     for key in sorted(k for k in metadata if k not in known_keys):
         lines.append(f"{key} = {_toml_value(metadata[key])}")
     lines.append("+++")
@@ -257,6 +282,12 @@ def _parse_validation(value: Any) -> list[str]:
         return []
     if not isinstance(value, list):
         raise ValueError("task front matter field 'validation' must be a list")
+    return [str(item) for item in value]
+
+
+def _parse_string_list(value: Any, field_name: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"task front matter field {field_name!r} must be a list")
     return [str(item) for item in value]
 
 

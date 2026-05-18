@@ -48,6 +48,7 @@ def test_create_from_handoff_uses_open_issues_section(tmp_path: Path) -> None:
 
     assert finding.id == "F0001"
     assert finding.source == "integrator"
+    assert finding.title == "M2 Missing frontend/API E2E coverage"
     assert finding.milestone == "M2"
     assert finding.handoff == "handoff.md"
     assert "Missing frontend/API E2E coverage" in finding.body

@@ -27,7 +27,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 ## Session Flow
 
 1. Read the design plan and current project plan.
-2. If open findings exist, plan follow-up task(s) for them before other new work.
+2. If open findings exist, create all required follow-up task(s) for them before other new work.
 3. Identify or plan the next milestone that needs tasks.
 4. Break the milestone into tasks (for development, tests, documentation, etc.). Write task files using the task template from `conventions.md`.
 5. Search existing profiles first. Reuse an existing profile whenever it adequately covers the task type's tooling, validation, and environment needs.
@@ -78,4 +78,5 @@ The project plan is a milestone outline. It may list task IDs for traceability, 
 - Do not recreate tasks that already exist.
 - Prefer task creation over changing milestone scope unless the design/project plan is stale.
 - Plan required test coverage as tasks.
-- When creating follow-up task(s) for findings, list addressed finding IDs in a handoff `## Addressed Findings` section.
+- When creating follow-up task(s) for findings, add `addresses_findings = ["FXXXX"]` to each task's front matter.
+- In the handoff `## Addressed Findings` section, use only `- FXXXX: TXXXX[, TXXXX]` entries to assert the complete follow-up task set for each planned finding, or `- None`.

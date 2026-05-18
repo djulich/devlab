@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES, load_agent_configuration
-from devlab.findings import FileFindingTracker
+from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.knowledge import ADR_DIR, ADR_FILENAME_RE, CONTEXT_MAP, context_paths_from_map
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
 from devlab.prompt_context import RolePromptContext, build_prompt_context_report
@@ -238,7 +238,62 @@ def _check_milestones(root: Path) -> list[DoctorProblem]:
                 )
             )
 
-    finding_ids = {finding.id: finding for finding in FileFindingTracker(root).list_findings()}
+    findings = FileFindingTracker(root).list_findings()
+    finding_ids = {finding.id: finding for finding in findings}
+    addressing_tasks: dict[str, list[str]] = {finding.id: [] for finding in findings}
+    for task in tasks:
+        task_path = _display_path(task.path, root)
+        for finding_id in task.addresses_findings:
+            finding = finding_ids.get(finding_id)
+            if finding is None:
+                problems.append(
+                    DoctorProblem(
+                        task_path,
+                        f"addresses_findings references unknown finding {finding_id!r}",
+                    )
+                )
+                continue
+            addressing_tasks.setdefault(finding_id, []).append(task.id)
+            if (
+                task.milestone is not None
+                and finding.milestone is not None
+                and task.milestone != finding.milestone
+            ):
+                problems.append(
+                    DoctorProblem(
+                        task_path,
+                        f"addresses finding {finding_id!r} from milestone "
+                        f"{finding.milestone!r}",
+                    )
+                )
+
+    for finding in findings:
+        task_ids = addressing_tasks.get(finding.id, [])
+        if finding.status == FindingStatus.OPEN and task_ids:
+            problems.append(
+                DoctorProblem(
+                    _display_path(finding.path, root),
+                    "open finding has addressing tasks but is not planned",
+                )
+            )
+        elif finding.status == FindingStatus.PLANNED:
+            if not task_ids:
+                problems.append(
+                    DoctorProblem(
+                        _display_path(finding.path, root),
+                        "planned finding has no addressing tasks",
+                    )
+                )
+            else:
+                related = [task_by_id[task_id] for task_id in task_ids if task_id in task_by_id]
+                if related and all(task.status.value == "closed" for task in related):
+                    problems.append(
+                        DoctorProblem(
+                            _display_path(finding.path, root),
+                            "planned finding has all addressing tasks closed",
+                        )
+                    )
+
     for milestone in milestone_by_id.values():
         display_path = _display_path(milestone.path, root)
         for task_id in milestone.task_ids:

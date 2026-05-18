@@ -70,6 +70,21 @@ def test_status_verbose_includes_milestone_state(tmp_path: Path) -> None:
     assert "  findings: F0001" in text
 
 
+def test_status_verbose_includes_finding_state(tmp_path: Path) -> None:
+    _setup_minimal_workspace(tmp_path)
+    _write_finding(tmp_path, "F0001", "Missing coverage", "planned", "M1")
+    _write_task(tmp_path, "T0001", "open", "M1", addresses_findings=["F0001"])
+
+    text = format_status(tmp_path, verbose=True)
+
+    assert "Findings:" in text
+    assert "- F0001: Missing coverage" in text
+    assert "  status: planned" in text
+    assert "  source: integrator" in text
+    assert "  milestone: M1" in text
+    assert "  addressing_tasks: T0001" in text
+
+
 def test_status_verbose_reports_no_milestones(tmp_path: Path) -> None:
     _setup_minimal_workspace(tmp_path)
 
@@ -101,7 +116,16 @@ def _setup_minimal_workspace(root: Path) -> None:
     )
 
 
-def _write_task(root: Path, task_id: str, status: str, milestone: str) -> None:
+def _write_task(
+    root: Path,
+    task_id: str,
+    status: str,
+    milestone: str,
+    *,
+    addresses_findings: list[str] | None = None,
+) -> None:
+    addresses_findings = addresses_findings or []
+    findings_text = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
     path = root / ".devlab/tasks" / f"{task_id}_task.md"
     path.write_text(
         "+++\n"
@@ -110,8 +134,30 @@ def _write_task(root: Path, task_id: str, status: str, milestone: str) -> None:
         f'status = "{status}"\n'
         f'milestone = "{milestone}"\n'
         "depends_on = []\n"
+        f"addresses_findings = [{findings_text}]\n"
         "+++\n\n"
         f"# {task_id}\n"
+    )
+
+
+def _write_finding(
+    root: Path,
+    finding_id: str,
+    title: str,
+    status: str,
+    milestone: str,
+) -> None:
+    path = root / ".devlab/findings" / f"{finding_id}_finding.md"
+    path.write_text(
+        "+++\n"
+        f'id = "{finding_id}"\n'
+        f'title = "{title}"\n'
+        f'status = "{status}"\n'
+        'source = "integrator"\n'
+        f'milestone = "{milestone}"\n'
+        'handoff = "handoff.md"\n'
+        "+++\n\n"
+        f"# {title}\n"
     )
 
 

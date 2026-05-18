@@ -46,6 +46,7 @@ def _write_task(
     profile: str | None = None,
     depends_on: list[str] | None = None,
     validation: list[str] | None = None,
+    addresses_findings: list[str] | None = None,
     body: str | None = None,
 ) -> Path:
     depends_on = depends_on or []
@@ -55,6 +56,8 @@ def _write_task(
     milestone_line = f'milestone = "{milestone}"\n' if milestone is not None else ""
     profile_line = f'profile = "{profile}"\n' if profile is not None else ""
     validation_line = ""
+    addresses_findings = addresses_findings or []
+    addresses_findings_text = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
     if validation is not None:
         validation_commands = ", ".join(f'"{command}"' for command in validation)
         validation_line = f"validation = [{validation_commands}]\n"
@@ -68,6 +71,7 @@ def _write_task(
         f"{milestone_line}"
         f"{profile_line}"
         f"depends_on = [{depends}]\n"
+        f"addresses_findings = [{addresses_findings_text}]\n"
         f"{validation_line}"
         "+++\n\n"
         f"{body}"
@@ -762,6 +766,16 @@ class TestRunLoop:
             milestone="M1",
             body="# Finding\n",
         )
+
+        def on_invoke(call: AgentCall) -> None:
+            _write_task(
+                call.root,
+                "T0002",
+                "E2E",
+                milestone="M1",
+                addresses_findings=[finding.id],
+            )
+
         provider = MockProvider(
             handoff_text=(
                 "# Handoff: planner\n"
@@ -769,21 +783,51 @@ class TestRunLoop:
                 "## Changed Artifacts\n- .devlab/tasks/T0002_e2e.md (created)\n"
                 "## Open Issues\n- None\n"
                 "## Addressed Findings\n"
-                f"- {finding.id}\n"
+                f"- {finding.id}: T0002\n"
                 "## Next Session Hint\nImplement follow-up task.\n"
-            )
+            ),
+            on_invoke=on_invoke,
         )
 
         run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
 
         assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.PLANNED
 
-    def test_successful_integration_resolves_planned_milestone_findings(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planner_addressed_findings_requires_task_mapping(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        finding = FileFindingTracker(tmp_path).create(
+            title="Missing E2E coverage",
+            source="integrator",
+            milestone="M1",
+            body="# Finding\n",
+        )
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: planner\n"
+                "## Done\n- Created follow-up task.\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- None\n"
+                "## Addressed Findings\n"
+                f"- {finding.id}\n"
+                "## Next Session Hint\nImplement follow-up task.\n"
+            )
+        )
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.completed is False
+        assert result.errors[0].phase == "handoff_validation"
+        assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.OPEN
+
+    def test_closed_follow_up_task_resolves_planned_finding(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         tracker = FileFindingTracker(tmp_path)
         finding = tracker.create(
             title="Missing E2E coverage",
@@ -792,10 +836,20 @@ class TestRunLoop:
             body="# Finding\n",
         )
         tracker.mark_planned(finding.id)
+        task = _write_task(
+            tmp_path,
+            "T0001",
+            "Fix finding",
+            status="in_review",
+            milestone="M1",
+            addresses_findings=[finding.id],
+            body=_checked_task_body("T0001", "Fix finding") + "\n## Review\n- [x] Approved\n",
+        )
         provider = MockProvider()
 
         run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
 
+        assert 'status = "closed"' in task.read_text()
         assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.RESOLVED
 
     def test_integrator_prompt_includes_milestone_and_task_content(self, tmp_path: Path) -> None:

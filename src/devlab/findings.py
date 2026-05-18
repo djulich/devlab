@@ -96,15 +96,15 @@ class FileFindingTracker:
     ) -> Finding:
         handoff_text = handoff_path.read_text()
         open_issues = _extract_section(handoff_text, "Open Issues") or handoff_text
-        title = f"{source.title()} finding"
-        if milestone:
-            title = f"{milestone} {title}"
+        issue_title = _title_from_open_issues(open_issues) or f"{source.title()} finding"
+        title = f"{milestone} {issue_title}" if milestone else issue_title
         body = (
             f"# {title}\n\n"
             "## Finding\n"
             f"{open_issues.strip()}\n\n"
             "## Requested Planning\n"
-            "Create follow-up task(s) that address this finding.\n"
+            "Create all required follow-up task(s) for this finding. Each task must list "
+            "this finding in `addresses_findings`.\n"
         )
         return self.create(
             title=title,
@@ -227,6 +227,15 @@ def _finding_id_from_path(path: Path) -> str | None:
 def _title_from_body(body: str, finding_id: str) -> str | None:
     match = re.search(rf"^#\s+{re.escape(finding_id)}:\s*(.+)$", body, flags=re.MULTILINE)
     return match.group(1).strip() if match else None
+
+
+def _title_from_open_issues(open_issues: str) -> str | None:
+    for line in open_issues.splitlines():
+        cleaned = re.sub(r"^[-*]\s+", "", line).strip()
+        if not cleaned or cleaned.lower() == "none":
+            continue
+        return cleaned.rstrip(".")[:80]
+    return None
 
 
 def _finding_sort_key(finding_id: str) -> int:
