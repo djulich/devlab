@@ -140,7 +140,7 @@ class Workspace:
             self.tasks.list_tasks(),
             project_plan_text=read_file(self.root / PROJECT_PLAN),
         )
-        self._did_mutate()
+        self.did_mutate()
 
     def task(self, task_id: str) -> WorkspaceTask:
         return WorkspaceTask(self, task_id)
@@ -166,10 +166,10 @@ class Workspace:
             milestone=milestone,
             handoff_path=handoff_path,
         )
-        self._did_mutate()
+        self.did_mutate()
         return finding
 
-    def _did_mutate(self) -> None:
+    def did_mutate(self) -> None:
         self._snapshot = None
 
 
@@ -189,15 +189,20 @@ class WorkspaceTask:
 
     def mark_in_review(self) -> None:
         self.workspace.tasks.mark_in_review(self.id)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
 
     def mark_changes_requested(self) -> None:
         self.workspace.tasks.mark_changes_requested(self.id)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
 
     def close(self) -> None:
         self.workspace.tasks.close(self.id)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
+
+    def resolve_addressed_findings(self) -> None:
+        task = self.read()
+        for finding_id in task.addresses_findings:
+            self.workspace.finding(finding_id).resolve_if_complete()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -220,19 +225,19 @@ class WorkspaceMilestone:
 
     def mark_ready_for_integration(self) -> None:
         self.workspace.milestones.mark_tasks_complete(self.id)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
 
     def mark_integrated(self, handoff_path: Path) -> None:
         self.workspace.milestones.mark_integrated(self.id, handoff_path)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
 
     def mark_integration_failed(self, finding_id: str) -> None:
         self.workspace.milestones.mark_integration_failed(self.id, finding_id)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
 
     def mark_architecture_reviewed(self, handoff_path: Path) -> None:
         self.workspace.milestones.mark_architecture_reviewed(self.id, handoff_path)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -247,11 +252,23 @@ class WorkspaceFinding:
 
     def mark_planned(self) -> None:
         self.workspace.findings.mark_planned(self.id)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
 
     def mark_resolved(self) -> None:
         self.workspace.findings.mark_resolved(self.id)
-        self.workspace._did_mutate()
+        self.workspace.did_mutate()
+
+    def resolve_if_complete(self) -> None:
+        """Mark resolved if all addressing tasks are closed."""
+        snapshot = self.workspace.snapshot
+        finding = self.read()
+        if finding.status != FindingStatus.PLANNED:
+            return
+        addressing_tasks = [
+            task for task in snapshot.list_tasks() if self.id in task.addresses_findings
+        ]
+        if addressing_tasks and all(task.status.value == "closed" for task in addressing_tasks):
+            self.mark_resolved()
 
 
 

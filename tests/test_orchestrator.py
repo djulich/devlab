@@ -224,7 +224,7 @@ class TestCloseTask:
     def test_marks_task_closed_in_place(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         task = _write_task(tmp_path, "T0001", "Test", status="in_review")
-        close_task(tmp_path, task, "reviewer")
+        close_task(Workspace(tmp_path), task, "reviewer")
         assert task.exists()
         assert 'status = "closed"' in task.read_text()
         history = list((tmp_path / HISTORY_DIR).glob("*_reviewer_closed-task.md"))

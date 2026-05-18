@@ -13,7 +13,6 @@ from devlab.agent_config import (
 )
 from devlab.agents import AgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
-from devlab.findings import FindingStatus
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompts import build_session_prompt, build_system_prompt
 from devlab.task_tracker import Task
@@ -111,7 +110,10 @@ def invoke_session(
 
 
 def validate_handoff(
-    handoff_path: Path, *, role_name: str | None = None, root: Path | None = None
+    handoff_path: Path,
+    *,
+    role_name: str | None = None,
+    snapshot: WorkspaceSnapshot | None = None,
 ) -> tuple[bool, str]:
     if not handoff_path.exists():
         return False, "handoff file does not exist"
@@ -124,8 +126,8 @@ def validate_handoff(
     open_issues = text.split("## Open Issues", 1)[1].split("##", 1)[0].lower()
     if "unrecoverable" in open_issues:
         return False, "handoff reports an unrecoverable issue"
-    if role_name == "planner" and root is not None:
-        planner_error = _validate_planner_addressed_findings(root, handoff_path)
+    if role_name == "planner" and snapshot is not None:
+        planner_error = _validate_planner_addressed_findings(snapshot, handoff_path)
         if planner_error:
             return False, planner_error
     return True, ""
@@ -161,24 +163,11 @@ def _task_is_approved(task_path: Path) -> bool:
     return "- [x] approved" in review_text
 
 
-def mark_task_in_review(root: Path, task_path: Path) -> None:
-    task = Workspace(root).task_from_path(task_path)
-    task.mark_in_review()
-    print(f"  Task {task.path.name} completed by developer; status set to in_review")
-
-
-def mark_task_changes_requested(root: Path, task_path: Path) -> None:
-    task = Workspace(root).task_from_path(task_path)
-    task.mark_changes_requested()
-    print(f"  Task {task.path.name} rejected by reviewer; status set to changes_requested")
-
-
-def close_task(root: Path, task_path: Path, role_name: str = "reviewer") -> None:
-    workspace = Workspace(root)
+def close_task(workspace: Workspace, task_path: Path, role_name: str = "reviewer") -> None:
     task = workspace.task_from_path(task_path)
     task.close()
     print(f"  Task {task.path.name} closed by {role_name}; status set to closed")
-    _resolve_findings_for_task(workspace, task.read())
+    task.resolve_addressed_findings()
 
 
 def _handoff_has_open_issues(handoff_path: Path) -> bool:
@@ -220,7 +209,9 @@ def _addressed_finding_tasks(handoff_path: Path) -> dict[str, tuple[str, ...]]:
     return mappings
 
 
-def _validate_planner_addressed_findings(root: Path, handoff_path: Path) -> str:
+def _validate_planner_addressed_findings(
+    snapshot: WorkspaceSnapshot, handoff_path: Path
+) -> str:
     section = _handoff_section(handoff_path, "Addressed Findings")
     lines = [line.strip() for line in section.splitlines() if line.strip()]
     if not lines or lines == ["- None"]:
@@ -229,8 +220,8 @@ def _validate_planner_addressed_findings(root: Path, handoff_path: Path) -> str:
         return "planner Addressed Findings cannot mix '- None' with finding mappings"
 
     seen_findings: set[str] = set()
-    task_by_id = {task.id: task for task in Workspace(root).snapshot.list_tasks()}
-    finding_by_id = {finding.id: finding for finding in Workspace(root).snapshot.list_findings()}
+    task_by_id = {task.id: task for task in snapshot.list_tasks()}
+    finding_by_id = {finding.id: finding for finding in snapshot.list_findings()}
     for line in lines:
         match = _ADDRESSED_FINDING_LINE_RE.fullmatch(line)
         if match is None:
@@ -261,43 +252,16 @@ def _validate_planner_addressed_findings(root: Path, handoff_path: Path) -> str:
 def _mark_addressed_findings_planned(workspace: Workspace, handoff_path: Path) -> None:
     for finding_id in _addressed_finding_tasks(handoff_path):
         workspace.finding(finding_id).mark_planned()
-        _resolve_finding_if_complete(workspace, finding_id)
-
-
-def _resolve_finding_if_complete(workspace: Workspace, finding_id: str) -> None:
-    snapshot = workspace.snapshot
-    finding = next(
-        (candidate for candidate in snapshot.list_findings() if candidate.id == finding_id), None
-    )
-    if finding is None or finding.status != FindingStatus.PLANNED:
-        return
-    addressing_tasks = [
-        task for task in snapshot.list_tasks() if finding_id in task.addresses_findings
-    ]
-    if addressing_tasks and all(task.status.value == "closed" for task in addressing_tasks):
-        workspace.finding(finding_id).mark_resolved()
-
-
-def _resolve_findings_for_task(workspace: Workspace, task: Task) -> None:
-    for finding_id in task.addresses_findings:
-        _resolve_finding_if_complete(workspace, finding_id)
-
-
-def _mark_milestone_integrated(
-    workspace: Workspace, milestone: str, handoff_path: Path
-) -> None:
-    workspace.milestone(milestone).mark_integrated(handoff_path)
-    print(f"  Milestone {milestone} marked integrated")
+        workspace.finding(finding_id).resolve_if_complete()
 
 
 def process_handoff(workspace: Workspace, role_name: str) -> None:
     root = workspace.root
     archived = archive_handoff(root, role_name)
     print(f"  Handoff archived to {archived.name}")
-    snapshot = workspace.snapshot
 
     if role_name == "architect":
-        milestone = snapshot.select_architecture_review_milestone()
+        milestone = workspace.snapshot.select_architecture_review_milestone()
         if milestone is not None:
             if _handoff_has_open_issues(archived):
                 workspace.create_finding_from_handoff(
@@ -309,25 +273,29 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
             workspace.milestone(milestone).mark_architecture_reviewed(archived)
             print(f"  Milestone {milestone} marked architecture-reviewed")
     elif role_name == "developer":
-        task_path = snapshot.select_task()
+        task_path = workspace.snapshot.select_task()
         if task_path and _task_is_complete(task_path):
-            mark_task_in_review(root, task_path)
+            task = workspace.task_from_path(task_path)
+            task.mark_in_review()
+            print(f"  Task {task.path.name} completed by developer; status set to in_review")
     elif role_name == "planner":
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         _mark_addressed_findings_planned(workspace, handoff_path)
     elif role_name == "reviewer":
-        task_path = snapshot.select_review_task()
+        task_path = workspace.snapshot.select_review_task()
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         if task_path and _task_is_approved(task_path):
             task = workspace.task_from_path(task_path)
             task.close()
             print(f"  Task {task.path.name} closed by {role_name}; status set to closed")
-            _resolve_findings_for_task(workspace, task.read())
+            task.resolve_addressed_findings()
         elif task_path and _handoff_has_open_issues(handoff_path):
-            mark_task_changes_requested(root, task_path)
+            task = workspace.task_from_path(task_path)
+            task.mark_changes_requested()
+            print(f"  Task {task.path.name} rejected by reviewer; status set to changes_requested")
     elif role_name == "integrator":
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
-        milestone = snapshot.select_integration_milestone()
+        milestone = workspace.snapshot.select_integration_milestone()
         if _handoff_has_open_issues(handoff_path):
             finding = workspace.create_finding_from_handoff(
                 source="integrator",
@@ -339,7 +307,8 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
             print("  Integration reported open issues; finding created for planner follow-up")
             return
         if milestone is not None:
-            _mark_milestone_integrated(workspace, milestone, archived)
+            workspace.milestone(milestone).mark_integrated(archived)
+            print(f"  Milestone {milestone} marked integrated")
 
 
 # ---------------------------------------------------------------------------
@@ -393,17 +362,15 @@ def run_loop(
 
     while sessions_run < max_sessions:
         workspace.sync()
-        snapshot = workspace.snapshot
-        role_name = snapshot.assess_state()
+        role_name = workspace.snapshot.assess_state()
         if role_name is None:
             print("All milestones complete or no task can proceed. Stopping.")
             break
 
         if role_name == "integrator":
-            milestone = snapshot.select_integration_milestone()
+            milestone = workspace.snapshot.select_integration_milestone()
             if milestone is not None:
                 workspace.milestone(milestone).mark_ready_for_integration()
-                snapshot = workspace.snapshot
 
         role = ROLES[role_name]
         print(f"\n{'=' * 60}")
@@ -419,8 +386,8 @@ def run_loop(
 
         try:
             system_prompt = build_system_prompt(root, role)
-            session_prompt = build_session_prompt(snapshot, role_name)
-            environment = _environment_for_session(root, snapshot, role_name)
+            session_prompt = build_session_prompt(workspace.snapshot, role_name)
+            environment = _environment_for_session(root, workspace.snapshot, role_name)
         except ProfileNotFoundError as exc:
             print(f"ERROR: {exc}. Stopping.")
             return RunResult(sessions_run, False, 1,
@@ -473,8 +440,12 @@ def run_loop(
             return RunResult(sessions_run, False, return_code,
                              (SessionError("agent_invocation", msg, return_code),))
 
+        workspace.did_mutate()
+
         handoff_path = artifacts_dir / "handoff.md"
-        is_valid, error = validate_handoff(handoff_path, role_name=role_name, root=root)
+        is_valid, error = validate_handoff(
+            handoff_path, role_name=role_name, snapshot=workspace.snapshot,
+        )
         if not is_valid:
             print(f"ERROR: Invalid handoff produced by {role_name}: {error}. Stopping.")
             return RunResult(sessions_run, False, 1,
