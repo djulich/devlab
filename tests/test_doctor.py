@@ -223,15 +223,17 @@ def test_doctor_reports_planned_finding_with_all_addressing_tasks_closed(
     assert "planned finding has all addressing tasks closed" in messages
 
 
-def test_doctor_reports_task_addressing_finding_from_different_milestone(
+def test_doctor_allows_task_addressing_finding_from_different_milestone(
     tmp_path: Path,
 ) -> None:
+    _write_default_profile(tmp_path)
     _write_finding(tmp_path, "F0001", status="planned", milestone="M1")
     _write_task(tmp_path, "T0001", milestone="M2", addresses_findings=["F0001"])
+    _write_milestone(tmp_path, "M2", task_ids=["T0001"])
 
     messages = _messages(tmp_path)
 
-    assert "addresses finding 'F0001' from milestone 'M1'" in messages
+    assert "addresses finding 'F0001' from milestone 'M1'" not in messages
 
 
 def test_doctor_accepts_consistent_milestone_state(tmp_path: Path) -> None:

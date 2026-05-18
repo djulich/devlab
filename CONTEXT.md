@@ -37,7 +37,7 @@ A repository-backed record of an integration or architecture-review issue that n
 _Avoid_: bug report, defect, ticket
 
 **Addressing task**:
-A task whose `addresses_findings` metadata names a finding as corrective work. A finding is planned when the planner asserts the complete addressing task set; it is resolved when all addressing tasks are closed.
+A task whose `addresses_findings` metadata names a finding as corrective work. A finding is planned when the planner asserts the complete addressing task set; it is resolved when all addressing tasks are closed. An addressing task may be in a later milestone than the finding.
 _Avoid_: storing duplicate task lists on the finding
 
 **Profile**:

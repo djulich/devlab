@@ -254,18 +254,6 @@ def _check_milestones(root: Path) -> list[DoctorProblem]:
                 )
                 continue
             addressing_tasks.setdefault(finding_id, []).append(task.id)
-            if (
-                task.milestone is not None
-                and finding.milestone is not None
-                and task.milestone != finding.milestone
-            ):
-                problems.append(
-                    DoctorProblem(
-                        task_path,
-                        f"addresses finding {finding_id!r} from milestone "
-                        f"{finding.milestone!r}",
-                    )
-                )
 
     for finding in findings:
         task_ids = addressing_tasks.get(finding.id, [])
