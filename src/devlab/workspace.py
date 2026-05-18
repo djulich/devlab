@@ -11,7 +11,7 @@ import dataclasses
 from pathlib import Path
 
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
-from devlab.milestones import FileMilestoneTracker, Milestone, sync_milestones_from_tasks
+from devlab.milestones import FileMilestoneTracker, Milestone
 from devlab.task_tracker import DEVELOPABLE_STATUSES, FileTaskTracker, Task, TaskStatus
 
 DESIGN_PLAN = ".devlab/plans/design-plan.md"
@@ -95,22 +95,49 @@ class Workspace:
     _snapshot: WorkspaceSnapshot | None = dataclasses.field(
         default=None, init=False, repr=False
     )
+    _task_tracker: FileTaskTracker | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
+    _finding_tracker: FileFindingTracker | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
+    _milestone_tracker: FileMilestoneTracker | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
+
+    @property
+    def task_tracker(self) -> FileTaskTracker:
+        if self._task_tracker is None:
+            self._task_tracker = FileTaskTracker(self.root)
+        return self._task_tracker
+
+    @property
+    def finding_tracker(self) -> FileFindingTracker:
+        if self._finding_tracker is None:
+            self._finding_tracker = FileFindingTracker(self.root)
+        return self._finding_tracker
+
+    @property
+    def milestone_tracker(self) -> FileMilestoneTracker:
+        if self._milestone_tracker is None:
+            self._milestone_tracker = FileMilestoneTracker(self.root)
+        return self._milestone_tracker
 
     @property
     def snapshot(self) -> WorkspaceSnapshot:
         if self._snapshot is None:
             self._snapshot = WorkspaceSnapshot(
                 root=self.root,
-                task_tracker=FileTaskTracker(self.root),
-                finding_tracker=FileFindingTracker(self.root),
-                milestone_tracker=FileMilestoneTracker(self.root),
+                task_tracker=self.task_tracker,
+                finding_tracker=self.finding_tracker,
+                milestone_tracker=self.milestone_tracker,
             )
         return self._snapshot
 
     def sync(self) -> None:
         """Mutate milestone files so stored milestone state reflects task references."""
-        sync_milestones_from_tasks(
-            self.root,
+        self.milestone_tracker.upsert_from_tasks(
+            self.task_tracker.list_tasks(),
             project_plan_text=read_file(self.root / PROJECT_PLAN),
         )
         self._did_mutate()
@@ -142,22 +169,22 @@ class WorkspaceTask:
     id: str
 
     def read(self) -> Task:
-        return FileTaskTracker(self.workspace.root).get(self.id)
+        return self.workspace.task_tracker.get(self.id)
 
     @property
     def path(self) -> Path:
         return self.read().path
 
     def mark_in_review(self) -> None:
-        FileTaskTracker(self.workspace.root).mark_in_review(self.id)
+        self.workspace.task_tracker.mark_in_review(self.id)
         self.workspace._did_mutate()
 
     def mark_changes_requested(self) -> None:
-        FileTaskTracker(self.workspace.root).mark_changes_requested(self.id)
+        self.workspace.task_tracker.mark_changes_requested(self.id)
         self.workspace._did_mutate()
 
     def close(self) -> None:
-        FileTaskTracker(self.workspace.root).close(self.id)
+        self.workspace.task_tracker.close(self.id)
         self.workspace._did_mutate()
 
 
@@ -169,34 +196,30 @@ class WorkspaceMilestone:
     id: str
 
     def read(self) -> Milestone:
-        return FileMilestoneTracker(self.workspace.root).get(self.id)
+        return self.workspace.milestone_tracker.get(self.id)
 
     def tasks(self) -> list[WorkspaceTask]:
         task_ids = [task.id for task in self.workspace.snapshot.tasks_for_milestone(self.id)]
         return [self.workspace.task(task_id) for task_id in task_ids]
 
     def planned_findings(self) -> list[WorkspaceFinding]:
-        findings = FileFindingTracker(self.workspace.root).planned_findings_for_milestone(
-            self.id
-        )
+        findings = self.workspace.finding_tracker.planned_findings_for_milestone(self.id)
         return [self.workspace.finding(finding.id) for finding in findings]
 
     def mark_ready_for_integration(self) -> None:
-        FileMilestoneTracker(self.workspace.root).mark_tasks_complete(self.id)
+        self.workspace.milestone_tracker.mark_tasks_complete(self.id)
         self.workspace._did_mutate()
 
     def mark_integrated(self, handoff_path: Path) -> None:
-        FileMilestoneTracker(self.workspace.root).mark_integrated(self.id, handoff_path)
+        self.workspace.milestone_tracker.mark_integrated(self.id, handoff_path)
         self.workspace._did_mutate()
 
     def mark_integration_failed(self, finding_id: str) -> None:
-        FileMilestoneTracker(self.workspace.root).mark_integration_failed(self.id, finding_id)
+        self.workspace.milestone_tracker.mark_integration_failed(self.id, finding_id)
         self.workspace._did_mutate()
 
     def mark_architecture_reviewed(self, handoff_path: Path) -> None:
-        FileMilestoneTracker(self.workspace.root).mark_architecture_reviewed(
-            self.id, handoff_path
-        )
+        self.workspace.milestone_tracker.mark_architecture_reviewed(self.id, handoff_path)
         self.workspace._did_mutate()
 
 
@@ -208,14 +231,14 @@ class WorkspaceFinding:
     id: str
 
     def read(self) -> Finding:
-        return FileFindingTracker(self.workspace.root).get(self.id)
+        return self.workspace.finding_tracker.get(self.id)
 
     def mark_planned(self) -> None:
-        FileFindingTracker(self.workspace.root).mark_planned(self.id)
+        self.workspace.finding_tracker.mark_planned(self.id)
         self.workspace._did_mutate()
 
     def mark_resolved(self) -> None:
-        FileFindingTracker(self.workspace.root).mark_resolved(self.id)
+        self.workspace.finding_tracker.mark_resolved(self.id)
         self.workspace._did_mutate()
 
 
@@ -232,7 +255,7 @@ class WorkspaceFindings:
         milestone: str | None,
         handoff_path: Path,
     ) -> Finding:
-        finding = FileFindingTracker(self.workspace.root).create_from_handoff(
+        finding = self.workspace.finding_tracker.create_from_handoff(
             source=source,
             milestone=milestone,
             handoff_path=handoff_path,
