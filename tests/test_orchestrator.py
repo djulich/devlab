@@ -8,13 +8,7 @@ import pytest
 from devlab.agents import AgentCall, MockProvider
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
-from devlab.orchestrator import (
-    _task_is_complete,
-    _timestamp,
-    close_task,
-    run_loop,
-    validate_handoff,
-)
+from devlab.orchestrator import _timestamp, close_task, run_loop, validate_handoff
 from devlab.prompts import build_session_prompt, build_system_prompt
 from devlab.task_tracker import TASKS_DIR
 from devlab.workspace import DESIGN_PLAN, HISTORY_DIR, PROJECT_PLAN, ROLES, Workspace
@@ -201,23 +195,6 @@ class TestSelectTaskCompatibility:
         _setup_tree(tmp_path)
         path = _write_task(tmp_path, "T0001", "First")
         assert Workspace(tmp_path).snapshot.select_task() == path
-
-
-class TestTaskIsComplete:
-    def test_all_checked(self, tmp_path: Path) -> None:
-        f = tmp_path / "task.md"
-        f.write_text("- [x] criterion 1\n- [x] criterion 2\n")
-        assert _task_is_complete(f) is True
-
-    def test_some_unchecked(self, tmp_path: Path) -> None:
-        f = tmp_path / "task.md"
-        f.write_text("- [x] criterion 1\n- [ ] criterion 2\n")
-        assert _task_is_complete(f) is False
-
-    def test_no_criteria(self, tmp_path: Path) -> None:
-        f = tmp_path / "task.md"
-        f.write_text("# Task\nNo checklist\n")
-        assert _task_is_complete(f) is False
 
 
 class TestCloseTask:
@@ -513,6 +490,59 @@ class TestRunLoop:
         assert provider.calls[0].role_name == "reviewer"
         assert 'status = "changes_requested"' in task.read_text()
 
+    def test_reviewer_rejection_with_stale_approval_is_invalid(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(
+            tmp_path,
+            "T0001",
+            "Review",
+            status="in_review",
+            body=_checked_task_body("T0001", "Review") + "\n## Review\n- [x] Approved\n",
+        )
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: reviewer\n"
+                "## Done\n- Reviewed task.\n"
+                "## Changed Artifacts\n- .devlab/tasks/T0001_review.md (modified)\n"
+                "## Open Issues\n- Fix the implementation.\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nAddress requested changes.\n"
+            )
+        )
+
+        result = run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "handoff_validation"
+        assert "reports open issues but task review is approved" in result.errors[0].message
+        assert 'status = "in_review"' in task.read_text()
+
+    def test_reviewer_approval_without_review_marker_is_invalid(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        task = _write_task(
+            tmp_path,
+            "T0001",
+            "Review",
+            status="in_review",
+            body=_checked_task_body("T0001", "Review"),
+        )
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "handoff_validation"
+        assert "reports no open issues but task review is not approved" in result.errors[0].message
+        assert 'status = "in_review"' in task.read_text()
+
     def test_invalid_handoff_stops_loop_without_status_change(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
@@ -653,6 +683,27 @@ class TestRunLoop:
         assert milestone.status == MilestoneStatus.INTEGRATION_FAILED
         assert milestone.integrated is False
         assert milestone.findings == (findings[0].id,)
+
+    def test_open_issue_containing_no_is_not_treated_as_none(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: integrator\n"
+                "## Done\n- Validated milestone.\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- No smoke test exists for the CLI.\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nPlan smoke test.\n"
+            )
+        )
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        findings = FileFindingTracker(tmp_path).open_findings()
+        assert len(findings) == 1
+        assert "No smoke test exists" in findings[0].body
 
     def test_successful_integration_then_architecture_review_in_next_session(
         self, tmp_path: Path

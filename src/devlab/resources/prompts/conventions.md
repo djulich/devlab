@@ -101,17 +101,20 @@ Reviewers approve a task by appending or updating this section in the task file:
 
 File: `.devlab/session-artifacts/<role>/handoff.md` (archived to `.devlab/history/` by orchestrator).
 
+Required `##` sections must appear exactly in this order. Do not insert extra `##` sections between them.
+
     # Handoff: <role>
     ## Done
     - <completed action>
     ## Changed Artifacts
     - <path> (created|modified|deleted)
     ## Open Issues
-    - <unresolved item, or "None">
+    - <unresolved item>
     ## Addressed Findings
     - <finding ID>: <task ID>[, <task ID>]
-    - None
-
-For planner handoffs, use `- FXXXX: TXXXX[, TXXXX]` to assert the complete follow-up task set for each addressed finding. Use `- None` only when no findings were addressed.
     ## Next Session Hint
     <what the next session for this role should prioritize>
+
+Use exactly `- None` for `## Open Issues` when there are no open issues. Do not mix `- None` with real issues.
+
+For planner handoffs, use `- FXXXX: TXXXX[, TXXXX]` in `## Addressed Findings` to assert the complete follow-up task set for each addressed finding. Use exactly `- None` only when no findings were addressed; do not mix `- None` with mappings or prose.

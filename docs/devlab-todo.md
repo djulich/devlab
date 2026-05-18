@@ -6,15 +6,11 @@ Only open or partially complete work is listed here. Completed implementation-hi
 
 ## 1. Workflow Contract Hardening
 
-Priority: high. Current unit and mock workflow tests are strong, but several workflow decisions still depend on loose Markdown/text parsing. Real agents are likely to produce ambiguous handoffs, stale review sections, or malformed task updates.
+Status: **initial hardening implemented**. DevLab now validates handoff section order/structure, uses strict `- None` semantics, scopes developer completion to task acceptance criteria, rejects contradictory reviewer artifacts, and has focused tests for malformed/ambiguous handoffs.
 
 Open work:
 
-- Make handoff parsing stricter: validate required section order/structure, not only heading presence.
-- Tighten `## Open Issues` handling so text containing the word `none` inside a real issue is not treated as clean.
-- Scope developer completion detection to task acceptance criteria instead of counting all checked/unchecked boxes in the file.
-- Harden reviewer outcome detection against stale `## Review\n- [x] Approved` sections after a later rejection.
-- Add tests for stale approvals, ambiguous Open Issues, malformed handoffs, and mixed `- None`/real content.
+- Watch live-agent runs for remaining Markdown contract ambiguity.
 - Consider an explicit structured outcome block for reviewer/integrator/architect handoffs if Markdown parsing remains fragile.
 
 ## 2. Agent Invocation Observability and Error Handling

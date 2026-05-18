@@ -27,7 +27,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
    - [x] Approved
    ```
 
-6. If rejected, do not mark the review approved. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
+6. If rejected, do not leave a `## Review\n- [x] Approved` marker in the task file. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
 7. Do not change the task status manually; the orchestrator owns status transitions.
 8. Write handoff to `.devlab/session-artifacts/reviewer/handoff.md`.
 
@@ -51,6 +51,12 @@ Before approving, confirm:
 - [ ] The implementation is readable, follows existing project patterns, and uses comments/docstrings only when they clarify purpose, contracts, invariants, or design tradeoffs.
 - [ ] No unrelated refactoring or broad scope creep was introduced.
 - [ ] The task file has all acceptance criteria checked.
+
+## Outcome Contract
+
+- Approval requires both task file `## Review\n- [x] Approved` and handoff `## Open Issues\n- None`.
+- Rejection requires actionable handoff Open Issues and must not leave an approved review marker.
+- A contradiction between the task Review section and handoff Open Issues is invalid.
 
 ## Constraints
 

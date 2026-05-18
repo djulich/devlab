@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +12,7 @@ from devlab.agent_config import (
 )
 from devlab.agents import AgentProvider, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
+from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompts import build_session_prompt, build_system_prompt
 from devlab.task_tracker import Task
@@ -27,15 +27,6 @@ from devlab.workspace import (
 )
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
-
-REQUIRED_HANDOFF_HEADINGS = (
-    "## Done",
-    "## Changed Artifacts",
-    "## Open Issues",
-    "## Addressed Findings",
-    "## Next Session Hint",
-)
-
 
 @dataclasses.dataclass(frozen=True)
 class SessionError:
@@ -115,21 +106,20 @@ def validate_handoff(
     role_name: str | None = None,
     snapshot: WorkspaceSnapshot | None = None,
 ) -> tuple[bool, str]:
-    if not handoff_path.exists():
-        return False, "handoff file does not exist"
-    text = read_file(handoff_path)
-    if not text.strip():
-        return False, "handoff file is empty"
-    missing = [heading for heading in REQUIRED_HANDOFF_HEADINGS if heading not in text]
-    if missing:
-        return False, f"handoff is missing required heading(s): {', '.join(missing)}"
-    open_issues = text.split("## Open Issues", 1)[1].split("##", 1)[0].lower()
-    if "unrecoverable" in open_issues:
+    try:
+        handoff = parse_handoff(handoff_path, role_name or "")
+    except HandoffError as exc:
+        return False, str(exc)
+    if "unrecoverable" in handoff.open_issues.lower():
         return False, "handoff reports an unrecoverable issue"
     if role_name == "planner" and snapshot is not None:
-        planner_error = _validate_planner_addressed_findings(snapshot, handoff_path)
+        planner_error = _validate_planner_addressed_findings(snapshot, handoff)
         if planner_error:
             return False, planner_error
+    if role_name == "reviewer" and snapshot is not None:
+        reviewer_error = _validate_reviewer_outcome(snapshot, handoff)
+        if reviewer_error:
+            return False, reviewer_error
     return True, ""
 
 
@@ -147,22 +137,6 @@ def archive_handoff(root: Path, role_name: str) -> Path:
     return dest
 
 
-def _task_is_complete(task_path: Path) -> bool:
-    text = read_file(task_path)
-    checked = text.count("- [x]") + text.count("- [X]")
-    unchecked = text.count("- [ ]")
-    return checked > 0 and unchecked == 0
-
-
-def _task_is_approved(task_path: Path) -> bool:
-    text = read_file(task_path)
-    review_match = re.search(r"^## Review[ \t]*$([\s\S]*?)(?=^##\s|\Z)", text, flags=re.MULTILINE)
-    if not review_match:
-        return False
-    review_text = review_match.group(1).lower()
-    return "- [x] approved" in review_text
-
-
 def close_task(workspace: Workspace, task_path: Path, role_name: str = "reviewer") -> None:
     task = workspace.task_from_path(task_path)
     task.close()
@@ -170,73 +144,12 @@ def close_task(workspace: Workspace, task_path: Path, role_name: str = "reviewer
     task.resolve_addressed_findings()
 
 
-def _handoff_has_open_issues(handoff_path: Path) -> bool:
-    text = read_file(handoff_path)
-    if "## Open Issues" not in text:
-        return False
-    open_issues = text.split("## Open Issues", 1)[1].split("##", 1)[0].strip().lower()
-    return bool(open_issues and "none" not in open_issues)
-
-
-def _handoff_section(handoff_path: Path, heading: str) -> str:
-    text = read_file(handoff_path)
-    match = re.search(
-        rf"^## {re.escape(heading)}[ \t]*$([\s\S]*?)(?=^##\s|\Z)",
-        text,
-        flags=re.MULTILINE,
-    )
-    return match.group(1).strip() if match else ""
-
-
-_ADDRESSED_FINDING_LINE_RE = re.compile(
-    r"^-\s+(?P<finding>F\d{4,5}):\s+"
-    r"(?P<tasks>T\d{3,5}(?:\s*,\s*T\d{3,5})*)\s*$"
-)
-
-
-def _addressed_finding_tasks(handoff_path: Path) -> dict[str, tuple[str, ...]]:
-    section = _handoff_section(handoff_path, "Addressed Findings")
-    mappings: dict[str, tuple[str, ...]] = {}
-    for raw_line in section.splitlines():
-        line = raw_line.strip()
-        if not line or line == "- None":
-            continue
-        match = _ADDRESSED_FINDING_LINE_RE.fullmatch(line)
-        if match is None:
-            continue
-        task_ids = tuple(task.strip() for task in match.group("tasks").split(","))
-        mappings[match.group("finding")] = task_ids
-    return mappings
-
-
-def _validate_planner_addressed_findings(
-    snapshot: WorkspaceSnapshot, handoff_path: Path
-) -> str:
-    section = _handoff_section(handoff_path, "Addressed Findings")
-    lines = [line.strip() for line in section.splitlines() if line.strip()]
-    if not lines or lines == ["- None"]:
-        return ""
-    if "- None" in lines:
-        return "planner Addressed Findings cannot mix '- None' with finding mappings"
-
-    seen_findings: set[str] = set()
+def _validate_planner_addressed_findings(snapshot: WorkspaceSnapshot, handoff: Handoff) -> str:
     task_by_id = {task.id: task for task in snapshot.list_tasks()}
     finding_by_id = {finding.id: finding for finding in snapshot.list_findings()}
-    for line in lines:
-        match = _ADDRESSED_FINDING_LINE_RE.fullmatch(line)
-        if match is None:
-            return (
-                "planner Addressed Findings entries must use '- FXXXX: TXXXX[, TXXXX]'"
-            )
-        finding_id = match.group("finding")
-        if finding_id in seen_findings:
-            return f"planner Addressed Findings lists {finding_id} more than once"
-        seen_findings.add(finding_id)
+    for finding_id, task_ids in handoff.addressed_finding_tasks().items():
         if finding_id not in finding_by_id:
             return f"planner Addressed Findings references unknown finding {finding_id}"
-        task_ids = [task.strip() for task in match.group("tasks").split(",")]
-        if len(set(task_ids)) != len(task_ids):
-            return f"planner Addressed Findings lists duplicate task for {finding_id}"
         for task_id in task_ids:
             task = task_by_id.get(task_id)
             if task is None:
@@ -249,21 +162,32 @@ def _validate_planner_addressed_findings(
     return ""
 
 
-def _mark_addressed_findings_planned(workspace: Workspace, handoff_path: Path) -> None:
-    for finding_id in _addressed_finding_tasks(handoff_path):
+def _validate_reviewer_outcome(snapshot: WorkspaceSnapshot, handoff: Handoff) -> str:
+    task = snapshot.select_next_review_task()
+    if task is None:
+        return "reviewer handoff has no task awaiting review"
+    if handoff.has_open_issues and task.review_approved:
+        return "reviewer handoff reports open issues but task review is approved"
+    if not handoff.has_open_issues and not task.review_approved:
+        return "reviewer handoff reports no open issues but task review is not approved"
+    return ""
+
+
+def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> None:
+    for finding_id in handoff.addressed_finding_tasks():
         workspace.finding(finding_id).mark_planned()
         workspace.finding(finding_id).resolve_if_complete()
 
 
 def process_handoff(workspace: Workspace, role_name: str) -> None:
-    root = workspace.root
-    archived = archive_handoff(root, role_name)
+    archived = archive_handoff(workspace.root, role_name)
+    handoff = parse_handoff(archived, role_name)
     print(f"  Handoff archived to {archived.name}")
 
     if role_name == "architect":
         milestone = workspace.snapshot.select_architecture_review_milestone()
         if milestone is not None:
-            if _handoff_has_open_issues(archived):
+            if handoff.has_open_issues:
                 workspace.create_finding_from_handoff(
                     source="architect",
                     milestone=milestone,
@@ -273,30 +197,33 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
             workspace.milestone(milestone).mark_architecture_reviewed(archived)
             print(f"  Milestone {milestone} marked architecture-reviewed")
     elif role_name == "developer":
-        task_path = workspace.snapshot.select_task()
-        if task_path and _task_is_complete(task_path):
-            task = workspace.task_from_path(task_path)
-            task.mark_in_review()
-            print(f"  Task {task.path.name} completed by developer; status set to in_review")
+        task = workspace.snapshot.select_next_development_task()
+        if task and task.acceptance_criteria_complete:
+            task_handle = workspace.task(task.id)
+            task_handle.mark_in_review()
+            print(
+                f"  Task {task_handle.path.name} completed by developer; "
+                "status set to in_review"
+            )
     elif role_name == "planner":
-        handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
-        _mark_addressed_findings_planned(workspace, handoff_path)
+        _mark_addressed_findings_planned(workspace, handoff)
     elif role_name == "reviewer":
-        task_path = workspace.snapshot.select_review_task()
-        handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
-        if task_path and _task_is_approved(task_path):
-            task = workspace.task_from_path(task_path)
-            task.close()
-            print(f"  Task {task.path.name} closed by {role_name}; status set to closed")
-            task.resolve_addressed_findings()
-        elif task_path and _handoff_has_open_issues(handoff_path):
-            task = workspace.task_from_path(task_path)
-            task.mark_changes_requested()
-            print(f"  Task {task.path.name} rejected by reviewer; status set to changes_requested")
+        task = workspace.snapshot.select_next_review_task()
+        if task and task.review_approved and not handoff.has_open_issues:
+            task_handle = workspace.task(task.id)
+            task_handle.close()
+            print(f"  Task {task_handle.path.name} closed by {role_name}; status set to closed")
+            task_handle.resolve_addressed_findings()
+        elif task and handoff.has_open_issues:
+            task_handle = workspace.task(task.id)
+            task_handle.mark_changes_requested()
+            print(
+                f"  Task {task_handle.path.name} rejected by reviewer; "
+                "status set to changes_requested"
+            )
     elif role_name == "integrator":
-        handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         milestone = workspace.snapshot.select_integration_milestone()
-        if _handoff_has_open_issues(handoff_path):
+        if handoff.has_open_issues:
             finding = workspace.create_finding_from_handoff(
                 source="integrator",
                 milestone=milestone,

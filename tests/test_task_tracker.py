@@ -191,6 +191,101 @@ class TestFileTaskTrackerParsing:
         with pytest.raises(ValueError, match="validation"):
             FileTaskTracker(tmp_path).list_tasks()
 
+    def test_acceptance_criteria_complete_when_all_criteria_checked(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(
+            tmp_path,
+            "T0001",
+            body=(
+                "# T0001: First\n\n"
+                "## Acceptance Criteria\n"
+                "- [x] First criterion\n"
+                "- [X] Second criterion\n"
+            ),
+        )
+
+        assert FileTaskTracker(tmp_path).get("T0001").acceptance_criteria_complete
+
+    def test_acceptance_criteria_incomplete_when_any_criterion_unchecked(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(
+            tmp_path,
+            "T0001",
+            body=(
+                "# T0001: First\n\n"
+                "## Acceptance Criteria\n"
+                "- [x] First criterion\n"
+                "- [ ] Second criterion\n"
+            ),
+        )
+
+        assert not FileTaskTracker(tmp_path).get("T0001").acceptance_criteria_complete
+
+    def test_acceptance_criteria_missing_or_without_checkboxes_is_incomplete(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", "Missing", body="# T0001: Missing\n")
+        _write_task(
+            tmp_path,
+            "T0002",
+            "No boxes",
+            body="# T0002: No boxes\n\n## Acceptance Criteria\nShip it.\n",
+        )
+
+        assert not FileTaskTracker(tmp_path).get("T0001").acceptance_criteria_complete
+        assert not FileTaskTracker(tmp_path).get("T0002").acceptance_criteria_complete
+
+    def test_acceptance_criteria_ignores_checkboxes_outside_section(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(
+            tmp_path,
+            "T0001",
+            body=(
+                "# T0001: First\n\n"
+                "## Acceptance Criteria\n"
+                "- [x] Criterion\n\n"
+                "## Notes\n"
+                "- [ ] Unrelated note\n"
+            ),
+        )
+
+        assert FileTaskTracker(tmp_path).get("T0001").acceptance_criteria_complete
+
+    def test_review_approved_reads_review_section_only(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(
+            tmp_path,
+            "T0001",
+            body=(
+                "# T0001: First\n\n"
+                "## Acceptance Criteria\n"
+                "- [x] Criterion\n\n"
+                "## Notes\n"
+                "- [x] Approved\n"
+            ),
+        )
+        _write_task(
+            tmp_path,
+            "T0002",
+            body=(
+                "# T0002: Second\n\n"
+                "## Acceptance Criteria\n"
+                "- [x] Criterion\n\n"
+                "## Review\n"
+                "- [x] Approved\n"
+            ),
+        )
+
+        assert not FileTaskTracker(tmp_path).get("T0001").review_approved
+        assert FileTaskTracker(tmp_path).get("T0002").review_approved
+
 
 class TestFileTaskTrackerSelection:
     def test_selects_lowest_eligible_development_task(self, tmp_path: Path) -> None:

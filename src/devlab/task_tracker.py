@@ -48,6 +48,20 @@ class Task:
     def is_active(self) -> bool:
         return self.status in ACTIVE_STATUSES
 
+    @property
+    def acceptance_criteria_complete(self) -> bool:
+        section = _markdown_section(self.body, "Acceptance Criteria")
+        if not section:
+            return False
+        checked = re.findall(r"^\s*- \[[xX]\]", section, flags=re.MULTILINE)
+        unchecked = re.findall(r"^\s*- \[ \]", section, flags=re.MULTILINE)
+        return bool(checked) and not unchecked
+
+    @property
+    def review_approved(self) -> bool:
+        section = _markdown_section(self.body, "Review")
+        return bool(re.search(r"^\s*- \[[xX]\] Approved\s*$", section, flags=re.MULTILINE))
+
 
 class FileTaskTracker:
     """File-backed task tracker using one Markdown file per task.
@@ -242,6 +256,15 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
     lines.append("+++")
     return "\n".join(lines) + "\n\n" + body.lstrip("\n")
 
+
+
+def _markdown_section(text: str, heading: str) -> str:
+    match = re.search(
+        rf"^## {re.escape(heading)}[ \t]*$([\s\S]*?)(?=^##\s|\Z)",
+        text,
+        flags=re.MULTILINE,
+    )
+    return match.group(1).strip() if match else ""
 
 
 def _parse_status(value: Any) -> TaskStatus:
