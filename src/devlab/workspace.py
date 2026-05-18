@@ -193,8 +193,8 @@ class WorkspaceMilestone:
         FileMilestoneTracker(self.workspace.root).mark_integration_failed(self.id, finding_id)
         self.workspace._did_mutate()
 
-    def mark_architecture_approved(self, handoff_path: Path) -> None:
-        FileMilestoneTracker(self.workspace.root).mark_architecture_approved(
+    def mark_architecture_reviewed(self, handoff_path: Path) -> None:
+        FileMilestoneTracker(self.workspace.root).mark_architecture_reviewed(
             self.id, handoff_path
         )
         self.workspace._did_mutate()
@@ -331,7 +331,7 @@ class WorkspaceSnapshot:
 
     def select_architecture_review_milestone(self) -> str | None:
         for milestone in self.list_milestones():
-            if milestone.integrated and not milestone.architecture_approved:
+            if milestone.integrated and not milestone.architecture_reviewed:
                 return milestone.id
         return None
 

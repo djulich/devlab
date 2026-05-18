@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from devlab.findings import FindingStatus
 from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
 from devlab.profiles import Profile, load_profile
 from devlab.prompt_resources import read_prompt_resource
@@ -137,10 +138,33 @@ def _architecture_review_prompt_sections(
     ]
     if task_sections:
         parts.append("## Milestone Task Files\n\n" + "\n\n".join(task_sections))
+    findings = _format_milestone_finding_sections(snapshot, milestone_id)
+    if findings:
+        parts.append(findings)
     specs = _format_spec_sections(root)
     if specs:
         parts.append(specs)
     return parts
+
+
+def _format_milestone_finding_sections(
+    snapshot: WorkspaceSnapshot, milestone_id: str
+) -> str:
+    findings = [
+        finding
+        for finding in snapshot.list_findings()
+        if finding.milestone == milestone_id and finding.status != FindingStatus.RESOLVED
+    ]
+    if not findings:
+        return ""
+    tasks = snapshot.list_tasks()
+    sections = []
+    for finding in findings:
+        addressing = [task.id for task in tasks if finding.id in task.addresses_findings]
+        lines = [read_file(finding.path).strip()]
+        lines.append("Addressing tasks: " + (", ".join(addressing) if addressing else "none"))
+        sections.append(f"### {finding.path.name}\n\n" + "\n\n".join(lines))
+    return "## Unresolved Findings for Reviewed Milestone\n\n" + "\n\n".join(sections)
 
 
 def _format_spec_sections(root: Path) -> str:

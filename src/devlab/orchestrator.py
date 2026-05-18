@@ -306,9 +306,8 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
                     handoff_path=archived,
                 )
                 print("  Architecture review reported open issues; finding created")
-            else:
-                workspace.milestone(milestone).mark_architecture_approved(archived)
-                print(f"  Milestone {milestone} marked architecture-approved")
+            workspace.milestone(milestone).mark_architecture_reviewed(archived)
+            print(f"  Milestone {milestone} marked architecture-reviewed")
     elif role_name == "developer":
         task_path = snapshot.select_task()
         if task_path and _task_is_complete(task_path):

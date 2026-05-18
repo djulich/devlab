@@ -147,9 +147,9 @@ def test_run_loop_completes_full_happy_path_workflow(tmp_path: Path) -> None:
     task = FileTaskTracker(tmp_path).get("T0001")
     assert task.status == TaskStatus.CLOSED
     milestone = FileMilestoneTracker(tmp_path).get("M1")
-    assert milestone.status == MilestoneStatus.ARCHITECTURE_APPROVED
+    assert milestone.status == MilestoneStatus.ARCHITECTURE_REVIEWED
     assert milestone.integrated is True
-    assert milestone.architecture_approved is True
+    assert milestone.architecture_reviewed is True
     assert milestone.task_ids == ("T0001",)
     assert milestone.integration_handoff.endswith("_integrator_handoff.md")
     assert milestone.architecture_review_handoff.endswith("_architect_handoff.md")
@@ -186,9 +186,9 @@ def test_run_loop_replans_after_integration_finding(tmp_path: Path) -> None:
     assert tasks.get("T0001").status == TaskStatus.CLOSED
     assert tasks.get("T0002").status == TaskStatus.CLOSED
     milestone = FileMilestoneTracker(tmp_path).get("M1")
-    assert milestone.status == MilestoneStatus.ARCHITECTURE_APPROVED
+    assert milestone.status == MilestoneStatus.ARCHITECTURE_REVIEWED
     assert milestone.integrated is True
-    assert milestone.architecture_approved is True
+    assert milestone.architecture_reviewed is True
     assert milestone.task_ids == ("T0001", "T0002")
     assert milestone.findings == ("F0001",)
     finding = FileFindingTracker(tmp_path).get("F0001")

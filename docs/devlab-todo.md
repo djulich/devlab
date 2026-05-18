@@ -42,15 +42,7 @@ Direction:
 - Grade generated systems with black-box checks: commands, HTTP responses, package builds, test suites.
 - Record diagnostics: sessions used, findings created, review rejections, runtime, final artifacts.
 
-## 5. Project Status Drift Detection
-
-Priority: medium-low. DevLab should guard against project progress drifting from the design plan or system spec.
-
-Simpler approach than git rollback: at milestone boundaries, the architect evaluates whether the implemented system still aligns with the design plan and system spec. If drift is detected, the architect flags it as a finding and the planner creates corrective tasks.
-
-Defer rollback/re-plan unless the finding-based correction loop proves insufficient.
-
-## 6. Deployment Specification and Verification
+## 5. Deployment Specification and Verification
 
 Priority: low. DevLab should support deployment requirements under `.devlab/specs/deployment/` and let the normal workflow plan, implement, review, and integrate deployment artifacts.
 
@@ -66,7 +58,7 @@ Constraints:
 - Test infrastructure use must be explicit, allowlisted, isolated, and aggressively cleaned up.
 - Deployment implementation remains task-based through the normal role workflow.
 
-## 7. Automatic Version Control
+## 6. Automatic Version Control
 
 Priority: low. DevLab should eventually commit repository state after completed sessions or workflow gates.
 

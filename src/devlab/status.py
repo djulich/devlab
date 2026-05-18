@@ -96,7 +96,7 @@ def _format_milestone(milestone: Milestone, tasks: list[Task]) -> list[str]:
         f"  tasks: {len(milestone_tasks)} total, {closed} closed, {active} active",
         f"  integration_required: {_bool_text(milestone.integration_required)}",
         f"  integrated: {_bool_text(milestone.integrated)}",
-        f"  architecture_approved: {_bool_text(milestone.architecture_approved)}",
+        f"  architecture_reviewed: {_bool_text(milestone.architecture_reviewed)}",
     ]
     if milestone.integration_handoff:
         lines.append(f"  integration_handoff: {milestone.integration_handoff}")

@@ -176,11 +176,11 @@ Typical flow:
 1. If no design plan exists, invoke the architect.
 2. If tasks are waiting for review, invoke the reviewer.
 3. If open findings exist, invoke the planner to plan corrective work.
-4. If an integrated milestone is waiting for architecture approval, invoke the architect.
+4. If an integrated milestone is waiting for architecture review, invoke the architect.
 5. If a completed milestone needs integration, invoke the integrator.
 6. If an eligible development task exists, invoke the developer.
 7. If no active tasks exist but planning is incomplete, invoke the planner.
-8. If all tasks are closed and completed milestones are integrated and architecture-approved, stop.
+8. If all tasks are closed and completed milestones are integrated and architecture-reviewed, stop.
 9. If remaining tasks are blocked by dependencies, stop and report the blockage.
 
 The active roles are:
@@ -198,7 +198,7 @@ The active roles are:
 
 DevLab uses a workspace access boundary to keep cross-tracker reads efficient and read/write responsibilities clear.
 
-`Workspace` represents the target workspace as a mutation boundary. It owns explicit workspace-level mutations such as syncing milestone files from task metadata. A sync reconciles derived durable workflow state with source-of-truth files: for example, tasks reference milestone IDs, and `.devlab/milestones/` stores milestone workflow state such as integration and architecture approval.
+`Workspace` represents the target workspace as a mutation boundary. It owns explicit workspace-level mutations such as syncing milestone files from task metadata. A sync reconciles derived durable workflow state with source-of-truth files: for example, tasks reference milestone IDs, and `.devlab/milestones/` stores milestone workflow state such as integration and architecture review.
 
 Workspace mutations are exposed through first-class handles such as `WorkspaceTask`, `WorkspaceMilestone`, and `WorkspaceFinding`. These handles express atomic domain transitions: a task can be closed, a milestone can be marked integrated, and a finding can be marked resolved. Multi-step workflow policy remains visible in the orchestrator instead of being hidden behind broad convenience methods.
 
@@ -308,9 +308,9 @@ Target-specific DevLab workflow artifacts live in the committed, project-local `
 
 When all tasks for a milestone are closed, the integrator validates the current repository state at that milestone boundary. The goal is to confirm that the milestone's changes work correctly with the previously implemented system, not merely that tasks from the milestone work with each other.
 
-If integration passes, the orchestrator marks the milestone integrated in `.devlab/milestones/` and records the archived integration handoff. The architect then reviews the integrated milestone to check whether the design plan still matches the implemented system and future direction. If integration or architecture review reports Open Issues, the orchestrator creates a file-backed finding, records relevant milestone state, and routes the workflow back to the planner for follow-up task creation.
+If integration passes, the orchestrator marks the milestone integrated in `.devlab/milestones/` and records the archived integration handoff. The architect then reviews the integrated milestone to sync actual project state against the design plan, system/deployment specs, and future direction. Architecture review is not an approval gate: if review reports Open Issues, the orchestrator creates a file-backed finding and still marks the milestone architecture-reviewed.
 
-Findings are active workflow issues stored in `.devlab/findings/`. The planner converts open findings into corrective task files and lists addressed finding IDs in its handoff. The orchestrator then marks those findings as planned. When the milestone later integrates successfully, related planned findings are marked resolved.
+Findings are active workflow issues stored in `.devlab/findings/`. The planner converts open findings into corrective task files with `addresses_findings` metadata and lists the complete follow-up task set in its handoff. The orchestrator marks those findings as planned only after validating that relation. A planned finding is resolved when all tasks addressing it are closed; those tasks may belong to later milestones.
 
 ## Agent providers
 

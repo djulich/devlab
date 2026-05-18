@@ -158,19 +158,19 @@ def test_doctor_reports_integrated_milestone_missing_handoff(tmp_path: Path) -> 
     assert "integrated milestone is missing integration_handoff" in messages
 
 
-def test_doctor_reports_architecture_approved_milestone_problems(tmp_path: Path) -> None:
+def test_doctor_reports_architecture_reviewed_milestone_problems(tmp_path: Path) -> None:
     _write_milestone(
         tmp_path,
         "M1",
-        status="architecture_approved",
+        status="architecture_reviewed",
         integrated=False,
-        architecture_approved=True,
+        architecture_reviewed=True,
     )
 
     messages = _messages(tmp_path)
 
-    assert "architecture-approved milestone is not integrated" in messages
-    assert "architecture-approved milestone is missing architecture_review_handoff" in messages
+    assert "architecture-reviewed milestone is not integrated" in messages
+    assert "architecture-reviewed milestone is missing architecture_review_handoff" in messages
 
 
 def test_doctor_reports_missing_milestone_finding(tmp_path: Path) -> None:
@@ -242,9 +242,9 @@ def test_doctor_accepts_consistent_milestone_state(tmp_path: Path) -> None:
     _write_milestone(
         tmp_path,
         "M1",
-        status="architecture_approved",
+        status="architecture_reviewed",
         integrated=True,
-        architecture_approved=True,
+        architecture_reviewed=True,
         task_ids=["T0001"],
         integration_handoff="20260101T000000_integrator_handoff.md",
         architecture_review_handoff="20260101T000100_architect_handoff.md",
@@ -315,7 +315,7 @@ def _write_milestone(
     *,
     status: str = "planned",
     integrated: bool = False,
-    architecture_approved: bool = False,
+    architecture_reviewed: bool = False,
     task_ids: list[str] | None = None,
     integration_handoff: str = "",
     architecture_review_handoff: str = "",
@@ -334,7 +334,7 @@ def _write_milestone(
         f'status = "{status}"\n'
         "integration_required = true\n"
         f"integrated = {str(integrated).lower()}\n"
-        f"architecture_approved = {str(architecture_approved).lower()}\n"
+        f"architecture_reviewed = {str(architecture_reviewed).lower()}\n"
         f"task_ids = [{task_ids_text}]\n"
         f'integration_handoff = "{integration_handoff}"\n'
         f'architecture_review_handoff = "{architecture_review_handoff}"\n'

@@ -19,11 +19,15 @@ The architect translates the system specification into a design plan and reviews
 
 1. Read and understand the system specification.
 2. If no design plan exists, create it.
-3. If this is a milestone-boundary review, verify that the design plan still matches the integrated implementation and future project direction.
-4. If needed, update the design plan. If follow-up implementation or planning is needed, report it in the handoff's Open Issues section.
-5. Create or update `CONTEXT.md` when initial domain framing, context boundaries, or architecture-significant terminology is clarified.
-6. Create or update an ADR only when a decision is hard to reverse, surprising without context, and the result of a real trade-off.
-7. Write handoff to `.devlab/session-artifacts/architect/handoff.md`.
+3. If this is a milestone-boundary review, perform project sync:
+   - Compare actual repository state to the design plan.
+   - Compare the design plan to system/deployment specs.
+   - Update the design plan if implementation legitimately changed the architecture.
+   - Report implementation/design/spec drift in Open Issues when follow-up planning or implementation is needed.
+   - Leave Open Issues as `None` only when no unplanned architecture/spec drift remains.
+4. Create or update `CONTEXT.md` when initial domain framing, context boundaries, or architecture-significant terminology is clarified.
+5. Create or update an ADR only when a decision is hard to reverse, surprising without context, and the result of a real trade-off.
+6. Write handoff to `.devlab/session-artifacts/architect/handoff.md`.
 
 ## Design Plan Contents
 

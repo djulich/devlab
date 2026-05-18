@@ -71,6 +71,10 @@ def test_workspace_milestone_handle_exposes_tasks_and_transitions(tmp_path: Path
     assert milestone.read().integrated
     assert milestone.read().integration_handoff == "handoff.md"
 
+    milestone.mark_architecture_reviewed(handoff)
+    assert milestone.read().architecture_reviewed
+    assert milestone.read().architecture_review_handoff == "handoff.md"
+
 
 def test_workspace_finding_handles_create_and_transition_findings(tmp_path: Path) -> None:
     handoff = tmp_path / ".devlab/history/handoff.md"
@@ -117,7 +121,7 @@ def _write_milestone(root: Path, milestone_id: str) -> None:
         'status = "planned"\n'
         'integration_required = true\n'
         'integrated = false\n'
-        'architecture_approved = false\n'
+        'architecture_reviewed = false\n'
         'task_ids = ["T0001"]\n'
         'integration_handoff = ""\n'
         'architecture_review_handoff = ""\n'

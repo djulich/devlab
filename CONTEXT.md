@@ -36,6 +36,10 @@ _Avoid_: release, sprint
 A repository-backed record of an integration or architecture-review issue that needs planner follow-up.
 _Avoid_: bug report, defect, ticket
 
+**Architecture-reviewed milestone**:
+An integrated milestone for which the architect performed project-state sync against design/spec/project direction. It is not an approval claim; remaining drift is represented as findings.
+_Avoid_: architecture-approved milestone
+
 **Addressing task**:
 A task whose `addresses_findings` metadata names a finding as corrective work. A finding is planned when the planner asserts the complete addressing task set; it is resolved when all addressing tasks are closed. An addressing task may be in a later milestone than the finding.
 _Avoid_: storing duplicate task lists on the finding

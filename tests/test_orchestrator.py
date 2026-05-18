@@ -84,13 +84,13 @@ def _write_milestone(
     milestone_id: str,
     *,
     integrated: bool = False,
-    architecture_approved: bool = False,
+    architecture_reviewed: bool = False,
     task_ids: list[str] | None = None,
 ) -> Path:
     path = root / ".devlab/milestones" / f"{milestone_id}.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    if architecture_approved:
-        status = "architecture_approved"
+    if architecture_reviewed:
+        status = "architecture_reviewed"
     elif integrated:
         status = "integrated"
     else:
@@ -103,7 +103,7 @@ def _write_milestone(
         f'status = "{status}"\n'
         "integration_required = true\n"
         f"integrated = {str(integrated).lower()}\n"
-        f"architecture_approved = {str(architecture_approved).lower()}\n"
+        f"architecture_reviewed = {str(architecture_reviewed).lower()}\n"
         f"task_ids = [{task_ids_text}]\n"
         'integration_handoff = ""\n'
         'architecture_review_handoff = ""\n'
@@ -564,7 +564,7 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["integrator"]
 
-    def test_integrated_architecture_approved_milestone_stops(
+    def test_integrated_architecture_reviewed_milestone_stops(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
@@ -574,7 +574,7 @@ class TestRunLoop:
             tmp_path,
             "M1",
             integrated=True,
-            architecture_approved=True,
+            architecture_reviewed=True,
             task_ids=["T0001"],
         )
         provider = MockProvider()
@@ -667,7 +667,7 @@ class TestRunLoop:
         assert [call.role_name for call in provider.calls] == ["integrator", "architect"]
         milestone = FileMilestoneTracker(tmp_path).get("M1")
         assert milestone.integrated is True
-        assert milestone.architecture_approved is True
+        assert milestone.architecture_reviewed is True
 
     def test_integrated_milestone_selects_architect_review(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -689,8 +689,8 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["architect"]
         milestone = FileMilestoneTracker(tmp_path).get("M1")
-        assert milestone.status == MilestoneStatus.ARCHITECTURE_APPROVED
-        assert milestone.architecture_approved is True
+        assert milestone.status == MilestoneStatus.ARCHITECTURE_REVIEWED
+        assert milestone.architecture_reviewed is True
         assert milestone.architecture_review_handoff.endswith("_architect_handoff.md")
 
     def test_architect_review_open_issues_create_finding(self, tmp_path: Path) -> None:
@@ -716,7 +716,8 @@ class TestRunLoop:
         assert findings[0].source == "architect"
         assert findings[0].milestone == "M1"
         assert "Design plan misses implemented boundary" in findings[0].body
-        assert FileMilestoneTracker(tmp_path).get("M1").architecture_approved is False
+        assert FileMilestoneTracker(tmp_path).get("M1").architecture_reviewed is True
+        assert Workspace(tmp_path).snapshot.assess_state() == "planner"
 
     def test_architecture_review_prompt_includes_milestone_context(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -732,6 +733,20 @@ class TestRunLoop:
             milestone="M1",
             body="# T0001: Done\n\n## Goal\nImportant architecture behavior.\n",
         )
+        finding = FileFindingTracker(tmp_path).create(
+            title="Known drift",
+            source="architect",
+            milestone="M1",
+            body="# Known drift\n",
+        )
+        FileFindingTracker(tmp_path).mark_planned(finding.id)
+        _write_task(
+            tmp_path,
+            "T0002",
+            "Fix drift",
+            milestone="M2",
+            addresses_findings=[finding.id],
+        )
         _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
 
         prompt = build_session_prompt(tmp_path, "architect")
@@ -740,6 +755,9 @@ class TestRunLoop:
         assert "M1" in prompt
         assert "Important architecture behavior" in prompt
         assert "# System Spec" in prompt
+        assert "## Unresolved Findings for Reviewed Milestone" in prompt
+        assert "Known drift" in prompt
+        assert "Addressing tasks: T0002" in prompt
 
     def test_open_finding_selects_planner_before_integrator(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

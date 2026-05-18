@@ -302,15 +302,15 @@ def _check_milestones(root: Path) -> list[DoctorProblem]:
             problems.append(
                 DoctorProblem(display_path, "integrated milestone is missing integration_handoff")
             )
-        if milestone.architecture_approved and not milestone.integrated:
+        if milestone.architecture_reviewed and not milestone.integrated:
             problems.append(
-                DoctorProblem(display_path, "architecture-approved milestone is not integrated")
+                DoctorProblem(display_path, "architecture-reviewed milestone is not integrated")
             )
-        if milestone.architecture_approved and not milestone.architecture_review_handoff:
+        if milestone.architecture_reviewed and not milestone.architecture_review_handoff:
             problems.append(
                 DoctorProblem(
                     display_path,
-                    "architecture-approved milestone is missing architecture_review_handoff",
+                    "architecture-reviewed milestone is missing architecture_review_handoff",
                 )
             )
         for finding_id in milestone.findings:

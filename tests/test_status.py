@@ -52,7 +52,7 @@ def test_status_verbose_includes_milestone_state(tmp_path: Path) -> None:
         "M1",
         status="integrated",
         integrated=True,
-        architecture_approved=False,
+        architecture_reviewed=False,
         task_ids=["T0001", "T0002"],
         integration_handoff="20260101T000000_integrator_handoff.md",
         findings=["F0001"],
@@ -65,7 +65,7 @@ def test_status_verbose_includes_milestone_state(tmp_path: Path) -> None:
     assert "  status: integrated" in text
     assert "  tasks: 2 total, 1 closed, 1 active" in text
     assert "  integrated: true" in text
-    assert "  architecture_approved: false" in text
+    assert "  architecture_reviewed: false" in text
     assert "  integration_handoff: 20260101T000000_integrator_handoff.md" in text
     assert "  findings: F0001" in text
 
@@ -167,7 +167,7 @@ def _write_milestone(
     *,
     status: str,
     integrated: bool,
-    architecture_approved: bool,
+    architecture_reviewed: bool,
     task_ids: list[str],
     integration_handoff: str = "",
     architecture_review_handoff: str = "",
@@ -185,7 +185,7 @@ def _write_milestone(
         f'status = "{status}"\n'
         "integration_required = true\n"
         f"integrated = {str(integrated).lower()}\n"
-        f"architecture_approved = {str(architecture_approved).lower()}\n"
+        f"architecture_reviewed = {str(architecture_reviewed).lower()}\n"
         f"task_ids = [{task_ids_text}]\n"
         f'integration_handoff = "{integration_handoff}"\n'
         f'architecture_review_handoff = "{architecture_review_handoff}"\n'
