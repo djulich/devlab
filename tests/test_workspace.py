@@ -82,7 +82,7 @@ def test_workspace_finding_handles_create_and_transition_findings(tmp_path: Path
     handoff.write_text("## Open Issues\nNeeds correction.\n")
     workspace = Workspace(tmp_path)
 
-    finding = workspace.findings().create_from_handoff(
+    finding = workspace.create_finding_from_handoff(
         source="integrator",
         milestone="M1",
         handoff_path=handoff,

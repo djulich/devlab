@@ -300,7 +300,7 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
         milestone = snapshot.select_architecture_review_milestone()
         if milestone is not None:
             if _handoff_has_open_issues(archived):
-                workspace.findings().create_from_handoff(
+                workspace.create_finding_from_handoff(
                     source="architect",
                     milestone=milestone,
                     handoff_path=archived,
@@ -329,7 +329,7 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
         handoff_path = root / ARTIFACTS_DIR / role_name / "handoff.md"
         milestone = snapshot.select_integration_milestone()
         if _handoff_has_open_issues(handoff_path):
-            finding = workspace.findings().create_from_handoff(
+            finding = workspace.create_finding_from_handoff(
                 source="integrator",
                 milestone=milestone,
                 handoff_path=archived,
