@@ -78,6 +78,18 @@ Supported placeholders:
 
 ## Provider Examples
 
+Prefer stdin prompt transport when your agent CLI supports it. Stdin avoids command-line length limits and keeps prompt text out of process listings.
+
+### Codex-style stdin prompt
+
+```toml
+[providers.codex]
+command = "codex"
+args = ["exec", "-", "--model", "{model}"]
+stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+prompt_args = []
+```
+
 ### Pi-style command-line prompts
 
 ```toml
@@ -94,16 +106,6 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 command = "claude"
 args = ["-p", "--model", "{model}"]
 prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
-```
-
-### Codex-style stdin prompt
-
-```toml
-[providers.codex]
-command = "codex"
-args = ["exec", "-", "--model", "{model}"]
-stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
-prompt_args = []
 ```
 
 ## Suggested Split-Brain Review Setup
@@ -160,8 +162,12 @@ Use `devlab status --verbose` to inspect the resolved provider, model, effort, t
 
 Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
 
-## Logging
+## Logging and Failure Diagnostics
 
-DevLab logs resolved agent configuration for each session under `.devlab/logs/agents/`.
+DevLab writes per-session agent diagnostics under `.devlab/logs/agents/`:
 
-The log includes provider name, role, model, effort, timeout, and rendered command shape, but does not include full system or session prompts.
+- `<timestamp>_<session>_<role>.config.toml`: resolved provider, role, model, effort, timeout, command shape, stdin mode, and log paths.
+- `<timestamp>_<session>_<role>.stdout.log`: agent stdout.
+- `<timestamp>_<session>_<role>.stderr.log`: agent stderr plus DevLab diagnostics for failures that happen before the child process can write output.
+
+Failure reports include the role, failure kind, exit code, timeout when present, command shape, and log paths. Prompt contents are intentionally not written to the config log.

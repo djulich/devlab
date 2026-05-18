@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from devlab.agent_config import format_resolved_agent_config, load_agent_configuration
-from devlab.agents import CliAgentProvider
+from devlab.agents import AgentInvocation, CliAgentProvider
 
 
 def test_missing_config_uses_fallback_cli_command(tmp_path: Path) -> None:
@@ -203,10 +203,15 @@ def test_provider_renders_configured_template_values(
     provider = config.providers[config.role_providers["developer"]]
 
     provider.invoke(
-        root=tmp_path,
-        role_name="developer",
-        system_prompt="system",
-        session_prompt="session",
+        AgentInvocation(
+            root=tmp_path,
+            role_name="developer",
+            system_prompt="system",
+            session_prompt="session",
+            invocation_id="test",
+            stdout_log=tmp_path / ".devlab/logs/agents/test.stdout.log",
+            stderr_log=tmp_path / ".devlab/logs/agents/test.stderr.log",
+        )
     )
 
     assert calls[0][0][0] == [

@@ -23,6 +23,16 @@ command = "claude"
 args = ["-p"]
 prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 
+# Prefer stdin prompt transport when supported; it avoids argv length limits and
+# keeps prompt text out of process listings.
+#
+# Example: Codex-style stdin invocation.
+# [providers.codex]
+# command = "codex"
+# args = ["exec", "-", "--model", "{model}"]
+# prompt_args = []
+# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+
 # Example: Pi-style CLI invocation.
 # [defaults]
 # provider = "pi"
@@ -39,13 +49,6 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 # command = "claude"
 # args = ["-p", "--model", "{model}"]
 # prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
-
-# Example: Codex-style stdin invocation.
-# [providers.codex]
-# command = "codex"
-# args = ["exec", "-", "--model", "{model}"]
-# prompt_args = []
-# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
 
 # Example: use a different provider/model for review to reduce shared blind spots.
 # [roles.developer]

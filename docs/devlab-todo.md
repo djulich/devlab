@@ -15,15 +15,12 @@ Open work:
 
 ## 2. Agent Invocation Observability and Error Handling
 
-Priority: high. Provider invocation currently reports mostly exit codes. For real use, DevLab needs durable diagnostics when an agent fails, times out, or produces invalid output.
+Status: **initial implementation complete**. CLI providers now capture per-session stdout/stderr, convert timeout/missing executable/nonzero exit/provider errors into structured `AgentResult` values, and the orchestrator includes log paths and invocation diagnostics in `SessionError` / `RunResult` failures. Starter config and docs prefer stdin prompt transport where supported.
 
 Open work:
 
-- Capture agent stdout/stderr into `.devlab/logs/agents/` for every session.
-- Convert provider subprocess timeouts into structured `SessionError` / `RunResult` failures.
-- Include agent command, role, timeout, exit code, and log paths in failure reports.
-- Prefer stdin-based prompt transport in starter configuration where supported, to avoid argv length limits and prompt leakage through process lists.
-- Add tests for timeout, missing executable, nonzero exit, invalid handoff, and teardown-after-failure behavior.
+- Exercise diagnostics in live-agent runs and refine message wording if users need faster failure triage.
+- Decide whether to persist additional non-prompt invocation metadata such as duration and provider-specific version info.
 
 ## 3. DevLab Workflow Evaluations
 

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from devlab.agents import AgentCall, MockProvider
+from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import _timestamp, close_task, run_loop, validate_handoff
@@ -296,6 +297,21 @@ def _complete_developer_task(call: AgentCall) -> None:
     task_path = next((call.root / TASKS_DIR).glob("T*.md"))
     text = task_path.read_text().replace("- [ ] Done", "- [x] Done")
     task_path.write_text(text)
+
+
+class FailingProvider:
+    def __init__(self, result: AgentResult) -> None:
+        self.result = result
+        self.calls: list[AgentInvocation] = []
+
+    def invoke(self, invocation: AgentInvocation) -> AgentResult:
+        self.calls.append(invocation)
+        return dataclasses.replace(
+            self.result,
+            role_name=invocation.role_name,
+            stdout_log=invocation.stdout_log,
+            stderr_log=invocation.stderr_log,
+        )
 
 
 class TestRunLoop:
@@ -981,13 +997,15 @@ class TestRunLoop:
 
         run_loop(tmp_path, auto=True, max_sessions=1)
 
-        logs = list((tmp_path / ".devlab/logs/agents").glob("*_developer.toml"))
+        logs = list((tmp_path / ".devlab/logs/agents").glob("*_developer.config.toml"))
         assert len(logs) == 1
         text = logs[0].read_text()
         assert 'role = "developer"' in text
         assert 'provider = "mock-cli"' in text
         assert 'model = "test-model"' in text
         assert "system_prompt" not in text
+        assert "stdout_log" in text
+        assert "stderr_log" in text
 
     def test_uses_role_specific_agent_provider(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -1024,6 +1042,78 @@ class TestRunLoop:
         assert result.exit_code == 12
         assert result.completed is False
         assert result.errors[0].phase == "agent_invocation"
+        assert "stdout_log" in result.errors[0].message
+        assert "stderr_log" in result.errors[0].message
+
+    def test_agent_timeout_is_structured_failure(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = FailingProvider(
+            AgentResult(
+                return_code=124,
+                failure_kind="timeout",
+                message="agent command timed out after 1 second(s)",
+                timeout_seconds=1,
+            )
+        )
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 124
+        assert result.completed is False
+        assert result.errors[0].phase == "agent_invocation"
+        assert "timeout" in result.errors[0].message
+        assert "timeout_seconds=1" in result.errors[0].message
+
+    def test_agent_failure_still_reports_after_environment_teardown(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        (tmp_path / ".devlab/config/profiles/default.toml").write_text(
+            'version = 1\n'
+            'id = "default"\n'
+            'title = "Default"\n'
+            '\n[environment]\n'
+            'managed_roles = ["developer"]\n'
+            'post_session = ["touch teardown-ran"]\n'
+        )
+        provider = MockProvider(return_code=12)
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 12
+        assert (tmp_path / "teardown-ran").exists()
+
+    def test_invalid_handoff_error_includes_agent_log_paths(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First", body=_checked_task_body("T0001", "First"))
+        provider = MockProvider(write_handoff=False)
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "handoff_validation"
+        assert "stdout_log" in result.errors[0].message
+        assert "stderr_log" in result.errors[0].message
 
     def test_unrecoverable_handoff_stops_loop_without_status_change(
         self, tmp_path: Path

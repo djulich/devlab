@@ -10,7 +10,7 @@ from devlab.agent_config import (
     format_resolved_agent_config,
     load_agent_configuration,
 )
-from devlab.agents import AgentProvider, provider_for_role
+from devlab.agents import AgentInvocation, AgentProvider, AgentResult, provider_for_role
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
@@ -61,12 +61,28 @@ def _timestamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
 
 
+def _agent_invocation_id(session_number: int, role_name: str) -> str:
+    return f"{_timestamp()}_{session_number:03d}_{role_name}"
+
+
+def _agent_log_path(root: Path, invocation_id: str, suffix: str) -> Path:
+    return root / AGENT_LOG_DIR / f"{invocation_id}.{suffix}"
+
+
 def _log_resolved_agent_config(
-    root: Path, role_name: str, config: ResolvedAgentConfig,
+    root: Path,
+    config: ResolvedAgentConfig,
+    *,
+    invocation_id: str,
+    stdout_log: Path,
+    stderr_log: Path,
 ) -> Path:
-    path = root / AGENT_LOG_DIR / f"{_timestamp()}_{role_name}.toml"
+    path = _agent_log_path(root, invocation_id, "config.toml")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(format_resolved_agent_config(config))
+    text = format_resolved_agent_config(config)
+    text += f'stdout_log = "{stdout_log.as_posix()}"\n'
+    text += f'stderr_log = "{stderr_log.as_posix()}"\n'
+    path.write_text(text)
     return path
 
 
@@ -76,23 +92,15 @@ def _log_resolved_agent_config(
 
 
 def invoke_session(
-    root: Path,
-    role_name: str,
-    system_prompt: str,
-    session_prompt: str,
+    invocation: AgentInvocation,
     *,
     agent_provider: AgentProvider,
-) -> int:
-    """Invoke an agent session. Raises FileNotFoundError if the agent command is missing."""
-    print(f"--- Invoking {role_name} session ---")
-    result = agent_provider.invoke(
-        root=root,
-        role_name=role_name,
-        system_prompt=system_prompt,
-        session_prompt=session_prompt,
-    )
-    print(f"--- {role_name} session exited with code {result.return_code} ---")
-    return result.return_code
+) -> AgentResult:
+    """Invoke an agent session through the configured provider."""
+    print(f"--- Invoking {invocation.role_name} session ---")
+    result = agent_provider.invoke(invocation)
+    print(f"--- {invocation.role_name} session exited with code {result.return_code} ---")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +267,44 @@ def _environment_for_session(
     return EnvironmentManager(root, profile.environment)
 
 
+def _agent_error_message(
+    role_name: str, result: AgentResult, config_log: Path | None
+) -> str:
+    details = [
+        f"{role_name} session failed ({result.failure_kind})",
+        f"exit_code={result.return_code}",
+    ]
+    if result.message:
+        details.append(result.message)
+    if result.command:
+        details.append("command=" + " ".join(result.command))
+    if result.timeout_seconds is not None:
+        details.append(f"timeout_seconds={result.timeout_seconds}")
+    details.extend(_log_path_details(result.stdout_log, result.stderr_log, config_log))
+    return "; ".join(details)
+
+
+def _handoff_error_message(
+    error: str, stdout_log: Path, stderr_log: Path, config_log: Path | None
+) -> str:
+    details = [error]
+    details.extend(_log_path_details(stdout_log, stderr_log, config_log))
+    return "; ".join(details)
+
+
+def _log_path_details(
+    stdout_log: Path | None, stderr_log: Path | None, config_log: Path | None
+) -> list[str]:
+    details: list[str] = []
+    if stdout_log is not None:
+        details.append(f"stdout_log={stdout_log.as_posix()}")
+    if stderr_log is not None:
+        details.append(f"stderr_log={stderr_log.as_posix()}")
+    if config_log is not None:
+        details.append(f"config_log={config_log.as_posix()}")
+    return details
+
+
 def run_loop(
     root: Path,
     *,
@@ -307,11 +353,23 @@ def run_loop(
                 workspace.milestone(milestone).mark_ready_for_integration()
 
         role = ROLES[role_name]
+        session_number = sessions_run + 1
+        invocation_id = _agent_invocation_id(session_number, role_name)
+        stdout_log = _agent_log_path(root, invocation_id, "stdout.log")
+        stderr_log = _agent_log_path(root, invocation_id, "stderr.log")
+        config_log: Path | None = None
+
         print(f"\n{'=' * 60}")
-        print(f"Session {sessions_run + 1}: selecting role '{role_name}'")
+        print(f"Session {session_number}: selecting role '{role_name}'")
         print(f"{'=' * 60}")
         if resolved_agent_configs is not None:
-            _log_resolved_agent_config(root, role_name, resolved_agent_configs[role_name])
+            config_log = _log_resolved_agent_config(
+                root,
+                resolved_agent_configs[role_name],
+                invocation_id=invocation_id,
+                stdout_log=stdout_log,
+                stderr_log=stderr_log,
+            )
 
         artifacts_dir = root / ARTIFACTS_DIR / role_name
         if artifacts_dir.exists():
@@ -338,21 +396,46 @@ def run_loop(
                 return RunResult(sessions_run, False, 1,
                                  (SessionError("environment_setup", str(exc), 1),))
 
-        return_code = 0
+        agent_result = AgentResult(return_code=1, failure_kind="provider_error")
         agent_error: SessionError | None = None
+        invocation = AgentInvocation(
+            root=root,
+            role_name=role_name,
+            system_prompt=system_prompt,
+            session_prompt=session_prompt,
+            invocation_id=invocation_id,
+            stdout_log=stdout_log,
+            stderr_log=stderr_log,
+        )
         try:
-            return_code = invoke_session(
-                root,
-                role_name,
-                system_prompt,
-                session_prompt,
+            agent_result = invoke_session(
+                invocation,
                 agent_provider=provider_for_role(role_name, agent_providers, role_agent_providers),
             )
-        except FileNotFoundError as exc:
-            print(f"ERROR: agent command not found: {exc.filename!r}")
+        except Exception as exc:
             agent_error = SessionError(
-                "agent_invocation", f"agent command not found: {exc.filename!r}", 1,
+                "agent_invocation",
+                _agent_error_message(
+                    role_name,
+                    AgentResult(
+                        return_code=1,
+                        failure_kind="provider_error",
+                        message=f"agent provider error: {exc}",
+                        role_name=role_name,
+                        stdout_log=stdout_log,
+                        stderr_log=stderr_log,
+                    ),
+                    config_log,
+                ),
+                1,
             )
+        else:
+            if not agent_result.succeeded:
+                agent_error = SessionError(
+                    "agent_invocation",
+                    _agent_error_message(role_name, agent_result, config_log),
+                    agent_result.return_code or 1,
+                )
 
         teardown_error: SessionError | None = None
         if manage_environment:
@@ -364,15 +447,13 @@ def run_loop(
                 teardown_error = SessionError("environment_teardown", str(exc), 1)
 
         if agent_error is not None:
+            print(f"ERROR: {agent_error.message}. Stopping.")
             errors = (agent_error,) + ((teardown_error,) if teardown_error else ())
             return RunResult(sessions_run, False, agent_error.exit_code, errors)
         if teardown_error is not None:
-            return RunResult(sessions_run, False, return_code or 1, (teardown_error,))
-        if return_code != 0:
-            msg = f"{role_name} session failed with exit code {return_code}"
-            print(f"ERROR: {msg}. Stopping.")
-            return RunResult(sessions_run, False, return_code,
-                             (SessionError("agent_invocation", msg, return_code),))
+            return RunResult(
+                sessions_run, False, agent_result.return_code or 1, (teardown_error,)
+            )
 
         workspace.did_mutate()
 
@@ -381,9 +462,11 @@ def run_loop(
             handoff_path, role_name=role_name, snapshot=workspace.snapshot,
         )
         if not is_valid:
-            print(f"ERROR: Invalid handoff produced by {role_name}: {error}. Stopping.")
-            return RunResult(sessions_run, False, 1,
-                             (SessionError("handoff_validation", error, 1),))
+            message = _handoff_error_message(error, stdout_log, stderr_log, config_log)
+            print(f"ERROR: Invalid handoff produced by {role_name}: {message}. Stopping.")
+            return RunResult(
+                sessions_run, False, 1, (SessionError("handoff_validation", message, 1),)
+            )
 
         process_handoff(workspace, role_name)
         sessions_run += 1

@@ -3,35 +3,51 @@ from __future__ import annotations
 import dataclasses
 import shlex
 import subprocess
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
+
+AgentFailureKind = Literal[
+    "none", "nonzero_exit", "timeout", "missing_executable", "provider_error"
+]
 
 
 @dataclasses.dataclass(frozen=True)
 class AgentResult:
     return_code: int
+    failure_kind: AgentFailureKind = "none"
+    message: str = ""
+    role_name: str = ""
+    command: tuple[str, ...] = ()
+    timeout_seconds: int | None = None
+    stdout_log: Path | None = None
+    stderr_log: Path | None = None
+    duration_seconds: float | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.failure_kind == "none" and self.return_code == 0
 
 
 @dataclasses.dataclass(frozen=True)
-class AgentCall:
+class AgentInvocation:
     root: Path
     role_name: str
     system_prompt: str
     session_prompt: str
+    invocation_id: str
+    stdout_log: Path
+    stderr_log: Path
+
+
+AgentCall = AgentInvocation
 
 
 class AgentProvider(Protocol):
     """Invokes an agent for one DevLab role session."""
 
-    def invoke(
-        self,
-        *,
-        root: Path,
-        role_name: str,
-        system_prompt: str,
-        session_prompt: str,
-    ) -> AgentResult: ...
+    def invoke(self, invocation: AgentInvocation) -> AgentResult: ...
 
 
 @dataclasses.dataclass(frozen=True)
@@ -76,21 +92,15 @@ class CliAgentProvider:
             timeout_seconds=timeout_seconds,
         )
 
-    def invoke(
-        self,
-        *,
-        root: Path,
-        role_name: str,
-        system_prompt: str,
-        session_prompt: str,
-    ) -> AgentResult:
+    def invoke(self, invocation: AgentInvocation) -> AgentResult:
         values = {
             **self.template_values,
-            "role_name": role_name,
-            "system_prompt": system_prompt,
-            "session_prompt": session_prompt,
+            "role_name": invocation.role_name,
+            "system_prompt": invocation.system_prompt,
+            "session_prompt": invocation.session_prompt,
         }
-        cmd = [*self.argv, *_render_args(self.extra_args, values)]
+        command = [*self.argv, *_render_args(self.extra_args, values)]
+        cmd = [*command]
         stdin: str | None = None
         if self.stdin_template is None:
             cmd.extend(_render_args(self.prompt_args, values))
@@ -98,15 +108,83 @@ class CliAgentProvider:
             cmd.extend(_render_args(self.prompt_args, values))
             stdin = self.stdin_template.format_map(values)
 
-        result = subprocess.run(
-            cmd,
-            cwd=str(root),
-            input=stdin,
-            text=stdin is not None,
-            check=False,
-            timeout=self.timeout_seconds,
+        invocation.stdout_log.parent.mkdir(parents=True, exist_ok=True)
+        invocation.stderr_log.parent.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
+        try:
+            with invocation.stdout_log.open("w") as stdout_handle, invocation.stderr_log.open(
+                "w"
+            ) as stderr_handle:
+                result = subprocess.run(
+                    cmd,
+                    cwd=str(invocation.root),
+                    input=stdin,
+                    text=stdin is not None,
+                    check=False,
+                    timeout=self.timeout_seconds,
+                    stdout=stdout_handle,
+                    stderr=stderr_handle,
+                )
+        except FileNotFoundError as exc:
+            duration = time.monotonic() - started
+            _append_diagnostic(invocation.stderr_log, f"agent command not found: {exc.filename!r}")
+            return AgentResult(
+                return_code=127,
+                failure_kind="missing_executable",
+                message=f"agent command not found: {exc.filename!r}",
+                role_name=invocation.role_name,
+                command=tuple(command),
+                timeout_seconds=self.timeout_seconds,
+                stdout_log=invocation.stdout_log,
+                stderr_log=invocation.stderr_log,
+                duration_seconds=duration,
+            )
+        except subprocess.TimeoutExpired:
+            duration = time.monotonic() - started
+            _append_diagnostic(
+                invocation.stderr_log,
+                f"agent command timed out after {self.timeout_seconds} second(s)",
+            )
+            return AgentResult(
+                return_code=124,
+                failure_kind="timeout",
+                message=f"agent command timed out after {self.timeout_seconds} second(s)",
+                role_name=invocation.role_name,
+                command=tuple(command),
+                timeout_seconds=self.timeout_seconds,
+                stdout_log=invocation.stdout_log,
+                stderr_log=invocation.stderr_log,
+                duration_seconds=duration,
+            )
+        except OSError as exc:
+            duration = time.monotonic() - started
+            _append_diagnostic(invocation.stderr_log, f"agent provider error: {exc}")
+            return AgentResult(
+                return_code=1,
+                failure_kind="provider_error",
+                message=f"agent provider error: {exc}",
+                role_name=invocation.role_name,
+                command=tuple(command),
+                timeout_seconds=self.timeout_seconds,
+                stdout_log=invocation.stdout_log,
+                stderr_log=invocation.stderr_log,
+                duration_seconds=duration,
+            )
+
+        duration = time.monotonic() - started
+        failure_kind: AgentFailureKind = "none" if result.returncode == 0 else "nonzero_exit"
+        message = "" if result.returncode == 0 else f"agent exited with code {result.returncode}"
+        return AgentResult(
+            return_code=result.returncode,
+            failure_kind=failure_kind,
+            message=message,
+            role_name=invocation.role_name,
+            command=tuple(command),
+            timeout_seconds=self.timeout_seconds,
+            stdout_log=invocation.stdout_log,
+            stderr_log=invocation.stderr_log,
+            duration_seconds=duration,
         )
-        return AgentResult(return_code=result.returncode)
 
 
 def claude_cli_provider(
@@ -138,28 +216,26 @@ class MockProvider:
     on_invoke: Callable[[AgentCall], None] | None = None
     calls: list[AgentCall] = dataclasses.field(default_factory=list)
 
-    def invoke(
-        self,
-        *,
-        root: Path,
-        role_name: str,
-        system_prompt: str,
-        session_prompt: str,
-    ) -> AgentResult:
-        call = AgentCall(
-            root=root,
-            role_name=role_name,
-            system_prompt=system_prompt,
-            session_prompt=session_prompt,
-        )
+    def invoke(self, invocation: AgentInvocation) -> AgentResult:
+        call = invocation
         self.calls.append(call)
         if self.on_invoke is not None:
             self.on_invoke(call)
         if self.write_handoff:
-            handoff_path = root / ".devlab/session-artifacts" / role_name / "handoff.md"
+            handoff_path = (
+                invocation.root / ".devlab/session-artifacts" / invocation.role_name / "handoff.md"
+            )
             handoff_path.parent.mkdir(parents=True, exist_ok=True)
             handoff_path.write_text(self._handoff_for(call))
-        return AgentResult(return_code=self.return_code)
+        failure_kind: AgentFailureKind = "none" if self.return_code == 0 else "nonzero_exit"
+        return AgentResult(
+            return_code=self.return_code,
+            failure_kind=failure_kind,
+            message="" if self.return_code == 0 else f"agent exited with code {self.return_code}",
+            role_name=invocation.role_name,
+            stdout_log=invocation.stdout_log,
+            stderr_log=invocation.stderr_log,
+        )
 
     def _handoff_for(self, call: AgentCall) -> str:
         if callable(self.handoff_text):
@@ -196,3 +272,9 @@ def provider_for_role(
 
 def _render_args(args: Sequence[str], values: Mapping[str, str]) -> list[str]:
     return [arg.format_map(values) for arg in args]
+
+
+def _append_diagnostic(path: Path, message: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as handle:
+        handle.write(f"DevLab: {message}\n")
