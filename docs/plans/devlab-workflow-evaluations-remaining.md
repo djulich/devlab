@@ -1,5 +1,7 @@
 # Remaining DevLab Workflow Evaluations Plan
 
+Status: implemented except for collecting baseline live-agent outcomes and refining diagnostics from real failures. The harness was refactored, a tiny stdlib HTTP/API scripted scenario was added, skipped-by-default live evaluations were added, and diagnostics can be exported with `DEVLAB_EVAL_RESULTS_DIR`.
+
 ## Readiness assessment
 
 We are ready to address the remaining TODO #3 work.

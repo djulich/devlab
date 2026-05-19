@@ -24,15 +24,12 @@ Open work:
 
 ## 3. DevLab Workflow Evaluations
 
-Status: **initial scripted evaluations implemented**. Deterministic evaluations under `tests/evaluations/` create temporary target repositories, run the normal workflow with scripted fake agents, grade generated systems with black-box checks, and write diagnostics JSON artifacts. See `docs/evaluations.md` and `docs/plans/devlab-workflow-evaluations.md`.
+Status: **evaluation harness implemented; live result collection pending**. Deterministic evaluations under `tests/evaluations/` create temporary target repositories, run the normal workflow with scripted fake agents, grade generated systems with black-box checks, and write diagnostics JSON artifacts. The suite includes CLI calculator, corrective workflow, and tiny stdlib HTTP API scenarios. A skipped-by-default live-agent evaluation reuses the same harness. See `docs/evaluations.md`, `docs/plans/devlab-workflow-evaluations.md`, and `docs/plans/devlab-workflow-evaluations-remaining.md`.
 
 Open work:
 
-Detailed plan for remaining work: `docs/plans/devlab-workflow-evaluations-remaining.md`.
-
-- Add opt-in live-agent evaluations that reuse the same scenario shape without running in default tests.
-- Add a tiny HTTP/API or smoke-app scenario once process-management complexity is worthwhile.
-- Track evaluation outcomes over time and refine diagnostics if failures are hard to triage.
+- Run opt-in live-agent evaluations across configured providers and collect baseline outcomes.
+- Refine diagnostics/message wording if live failures are hard to triage.
 
 ## 4. Package and User-Facing Documentation
 
