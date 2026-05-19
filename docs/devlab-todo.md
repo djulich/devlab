@@ -148,7 +148,7 @@ Priority: medium-high. Useful and well-scoped. It improves diagnostics and libra
 
 Open work:
 
-- Implement `docs/logging-plan.md` using Python's standard `logging` module and a single `devlab` logger.
+- Implement `docs/logging-plan.md` using Python's standard `logging` module and a single `devlab` logger; detailed implementation plan: `docs/plans/devlab-cli-library-logging-facility.md`.
 - Add `devlab run` verbosity controls (`--quiet`, `--verbose`) and optional `--log-file`.
 - Keep interactive handoff preview and CLI report output as direct user output, not logs.
 - Add tests for logging configuration and orchestrator log levels.
