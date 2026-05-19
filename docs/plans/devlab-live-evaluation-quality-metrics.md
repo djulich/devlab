@@ -1,5 +1,7 @@
 # DevLab Live Evaluation Quality Metrics Plan
 
+Status: implemented. Diagnostics now include live role sequence, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, and stronger calculator black-box checks. Target-owned test-suite execution remains deferred.
+
 ## Goal
 
 Strengthen workflow evaluations so a passing live eval means more than "the final command happened to work". The first live calculator eval proved end-to-end workflow viability, but the grading is too shallow for produced-system quality.

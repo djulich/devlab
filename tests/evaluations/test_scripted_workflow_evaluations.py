@@ -9,6 +9,7 @@ from tests.evaluations.harness import (
     EvaluationDiagnostics,
     EvaluationScenario,
     command_check,
+    command_fails_check,
     file_contains_check,
     run_scripted_evaluation,
 )
@@ -26,10 +27,7 @@ def test_scripted_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
         system_spec="Build a Python CLI calculator with add and subtract commands.",
         max_sessions=10,
         scripted_agent=CalculatorScriptedAgent(),
-        checks=(
-            command_check("add command", ["calculator.py", "add", "2", "3"], "5"),
-            command_check("subtract command", ["calculator.py", "subtract", "7", "4"], "3"),
-        ),
+        checks=_calculator_checks(),
         expected_roles=(
             "architect", "planner", "developer", "reviewer", "integrator", "architect",
         ),
@@ -48,10 +46,7 @@ def test_scripted_cli_calculator_reviewer_rework_evaluation(tmp_path: Path) -> N
         system_spec="Build a Python CLI calculator with add and subtract commands.",
         max_sessions=12,
         scripted_agent=CalculatorScriptedAgent(reject_first_review=True),
-        checks=(
-            command_check("add command", ["calculator.py", "add", "2", "3"], "5"),
-            command_check("subtract command", ["calculator.py", "subtract", "7", "4"], "3"),
-        ),
+        checks=_calculator_checks(),
         expected_roles=(
             "architect", "planner", "developer", "reviewer", "developer", "reviewer",
             "integrator", "architect",
@@ -76,8 +71,7 @@ def test_scripted_cli_calculator_integration_finding_evaluation(tmp_path: Path) 
         max_sessions=14,
         scripted_agent=CalculatorScriptedAgent(require_smoke_finding=True),
         checks=(
-            command_check("add command", ["calculator.py", "add", "2", "3"], "5"),
-            command_check("subtract command", ["calculator.py", "subtract", "7", "4"], "3"),
+            *_calculator_checks(),
             file_contains_check("smoke test artifact", "test_calculator_smoke.py", "test_smoke"),
         ),
         expected_roles=(
@@ -119,6 +113,16 @@ def test_scripted_tiny_http_api_evaluation(tmp_path: Path) -> None:
     _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="app.py")
 
 
+def _calculator_checks():
+    return (
+        command_check("add command", ["calculator.py", "add", "2", "3"], "5"),
+        command_check("subtract command", ["calculator.py", "subtract", "7", "4"], "3"),
+        command_check("add negative command", ["calculator.py", "add", "-2", "5"], "3"),
+        command_check("subtract negative result", ["calculator.py", "subtract", "2", "5"], "-3"),
+        command_fails_check("missing args exits nonzero", ["calculator.py"]),
+    )
+
+
 def _assert_diagnostics(
     root: Path,
     diagnostics: EvaluationDiagnostics,
@@ -137,6 +141,12 @@ def _assert_diagnostics(
     assert diagnostics.max_prompt_chars > 0
     assert expected_artifact in diagnostics.artifacts
     assert diagnostics.agent_log_dir.endswith(".devlab/logs/agents")
+    assert isinstance(diagnostics.tasks["total"], int)
+    assert diagnostics.tasks["total"] >= 1
+    assert diagnostics.quality["correctness_passed"] is True
+    assert diagnostics.quality["all_tasks_closed"] is True
+    assert "file_count" in diagnostics.artifact_hygiene
+    assert "stdout_count" in diagnostics.agent_logs
     task = FileTaskTracker(root).get("T0001")
     assert task.status == TaskStatus.CLOSED
     milestone = FileMilestoneTracker(root).get("M1")

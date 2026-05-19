@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,12 +11,13 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from devlab.agents import AgentInvocation, MockProvider
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
+from devlab.task_tracker import FileTaskTracker, TaskStatus
 
 
 @dataclasses.dataclass(frozen=True)
@@ -74,6 +76,11 @@ class EvaluationDiagnostics:
     provider: str = ""
     model: str = ""
     effort: str = ""
+    tasks: dict[str, object] = dataclasses.field(default_factory=dict)
+    artifact_hygiene: dict[str, object] = dataclasses.field(default_factory=dict)
+    agent_logs: dict[str, object] = dataclasses.field(default_factory=dict)
+    prompt_logs: dict[str, object] = dataclasses.field(default_factory=dict)
+    quality: dict[str, object] = dataclasses.field(default_factory=dict)
 
     def write(self, root: Path) -> Path:
         path = root / ".devlab/evaluations" / f"{self.scenario_id}.json"
@@ -148,7 +155,7 @@ def run_live_evaluation(
         checks,
         duration,
         provider_mode="live",
-        roles=[],
+        roles=derive_role_sequence(root),
         review_rejections=0,
         prompt_chars=[],
         provider=provider or "",
@@ -176,6 +183,10 @@ def diagnostics_for(
     effort: str = "",
 ) -> EvaluationDiagnostics:
     findings = FileFindingTracker(root).list_findings()
+    task_metrics = collect_task_metrics(root)
+    artifact_hygiene = collect_artifact_hygiene(root)
+    agent_logs = collect_agent_log_metrics(root)
+    prompt_logs = collect_prompt_log_metrics(root)
     return EvaluationDiagnostics(
         scenario_id=scenario.id,
         provider_mode=provider_mode,
@@ -199,7 +210,123 @@ def diagnostics_for(
         provider=provider,
         model=model,
         effort=effort,
+        tasks=task_metrics,
+        artifact_hygiene=artifact_hygiene,
+        agent_logs=agent_logs,
+        prompt_logs=prompt_logs,
+        quality=quality_summary(
+            checks=checks,
+            task_metrics=task_metrics,
+            artifact_hygiene=artifact_hygiene,
+            sessions_run=result.sessions_run,
+        ),
     )
+
+
+def derive_role_sequence(root: Path) -> list[str]:
+    pattern = re.compile(r"^\d{8}T\d{6}_([a-z_]+)_handoff\.md$")
+    roles: list[str] = []
+    for path in sorted((root / ".devlab/history").glob("*_handoff.md")):
+        match = pattern.match(path.name)
+        if match:
+            roles.append(match.group(1))
+    return roles
+
+
+def collect_task_metrics(root: Path) -> dict[str, object]:
+    tasks = FileTaskTracker(root).list_tasks()
+    by_status: dict[str, int] = {}
+    for task in tasks:
+        by_status[task.status.value] = by_status.get(task.status.value, 0) + 1
+    return {
+        "total": len(tasks),
+        "by_status": by_status,
+        "items": [
+            {
+                "id": task.id,
+                "title": task.title,
+                "status": task.status.value,
+                "milestone": task.milestone or "",
+            }
+            for task in tasks
+        ],
+    }
+
+
+def collect_artifact_hygiene(root: Path) -> dict[str, object]:
+    flagged_names = {".venv", ".pytest_cache", ".ruff_cache", "__pycache__", "build", "dist"}
+    flagged_paths: set[str] = set()
+    source_files: list[str] = []
+    test_files: list[str] = []
+    file_count = 0
+    total_bytes = 0
+    for path in root.rglob("*"):
+        relative = path.relative_to(root).as_posix()
+        parts = path.relative_to(root).parts
+        flagged = next(
+            (part for part in parts if part in flagged_names or part.endswith(".egg-info")),
+            None,
+        )
+        if flagged is not None:
+            flagged_paths.add(flagged)
+        if not path.is_file():
+            continue
+        file_count += 1
+        total_bytes += path.stat().st_size
+        if path.suffix == ".py" and not relative.startswith(".venv/"):
+            source_files.append(relative)
+        if path.name.startswith("test_") or path.name.endswith("_test.py"):
+            test_files.append(relative)
+    return {
+        "file_count": file_count,
+        "total_bytes": total_bytes,
+        "flagged_paths": sorted(flagged_paths),
+        "source_files": sorted(source_files),
+        "test_files": sorted(test_files),
+    }
+
+
+def collect_agent_log_metrics(root: Path) -> dict[str, object]:
+    log_dir = root / ".devlab/logs/agents"
+    return {
+        "stdout_count": len(list(log_dir.glob("*.stdout.log"))),
+        "stderr_count": len(list(log_dir.glob("*.stderr.log"))),
+        "config_count": len(list(log_dir.glob("*.config.toml"))),
+    }
+
+
+def collect_prompt_log_metrics(root: Path) -> dict[str, object]:
+    log_dir = root / ".devlab/logs/agents"
+    system_logs = list(log_dir.glob("*.system-prompt.md"))
+    session_logs = list(log_dir.glob("*.session-prompt.md"))
+    return {
+        "system_count": len(system_logs),
+        "session_count": len(session_logs),
+        "max_system_prompt_bytes": max((path.stat().st_size for path in system_logs), default=0),
+        "max_session_prompt_bytes": max((path.stat().st_size for path in session_logs), default=0),
+    }
+
+
+def quality_summary(
+    *,
+    checks: list[CheckResult],
+    task_metrics: dict[str, object],
+    artifact_hygiene: dict[str, object],
+    sessions_run: int,
+) -> dict[str, object]:
+    raw_by_status = task_metrics.get("by_status", {})
+    by_status = cast("dict[str, int]", raw_by_status) if isinstance(raw_by_status, dict) else {}
+    closed = by_status.get(TaskStatus.CLOSED.value, 0)
+    all_tasks_closed = task_metrics.get("total") == closed
+    flagged_paths = artifact_hygiene.get("flagged_paths", [])
+    flagged_list = list(flagged_paths) if isinstance(flagged_paths, list) else []
+    return {
+        "correctness_passed": all(check.passed for check in checks),
+        "all_tasks_closed": all_tasks_closed,
+        "has_flagged_artifacts": bool(flagged_list),
+        "session_count": sessions_run,
+        "warnings": [f"flagged artifact path: {path}" for path in flagged_list],
+    }
 
 
 def init_target_workspace(root: Path, system_spec: str) -> None:
@@ -247,6 +374,26 @@ def command_check(name: str, args: Sequence[str], expected_stdout: str) -> Black
                 if passed
                 else f"exit={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}"
             ),
+        )
+
+    return check
+
+
+def command_fails_check(name: str, args: Sequence[str]) -> BlackBoxCheck:
+    def check(root: Path) -> CheckResult:
+        result = subprocess.run(
+            [sys.executable, *args],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        passed = result.returncode != 0
+        return CheckResult(
+            name=name,
+            passed=passed,
+            message="" if passed else f"expected nonzero exit; stdout={result.stdout!r}",
         )
 
     return check

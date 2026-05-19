@@ -25,7 +25,7 @@ The scripted provider writes realistic role artifacts without using LLM tokens. 
 .devlab/evaluations/<scenario-id>.json
 ```
 
-Diagnostics include sessions used, role sequence, findings, review rejections, runtime, prompt-size estimate, checked artifacts, target root, agent log directory, and black-box check results.
+Diagnostics include sessions used, role sequence, task status summaries, findings, review rejections, runtime, prompt-size estimate, checked artifacts, artifact hygiene warnings, target root, agent log directory, prompt/log counts, and black-box check results.
 
 To copy diagnostics to a persistent local directory, set:
 
@@ -57,3 +57,5 @@ Useful environment variables:
 - `DEVLAB_LIVE_RETAIN_PROMPTS=1`: retain split system/session prompt logs under `.devlab/logs/agents/` for live-run debugging.
 
 Live evaluation failures report the temporary target root, diagnostics JSON path, and `.devlab/logs/agents/` path.
+
+Evaluation correctness checks are hard failures. Artifact hygiene signals, such as generated `.venv/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`, `build/`, `dist/`, or `*.egg-info` paths, are recorded as warnings for now rather than hard failures. Target-owned test-suite execution is intentionally deferred because target projects may require their own environment setup.

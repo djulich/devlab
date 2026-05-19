@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.evaluations.harness import EvaluationScenario, command_check, run_live_evaluation
+from tests.evaluations.harness import (
+    EvaluationScenario,
+    command_check,
+    command_fails_check,
+    run_live_evaluation,
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("DEVLAB_LIVE_EVALS") != "1",
@@ -25,6 +30,11 @@ def test_live_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
         checks=(
             command_check("add command", ["calculator.py", "add", "2", "3"], "5"),
             command_check("subtract command", ["calculator.py", "subtract", "7", "4"], "3"),
+            command_check("add negative command", ["calculator.py", "add", "-2", "5"], "3"),
+            command_check(
+                "subtract negative result", ["calculator.py", "subtract", "2", "5"], "-3"
+            ),
+            command_fails_check("missing args exits nonzero", ["calculator.py"]),
         ),
     )
     agent_config = os.environ.get("DEVLAB_LIVE_AGENTS_TOML")
@@ -49,3 +59,7 @@ def test_live_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
     assert diagnostics.completed is True, failure_context
     assert diagnostics.exit_code == 0, failure_context
     assert all(check["passed"] for check in diagnostics.checks), failure_context
+    assert diagnostics.roles, failure_context
+    assert isinstance(diagnostics.tasks["total"], int)
+    assert diagnostics.tasks["total"] >= 1, failure_context
+    assert diagnostics.quality["correctness_passed"] is True, failure_context
