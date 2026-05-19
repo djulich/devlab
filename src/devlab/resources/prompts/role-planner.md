@@ -45,6 +45,13 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 ## Task Sizing
 
+- Create the fewest tasks that remain independently implementable, reviewable, and safe to hand to one developer session.
+- Prefer vertical-slice tasks that deliver a complete reviewable behavior.
+- Minimize task count while preserving safe handoff boundaries.
+- Do not split tightly coupled implementation, tests, and documentation into separate tasks unless they need different expertise or sequencing.
+- Avoid splitting work merely because files, functions, or commands are separate when they share the same acceptance context.
+- For small specs, one milestone with one implementation task is often correct.
+- Remember each task incurs a developer and reviewer session, so oversplitting increases workflow cost.
 - Each task must be completable in one developer session.
 - Each task must have concrete, verifiable acceptance criteria.
 - Tasks should be independent from each other where possible.

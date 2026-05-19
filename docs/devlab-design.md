@@ -111,7 +111,7 @@ Development is performed as a sequence of independent sessions. In each session,
 
 This is deliberate. Long-running agent conversations tend to accumulate implicit assumptions, context drift, and unrelated changes. Short sessions force the workflow to repeatedly re-ground itself in repository artifacts.
 
-The most important example is the developer role: a developer session implements exactly one task.
+The most important example is the developer role: a developer session implements exactly one task. Because each task also incurs review overhead, planner task scope should favor the fewest tasks that remain independently implementable, reviewable, and safe to hand to one developer session; work should not be split merely because files, functions, or commands are separate when they share the same acceptance context.
 
 ### Context should be minimal
 
