@@ -88,6 +88,11 @@ def main() -> None:
         default=None,
         help="Write detailed DevLab run logs to this file.",
     )
+    run_parser.add_argument(
+        "--retain-prompts",
+        action="store_true",
+        help="Write full system/session prompts to .devlab/logs/agents/ for debugging.",
+    )
 
     status_parser = subparsers.add_parser("status", help="Show workspace status.")
     status_parser.add_argument(
@@ -127,6 +132,7 @@ def main() -> None:
             model=args.model,
             effort=args.effort,
             dangerous_skip_permissions=args.dangerously_skip_permissions,
+            retain_prompts=args.retain_prompts,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)

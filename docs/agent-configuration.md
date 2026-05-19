@@ -174,3 +174,10 @@ DevLab writes per-session agent diagnostics under `.devlab/logs/agents/`:
 - `<timestamp>_<session>_<role>.stderr.log`: agent stderr plus DevLab diagnostics for failures that happen before the child process can write output.
 
 Failure reports include the role, failure kind, exit code, timeout when present, command shape, and log paths. Prompt contents are intentionally not written to the config log.
+
+By default, DevLab does not retain full prompts. For debugging, run with `devlab run --retain-prompts` to write split prompt logs next to the agent invocation logs:
+
+- `<timestamp>_<session>_<role>.system-prompt.md`
+- `<timestamp>_<session>_<role>.session-prompt.md`
+
+The matching `.config.toml` includes `system_prompt_log` and `session_prompt_log` paths when prompt retention is enabled. Treat `.devlab/logs/agents/` as sensitive: agent output and retained prompts may contain target project details.

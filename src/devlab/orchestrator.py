@@ -77,14 +77,33 @@ def _log_resolved_agent_config(
     invocation_id: str,
     stdout_log: Path,
     stderr_log: Path,
+    system_prompt_log: Path | None = None,
+    session_prompt_log: Path | None = None,
 ) -> Path:
     path = _agent_log_path(root, invocation_id, "config.toml")
     path.parent.mkdir(parents=True, exist_ok=True)
     text = format_resolved_agent_config(config)
     text += f'stdout_log = "{stdout_log.as_posix()}"\n'
     text += f'stderr_log = "{stderr_log.as_posix()}"\n'
+    if system_prompt_log is not None:
+        text += f'system_prompt_log = "{system_prompt_log.as_posix()}"\n'
+    if session_prompt_log is not None:
+        text += f'session_prompt_log = "{session_prompt_log.as_posix()}"\n'
     path.write_text(text)
     return path
+
+
+def _write_prompt_logs(
+    *,
+    system_prompt: str,
+    session_prompt: str,
+    system_prompt_log: Path,
+    session_prompt_log: Path,
+) -> None:
+    system_prompt_log.parent.mkdir(parents=True, exist_ok=True)
+    system_prompt_log.write_text(system_prompt)
+    session_prompt_log.parent.mkdir(parents=True, exist_ok=True)
+    session_prompt_log.write_text(session_prompt)
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +338,7 @@ def run_loop(
     model: str | None = None,
     effort: str | None = None,
     dangerous_skip_permissions: bool = False,
+    retain_prompts: bool = False,
     agent_providers: dict[str, AgentProvider] | None = None,
     role_agent_providers: dict[str, str] | None = None,
 ) -> RunResult:
@@ -362,6 +382,12 @@ def run_loop(
         invocation_id = _agent_invocation_id(session_number, role_name)
         stdout_log = _agent_log_path(root, invocation_id, "stdout.log")
         stderr_log = _agent_log_path(root, invocation_id, "stderr.log")
+        system_prompt_log = (
+            _agent_log_path(root, invocation_id, "system-prompt.md") if retain_prompts else None
+        )
+        session_prompt_log = (
+            _agent_log_path(root, invocation_id, "session-prompt.md") if retain_prompts else None
+        )
         config_log: Path | None = None
 
         logger.info("Session %s: selecting role '%s'", session_number, role_name)
@@ -372,6 +398,8 @@ def run_loop(
                 invocation_id=invocation_id,
                 stdout_log=stdout_log,
                 stderr_log=stderr_log,
+                system_prompt_log=system_prompt_log,
+                session_prompt_log=session_prompt_log,
             )
             logger.debug("Resolved agent config written to %s", config_log)
             logger.debug("Agent stdout log: %s", stdout_log)
@@ -385,6 +413,13 @@ def run_loop(
         try:
             system_prompt = build_system_prompt(root, role)
             session_prompt = build_session_prompt(workspace.snapshot, role_name)
+            if system_prompt_log is not None and session_prompt_log is not None:
+                _write_prompt_logs(
+                    system_prompt=system_prompt,
+                    session_prompt=session_prompt,
+                    system_prompt_log=system_prompt_log,
+                    session_prompt_log=session_prompt_log,
+                )
             environment = _environment_for_session(root, workspace.snapshot, role_name)
         except ProfileNotFoundError as exc:
             logger.error("%s. Stopping.", exc)

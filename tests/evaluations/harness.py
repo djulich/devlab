@@ -137,6 +137,7 @@ def run_live_evaluation(
         provider=provider,
         model=model,
         effort=effort,
+        retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
     )
     duration = time.monotonic() - started
     checks = [check(root) for check in scenario.checks]

@@ -54,5 +54,6 @@ Useful environment variables:
 - `DEVLAB_LIVE_EFFORT`: optional effort override passed to `run_loop`.
 - `DEVLAB_LIVE_MAX_SESSIONS`: optional session cap for live runs.
 - `DEVLAB_EVAL_RESULTS_DIR`: optional directory for persistent diagnostics copies.
+- `DEVLAB_LIVE_RETAIN_PROMPTS=1`: retain split system/session prompt logs under `.devlab/logs/agents/` for live-run debugging.
 
 Live evaluation failures report the temporary target root, diagnostics JSON path, and `.devlab/logs/agents/` path.

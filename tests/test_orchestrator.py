@@ -995,7 +995,7 @@ class TestRunLoop:
 
         monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
 
-        run_loop(tmp_path, auto=True, max_sessions=1)
+        run_loop(tmp_path, auto=True, max_sessions=1, retain_prompts=True)
 
         logs = list((tmp_path / ".devlab/logs/agents").glob("*_developer.config.toml"))
         assert len(logs) == 1
@@ -1003,9 +1003,34 @@ class TestRunLoop:
         assert 'role = "developer"' in text
         assert 'provider = "mock-cli"' in text
         assert 'model = "test-model"' in text
-        assert "system_prompt" not in text
+        assert "system_prompt =" not in text
+        assert "session_prompt =" not in text
         assert "stdout_log" in text
         assert "stderr_log" in text
+        assert "system_prompt_log" in text
+        assert "session_prompt_log" in text
+
+    def test_retains_split_prompt_logs_when_enabled(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider()
+
+        run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            retain_prompts=True,
+            agent_providers={"default": provider},
+        )
+
+        agent_logs = tmp_path / ".devlab/logs/agents"
+        system_logs = list(agent_logs.glob("*_developer.system-prompt.md"))
+        session_logs = list(agent_logs.glob("*_developer.session-prompt.md"))
+        assert len(system_logs) == 1
+        assert len(session_logs) == 1
+        assert "Role: Developer" in system_logs[0].read_text()
+        assert "## Assigned Task" in session_logs[0].read_text()
 
     def test_uses_role_specific_agent_provider(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
