@@ -28,6 +28,7 @@ Status: **evaluation harness implemented; live result collection pending**. Dete
 
 Open work:
 
+- Implement quality-metric improvements from `docs/plans/devlab-live-evaluation-quality-metrics.md`.
 - Run opt-in live-agent evaluations across configured providers and collect baseline outcomes.
 - Refine diagnostics/message wording if live failures are hard to triage.
 
