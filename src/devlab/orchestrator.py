@@ -271,7 +271,9 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> None:
             task_handle = workspace.task(task.id)
             task_handle.close()
             logger.info(
-                "Task %s closed by %s; status set to closed", task_handle.path.name, handoff.role_name
+                "Task %s closed by %s; status set to closed",
+                task_handle.path.name,
+                handoff.role_name,
             )
             task_handle.resolve_addressed_findings()
         elif task:
