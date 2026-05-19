@@ -229,10 +229,6 @@ def _validate_reviewer_outcome(snapshot: WorkspaceSnapshot, handoff: Handoff) ->
     task = snapshot.select_next_review_task()
     if task is None:
         return "reviewer handoff has no task awaiting review"
-    if handoff.has_open_issues and task.review_approved:
-        return "reviewer handoff reports open issues but task review is approved"
-    if not handoff.has_open_issues and not task.review_approved:
-        return "reviewer handoff reports no open issues but task review is not approved"
     return ""
 
 
@@ -278,13 +274,26 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> None:
                 "Task %s closed by %s; status set to closed", task_handle.path.name, handoff.role_name
             )
             task_handle.resolve_addressed_findings()
-        elif task and handoff.has_open_issues:
+        elif task:
             task_handle = workspace.task(task.id)
             task_handle.mark_changes_requested()
-            logger.info(
-                "Task %s rejected by reviewer; status set to changes_requested",
-                task_handle.path.name,
-            )
+            if not handoff.has_open_issues and not task.review_approved:
+                logger.warning(
+                    "Task %s: reviewer reports no open issues but review approval "
+                    "checkbox is missing; defaulting to changes_requested",
+                    task_handle.path.name,
+                )
+            elif handoff.has_open_issues and task.review_approved:
+                logger.warning(
+                    "Task %s: reviewer approved task but handoff reports open issues; "
+                    "defaulting to changes_requested",
+                    task_handle.path.name,
+                )
+            else:
+                logger.info(
+                    "Task %s rejected by reviewer; status set to changes_requested",
+                    task_handle.path.name,
+                )
     elif handoff.role_name == "integrator":
         milestone = workspace.snapshot.select_integration_milestone()
         if handoff.has_open_issues:

@@ -1,0 +1,3 @@
+# Reviewer signal mismatch defaults to changes requested
+
+When the reviewer's two outcome signals disagree — the handoff's Open Issues section and the task file's `- [x] Approved` checkbox — the orchestrator defaults to `changes_requested` rather than rejecting the handoff as invalid. A task is only closed when both signals agree (approved checkbox present AND no open issues). Any other combination sends the task back for another review cycle. This trades extra sessions on agent mistakes for resilience against the most likely real-agent failure mode (producing one signal but not the other), bounded by `max_sessions`. The mismatch cases log warnings to surface prompt/agent issues in diagnostics.

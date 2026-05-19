@@ -410,6 +410,14 @@ Operational details such as exact validation commands belong in task metadata or
 
 DevLab is intentionally strict: one role, one task, one handoff, explicit status transitions. This can feel slower than asking an agent to do many things at once, but it improves control, auditability, and recovery.
 
+### Ambiguous agent output: assume the work isn't done
+
+When an agent produces conflicting or incomplete structured output, the orchestrator defaults to the least damaging assumption rather than halting with a validation error. Because the workflow is a loop, an unnecessary extra cycle costs time but is self-correcting, while prematurely advancing lets problems through that may never get caught.
+
+For example, the reviewer produces two independent signals: a prose "Open Issues" section in the handoff and a structured `- [x] Approved` checkbox in the task file. A task is only closed when both signals agree. Any mismatch — checkbox missing, stale approval with new issues, ambiguous prose — defaults to "changes requested," sending the task back for another review cycle. The same principle applies across roles: missing acceptance criteria means the developer is re-invoked, ambiguous integration output means a finding is created.
+
+This is bounded by `max_sessions`, so a consistently broken agent causes a clean stop rather than an infinite loop. Mismatch cases are logged as warnings so they surface in diagnostics, signaling a prompt or agent issue to investigate without blocking the workflow.
+
 ### File-backed issues vs. external issue tracker
 
 A real issue tracker could provide search, dashboards, permissions, comments, and integrations. The file-backed tracker provides the features needed now with much less operational overhead.

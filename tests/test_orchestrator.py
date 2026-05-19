@@ -10,10 +10,17 @@ from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider,
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
-from devlab.orchestrator import _timestamp, close_task, run_loop, validate_handoff
+from devlab.orchestrator import _timestamp, close_task, process_handoff, run_loop, validate_handoff
 from devlab.prompts import build_session_prompt, build_system_prompt
-from devlab.task_tracker import TASKS_DIR
-from devlab.workspace import DESIGN_PLAN, HISTORY_DIR, PROJECT_PLAN, ROLES, Workspace
+from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
+from devlab.workspace import (
+    ARTIFACTS_DIR,
+    DESIGN_PLAN,
+    HISTORY_DIR,
+    PROJECT_PLAN,
+    ROLES,
+    Workspace,
+)
 
 
 def _setup_tree(root: Path) -> None:
@@ -515,7 +522,9 @@ class TestRunLoop:
         assert provider.calls[0].role_name == "reviewer"
         assert 'status = "changes_requested"' in task.read_text()
 
-    def test_reviewer_rejection_with_stale_approval_is_invalid(self, tmp_path: Path) -> None:
+    def test_reviewer_rejection_with_stale_approval_defaults_to_changes_requested(
+        self, tmp_path: Path,
+    ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         task = _write_task(
@@ -541,12 +550,13 @@ class TestRunLoop:
             agent_providers={"default": provider},
         )
 
-        assert result.exit_code == 1
-        assert result.errors[0].phase == "handoff_validation"
-        assert "reports open issues but task review is approved" in result.errors[0].message
-        assert 'status = "in_review"' in task.read_text()
+        assert result.exit_code == 0
+        assert result.errors == ()
+        assert 'status = "changes_requested"' in task.read_text()
 
-    def test_reviewer_approval_without_review_marker_is_invalid(self, tmp_path: Path) -> None:
+    def test_reviewer_approval_without_review_marker_defaults_to_changes_requested(
+        self, tmp_path: Path,
+    ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         task = _write_task(
@@ -563,10 +573,9 @@ class TestRunLoop:
             agent_providers={"default": provider},
         )
 
-        assert result.exit_code == 1
-        assert result.errors[0].phase == "handoff_validation"
-        assert "reports no open issues but task review is not approved" in result.errors[0].message
-        assert 'status = "in_review"' in task.read_text()
+        assert result.exit_code == 0
+        assert result.errors == ()
+        assert 'status = "changes_requested"' in task.read_text()
 
     def test_invalid_handoff_stops_loop_without_status_change(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -1331,7 +1340,7 @@ class TestValidateReviewerOutcome:
         with pytest.raises(HandoffError, match="no task awaiting review"):
             validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
-    def test_rejects_open_issues_with_approved_task(self, tmp_path: Path) -> None:
+    def test_accepts_open_issues_with_approved_task(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(
             tmp_path, "T0001", "First", status="in_review",
@@ -1339,16 +1348,14 @@ class TestValidateReviewerOutcome:
         )
         handoff = self._handoff(tmp_path, open_issues="- Code needs refactoring.")
 
-        with pytest.raises(HandoffError, match="open issues but task review is approved"):
-            validate_handoff(handoff, Workspace(tmp_path).snapshot)
+        validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
-    def test_rejects_no_open_issues_without_approval(self, tmp_path: Path) -> None:
+    def test_accepts_no_open_issues_without_approval(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", status="in_review")
         handoff = self._handoff(tmp_path)
 
-        with pytest.raises(HandoffError, match="no open issues but task review is not approved"):
-            validate_handoff(handoff, Workspace(tmp_path).snapshot)
+        validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
     def test_accepts_rejection_with_open_issues(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -1366,6 +1373,56 @@ class TestValidateReviewerOutcome:
         handoff = self._handoff(tmp_path)
 
         validate_handoff(handoff, Workspace(tmp_path).snapshot)
+
+
+class TestProcessHandoffReviewerDefaults:
+    def _write_handoff(self, root: Path, *, open_issues: str = "- None") -> Handoff:
+        artifacts = root / ARTIFACTS_DIR / "reviewer"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        path = artifacts / "handoff.md"
+        path.write_text(
+            "# Handoff\n"
+            "## Done\n- Review work\n"
+            "## Changed Artifacts\n- None\n"
+            f"## Open Issues\n{open_issues}\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nContinue\n"
+        )
+        return parse_handoff(path, "reviewer")
+
+    def _approved_body(self, task_id: str, title: str) -> str:
+        return (
+            f"# {task_id}: {title}\n\n"
+            "## Acceptance Criteria\n- [x] Done\n\n"
+            "## Review\n- [x] Approved\n"
+        )
+
+    def test_no_open_issues_without_approval_defaults_to_changes_requested(
+        self, tmp_path: Path,
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "First", status="in_review")
+        handoff = self._write_handoff(tmp_path)
+
+        process_handoff(handoff, Workspace(tmp_path))
+
+        task = FileTaskTracker(tmp_path).get("T0001")
+        assert task.status == TaskStatus.CHANGES_REQUESTED
+
+    def test_open_issues_with_approved_task_defaults_to_changes_requested(
+        self, tmp_path: Path,
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(
+            tmp_path, "T0001", "First", status="in_review",
+            body=self._approved_body("T0001", "First"),
+        )
+        handoff = self._write_handoff(tmp_path, open_issues="- Code needs refactoring.")
+
+        process_handoff(handoff, Workspace(tmp_path))
+
+        task = FileTaskTracker(tmp_path).get("T0001")
+        assert task.status == TaskStatus.CHANGES_REQUESTED
 
 
 class TestTimestamp:
