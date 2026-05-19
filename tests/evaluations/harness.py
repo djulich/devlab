@@ -224,13 +224,14 @@ def diagnostics_for(
 
 
 def derive_role_sequence(root: Path) -> list[str]:
-    pattern = re.compile(r"^\d{8}T\d{6}_([a-z_]+)_handoff\.md$")
-    roles: list[str] = []
-    for path in sorted((root / ".devlab/history").glob("*_handoff.md")):
+    pattern = re.compile(r"^(\d{8}T\d{6})(?:_(\d+))?_([a-z_]+)_handoff\.md$")
+    parsed: list[tuple[str, int, str]] = []
+    for path in (root / ".devlab/history").glob("*_handoff.md"):
         match = pattern.match(path.name)
         if match:
-            roles.append(match.group(1))
-    return roles
+            counter = int(match.group(2) or "1")
+            parsed.append((match.group(1), counter, match.group(3)))
+    return [role for _, _, role in sorted(parsed)]
 
 
 def collect_task_metrics(root: Path) -> dict[str, object]:
@@ -258,28 +259,38 @@ def collect_artifact_hygiene(root: Path) -> dict[str, object]:
     flagged_paths: set[str] = set()
     source_files: list[str] = []
     test_files: list[str] = []
-    file_count = 0
-    total_bytes = 0
+    product_file_count = 0
+    product_total_bytes = 0
+    devlab_file_count = 0
+    devlab_total_bytes = 0
     for path in root.rglob("*"):
+        if not path.is_file():
+            continue
         relative = path.relative_to(root).as_posix()
         parts = path.relative_to(root).parts
+        if relative.startswith(".devlab/"):
+            devlab_file_count += 1
+            devlab_total_bytes += path.stat().st_size
+            continue
+        product_file_count += 1
+        product_total_bytes += path.stat().st_size
         flagged = next(
             (part for part in parts if part in flagged_names or part.endswith(".egg-info")),
             None,
         )
         if flagged is not None:
             flagged_paths.add(flagged)
-        if not path.is_file():
-            continue
-        file_count += 1
-        total_bytes += path.stat().st_size
         if path.suffix == ".py" and not relative.startswith(".venv/"):
             source_files.append(relative)
         if path.name.startswith("test_") or path.name.endswith("_test.py"):
             test_files.append(relative)
     return {
-        "file_count": file_count,
-        "total_bytes": total_bytes,
+        "file_count": product_file_count,
+        "total_bytes": product_total_bytes,
+        "product_file_count": product_file_count,
+        "product_total_bytes": product_total_bytes,
+        "devlab_file_count": devlab_file_count,
+        "devlab_total_bytes": devlab_total_bytes,
         "flagged_paths": sorted(flagged_paths),
         "source_files": sorted(source_files),
         "test_files": sorted(test_files),

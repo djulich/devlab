@@ -8,8 +8,10 @@ from devlab.task_tracker import FileTaskTracker, TaskStatus
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
     EvaluationScenario,
+    collect_artifact_hygiene,
     command_check,
     command_fails_check,
+    derive_role_sequence,
     file_contains_check,
     run_scripted_evaluation,
 )
@@ -111,6 +113,34 @@ def test_scripted_tiny_http_api_evaluation(tmp_path: Path) -> None:
     diagnostics = run_scripted_evaluation(tmp_path, scenario)
 
     _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="app.py")
+
+
+def test_live_role_sequence_handles_archive_collision_filenames(tmp_path: Path) -> None:
+    history = tmp_path / ".devlab/history"
+    history.mkdir(parents=True)
+    (history / "20260519T091112_reviewer_handoff.md").write_text("reviewer")
+    (history / "20260519T091112_2_developer_handoff.md").write_text("developer")
+
+    assert derive_role_sequence(tmp_path) == ["reviewer", "developer"]
+
+
+def test_artifact_hygiene_splits_product_and_devlab_artifacts(tmp_path: Path) -> None:
+    (tmp_path / ".devlab/tasks").mkdir(parents=True)
+    (tmp_path / ".devlab/tasks/T0001_task.md").write_text("workflow")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/app.py").write_text("print('ok')\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_app.py").write_text("def test_ok(): pass\n")
+    (tmp_path / ".pytest_cache").mkdir()
+    (tmp_path / ".pytest_cache/cache.txt").write_text("cache")
+
+    hygiene = collect_artifact_hygiene(tmp_path)
+
+    assert hygiene["product_file_count"] == 3
+    assert hygiene["devlab_file_count"] == 1
+    assert hygiene["flagged_paths"] == [".pytest_cache"]
+    assert hygiene["source_files"] == ["src/app.py", "tests/test_app.py"]
+    assert hygiene["test_files"] == ["tests/test_app.py"]
 
 
 def _calculator_checks():

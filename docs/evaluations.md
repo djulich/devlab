@@ -25,7 +25,7 @@ The scripted provider writes realistic role artifacts without using LLM tokens. 
 .devlab/evaluations/<scenario-id>.json
 ```
 
-Diagnostics include sessions used, role sequence, task status summaries, findings, review rejections, runtime, prompt-size estimate, checked artifacts, artifact hygiene warnings, target root, agent log directory, prompt/log counts, and black-box check results.
+Diagnostics include sessions used, role sequence, task status summaries, findings, review rejections, runtime, prompt-size estimate, checked artifacts, artifact hygiene warnings, target root, agent log directory, prompt/log counts, and black-box check results. Artifact hygiene separates product files from DevLab workflow files under `.devlab/` so generated-system metrics are not dominated by orchestration state.
 
 To copy diagnostics to a persistent local directory, set:
 
