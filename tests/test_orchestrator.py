@@ -8,6 +8,7 @@ import pytest
 
 from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider, ProviderError
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
+from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import _timestamp, close_task, run_loop, validate_handoff
 from devlab.prompts import build_session_prompt, build_system_prompt
@@ -1288,8 +1289,9 @@ class TestRunLoop:
 
 class TestValidateHandoff:
     def test_valid_handoff(self, tmp_path: Path) -> None:
-        handoff = tmp_path / "handoff.md"
-        handoff.write_text(
+        _setup_tree(tmp_path)
+        path = tmp_path / "handoff.md"
+        path.write_text(
             "# Handoff\n"
             "## Done\n- Work\n"
             "## Changed Artifacts\n- None\n"
@@ -1297,20 +1299,12 @@ class TestValidateHandoff:
             "## Addressed Findings\n- None\n"
             "## Next Session Hint\nContinue\n"
         )
-        valid, error = validate_handoff(handoff)
-        assert valid is True
-        assert error == ""
-
-    def test_rejects_empty_handoff(self, tmp_path: Path) -> None:
-        handoff = tmp_path / "handoff.md"
-        handoff.write_text("")
-        valid, error = validate_handoff(handoff)
-        assert valid is False
-        assert "empty" in error
+        handoff = parse_handoff(path, "developer")
+        validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
 
 class TestValidateReviewerOutcome:
-    def _handoff(self, tmp_path: Path, *, open_issues: str = "- None") -> Path:
+    def _handoff(self, tmp_path: Path, *, open_issues: str = "- None") -> Handoff:
         path = tmp_path / "handoff.md"
         path.write_text(
             "# Handoff\n"
@@ -1320,7 +1314,7 @@ class TestValidateReviewerOutcome:
             "## Addressed Findings\n- None\n"
             "## Next Session Hint\nContinue\n"
         )
-        return path
+        return parse_handoff(path, "reviewer")
 
     def _approved_body(self, task_id: str, title: str) -> str:
         return (
@@ -1334,12 +1328,8 @@ class TestValidateReviewerOutcome:
         _write_task(tmp_path, "T0001", "First")
         handoff = self._handoff(tmp_path)
 
-        valid, error = validate_handoff(
-            handoff, role_name="reviewer", snapshot=Workspace(tmp_path).snapshot,
-        )
-
-        assert valid is False
-        assert "no task awaiting review" in error
+        with pytest.raises(HandoffError, match="no task awaiting review"):
+            validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
     def test_rejects_open_issues_with_approved_task(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -1349,36 +1339,23 @@ class TestValidateReviewerOutcome:
         )
         handoff = self._handoff(tmp_path, open_issues="- Code needs refactoring.")
 
-        valid, error = validate_handoff(
-            handoff, role_name="reviewer", snapshot=Workspace(tmp_path).snapshot,
-        )
-
-        assert valid is False
-        assert "open issues but task review is approved" in error
+        with pytest.raises(HandoffError, match="open issues but task review is approved"):
+            validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
     def test_rejects_no_open_issues_without_approval(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", status="in_review")
         handoff = self._handoff(tmp_path)
 
-        valid, error = validate_handoff(
-            handoff, role_name="reviewer", snapshot=Workspace(tmp_path).snapshot,
-        )
-
-        assert valid is False
-        assert "no open issues but task review is not approved" in error
+        with pytest.raises(HandoffError, match="no open issues but task review is not approved"):
+            validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
     def test_accepts_rejection_with_open_issues(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", status="in_review")
         handoff = self._handoff(tmp_path, open_issues="- Code needs refactoring.")
 
-        valid, error = validate_handoff(
-            handoff, role_name="reviewer", snapshot=Workspace(tmp_path).snapshot,
-        )
-
-        assert valid is True
-        assert error == ""
+        validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
     def test_accepts_approval_without_open_issues(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -1388,12 +1365,7 @@ class TestValidateReviewerOutcome:
         )
         handoff = self._handoff(tmp_path)
 
-        valid, error = validate_handoff(
-            handoff, role_name="reviewer", snapshot=Workspace(tmp_path).snapshot,
-        )
-
-        assert valid is True
-        assert error == ""
+        validate_handoff(handoff, Workspace(tmp_path).snapshot)
 
 
 class TestTimestamp:

@@ -135,26 +135,19 @@ def invoke_session(
 
 
 def validate_handoff(
-    handoff_path: Path,
-    *,
-    role_name: str | None = None,
-    snapshot: WorkspaceSnapshot | None = None,
-) -> tuple[bool, str]:
-    try:
-        handoff = parse_handoff(handoff_path, role_name or "")
-    except HandoffError as exc:
-        return False, str(exc)
+    handoff: Handoff,
+    snapshot: WorkspaceSnapshot,
+) -> None:
     if "unrecoverable" in handoff.open_issues.lower():
-        return False, "handoff reports an unrecoverable issue"
-    if role_name == "planner" and snapshot is not None:
+        raise HandoffError("handoff reports an unrecoverable issue")
+    if handoff.role_name == "planner":
         planner_error = _validate_planner_addressed_findings(snapshot, handoff)
         if planner_error:
-            return False, planner_error
-    if role_name == "reviewer" and snapshot is not None:
+            raise HandoffError(planner_error)
+    if handoff.role_name == "reviewer":
         reviewer_error = _validate_reviewer_outcome(snapshot, handoff)
         if reviewer_error:
-            return False, reviewer_error
-    return True, ""
+            raise HandoffError(reviewer_error)
 
 
 def archive_handoff(root: Path, role_name: str) -> Path:
@@ -213,12 +206,11 @@ def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> 
         workspace.finding(finding_id).resolve_if_complete()
 
 
-def process_handoff(workspace: Workspace, role_name: str) -> None:
-    archived = archive_handoff(workspace.root, role_name)
-    handoff = parse_handoff(archived, role_name)
+def process_handoff(handoff: Handoff, workspace: Workspace) -> None:
+    archived = archive_handoff(workspace.root, handoff.role_name)
     logger.info("Handoff archived to %s", archived.name)
 
-    if role_name == "architect":
+    if handoff.role_name == "architect":
         milestone = workspace.snapshot.select_architecture_review_milestone()
         if milestone is not None:
             if handoff.has_open_issues:
@@ -230,7 +222,7 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
                 logger.info("Architecture review reported open issues; finding created")
             workspace.milestone(milestone).mark_architecture_reviewed(archived)
             logger.info("Milestone %s marked architecture-reviewed", milestone)
-    elif role_name == "developer":
+    elif handoff.role_name == "developer":
         task = workspace.snapshot.select_next_development_task()
         if task and task.acceptance_criteria_complete:
             task_handle = workspace.task(task.id)
@@ -239,15 +231,15 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
                 "Task %s completed by developer; status set to in_review",
                 task_handle.path.name,
             )
-    elif role_name == "planner":
+    elif handoff.role_name == "planner":
         _mark_addressed_findings_planned(workspace, handoff)
-    elif role_name == "reviewer":
+    elif handoff.role_name == "reviewer":
         task = workspace.snapshot.select_next_review_task()
         if task and task.review_approved and not handoff.has_open_issues:
             task_handle = workspace.task(task.id)
             task_handle.close()
             logger.info(
-                "Task %s closed by %s; status set to closed", task_handle.path.name, role_name
+                "Task %s closed by %s; status set to closed", task_handle.path.name, handoff.role_name
             )
             task_handle.resolve_addressed_findings()
         elif task and handoff.has_open_issues:
@@ -257,7 +249,7 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
                 "Task %s rejected by reviewer; status set to changes_requested",
                 task_handle.path.name,
             )
-    elif role_name == "integrator":
+    elif handoff.role_name == "integrator":
         milestone = workspace.snapshot.select_integration_milestone()
         if handoff.has_open_issues:
             finding = workspace.create_finding_from_handoff(
@@ -503,17 +495,17 @@ def run_loop(
         workspace.did_mutate()
 
         handoff_path = artifacts_dir / "handoff.md"
-        is_valid, error = validate_handoff(
-            handoff_path, role_name=role_name, snapshot=workspace.snapshot,
-        )
-        if not is_valid:
-            message = _handoff_error_message(error, stdout_log, stderr_log, config_log)
+        try:
+            handoff = parse_handoff(handoff_path, role_name)
+            validate_handoff(handoff, workspace.snapshot)
+        except HandoffError as exc:
+            message = _handoff_error_message(str(exc), stdout_log, stderr_log, config_log)
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
             return RunResult(
                 sessions_run, False, 1, (SessionError("handoff_validation", message, 1),)
             )
 
-        process_handoff(workspace, role_name)
+        process_handoff(handoff, workspace)
         sessions_run += 1
 
         if not auto:
