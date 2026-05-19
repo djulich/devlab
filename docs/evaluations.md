@@ -45,6 +45,22 @@ DEVLAB_LIVE_AGENTS_TOML=/path/to/agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
 ```
 
+For DevLab development, keep environment-specific live-agent configs outside version control. The recommended repo-local convention is:
+
+```text
+.local/live-eval/<environment>.agents.toml
+```
+
+For example:
+
+```bash
+DEVLAB_LIVE_EVALS=1 \
+DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
+```
+
+These files are local operator config: they may encode installed CLIs, account-specific providers, models, auth assumptions, or machine-specific timeouts. Commit sanitized examples separately if a shared starting point is useful.
+
 Useful environment variables:
 
 - `DEVLAB_LIVE_EVALS=1`: enable live evaluations.
