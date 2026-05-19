@@ -28,6 +28,8 @@ Priority: high. Mock-provider tests validate orchestration mechanics but do not 
 
 Direction:
 
+Detailed implementation plan: `docs/plans/devlab-workflow-evaluations.md`.
+
 - Build on the existing end-to-end `MockProvider` tests.
 - Add deterministic scripted fake-agent scenarios that write canned role outputs for known specs without tokens.
 - Keep live-agent evaluations separate from default tests.
