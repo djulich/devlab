@@ -1,6 +1,6 @@
 # Workflow Contract Hardening Plan
 
-This plan implements TODO #1 from `docs/devlab-todo.md`: make workflow state transitions depend on well-defined artifact contracts instead of fragile broad Markdown/text searches.
+This plan implements TODO #1 from `docs/todo.md`: make workflow state transitions depend on well-defined artifact contracts instead of fragile broad Markdown/text searches.
 
 ## Goal
 

@@ -23,7 +23,7 @@ DevLab is a reusable CLI/package that turns repository-stored specs, plans, and 
 - `CONTEXT.md`: DevLab terminology.
 - `docs/adr/`: durable architectural decisions that are hard to reverse, surprising without context, and trade-off based.
 - `AGENTS.md`: operational instructions for coding agents.
-- `docs/devlab-design.md`: human-oriented overview; do not make it the only source for agent-critical terms, constraints, or decisions.
+- `docs/design.md`: human-oriented overview; do not make it the only source for agent-critical terms, constraints, or decisions.
 
 ## Module boundaries
 

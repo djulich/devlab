@@ -136,7 +136,7 @@ Keep these as direct output:
 
 ### Phase 3: Documentation and TODO update
 
-1. Update `docs/devlab-todo.md` item #13 to `initial implementation complete` once implemented.
+1. Update `docs/todo.md` item #13 to `initial implementation complete` once implemented.
 2. Update user-facing docs if present; at minimum update `docs/agent-configuration.md` or add a short logging section elsewhere if a better user docs file exists by then.
 3. Clarify that DevLab run logs are separate from `.devlab/logs/agents/` agent subprocess logs.
 

@@ -206,7 +206,7 @@ Update `docs/evaluations.md` with:
 - result export instructions
 - guidance that live results are local diagnostics, not default CI
 
-Update `docs/devlab-todo.md` item #3 after implementation:
+Update `docs/todo.md` item #3 after implementation:
 
 - mark live eval harness and API/smoke scenario complete
 - leave only follow-up about collecting live results and refining diagnostics if needed

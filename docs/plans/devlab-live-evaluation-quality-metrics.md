@@ -181,7 +181,7 @@ Update `docs/evaluations.md`:
 - describe flagged artifact directories
 - describe prompt/log metrics when retention is enabled
 
-Update `docs/devlab-todo.md` TODO #3 open work to mention collecting baselines with new quality metrics.
+Update `docs/todo.md` TODO #3 open work to mention collecting baselines with new quality metrics.
 
 ## Acceptance criteria
 

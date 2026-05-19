@@ -313,7 +313,7 @@ Live-agent grading should use the same black-box checks as scripted scenarios, b
 
 ### Phase 5: Documentation and roadmap update
 
-1. Update `docs/devlab-todo.md` item #3 to reflect initial implementation status once Phases 1-3 are complete.
+1. Update `docs/todo.md` item #3 to reflect initial implementation status once Phases 1-3 are complete.
 2. Add a short `docs/evaluations.md` explaining deterministic vs live evaluations, how to run them, and how to interpret diagnostics.
 3. Consider linking evaluation results from README once user-facing docs exist.
 

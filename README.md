@@ -138,7 +138,7 @@ uv run devlab doctor
 
 ## More documentation
 
-- [`docs/devlab-design.md`](docs/devlab-design.md) — architecture and workflow overview.
+- [`docs/design.md`](docs/design.md) — architecture and workflow overview.
 - [`docs/agent-configuration.md`](docs/agent-configuration.md) — target-owned agent command configuration.
 - [`docs/evaluations.md`](docs/evaluations.md) — scripted and live workflow evaluations.
-- [`docs/devlab-todo.md`](docs/devlab-todo.md) — current roadmap and known gaps.
+- [`docs/todo.md`](docs/todo.md) — current roadmap and known gaps.
