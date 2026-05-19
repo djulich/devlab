@@ -37,9 +37,8 @@ Priority: high. DevLab is intended to be a reusable CLI/package, but the reposit
 
 Open work:
 
-- Add a top-level `README.md` with purpose, install instructions, quickstart, and command overview.
-- Document `.devlab/` layout, profiles, agent config, findings, milestones, and handoffs at a user level.
-- Document current maturity: tested orchestrator prototype, not yet proven by broad live-agent evaluations.
+- Expand user-level documentation for profiles, findings, milestones, and handoffs beyond the top-level README.
+- Keep maturity guidance current as live-agent evaluation baselines accumulate.
 - Add or decide on license and release/versioning expectations.
 - Decide whether the dogfood `.devlab/` state should model DevLab's own workflow or remain a starter/example workspace only.
 
@@ -49,7 +48,6 @@ Priority: high-medium. Target-owned `agents.toml` and profile environment lifecy
 
 Open work:
 
-- Document the trust boundary prominently in README/config docs and starter files.
 - Add `doctor` warnings for obviously dangerous profile commands or permission-skip flags where practical.
 - Clarify that DevLab does not sandbox agent commands or environment lifecycle commands.
 - Consider a future workspace trust marker or explicit `--allow-exec-config` mode before running target-owned executable config.
