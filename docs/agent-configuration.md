@@ -55,7 +55,7 @@ Provider sections describe how DevLab invokes a CLI agent.
 ```toml
 [providers.pi]
 command = "pi"
-args = ["-p", "--model", "{model}", "--effort", "{effort}"]
+args = ["-p", "--model", "{model}", "--thinking", "{effort}"]
 prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 ```
 
@@ -95,7 +95,10 @@ prompt_args = []
 ```toml
 [providers.pi]
 command = "pi"
-args = ["-p", "--model", "{model}", "--effort", "{effort}"]
+# Pi uses --thinking for the effort level. When using OpenAI subscription/Codex
+# models, pass the provider explicitly so Pi does not resolve the model through
+# an unauthenticated provider.
+args = ["-p", "--provider", "openai-codex", "--model", "{model}", "--thinking", "{effort}"]
 prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 ```
 
