@@ -11,7 +11,13 @@ from urllib.parse import quote
 from devlab.agents import AgentInvocation
 from devlab.findings import FileFindingTracker
 from devlab.task_tracker import FileTaskTracker
-from tests.evaluations.harness import CheckResult, handoff
+from tests.evaluations.harness import CheckResult
+from tests.helpers import (
+    approve_review_task,
+    complete_acceptance,
+    handoff,
+    write_task,
+)
 
 
 class CalculatorScriptedAgent:
@@ -84,7 +90,7 @@ class CalculatorScriptedAgent:
     def _developer(self, root: Path) -> None:
         task = FileTaskTracker(root).select_next_development_task()
         assert task is not None
-        complete_acceptance(task.path)
+        complete_acceptance(root, task.id)
         if task.id == "T0001":
             complete = not self.reject_first_review or self.role_counts["developer"] > 1
             write_calculator(root, include_subtract=complete)
@@ -138,7 +144,7 @@ class HttpApiScriptedAgent:
         elif role == "developer":
             task = FileTaskTracker(invocation.root).select_next_development_task()
             assert task is not None
-            complete_acceptance(task.path)
+            complete_acceptance(invocation.root, task.id)
             write_http_app(invocation.root)
         elif role == "reviewer":
             approve_review_task(invocation.root)
@@ -146,49 +152,6 @@ class HttpApiScriptedAgent:
     def handoff_for(self, invocation: AgentInvocation) -> str:
         return handoff(invocation.role_name)
 
-
-def write_task(
-    root: Path,
-    task_id: str,
-    title: str,
-    milestone: str,
-    *,
-    depends_on: list[str] | None = None,
-    addresses_findings: list[str] | None = None,
-) -> None:
-    depends_on = depends_on or []
-    addresses_findings = addresses_findings or []
-    depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
-    findings = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
-    slug = title.lower().replace(" ", "-")
-    path = root / ".devlab/tasks" / f"{task_id}_{slug}.md"
-    path.write_text(
-        "+++\n"
-        f'id = "{task_id}"\n'
-        f'title = "{title}"\n'
-        'status = "open"\n'
-        f'milestone = "{milestone}"\n'
-        'profile = "default"\n'
-        f'depends_on = [{depends}]\n'
-        f'addresses_findings = [{findings}]\n'
-        'validation = []\n'
-        "+++\n\n"
-        f"# {task_id}: {title}\n\n"
-        "## Goal\n"
-        f"Complete {title}.\n\n"
-        "## Acceptance Criteria\n"
-        "- [ ] Required behavior is implemented.\n"
-    )
-
-
-def complete_acceptance(task_path: Path) -> None:
-    task_path.write_text(task_path.read_text().replace("- [ ]", "- [x]"))
-
-
-def approve_review_task(root: Path) -> None:
-    task = FileTaskTracker(root).select_next_review_task()
-    assert task is not None
-    task.path.write_text(task.path.read_text() + "\n## Review\n- [x] Approved\n")
 
 
 def write_calculator(root: Path, *, include_subtract: bool) -> None:

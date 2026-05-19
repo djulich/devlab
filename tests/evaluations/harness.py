@@ -411,27 +411,6 @@ def file_contains_check(name: str, relative_path: str, expected_text: str) -> Bl
     return check
 
 
-def handoff(
-    role_name: str,
-    *,
-    changed: str = "- Repository artifacts updated.",
-    open_issues: str = "- None",
-    addressed: str = "- None",
-) -> str:
-    return (
-        f"# Handoff: {role_name}\n"
-        "## Done\n"
-        "- Scripted evaluation session completed.\n"
-        "## Changed Artifacts\n"
-        f"{changed}\n"
-        "## Open Issues\n"
-        f"{open_issues}\n"
-        "## Addressed Findings\n"
-        f"{addressed}\n"
-        "## Next Session Hint\n"
-        "Continue.\n"
-    )
-
 
 def _export_diagnostics(path: Path, scenario_id: str, provider_mode: str) -> None:
     results_dir = os.environ.get("DEVLAB_EVAL_RESULTS_DIR")

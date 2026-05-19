@@ -8,6 +8,12 @@ from devlab.init import init_workspace
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import RunResult, run_loop
 from devlab.task_tracker import FileTaskTracker, TaskStatus
+from tests.helpers import (
+    approve_review_task,
+    complete_acceptance,
+    handoff,
+    write_task,
+)
 
 
 class HappyPathWorkflow:
@@ -37,23 +43,23 @@ class HappyPathWorkflow:
                 "## M1: Foundation\n"
                 "- T0001: Implement tiny CLI\n"
             )
-            _write_task(call.root, "T0001", "Implement tiny CLI", "M1")
+            write_task(call.root, "T0001", "Implement tiny CLI", "M1")
         elif call.role_name == "developer":
             assert "## Assigned Task" in call.session_prompt
             assert "T0001" in call.session_prompt
             assert "## Task Profile" in call.session_prompt
-            _check_acceptance(call.root, "T0001")
+            complete_acceptance(call.root, "T0001")
             (call.root / "tiny_cli.py").write_text("print('hello from tiny cli')\n")
         elif call.role_name == "reviewer":
             assert "## Task Awaiting Review" in call.session_prompt
             assert "## Latest Developer Handoff" in call.session_prompt
-            _approve_review_task(call.root)
+            approve_review_task(call.root)
         elif call.role_name == "integrator":
             assert "## Assigned Completed Milestone" in call.session_prompt
             assert "T0001_implement-tiny-cli.md" in call.session_prompt
 
     def handoff_for(self, call: AgentCall) -> str:
-        return _handoff(call.role_name, changed="- Repository workflow artifacts updated.")
+        return handoff(call.role_name, changed="- Repository workflow artifacts updated.")
 
 
 class CorrectiveWorkflow:
@@ -80,7 +86,7 @@ class CorrectiveWorkflow:
                     "## M1: Foundation\n"
                     "- T0001: Implement tiny CLI\n"
                 )
-                _write_task(call.root, "T0001", "Implement tiny CLI", "M1")
+                write_task(call.root, "T0001", "Implement tiny CLI", "M1")
             else:
                 assert "## Open Findings" in call.session_prompt
                 assert "F0001" in call.session_prompt
@@ -90,7 +96,7 @@ class CorrectiveWorkflow:
                     "- T0001: Implement tiny CLI\n"
                     "- T0002: Add CLI smoke test\n"
                 )
-                _write_task(
+                write_task(
                     call.root,
                     "T0002",
                     "Add CLI smoke test",
@@ -102,25 +108,25 @@ class CorrectiveWorkflow:
             task = FileTaskTracker(call.root).select_next_development_task()
             assert task is not None
             assert task.id in call.session_prompt
-            _check_acceptance(call.root, task.id)
+            complete_acceptance(call.root, task.id)
             if task.id == "T0001":
                 (call.root / "tiny_cli.py").write_text("print('hello from tiny cli')\n")
             elif task.id == "T0002":
                 (call.root / "test_tiny_cli.py").write_text("def test_smoke():\n    assert True\n")
         elif call.role_name == "reviewer":
-            _approve_review_task(call.root)
+            approve_review_task(call.root)
         elif call.role_name == "integrator":
             assert "## Assigned Completed Milestone" in call.session_prompt
 
     def handoff_for(self, call: AgentCall) -> str:
         if call.role_name == "integrator" and self.role_counts["integrator"] == 1:
-            return _handoff(
+            return handoff(
                 call.role_name,
                 open_issues="- The milestone lacks a smoke test for the CLI.",
             )
         if call.role_name == "planner" and self.role_counts["planner"] == 2:
-            return _handoff(call.role_name, addressed="- F0001: T0002")
-        return _handoff(call.role_name)
+            return handoff(call.role_name, addressed="- F0001: T0002")
+        return handoff(call.role_name)
 
 
 class ChangesRequestedWorkflow:
@@ -146,10 +152,10 @@ class ChangesRequestedWorkflow:
                 "## M1: Foundation\n"
                 "- T0001: Implement tiny CLI\n"
             )
-            _write_task(call.root, "T0001", "Implement tiny CLI", "M1")
+            write_task(call.root, "T0001", "Implement tiny CLI", "M1")
         elif call.role_name == "developer":
             assert "T0001" in call.session_prompt
-            _check_acceptance(call.root, "T0001")
+            complete_acceptance(call.root, "T0001")
             if count == 1:
                 (call.root / "tiny_cli.py").write_text("print('hello')\n")
             else:
@@ -158,17 +164,17 @@ class ChangesRequestedWorkflow:
             if count == 1:
                 pass
             else:
-                _approve_review_task(call.root)
+                approve_review_task(call.root)
         elif call.role_name == "integrator":
             assert "## Assigned Completed Milestone" in call.session_prompt
 
     def handoff_for(self, call: AgentCall) -> str:
         if call.role_name == "reviewer" and self.role_counts["reviewer"] == 1:
-            return _handoff(
+            return handoff(
                 call.role_name,
                 open_issues="- CLI output is incomplete, needs full message.",
             )
-        return _handoff(call.role_name)
+        return handoff(call.role_name)
 
 
 def test_run_loop_completes_full_happy_path_workflow(tmp_path: Path) -> None:
@@ -290,74 +296,6 @@ def _init_target_workspace(root: Path) -> None:
         'default_validation = []\n'
         '\n[environment]\n'
         'managed_roles = []\n'
-    )
-
-
-def _write_task(
-    root: Path,
-    task_id: str,
-    title: str,
-    milestone: str,
-    *,
-    depends_on: list[str] | None = None,
-    addresses_findings: list[str] | None = None,
-) -> Path:
-    depends_on = depends_on or []
-    addresses_findings = addresses_findings or []
-    depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
-    findings = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
-    slug = title.lower().replace(" ", "-")
-    path = root / ".devlab/tasks" / f"{task_id}_{slug}.md"
-    path.write_text(
-        "+++\n"
-        f'id = "{task_id}"\n'
-        f'title = "{title}"\n'
-        'status = "open"\n'
-        f'milestone = "{milestone}"\n'
-        'profile = "default"\n'
-        f'depends_on = [{depends}]\n'
-        f'addresses_findings = [{findings}]\n'
-        'validation = []\n'
-        "+++\n\n"
-        f"# {task_id}: {title}\n\n"
-        "## Goal\n"
-        f"Complete {title}.\n\n"
-        "## Acceptance Criteria\n"
-        "- [ ] Done\n"
-    )
-    return path
-
-
-def _check_acceptance(root: Path, task_id: str) -> None:
-    task = FileTaskTracker(root).get(task_id)
-    task.path.write_text(task.path.read_text().replace("- [ ] Done", "- [x] Done"))
-
-
-def _approve_review_task(root: Path) -> None:
-    task = FileTaskTracker(root).select_next_review_task()
-    assert task is not None
-    task.path.write_text(task.path.read_text() + "\n## Review\n- [x] Approved\n")
-
-
-def _handoff(
-    role_name: str,
-    *,
-    changed: str = "- None",
-    open_issues: str = "- None",
-    addressed: str = "- None",
-) -> str:
-    return (
-        f"# Handoff: {role_name}\n"
-        "## Done\n"
-        "- Mock session completed.\n"
-        "## Changed Artifacts\n"
-        f"{changed}\n"
-        "## Open Issues\n"
-        f"{open_issues}\n"
-        "## Addressed Findings\n"
-        f"{addressed}\n"
-        "## Next Session Hint\n"
-        "Continue.\n"
     )
 
 
