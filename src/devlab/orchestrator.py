@@ -11,7 +11,13 @@ from devlab.agent_config import (
     format_resolved_agent_config,
     load_agent_configuration,
 )
-from devlab.agents import AgentInvocation, AgentProvider, AgentResult, provider_for_role
+from devlab.agents import (
+    AgentInvocation,
+    AgentProvider,
+    AgentResult,
+    ProviderError,
+    provider_for_role,
+)
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
@@ -448,12 +454,10 @@ def run_loop(
             stdout_log=stdout_log,
             stderr_log=stderr_log,
         )
+        agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
         try:
-            agent_result = invoke_session(
-                invocation,
-                agent_provider=provider_for_role(role_name, agent_providers, role_agent_providers),
-            )
-        except Exception as exc:
+            agent_result = invoke_session(invocation, agent_provider=agent_provider)
+        except ProviderError as exc:
             agent_error = SessionError(
                 "agent_invocation",
                 _agent_error_message(

@@ -13,6 +13,10 @@ AgentFailureKind = Literal[
 ]
 
 
+class ProviderError(Exception):
+    """Raised by agent providers for anticipated operational failures."""
+
+
 @dataclasses.dataclass(frozen=True)
 class AgentResult:
     return_code: int

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider
+from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider, ProviderError
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import _timestamp, close_task, run_loop, validate_handoff
@@ -312,6 +312,14 @@ class FailingProvider:
             stdout_log=invocation.stdout_log,
             stderr_log=invocation.stderr_log,
         )
+
+
+class RaisingProvider:
+    def __init__(self, exception: Exception) -> None:
+        self.exception = exception
+
+    def invoke(self, invocation: AgentInvocation) -> AgentResult:
+        raise self.exception
 
 
 class TestRunLoop:
@@ -1121,6 +1129,38 @@ class TestRunLoop:
 
         assert result.exit_code == 12
         assert (tmp_path / "teardown-ran").exists()
+
+    def test_provider_error_is_caught_and_structured(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = RaisingProvider(ProviderError("connection refused"))
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 1
+        assert result.completed is False
+        assert result.errors[0].phase == "agent_invocation"
+        assert "connection refused" in result.errors[0].message
+
+    def test_non_provider_error_propagates(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = RaisingProvider(RuntimeError("bug in provider"))
+
+        with pytest.raises(RuntimeError, match="bug in provider"):
+            run_loop(
+                tmp_path,
+                auto=True,
+                max_sessions=1,
+                agent_providers={"default": provider},
+            )
 
     def test_invalid_handoff_error_includes_agent_log_paths(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
