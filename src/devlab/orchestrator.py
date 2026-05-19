@@ -76,40 +76,76 @@ def _agent_log_path(root: Path, invocation_id: str, suffix: str) -> Path:
     return root / AGENT_LOG_DIR / f"{invocation_id}.{suffix}"
 
 
-def _log_resolved_agent_config(
+@dataclasses.dataclass(frozen=True)
+class SessionContext:
+    """Per-session log paths and identity, built once per loop iteration."""
+
+    root: Path
+    session_number: int
+    role_name: str
+    invocation_id: str
+    stdout_log: Path
+    stderr_log: Path
+    system_prompt_log: Path | None
+    session_prompt_log: Path | None
+
+    def build_invocation(
+        self, system_prompt: str, session_prompt: str
+    ) -> AgentInvocation:
+        return AgentInvocation(
+            root=self.root,
+            role_name=self.role_name,
+            system_prompt=system_prompt,
+            session_prompt=session_prompt,
+            invocation_id=self.invocation_id,
+            stdout_log=self.stdout_log,
+            stderr_log=self.stderr_log,
+        )
+
+    def log_resolved_config(self, config: ResolvedAgentConfig) -> Path:
+        path = _agent_log_path(self.root, self.invocation_id, "config.toml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = format_resolved_agent_config(config)
+        text += f'stdout_log = "{self.stdout_log.as_posix()}"\n'
+        text += f'stderr_log = "{self.stderr_log.as_posix()}"\n'
+        if self.system_prompt_log is not None:
+            text += f'system_prompt_log = "{self.system_prompt_log.as_posix()}"\n'
+        if self.session_prompt_log is not None:
+            text += f'session_prompt_log = "{self.session_prompt_log.as_posix()}"\n'
+        path.write_text(text)
+        return path
+
+    def write_prompt_logs(self, system_prompt: str, session_prompt: str) -> None:
+        if self.system_prompt_log is None or self.session_prompt_log is None:
+            return
+        self.system_prompt_log.parent.mkdir(parents=True, exist_ok=True)
+        self.system_prompt_log.write_text(system_prompt)
+        self.session_prompt_log.parent.mkdir(parents=True, exist_ok=True)
+        self.session_prompt_log.write_text(session_prompt)
+
+
+def _build_session_context(
     root: Path,
-    config: ResolvedAgentConfig,
+    session_number: int,
+    role_name: str,
     *,
-    invocation_id: str,
-    stdout_log: Path,
-    stderr_log: Path,
-    system_prompt_log: Path | None = None,
-    session_prompt_log: Path | None = None,
-) -> Path:
-    path = _agent_log_path(root, invocation_id, "config.toml")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = format_resolved_agent_config(config)
-    text += f'stdout_log = "{stdout_log.as_posix()}"\n'
-    text += f'stderr_log = "{stderr_log.as_posix()}"\n'
-    if system_prompt_log is not None:
-        text += f'system_prompt_log = "{system_prompt_log.as_posix()}"\n'
-    if session_prompt_log is not None:
-        text += f'session_prompt_log = "{session_prompt_log.as_posix()}"\n'
-    path.write_text(text)
-    return path
-
-
-def _write_prompt_logs(
-    *,
-    system_prompt: str,
-    session_prompt: str,
-    system_prompt_log: Path,
-    session_prompt_log: Path,
-) -> None:
-    system_prompt_log.parent.mkdir(parents=True, exist_ok=True)
-    system_prompt_log.write_text(system_prompt)
-    session_prompt_log.parent.mkdir(parents=True, exist_ok=True)
-    session_prompt_log.write_text(session_prompt)
+    retain_prompts: bool,
+) -> SessionContext:
+    invocation_id = _agent_invocation_id(session_number, role_name)
+    return SessionContext(
+        root=root,
+        session_number=session_number,
+        role_name=role_name,
+        invocation_id=invocation_id,
+        stdout_log=_agent_log_path(root, invocation_id, "stdout.log"),
+        stderr_log=_agent_log_path(root, invocation_id, "stderr.log"),
+        system_prompt_log=(
+            _agent_log_path(root, invocation_id, "system-prompt.md") if retain_prompts else None
+        ),
+        session_prompt_log=(
+            _agent_log_path(root, invocation_id, "session-prompt.md") if retain_prompts else None
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +326,10 @@ def _environment_for_session(
 
 
 def _agent_error_message(
-    role_name: str, result: AgentResult, config_log: Path | None
+    ctx: SessionContext, result: AgentResult, config_log: Path | None
 ) -> str:
     details = [
-        f"{role_name} session failed ({result.failure_kind})",
+        f"{ctx.role_name} session failed ({result.failure_kind})",
         f"exit_code={result.return_code}",
     ]
     if result.message:
@@ -302,15 +338,15 @@ def _agent_error_message(
         details.append("command=" + " ".join(result.command))
     if result.timeout_seconds is not None:
         details.append(f"timeout_seconds={result.timeout_seconds}")
-    details.extend(_log_path_details(result.stdout_log, result.stderr_log, config_log))
+    details.extend(_log_path_details(ctx.stdout_log, ctx.stderr_log, config_log))
     return "; ".join(details)
 
 
 def _handoff_error_message(
-    error: str, stdout_log: Path, stderr_log: Path, config_log: Path | None
+    ctx: SessionContext, error: str, config_log: Path | None
 ) -> str:
     details = [error]
-    details.extend(_log_path_details(stdout_log, stderr_log, config_log))
+    details.extend(_log_path_details(ctx.stdout_log, ctx.stderr_log, config_log))
     return "; ".join(details)
 
 
@@ -376,32 +412,17 @@ def run_loop(
                 workspace.milestone(milestone).mark_ready_for_integration()
 
         role = ROLES[role_name]
-        session_number = sessions_run + 1
-        invocation_id = _agent_invocation_id(session_number, role_name)
-        stdout_log = _agent_log_path(root, invocation_id, "stdout.log")
-        stderr_log = _agent_log_path(root, invocation_id, "stderr.log")
-        system_prompt_log = (
-            _agent_log_path(root, invocation_id, "system-prompt.md") if retain_prompts else None
-        )
-        session_prompt_log = (
-            _agent_log_path(root, invocation_id, "session-prompt.md") if retain_prompts else None
+        ctx = _build_session_context(
+            root, sessions_run + 1, role_name, retain_prompts=retain_prompts,
         )
         config_log: Path | None = None
 
-        logger.info("Session %s: selecting role '%s'", session_number, role_name)
+        logger.info("Session %s: selecting role '%s'", ctx.session_number, role_name)
         if resolved_agent_configs is not None:
-            config_log = _log_resolved_agent_config(
-                root,
-                resolved_agent_configs[role_name],
-                invocation_id=invocation_id,
-                stdout_log=stdout_log,
-                stderr_log=stderr_log,
-                system_prompt_log=system_prompt_log,
-                session_prompt_log=session_prompt_log,
-            )
+            config_log = ctx.log_resolved_config(resolved_agent_configs[role_name])
             logger.debug("Resolved agent config written to %s", config_log)
-            logger.debug("Agent stdout log: %s", stdout_log)
-            logger.debug("Agent stderr log: %s", stderr_log)
+            logger.debug("Agent stdout log: %s", ctx.stdout_log)
+            logger.debug("Agent stderr log: %s", ctx.stderr_log)
 
         artifacts_dir = root / ARTIFACTS_DIR / role_name
         if artifacts_dir.exists():
@@ -411,13 +432,7 @@ def run_loop(
         try:
             system_prompt = build_system_prompt(root, role)
             session_prompt = build_session_prompt(workspace.snapshot, role_name)
-            if system_prompt_log is not None and session_prompt_log is not None:
-                _write_prompt_logs(
-                    system_prompt=system_prompt,
-                    session_prompt=session_prompt,
-                    system_prompt_log=system_prompt_log,
-                    session_prompt_log=session_prompt_log,
-                )
+            ctx.write_prompt_logs(system_prompt, session_prompt)
             environment = _environment_for_session(root, workspace.snapshot, role_name)
         except ProfileNotFoundError as exc:
             logger.error("%s. Stopping.", exc)
@@ -437,15 +452,7 @@ def run_loop(
 
         agent_result = AgentResult(return_code=1, failure_kind="provider_error")
         agent_error: SessionError | None = None
-        invocation = AgentInvocation(
-            root=root,
-            role_name=role_name,
-            system_prompt=system_prompt,
-            session_prompt=session_prompt,
-            invocation_id=invocation_id,
-            stdout_log=stdout_log,
-            stderr_log=stderr_log,
-        )
+        invocation = ctx.build_invocation(system_prompt, session_prompt)
         agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
         try:
             agent_result = invoke_session(invocation, agent_provider=agent_provider)
@@ -453,14 +460,11 @@ def run_loop(
             agent_error = SessionError(
                 "agent_invocation",
                 _agent_error_message(
-                    role_name,
+                    ctx,
                     AgentResult(
                         return_code=1,
                         failure_kind="provider_error",
                         message=f"agent provider error: {exc}",
-                        role_name=role_name,
-                        stdout_log=stdout_log,
-                        stderr_log=stderr_log,
                     ),
                     config_log,
                 ),
@@ -470,7 +474,7 @@ def run_loop(
             if not agent_result.succeeded:
                 agent_error = SessionError(
                     "agent_invocation",
-                    _agent_error_message(role_name, agent_result, config_log),
+                    _agent_error_message(ctx, agent_result, config_log),
                     agent_result.return_code or 1,
                 )
 
@@ -499,7 +503,7 @@ def run_loop(
             handoff = parse_handoff(handoff_path, role_name)
             validate_handoff(handoff, workspace.snapshot)
         except HandoffError as exc:
-            message = _handoff_error_message(str(exc), stdout_log, stderr_log, config_log)
+            message = _handoff_error_message(ctx, str(exc), config_log)
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
             return RunResult(
                 sessions_run, False, 1, (SessionError("handoff_validation", message, 1),)
