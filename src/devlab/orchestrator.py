@@ -5,6 +5,7 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
+from devlab._logging import logger
 from devlab.agent_config import (
     ResolvedAgentConfig,
     format_resolved_agent_config,
@@ -97,9 +98,9 @@ def invoke_session(
     agent_provider: AgentProvider,
 ) -> AgentResult:
     """Invoke an agent session through the configured provider."""
-    print(f"--- Invoking {invocation.role_name} session ---")
+    logger.info("Invoking %s session", invocation.role_name)
     result = agent_provider.invoke(invocation)
-    print(f"--- {invocation.role_name} session exited with code {result.return_code} ---")
+    logger.info("%s session exited with code %s", invocation.role_name, result.return_code)
     return result
 
 
@@ -148,7 +149,7 @@ def archive_handoff(root: Path, role_name: str) -> Path:
 def close_task(workspace: Workspace, task_path: Path, role_name: str = "reviewer") -> None:
     task = workspace.task_from_path(task_path)
     task.close()
-    print(f"  Task {task.path.name} closed by {role_name}; status set to closed")
+    logger.info("Task %s closed by %s; status set to closed", task.path.name, role_name)
     task.resolve_addressed_findings()
 
 
@@ -190,7 +191,7 @@ def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> 
 def process_handoff(workspace: Workspace, role_name: str) -> None:
     archived = archive_handoff(workspace.root, role_name)
     handoff = parse_handoff(archived, role_name)
-    print(f"  Handoff archived to {archived.name}")
+    logger.info("Handoff archived to %s", archived.name)
 
     if role_name == "architect":
         milestone = workspace.snapshot.select_architecture_review_milestone()
@@ -201,17 +202,17 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
                     milestone=milestone,
                     handoff_path=archived,
                 )
-                print("  Architecture review reported open issues; finding created")
+                logger.info("Architecture review reported open issues; finding created")
             workspace.milestone(milestone).mark_architecture_reviewed(archived)
-            print(f"  Milestone {milestone} marked architecture-reviewed")
+            logger.info("Milestone %s marked architecture-reviewed", milestone)
     elif role_name == "developer":
         task = workspace.snapshot.select_next_development_task()
         if task and task.acceptance_criteria_complete:
             task_handle = workspace.task(task.id)
             task_handle.mark_in_review()
-            print(
-                f"  Task {task_handle.path.name} completed by developer; "
-                "status set to in_review"
+            logger.info(
+                "Task %s completed by developer; status set to in_review",
+                task_handle.path.name,
             )
     elif role_name == "planner":
         _mark_addressed_findings_planned(workspace, handoff)
@@ -220,14 +221,16 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
         if task and task.review_approved and not handoff.has_open_issues:
             task_handle = workspace.task(task.id)
             task_handle.close()
-            print(f"  Task {task_handle.path.name} closed by {role_name}; status set to closed")
+            logger.info(
+                "Task %s closed by %s; status set to closed", task_handle.path.name, role_name
+            )
             task_handle.resolve_addressed_findings()
         elif task and handoff.has_open_issues:
             task_handle = workspace.task(task.id)
             task_handle.mark_changes_requested()
-            print(
-                f"  Task {task_handle.path.name} rejected by reviewer; "
-                "status set to changes_requested"
+            logger.info(
+                "Task %s rejected by reviewer; status set to changes_requested",
+                task_handle.path.name,
             )
     elif role_name == "integrator":
         milestone = workspace.snapshot.select_integration_milestone()
@@ -239,11 +242,13 @@ def process_handoff(workspace: Workspace, role_name: str) -> None:
             )
             if milestone is not None:
                 workspace.milestone(milestone).mark_integration_failed(finding.id)
-            print("  Integration reported open issues; finding created for planner follow-up")
+            logger.info(
+                "Integration reported open issues; finding created for planner follow-up"
+            )
             return
         if milestone is not None:
             workspace.milestone(milestone).mark_integrated(archived)
-            print(f"  Milestone {milestone} marked integrated")
+            logger.info("Milestone %s marked integrated", milestone)
 
 
 # ---------------------------------------------------------------------------
@@ -338,13 +343,13 @@ def run_loop(
         role_name = workspace.snapshot.assess_state()
         if role_name is None:
             if workspace.snapshot.blocked_tasks():
-                print(
+                logger.info(
                     "No task is eligible; remaining development tasks"
                     " are blocked by dependencies."
                 )
             else:
-                print("All milestones complete or no task can proceed.")
-            print("Stopping.")
+                logger.info("All milestones complete or no task can proceed.")
+            logger.info("Stopping.")
             break
 
         if role_name == "integrator":
@@ -359,9 +364,7 @@ def run_loop(
         stderr_log = _agent_log_path(root, invocation_id, "stderr.log")
         config_log: Path | None = None
 
-        print(f"\n{'=' * 60}")
-        print(f"Session {session_number}: selecting role '{role_name}'")
-        print(f"{'=' * 60}")
+        logger.info("Session %s: selecting role '%s'", session_number, role_name)
         if resolved_agent_configs is not None:
             config_log = _log_resolved_agent_config(
                 root,
@@ -370,6 +373,9 @@ def run_loop(
                 stdout_log=stdout_log,
                 stderr_log=stderr_log,
             )
+            logger.debug("Resolved agent config written to %s", config_log)
+            logger.debug("Agent stdout log: %s", stdout_log)
+            logger.debug("Agent stderr log: %s", stderr_log)
 
         artifacts_dir = root / ARTIFACTS_DIR / role_name
         if artifacts_dir.exists():
@@ -381,18 +387,18 @@ def run_loop(
             session_prompt = build_session_prompt(workspace.snapshot, role_name)
             environment = _environment_for_session(root, workspace.snapshot, role_name)
         except ProfileNotFoundError as exc:
-            print(f"ERROR: {exc}. Stopping.")
+            logger.error("%s. Stopping.", exc)
             return RunResult(sessions_run, False, 1,
                              (SessionError("profile_resolution", str(exc), 1),))
 
         manage_environment = role.needs_environment and environment.manages_role(role_name)
         if manage_environment:
             try:
-                print(f"--- Preparing environment for {role_name} session ---")
+                logger.info("Preparing environment for %s session", role_name)
                 environment.pre_session(role_name)
                 environment.setup(role_name)
             except EnvironmentCommandError as exc:
-                print(f"ERROR: {exc}. Stopping.")
+                logger.error("%s. Stopping.", exc)
                 return RunResult(sessions_run, False, 1,
                                  (SessionError("environment_setup", str(exc), 1),))
 
@@ -440,14 +446,14 @@ def run_loop(
         teardown_error: SessionError | None = None
         if manage_environment:
             try:
-                print(f"--- Tearing down environment for {role_name} session ---")
+                logger.info("Tearing down environment for %s session", role_name)
                 environment.post_session(role_name)
             except EnvironmentCommandError as exc:
-                print(f"ERROR: {exc}. Stopping.")
+                logger.error("%s. Stopping.", exc)
                 teardown_error = SessionError("environment_teardown", str(exc), 1)
 
         if agent_error is not None:
-            print(f"ERROR: {agent_error.message}. Stopping.")
+            logger.error("%s. Stopping.", agent_error.message)
             errors = (agent_error,) + ((teardown_error,) if teardown_error else ())
             return RunResult(sessions_run, False, agent_error.exit_code, errors)
         if teardown_error is not None:
@@ -463,7 +469,7 @@ def run_loop(
         )
         if not is_valid:
             message = _handoff_error_message(error, stdout_log, stderr_log, config_log)
-            print(f"ERROR: Invalid handoff produced by {role_name}: {message}. Stopping.")
+            logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
             return RunResult(
                 sessions_run, False, 1, (SessionError("handoff_validation", message, 1),)
             )
@@ -481,7 +487,7 @@ def run_loop(
                 print("Stopped by user.")
                 break
 
-    print(f"\nOrchestrator finished after {sessions_run} session(s).")
+    logger.info("Orchestrator finished after %s session(s).", sessions_run)
     return RunResult(sessions_run, True, 0, ())
 
 

@@ -1,8 +1,10 @@
 # Logging Facility Plan
 
+Status: initial implementation complete. DevLab uses a single `devlab` logger for `run` workflow output, supports `devlab run --quiet`, `--verbose`, and `--log-file`, and leaves report/interactive command output as direct prints.
+
 ## Motivation
 
-DevLab currently uses 31 direct `print()` calls for progress output and error reporting (28 in `orchestrator.py`, 3 in `cli.py`). This has several problems:
+Before the logging facility, DevLab used direct `print()` calls for progress output and error reporting. That had several problems:
 
 - **No level control.** Progress messages, errors, and debug information all go to stdout with no way to filter. A user watching a long run gets workflow state transitions mixed with error messages.
 - **No output routing.** Everything goes to stdout. There is no way to send a log to a file while keeping the terminal clean, or to capture structured output for post-run analysis.

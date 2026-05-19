@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 
+from devlab._logging import configure_logging
 from devlab.doctor import check_workspace, format_doctor_report
 from devlab.init import format_init_result, init_workspace
 from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop
@@ -67,6 +69,25 @@ def main() -> None:
         action="store_true",
         help="Pass --dangerously-skip-permissions to the agent command.",
     )
+    verbosity = run_parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Show only warnings and errors during the run.",
+    )
+    verbosity.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show debug diagnostics during the run.",
+    )
+    run_parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=None,
+        help="Write detailed DevLab run logs to this file.",
+    )
 
     status_parser = subparsers.add_parser("status", help="Show workspace status.")
     status_parser.add_argument(
@@ -97,6 +118,7 @@ def main() -> None:
         result = init_workspace(root, force=args.force)
         print(format_init_result(result, root))
     elif args.command == "run":
+        configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         result = run_loop(
             root,
             auto=args.auto,
@@ -115,6 +137,14 @@ def main() -> None:
         print(format_doctor_report(problems))
         if problems:
             raise SystemExit(1)
+
+
+def _run_log_level(*, quiet: bool, verbose: bool) -> int:
+    if quiet:
+        return logging.WARNING
+    if verbose:
+        return logging.DEBUG
+    return logging.INFO
 
 
 if __name__ == "__main__":

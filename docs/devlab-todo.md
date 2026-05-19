@@ -144,14 +144,12 @@ Open work:
 
 ## 13. DevLab CLI and Library Logging Facility
 
-Priority: medium-high. Useful and well-scoped. It improves diagnostics and library embedding by replacing direct orchestrator `print()` calls with standard logging, while keeping command output (`status`, `doctor`, `init`) as user-facing prints. This complements, but does not replace, agent stdout/stderr capture in Agent Invocation Observability.
+Status: **initial implementation complete**. DevLab now uses Python's standard `logging` module with a single `devlab` logger for workflow progress/errors, while `init`, `status`, `doctor`, and interactive handoff previews remain direct user output. `devlab run` supports `--quiet`, `--verbose`, and `--log-file`; file logs capture DEBUG diagnostics. This complements, but does not replace, agent stdout/stderr capture in Agent Invocation Observability.
 
 Open work:
 
-- Implement `docs/logging-plan.md` using Python's standard `logging` module and a single `devlab` logger; detailed implementation plan: `docs/plans/devlab-cli-library-logging-facility.md`.
-- Add `devlab run` verbosity controls (`--quiet`, `--verbose`) and optional `--log-file`.
-- Keep interactive handoff preview and CLI report output as direct user output, not logs.
-- Add tests for logging configuration and orchestrator log levels.
+- Exercise logging output during live-agent runs and refine message levels/wording if users need clearer diagnostics.
+- Consider a future `--log-level LEVEL` or structured/JSON log format only if shorthand verbosity and plain text prove insufficient.
 
 ## Later / Non-goals for Now
 
