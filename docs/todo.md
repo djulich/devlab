@@ -11,6 +11,7 @@ Status: **initial hardening implemented**. DevLab now validates handoff section 
 Open work:
 
 - Watch live-agent runs for remaining Markdown contract ambiguity.
+- Keep planner addressed-findings validation strict until live evaluations show whether malformed mappings are common; see `docs/agent-output-validation-assessment.md`.
 - Consider an explicit structured outcome block for reviewer/integrator/architect handoffs only if Markdown parsing remains fragile. This is not merely deferred implementation work: a structured block can create two-source-of-truth conflicts with prose, make agent output more brittle, impose a schema-evolution burden on archived handoffs, and tempt agents/orchestrator contracts toward over-specified workflow control. If added, keep it minimal and authoritative, and reject contradictions with prose.
 
 ## 2. Agent Invocation Observability and Error Handling
