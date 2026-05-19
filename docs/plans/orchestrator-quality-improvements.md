@@ -2,6 +2,8 @@
 
 Seven weaknesses identified in the current codebase after the logging, handoff extraction, agent invocation, and evaluation harness work. Grouped by priority and sequenced to minimize churn.
 
+**Status:** All items are addresses but one: 2a has not been implemented because the `close_task` function might be needed later.
+
 ## Priority 1: Correctness and debuggability
 
 ### 1a. Narrow the broad `Exception` catch in agent invocation
