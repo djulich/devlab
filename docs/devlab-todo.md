@@ -28,6 +28,8 @@ Status: **initial scripted evaluations implemented**. Deterministic evaluations 
 
 Open work:
 
+Detailed plan for remaining work: `docs/plans/devlab-workflow-evaluations-remaining.md`.
+
 - Add opt-in live-agent evaluations that reuse the same scenario shape without running in default tests.
 - Add a tiny HTTP/API or smoke-app scenario once process-management complexity is worthwhile.
 - Track evaluation outcomes over time and refine diagnostics if failures are hard to triage.
