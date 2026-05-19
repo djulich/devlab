@@ -1,5 +1,7 @@
 # DevLab Workflow Evaluations Plan
 
+Status: initial scripted evaluations implemented. Deterministic scenarios now live under `tests/evaluations/`; live-agent evaluations and a tiny HTTP/API scenario remain future work.
+
 ## Goal
 
 Implement TODO #3 by adding a repeatable evaluation harness that tests whether DevLab can drive realistic target-project work, not just internal orchestration mechanics.

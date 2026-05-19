@@ -24,18 +24,13 @@ Open work:
 
 ## 3. DevLab Workflow Evaluations
 
-Priority: high. Mock-provider tests validate orchestration mechanics but do not prove that real or realistic agents can complete useful target work.
+Status: **initial scripted evaluations implemented**. Deterministic evaluations under `tests/evaluations/` create temporary target repositories, run the normal workflow with scripted fake agents, grade generated systems with black-box checks, and write diagnostics JSON artifacts. See `docs/evaluations.md` and `docs/plans/devlab-workflow-evaluations.md`.
 
-Direction:
+Open work:
 
-Detailed implementation plan: `docs/plans/devlab-workflow-evaluations.md`.
-
-- Build on the existing end-to-end `MockProvider` tests.
-- Add deterministic scripted fake-agent scenarios that write canned role outputs for known specs without tokens.
-- Keep live-agent evaluations separate from default tests.
-- Use small specs with objective acceptance checks: CLI calculator, tiny API, smoke app.
-- Grade generated systems with black-box checks: commands, HTTP responses, package builds, test suites.
-- Record diagnostics: sessions used, findings created, review rejections, runtime, final artifacts, and prompt sizes.
+- Add opt-in live-agent evaluations that reuse the same scenario shape without running in default tests.
+- Add a tiny HTTP/API or smoke-app scenario once process-management complexity is worthwhile.
+- Track evaluation outcomes over time and refine diagnostics if failures are hard to triage.
 
 ## 4. Package and User-Facing Documentation
 
