@@ -255,43 +255,49 @@ def collect_task_metrics(root: Path) -> dict[str, object]:
 
 
 def collect_artifact_hygiene(root: Path) -> dict[str, object]:
-    flagged_names = {".venv", ".pytest_cache", ".ruff_cache", "__pycache__", "build", "dist"}
-    flagged_paths: set[str] = set()
-    source_files: list[str] = []
-    test_files: list[str] = []
-    product_file_count = 0
-    product_total_bytes = 0
-    devlab_file_count = 0
-    devlab_total_bytes = 0
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(root).as_posix()
-        parts = path.relative_to(root).parts
-        if relative.startswith(".devlab/"):
-            devlab_file_count += 1
-            devlab_total_bytes += path.stat().st_size
-            continue
-        product_file_count += 1
-        product_total_bytes += path.stat().st_size
-        flagged = next(
-            (part for part in parts if part in flagged_names or part.endswith(".egg-info")),
-            None,
+    product_files = [
+        path
+        for path in _git_ls_files(
+            root, "ls-files", "--cached", "--others", "--exclude-standard", "-z"
         )
-        if flagged is not None:
-            flagged_paths.add(flagged)
-        if path.suffix == ".py" and not relative.startswith(".venv/"):
-            source_files.append(relative)
-        if path.name.startswith("test_") or path.name.endswith("_test.py"):
-            test_files.append(relative)
+        if not path.startswith(".devlab/")
+    ]
+    ignored_files = [
+        path
+        for path in _git_ls_files(
+            root,
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "-z",
+        )
+        if not path.startswith(".devlab/")
+    ]
+    devlab_files = [
+        path.relative_to(root).as_posix()
+        for path in root.rglob(".devlab/**/*")
+        if path.is_file()
+    ]
+    product_total_bytes = _total_bytes(root, product_files)
+    ignored_total_bytes = _total_bytes(root, ignored_files)
+    devlab_total_bytes = _total_bytes(root, devlab_files)
+    source_files = [path for path in product_files if Path(path).suffix == ".py"]
+    test_files = [
+        path
+        for path in product_files
+        if Path(path).name.startswith("test_") or Path(path).name.endswith("_test.py")
+    ]
     return {
-        "file_count": product_file_count,
+        "file_count": len(product_files),
         "total_bytes": product_total_bytes,
-        "product_file_count": product_file_count,
+        "product_file_count": len(product_files),
         "product_total_bytes": product_total_bytes,
-        "devlab_file_count": devlab_file_count,
+        "ignored_file_count": len(ignored_files),
+        "ignored_total_bytes": ignored_total_bytes,
+        "devlab_file_count": len(devlab_files),
         "devlab_total_bytes": devlab_total_bytes,
-        "flagged_paths": sorted(flagged_paths),
+        "flagged_paths": [],
         "source_files": sorted(source_files),
         "test_files": sorted(test_files),
     }
@@ -340,6 +346,58 @@ def quality_summary(
     }
 
 
+def require_git() -> None:
+    result = subprocess.run(
+        ["git", "--version"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("workflow evaluations require git on PATH")
+
+
+def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    require_git()
+    result = subprocess.run(
+        ["git", "-C", root.as_posix(), *args],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "git command failed: "
+            f"git -C {root.as_posix()} {' '.join(args)}\n{result.stderr}"
+        )
+    return result
+
+
+def _git_ls_files(root: Path, *args: str) -> list[str]:
+    output = _run_git(root, *args).stdout
+    return sorted(path for path in output.split("\0") if path)
+
+
+def _total_bytes(root: Path, relative_paths: Sequence[str]) -> int:
+    total = 0
+    for relative_path in relative_paths:
+        path = root / relative_path
+        if path.is_file():
+            total += path.stat().st_size
+    return total
+
+
+def _init_git_repo_if_needed(root: Path) -> None:
+    if (root / ".git").exists():
+        return
+    require_git()
+    _run_git(root, "init")
+    _run_git(root, "config", "user.email", "devlab-eval@example.invalid")
+    _run_git(root, "config", "user.name", "DevLab Eval")
+    _run_git(root, "add", ".")
+    _run_git(root, "commit", "-m", "Initial evaluation workspace")
+
+
 def init_target_workspace(root: Path, system_spec: str) -> None:
     init_workspace(root)
     (root / ".devlab/specs/system/README.md").write_text(
@@ -355,6 +413,9 @@ def init_target_workspace(root: Path, system_spec: str) -> None:
         '\n[environment]\n'
         'managed_roles = []\n'
     )
+    _init_git_repo_if_needed(root)
+
+
 
 
 def list_artifacts(root: Path) -> list[str]:

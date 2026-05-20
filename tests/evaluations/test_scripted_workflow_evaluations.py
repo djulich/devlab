@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from devlab.findings import FileFindingTracker, FindingStatus
@@ -13,6 +14,7 @@ from tests.evaluations.harness import (
     command_fails_check,
     derive_role_sequence,
     file_contains_check,
+    init_target_workspace,
     run_scripted_evaluation,
 )
 from tests.evaluations.scripted_agents import (
@@ -124,23 +126,74 @@ def test_live_role_sequence_handles_archive_collision_filenames(tmp_path: Path) 
     assert derive_role_sequence(tmp_path) == ["reviewer", "developer"]
 
 
-def test_artifact_hygiene_splits_product_and_devlab_artifacts(tmp_path: Path) -> None:
+def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
+    tmp_path: Path,
+) -> None:
+    _git(tmp_path, "init")
+    (tmp_path / ".gitignore").write_text(".venv/\n.pytest_cache/\n__pycache__/\n")
     (tmp_path / ".devlab/tasks").mkdir(parents=True)
     (tmp_path / ".devlab/tasks/T0001_task.md").write_text("workflow")
     (tmp_path / "src").mkdir()
     (tmp_path / "src/app.py").write_text("print('ok')\n")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests/test_app.py").write_text("def test_ok(): pass\n")
+    (tmp_path / ".venv/lib").mkdir(parents=True)
+    (tmp_path / ".venv/lib/site.py").write_text("ignored\n")
     (tmp_path / ".pytest_cache").mkdir()
-    (tmp_path / ".pytest_cache/cache.txt").write_text("cache")
+    (tmp_path / ".pytest_cache/cache.txt").write_text("ignored\n")
+    (tmp_path / "__pycache__").mkdir()
+    (tmp_path / "__pycache__/app.pyc").write_bytes(b"ignored")
 
     hygiene = collect_artifact_hygiene(tmp_path)
 
     assert hygiene["product_file_count"] == 3
+    assert hygiene["ignored_file_count"] == 3
     assert hygiene["devlab_file_count"] == 1
-    assert hygiene["flagged_paths"] == [".pytest_cache"]
+    assert hygiene["flagged_paths"] == []
     assert hygiene["source_files"] == ["src/app.py", "tests/test_app.py"]
     assert hygiene["test_files"] == ["tests/test_app.py"]
+
+
+def test_artifact_hygiene_counts_unignored_files_as_product(tmp_path: Path) -> None:
+    _git(tmp_path, "init")
+    (tmp_path / ".venv/lib").mkdir(parents=True)
+    (tmp_path / ".venv/lib/site.py").write_text("not ignored\n")
+
+    hygiene = collect_artifact_hygiene(tmp_path)
+
+    assert hygiene["product_file_count"] == 1
+    assert hygiene["ignored_file_count"] == 0
+    assert hygiene["flagged_paths"] == []
+    assert hygiene["source_files"] == [".venv/lib/site.py"]
+
+
+def test_evaluation_init_creates_git_repo_when_absent(tmp_path: Path) -> None:
+    init_target_workspace(tmp_path, "Build something small.")
+
+    assert (tmp_path / ".git").exists()
+    assert _git(tmp_path, "rev-parse", "--verify", "HEAD").returncode == 0
+
+
+def test_evaluation_init_preserves_existing_git_repo(tmp_path: Path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "devlab-eval@example.invalid")
+    _git(tmp_path, "config", "user.name", "DevLab Eval")
+    _git(tmp_path, "commit", "--allow-empty", "-m", "Existing baseline")
+    before = _git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip()
+
+    init_target_workspace(tmp_path, "Build something small.")
+
+    after = _git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip()
+    assert after == before
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", root.as_posix(), *args],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 def _calculator_checks():

@@ -30,6 +30,8 @@ The developer implements exactly one eligible task per session.
 - Treat the assigned task's resolved profile as the source of truth for workspace environment lifecycle.
 - When updating an existing profile, prefer backward-compatible extensions and fixes. Do not remove, replace, narrow, or materially alter existing profile behavior unless the assigned task explicitly requires a breaking migration.
 - Run project commands through workspace-local tooling; do not rely on globally installed packages.
+- When adding tooling/profile-specific generated artifacts, maintain `.gitignore`.
+- Ensure local environment directories, caches, build outputs, bytecode, and similar generated files are ignored.
 
 ## Coding Standards
 

@@ -2,7 +2,7 @@
 
 DevLab has deterministic workflow evaluations under `tests/evaluations/`.
 
-They differ from lower-level orchestrator tests: evaluations create temporary target repositories, run the normal DevLab workflow, then grade the generated target system with black-box checks.
+They differ from lower-level orchestrator tests: evaluations create temporary target repositories, run the normal DevLab workflow, then grade the generated target system with black-box checks. Workflow evaluations require Git on `PATH`; artifact hygiene uses Git's ignore rules rather than reimplementing `.gitignore` parsing.
 
 ## Deterministic scripted evaluations
 
@@ -25,7 +25,7 @@ The scripted provider writes realistic role artifacts without using LLM tokens. 
 .devlab/evaluations/<scenario-id>.json
 ```
 
-Diagnostics include sessions used, role sequence, task status summaries, findings, review rejections, runtime, prompt-size estimate, checked artifacts, artifact hygiene warnings, target root, agent log directory, prompt/log counts, and black-box check results. Artifact hygiene separates product files from DevLab workflow files under `.devlab/` so generated-system metrics are not dominated by orchestration state.
+Diagnostics include sessions used, role sequence, task status summaries, findings, review rejections, runtime, prompt-size estimate, checked artifacts, artifact hygiene, target root, agent log directory, prompt/log counts, and black-box check results. Artifact hygiene separates Git-relevant product files, Git-ignored files, and DevLab workflow files under `.devlab/` so generated-system metrics are not dominated by orchestration state or local tooling output.
 
 To copy diagnostics to a persistent local directory, set:
 
@@ -74,4 +74,4 @@ Useful environment variables:
 
 Live evaluation failures report the temporary target root, diagnostics JSON path, and `.devlab/logs/agents/` path.
 
-Evaluation correctness checks are hard failures. Artifact hygiene signals, such as generated `.venv/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`, `build/`, `dist/`, or `*.egg-info` paths, are recorded as warnings for now rather than hard failures. Target-owned test-suite execution is intentionally deferred because target projects may require their own environment setup.
+Evaluation correctness checks are hard failures. Artifact hygiene uses `git ls-files --cached --others --exclude-standard` for product files and `git ls-files --others --ignored --exclude-standard` for ignored files, excluding `.devlab/` from both classes. DevLab does not guess which paths are ephemeral; target/tooling conventions decide through `.gitignore`. Target-owned test-suite execution is intentionally deferred because target projects may require their own environment setup.
