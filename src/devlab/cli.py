@@ -30,6 +30,16 @@ def main() -> None:
         action="store_true",
         help="Overwrite existing starter files.",
     )
+    init_parser.add_argument(
+        "--git-user-name",
+        default=None,
+        help="Git user.name for DevLab-created commits.",
+    )
+    init_parser.add_argument(
+        "--git-user-email",
+        default=None,
+        help="Git user.email for DevLab-created commits.",
+    )
 
     run_parser = subparsers.add_parser("run", help="Run the DevLab workflow loop.")
     run_parser.add_argument(
@@ -120,7 +130,13 @@ def main() -> None:
     args = parser.parse_args()
     root = args.root.resolve()
     if args.command == "init":
-        result = init_workspace(root, force=args.force)
+        result = init_workspace(
+            root,
+            force=args.force,
+            automatic_git=True,
+            git_user_name=args.git_user_name,
+            git_user_email=args.git_user_email,
+        )
         print(format_init_result(result, root))
     elif args.command == "run":
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)

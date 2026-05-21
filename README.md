@@ -40,11 +40,10 @@ DevLab does **not** sandbox these commands. Only run DevLab in repositories and 
 ```bash
 uv sync
 mkdir -p /path/to/target-project
-git -C /path/to/target-project init
 uv run devlab init --root /path/to/target-project
-git -C /path/to/target-project add .
-git -C /path/to/target-project commit -m "Initialize DevLab workspace"
 ```
+
+`devlab init` initializes Git when needed and creates an initial commit containing all non-ignored files. In existing directories, add secrets, local configuration, caches, and generated artifacts to `.gitignore` before running it.
 
 Edit the target project's system spec:
 

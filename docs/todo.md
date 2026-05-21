@@ -116,7 +116,7 @@ Constraints:
 
 ## 11. Automatic Version Control
 
-Status: **initial implementation complete**. `devlab run` requires a Git repository with a clean working tree, commits all non-ignored changes after every valid session, and creates `devlab/milestone/<milestone-id>` tags when milestones are integrated. Failed integration findings are committed like any other valid session. Agents may provide an optional `## Commit Message` handoff section with a one-line description; the orchestrator adds the task/role prefix and falls back to task/role-derived messages when the section is absent.
+Status: **initial implementation complete**. `devlab init` initializes Git when needed, configures a usable identity from CLI flags, existing Git config, or DevLab defaults, and creates an initial commit. Existing Git repositories must be clean before init so DevLab does not mix user changes with bootstrap state. `devlab run` requires a Git repository with a clean working tree, commits all non-ignored changes after every valid session, and creates `devlab/milestone/<milestone-id>` tags when milestones are integrated. Failed integration findings are committed like any other valid session. Agents may provide an optional `## Commit Message` handoff section with a one-line description; the orchestrator adds the task/role prefix and falls back to task/role-derived messages when the section is absent.
 
 Open work:
 

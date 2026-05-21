@@ -25,9 +25,7 @@ During early development, this repository can also be used as a target workspace
 
 ```bash
 cd /path/to/target-project
-git init
 devlab init
-git add . && git commit -m "Initialize DevLab workspace"
 devlab status
 devlab run --auto
 ```
@@ -357,7 +355,7 @@ Target-project DevLab workflow artifacts are collected under `.devlab/` in the t
   session-artifacts/
 ```
 
-This directory should be committed by default, including history and logs, so the workflow is auditable and reproducible. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session. Sensitive projects may need redaction, size limits, or opt-out policies for logs.
+This directory should be committed by default, including history and logs, so the workflow is auditable and reproducible. `devlab init` initializes Git when needed and creates an initial commit containing all non-ignored files; existing projects should ignore secrets and local/generated files first. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session. Sensitive projects may need redaction, size limits, or opt-out policies for logs.
 
 Reusable DevLab role definitions and conventions should not live in target `.devlab/`; they belong to the DevLab package alongside the orchestrator code.
 

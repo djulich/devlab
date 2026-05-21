@@ -18,15 +18,16 @@ def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", "-C", root.as_posix(), *args], check=True)
 
 
-def _commit_workspace(root: Path) -> None:
-    _git(root, "init")
-    _git(root, "config", "user.email", "devlab-test@example.invalid")
-    _git(root, "config", "user.name", "DevLab Test")
-    _git(root, "add", ".")
-    _git(root, "commit", "-m", "Initial workspace")
+def _git_output(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", root.as_posix(), *args],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
 
 
-def test_cli_init_creates_devlab_tree(
+def test_cli_init_creates_devlab_tree_and_git_baseline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
@@ -36,6 +37,8 @@ def test_cli_init_creates_devlab_tree(
     assert (tmp_path / ".devlab/manifest.toml").exists()
     assert (tmp_path / ".devlab/config/profiles/default.toml").exists()
     assert (tmp_path / ".devlab/config/agents.toml").exists()
+    assert (tmp_path / ".git").exists()
+    assert _git_output(tmp_path, "status", "--porcelain") == ""
 
 
 def test_cli_init_force_overwrites_starter_file(
@@ -45,6 +48,8 @@ def test_cli_init_force_overwrites_starter_file(
     capsys.readouterr()
     tooling = tmp_path / ".devlab/config/tooling.md"
     tooling.write_text("custom\n")
+    _git(tmp_path, "add", ".devlab/config/tooling.md")
+    _git(tmp_path, "commit", "-m", "Customize tooling")
 
     _run_cli(monkeypatch, "init", "--root", str(tmp_path), "--force")
 
@@ -94,7 +99,6 @@ def test_cli_run_emits_progress_logs_by_default(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
-    _commit_workspace(tmp_path)
 
     _run_cli(monkeypatch, "run", "--root", str(tmp_path), "--max-sessions", "0")
 
@@ -133,7 +137,6 @@ def test_cli_run_quiet_suppresses_progress_logs(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
-    _commit_workspace(tmp_path)
 
     _run_cli(monkeypatch, "run", "--quiet", "--root", str(tmp_path), "--max-sessions", "0")
 

@@ -174,17 +174,18 @@ def test_evaluation_init_creates_git_repo_when_absent(tmp_path: Path) -> None:
     assert _git(tmp_path, "rev-parse", "--verify", "HEAD").returncode == 0
 
 
-def test_evaluation_init_preserves_existing_git_repo(tmp_path: Path) -> None:
+def test_evaluation_init_commits_existing_git_repo_setup(tmp_path: Path) -> None:
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "devlab-eval@example.invalid")
     _git(tmp_path, "config", "user.name", "DevLab Eval")
     _git(tmp_path, "commit", "--allow-empty", "-m", "Existing baseline")
-    before = _git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip()
+    before = int(_git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip())
 
     init_target_workspace(tmp_path, "Build something small.")
 
-    after = _git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip()
-    assert after == before
+    after = int(_git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip())
+    assert after > before
+    assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:

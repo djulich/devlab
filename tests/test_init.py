@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
+import pytest
+
 from devlab.init import format_init_result, init_workspace
+from devlab.version_control import VersionControlError
 
 
 def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
@@ -67,3 +71,61 @@ def test_format_init_result_uses_relative_paths(tmp_path: Path) -> None:
 
     assert "created: .devlab/manifest.toml" in text
     assert str(tmp_path) not in text
+
+
+def test_init_workspace_can_initialize_git_and_commit_baseline(tmp_path: Path) -> None:
+    init_workspace(
+        tmp_path,
+        automatic_git=True,
+        git_user_name="DevLab Test",
+        git_user_email="devlab-test@example.invalid",
+    )
+
+    assert (tmp_path / ".git").exists()
+    assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
+    assert _git(tmp_path, "log", "-1", "--pretty=%s").stdout.strip() == (
+        "Initialize DevLab workspace"
+    )
+    assert _git(tmp_path, "config", "--get", "user.name").stdout.strip() == "DevLab Test"
+    assert _git(tmp_path, "config", "--get", "user.email").stdout.strip() == (
+        "devlab-test@example.invalid"
+    )
+
+
+def test_init_workspace_commits_existing_clean_git_repo(tmp_path: Path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.name", "Existing User")
+    _git(tmp_path, "config", "user.email", "existing@example.invalid")
+    _git(tmp_path, "commit", "--allow-empty", "-m", "Existing baseline")
+
+    init_workspace(tmp_path, automatic_git=True)
+
+    assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
+    assert _git(tmp_path, "log", "-1", "--pretty=%s").stdout.strip() == (
+        "Initialize DevLab workspace"
+    )
+    assert _git(tmp_path, "config", "--get", "user.name").stdout.strip() == (
+        "Existing User"
+    )
+
+
+def test_init_workspace_rejects_dirty_existing_git_repo(tmp_path: Path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.name", "Existing User")
+    _git(tmp_path, "config", "user.email", "existing@example.invalid")
+    _git(tmp_path, "commit", "--allow-empty", "-m", "Existing baseline")
+    (tmp_path / "dirty.txt").write_text("dirty\n")
+
+    with pytest.raises(VersionControlError, match="working tree is dirty"):
+        init_workspace(tmp_path, automatic_git=True)
+
+    assert not (tmp_path / ".devlab").exists()
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", root.as_posix(), *args],
+        text=True,
+        capture_output=True,
+        check=True,
+    )

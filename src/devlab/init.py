@@ -4,6 +4,14 @@ import dataclasses
 from importlib import resources
 from pathlib import Path
 
+from devlab.version_control import (
+    assert_clean_worktree,
+    commit_all,
+    ensure_git_identity,
+    has_git_repository,
+    init_repository,
+)
+
 LAYOUT_VERSION = 1
 _TEMPLATE_PACKAGE = "devlab.resources.init"
 
@@ -40,12 +48,30 @@ class InitResult:
     overwritten: tuple[Path, ...]
 
 
-def init_workspace(root: Path, *, force: bool = False) -> InitResult:
+def init_workspace(
+    root: Path,
+    *,
+    force: bool = False,
+    automatic_git: bool = False,
+    git_user_name: str | None = None,
+    git_user_email: str | None = None,
+) -> InitResult:
     """Create a target-local `.devlab/` workflow tree."""
     root = root.resolve()
     created: list[Path] = []
     skipped: list[Path] = []
     overwritten: list[Path] = []
+
+    if automatic_git:
+        if has_git_repository(root):
+            assert_clean_worktree(root)
+        else:
+            init_repository(root)
+        ensure_git_identity(
+            root,
+            user_name=git_user_name,
+            user_email=git_user_email,
+        )
 
     devlab = root / ".devlab"
     _ensure_dir(devlab, created)
@@ -93,6 +119,9 @@ def init_workspace(root: Path, *, force: bool = False) -> InitResult:
             skipped=skipped,
             overwritten=overwritten,
         )
+
+    if automatic_git:
+        commit_all(root, "Initialize DevLab workspace")
 
     return InitResult(tuple(created), tuple(skipped), tuple(overwritten))
 

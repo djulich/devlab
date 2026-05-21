@@ -391,19 +391,8 @@ def _total_bytes(root: Path, relative_paths: Sequence[str]) -> int:
     return total
 
 
-def _init_git_repo_if_needed(root: Path) -> None:
-    if (root / ".git").exists():
-        return
-    require_git()
-    _run_git(root, "init")
-    _run_git(root, "config", "user.email", "devlab-eval@example.invalid")
-    _run_git(root, "config", "user.name", "DevLab Eval")
-    _run_git(root, "add", ".")
-    _run_git(root, "commit", "-m", "Initial evaluation workspace")
-
-
 def init_target_workspace(root: Path, system_spec: str) -> None:
-    init_workspace(root)
+    init_workspace(root, automatic_git=True)
     (root / ".devlab/specs/system/README.md").write_text(
         f"# System Specification\n\n{system_spec}\n"
     )
@@ -417,7 +406,9 @@ def init_target_workspace(root: Path, system_spec: str) -> None:
         '\n[environment]\n'
         'managed_roles = []\n'
     )
-    _init_git_repo_if_needed(root)
+    if _run_git(root, "status", "--porcelain").stdout.strip():
+        _run_git(root, "add", ".")
+        _run_git(root, "commit", "-m", "Configure evaluation workspace")
 
 
 
