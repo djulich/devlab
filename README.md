@@ -39,7 +39,11 @@ DevLab does **not** sandbox these commands. Only run DevLab in repositories and 
 
 ```bash
 uv sync
+mkdir -p /path/to/target-project
+git -C /path/to/target-project init
 uv run devlab init --root /path/to/target-project
+git -C /path/to/target-project add .
+git -C /path/to/target-project commit -m "Initialize DevLab workspace"
 ```
 
 Edit the target project's system spec:
@@ -61,7 +65,7 @@ uv run devlab doctor --root /path/to/target-project
 uv run devlab status --root /path/to/target-project --verbose
 ```
 
-Run the workflow:
+Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session:
 
 ```bash
 uv run devlab run --root /path/to/target-project --auto --max-sessions 20

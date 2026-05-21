@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,18 @@ from devlab.cli import main
 def _run_cli(monkeypatch: pytest.MonkeyPatch, *args: str) -> None:
     monkeypatch.setattr("sys.argv", ["devlab", *args])
     main()
+
+
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", root.as_posix(), *args], check=True)
+
+
+def _commit_workspace(root: Path) -> None:
+    _git(root, "init")
+    _git(root, "config", "user.email", "devlab-test@example.invalid")
+    _git(root, "config", "user.name", "DevLab Test")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Initial workspace")
 
 
 def test_cli_init_creates_devlab_tree(
@@ -81,6 +94,7 @@ def test_cli_run_emits_progress_logs_by_default(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
+    _commit_workspace(tmp_path)
 
     _run_cli(monkeypatch, "run", "--root", str(tmp_path), "--max-sessions", "0")
 
@@ -119,6 +133,7 @@ def test_cli_run_quiet_suppresses_progress_logs(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
+    _commit_workspace(tmp_path)
 
     _run_cli(monkeypatch, "run", "--quiet", "--root", str(tmp_path), "--max-sessions", "0")
 

@@ -11,6 +11,7 @@ REQUIRED_HANDOFF_HEADINGS = (
     "Addressed Findings",
     "Next Session Hint",
 )
+OPTIONAL_HANDOFF_HEADINGS = ("Commit Message",)
 
 _HEADING_RE = re.compile(r"^## (?P<heading>.+?)[ \t]*$", re.MULTILINE)
 _NONE_LINES = {"none", "- none"}
@@ -43,6 +44,10 @@ class Handoff:
     def addressed_findings(self) -> str:
         return self.section("Addressed Findings")
 
+    @property
+    def commit_message(self) -> str:
+        return first_commit_message_line(self.section("Commit Message"))
+
     def addressed_finding_tasks(self) -> dict[str, tuple[str, ...]]:
         return addressed_finding_tasks(self.addressed_findings)
 
@@ -72,6 +77,12 @@ def validate_handoff_contract(path: Path, role_name: str) -> tuple[bool, str]:
 def section_is_none(section: str) -> bool:
     lines = _meaningful_lines(section)
     return len(lines) == 1 and lines[0].lower() in _NONE_LINES
+
+
+def first_commit_message_line(section: str) -> str:
+    for line in _meaningful_lines(section):
+        return line.removeprefix("- ").strip()
+    return ""
 
 
 def addressed_finding_tasks(section: str) -> dict[str, tuple[str, ...]]:
@@ -118,13 +129,14 @@ def _parse_sections(text: str) -> dict[str, str]:
         raise HandoffError("handoff has unexpected ## section between required headings")
 
     sections: dict[str, str] = {}
+    recognized_headings = set(REQUIRED_HANDOFF_HEADINGS) | set(OPTIONAL_HANDOFF_HEADINGS)
     for index, match in enumerate(matches):
         heading = headings[index]
-        if heading not in REQUIRED_HANDOFF_HEADINGS:
+        if heading not in recognized_headings:
             continue
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         content = text[match.end() : end].strip()
-        if not content:
+        if heading in REQUIRED_HANDOFF_HEADINGS and not content:
             raise HandoffError(f"handoff section ## {heading} is empty")
         sections[heading] = content
 

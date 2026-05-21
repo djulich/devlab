@@ -104,6 +104,7 @@ def run_scripted_evaluation(root: Path, scenario: EvaluationScenario) -> Evaluat
         auto=True,
         max_sessions=scenario.max_sessions,
         agent_providers={"default": provider},
+        automatic_version_control=True,
     )
     duration = time.monotonic() - started
     checks = [check(root) for check in scenario.checks]
@@ -136,6 +137,8 @@ def run_live_evaluation(
     init_target_workspace(root, scenario.system_spec)
     if agent_config is not None:
         shutil.copyfile(agent_config, root / ".devlab/config/agents.toml")
+        _run_git(root, "add", ".devlab/config/agents.toml")
+        _run_git(root, "commit", "-m", "Configure live evaluation agents")
     started = time.monotonic()
     result = run_loop(
         root,
@@ -145,6 +148,7 @@ def run_live_evaluation(
         model=model,
         effort=effort,
         retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
+        automatic_version_control=True,
     )
     duration = time.monotonic() - started
     checks = [check(root) for check in scenario.checks]

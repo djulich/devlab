@@ -133,6 +133,7 @@ def main() -> None:
             effort=args.effort,
             dangerous_skip_permissions=args.dangerously_skip_permissions,
             retain_prompts=args.retain_prompts,
+            automatic_version_control=True,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)

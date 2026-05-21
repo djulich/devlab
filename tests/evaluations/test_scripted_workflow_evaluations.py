@@ -230,6 +230,10 @@ def _assert_diagnostics(
     assert diagnostics.quality["all_tasks_closed"] is True
     assert "file_count" in diagnostics.artifact_hygiene
     assert "stdout_count" in diagnostics.agent_logs
+    assert scenario.expected_sessions is not None
+    commit_count = int(_git(root, "rev-list", "--count", "HEAD").stdout.strip())
+    assert commit_count >= scenario.expected_sessions + 1
+    assert _git(root, "tag", "--list", "devlab/milestone/M1").stdout.strip()
     task = FileTaskTracker(root).get("T0001")
     assert task.status == TaskStatus.CLOSED
     milestone = FileMilestoneTracker(root).get("M1")

@@ -114,7 +114,11 @@ Required `##` sections must appear exactly in this order. Do not insert extra `#
     - <finding ID>: <task ID>[, <task ID>]
     ## Next Session Hint
     <what the next session for this role should prioritize>
+    ## Commit Message
+    <one-line description of what changed>
 
 Use exactly `- None` for `## Open Issues` when there are no open issues. Do not mix `- None` with real issues.
 
 For planner handoffs, use `- FXXXX: TXXXX[, TXXXX]` in `## Addressed Findings` to assert the complete follow-up task set for each addressed finding. Use exactly `- None` only when no findings were addressed; do not mix `- None` with mappings or prose.
+
+In `## Commit Message`, write a concise one-line summary of what your session changed. Do not include the task ID or role prefix; the orchestrator adds that prefix when creating the commit.

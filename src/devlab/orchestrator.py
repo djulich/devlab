@@ -23,6 +23,15 @@ from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompts import build_session_prompt, build_system_prompt
 from devlab.task_tracker import Task
+from devlab.version_control import (
+    VersionControlError,
+    assert_clean_worktree,
+    commit_all,
+    ensure_git_repository,
+)
+from devlab.version_control import (
+    tag as create_git_tag,
+)
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -238,7 +247,12 @@ def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> 
         workspace.finding(finding_id).resolve_if_complete()
 
 
-def process_handoff(handoff: Handoff, workspace: Workspace) -> None:
+@dataclasses.dataclass(frozen=True)
+class ProcessResult:
+    integrated_milestone: str | None = None
+
+
+def process_handoff(handoff: Handoff, workspace: Workspace) -> ProcessResult:
     archived = archive_handoff(workspace.root, handoff.role_name)
     logger.info("Handoff archived to %s", archived.name)
 
@@ -254,6 +268,7 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> None:
                 logger.info("Architecture review reported open issues; finding created")
             workspace.milestone(milestone).mark_architecture_reviewed(archived)
             logger.info("Milestone %s marked architecture-reviewed", milestone)
+        return ProcessResult()
     elif handoff.role_name == "developer":
         task = workspace.snapshot.select_next_development_task()
         if task and task.acceptance_criteria_complete:
@@ -263,8 +278,10 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> None:
                 "Task %s completed by developer; status set to in_review",
                 task_handle.path.name,
             )
+        return ProcessResult()
     elif handoff.role_name == "planner":
         _mark_addressed_findings_planned(workspace, handoff)
+        return ProcessResult()
     elif handoff.role_name == "reviewer":
         task = workspace.snapshot.select_next_review_task()
         if task and task.review_approved and not handoff.has_open_issues:
@@ -296,6 +313,7 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> None:
                     "Task %s rejected by reviewer; status set to changes_requested",
                     task_handle.path.name,
                 )
+        return ProcessResult()
     elif handoff.role_name == "integrator":
         milestone = workspace.snapshot.select_integration_milestone()
         if handoff.has_open_issues:
@@ -309,10 +327,12 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> None:
             logger.info(
                 "Integration reported open issues; finding created for planner follow-up"
             )
-            return
+            return ProcessResult()
         if milestone is not None:
             workspace.milestone(milestone).mark_integrated(archived)
             logger.info("Milestone %s marked integrated", milestone)
+            return ProcessResult(integrated_milestone=milestone)
+    return ProcessResult()
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +346,31 @@ def _task_for_role(snapshot: WorkspaceSnapshot, role_name: str) -> Task | None:
     if role_name == "reviewer":
         return snapshot.select_next_review_task()
     return None
+
+
+def _commit_prefix(snapshot: WorkspaceSnapshot, role_name: str) -> str:
+    task = _task_for_role(snapshot, role_name)
+    if task is not None:
+        return task.id
+    return role_name
+
+
+def _fallback_commit_description(snapshot: WorkspaceSnapshot, role_name: str) -> str:
+    task = _task_for_role(snapshot, role_name)
+    if task is not None:
+        return task.title
+    return f"Complete {role_name} session"
+
+
+def _commit_message(snapshot: WorkspaceSnapshot, handoff: Handoff) -> str:
+    description = " ".join(handoff.commit_message.split())
+    if not description:
+        description = _fallback_commit_description(snapshot, handoff.role_name)
+    return f"[{_commit_prefix(snapshot, handoff.role_name)}] {description}"
+
+
+def _milestone_tag_name(milestone: str) -> str:
+    return f"devlab/milestone/{milestone}"
 
 
 def _environment_for_session(
@@ -386,9 +431,17 @@ def run_loop(
     retain_prompts: bool = False,
     agent_providers: dict[str, AgentProvider] | None = None,
     role_agent_providers: dict[str, str] | None = None,
+    automatic_version_control: bool = False,
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
     sessions_run = 0
+    if automatic_version_control:
+        try:
+            ensure_git_repository(root)
+            assert_clean_worktree(root)
+        except VersionControlError as exc:
+            logger.error("%s. Stopping.", exc)
+            return RunResult(0, False, 1, (SessionError("version_control", str(exc), 1),))
     workspace = Workspace(root)
     resolved_agent_configs = None
     if agent_providers is None:
@@ -404,6 +457,17 @@ def run_loop(
         resolved_agent_configs = agent_configuration.resolved
 
     while sessions_run < max_sessions:
+        if automatic_version_control:
+            try:
+                assert_clean_worktree(root)
+            except VersionControlError as exc:
+                logger.error("%s. Stopping.", exc)
+                return RunResult(
+                    sessions_run,
+                    False,
+                    1,
+                    (SessionError("version_control", str(exc), 1),),
+                )
         workspace.sync()
         role_name = workspace.snapshot.assess_state()
         if role_name is None:
@@ -520,7 +584,33 @@ def run_loop(
                 sessions_run, False, 1, (SessionError("handoff_validation", message, 1),)
             )
 
-        process_handoff(handoff, workspace)
+        commit_message = _commit_message(workspace.snapshot, handoff)
+        process_result = process_handoff(handoff, workspace)
+        if automatic_version_control:
+            try:
+                committed = commit_all(root, commit_message)
+                if committed:
+                    logger.info("Committed session changes: %s", commit_message)
+                if process_result.integrated_milestone is not None:
+                    tag_name = _milestone_tag_name(process_result.integrated_milestone)
+                    create_git_tag(
+                        root,
+                        tag_name,
+                        f"DevLab milestone {process_result.integrated_milestone} integrated",
+                    )
+                    logger.info(
+                        "Tagged integrated milestone %s as %s",
+                        process_result.integrated_milestone,
+                        tag_name,
+                    )
+            except VersionControlError as exc:
+                logger.error("%s. Stopping.", exc)
+                return RunResult(
+                    sessions_run,
+                    False,
+                    1,
+                    (SessionError("version_control", str(exc), 1),),
+                )
         sessions_run += 1
 
         if not auto:

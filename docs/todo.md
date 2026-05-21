@@ -116,15 +116,14 @@ Constraints:
 
 ## 11. Automatic Version Control
 
-Priority: low. DevLab should eventually commit repository state after completed sessions or workflow gates.
+Status: **initial implementation complete**. `devlab run` requires a Git repository with a clean working tree, commits all non-ignored changes after every valid session, and creates `devlab/milestone/<milestone-id>` tags when milestones are integrated. Failed integration findings are committed like any other valid session. Agents may provide an optional `## Commit Message` handoff section with a one-line description; the orchestrator adds the task/role prefix and falls back to task/role-derived messages when the section is absent.
 
-Open questions:
+Open work:
 
-- Commit after every valid session, every task closure, or milestone integration?
-- Should failed integration findings be committed automatically?
-- How should commit messages be generated?
-- How should dirty working tree state before a session be handled?
-- Should DevLab use per-milestone feature branches? Current recommendation: defer branching; use tags first.
+- Exercise session commits and milestone tags in live-agent evaluations.
+- Decide how to handle sensitive logs/prompts and other non-ignored data before broader use; the current implementation commits everything Git considers relevant.
+- Consider commit message bodies if one-line summaries prove insufficient.
+- Defer per-milestone feature branches; use milestone tags first.
 
 ## 12. Multi-session Architecture Planning for Large Specs
 

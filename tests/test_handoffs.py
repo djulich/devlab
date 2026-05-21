@@ -85,6 +85,25 @@ def test_parse_handoff_allows_extra_section_after_required_headings(tmp_path: Pa
     assert handoff.section("Next Session Hint") == "Continue."
 
 
+def test_parse_handoff_reads_optional_commit_message(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after="## Commit Message\n- Implement calculator CLI\n\nDetailed notes.\n",
+    )
+
+    handoff = parse_handoff(path, "developer")
+
+    assert handoff.commit_message == "Implement calculator CLI"
+
+
+def test_parse_handoff_allows_missing_commit_message(tmp_path: Path) -> None:
+    path = _write_handoff(tmp_path)
+
+    handoff = parse_handoff(path, "developer")
+
+    assert handoff.commit_message == ""
+
+
 def test_parse_handoff_rejects_empty_required_section(tmp_path: Path) -> None:
     path = _write_handoff(tmp_path, done="")
 
