@@ -100,7 +100,7 @@ Open work:
 
 ## 10. Deployment Specification and Verification
 
-Priority: low. DevLab should support deployment requirements under `.devlab/specs/deployment/` and let the normal workflow plan, implement, review, and integrate deployment artifacts.
+Priority: low. DevLab should support deployment requirements under `.devlab/specs/deployment/` and let the normal workflow plan, implement, review, and integrate deployment artifacts. See `docs/deployment-feature-overview.md` and `docs/plans/deployment-specification-and-verification.md`.
 
 Required verification layers:
 
@@ -111,6 +111,8 @@ Required verification layers:
 Constraints:
 
 - DevLab verifies deployability; it does not deploy to production by default.
+- `devlab run` does not need to leave the target system running, but claimed deployment artifacts must be generatable and testable during the workflow.
+- Finished projects should expose project-owned deployment commands, such as Make targets or scripts, for local and disposable/staging environments.
 - Test infrastructure use must be explicit, allowlisted, isolated, and aggressively cleaned up.
 - Deployment implementation remains task-based through the normal role workflow.
 
