@@ -20,6 +20,8 @@ from tests.evaluations.harness import (
 from tests.evaluations.scripted_agents import (
     CalculatorScriptedAgent,
     HttpApiScriptedAgent,
+    StatefulWebApiScriptedAgent,
+    stateful_todo_api_check,
     stdlib_http_api_check,
 )
 
@@ -115,6 +117,40 @@ def test_scripted_tiny_http_api_evaluation(tmp_path: Path) -> None:
     diagnostics = run_scripted_evaluation(tmp_path, scenario)
 
     _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="app.py")
+
+
+def test_scripted_stateful_web_api_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="stateful-web-api-happy-path",
+        title="Stateful web API happy path",
+        system_spec=(
+            "Build a small Python JSON HTTP API for todo items. It must expose /health, "
+            "create todos, list todos, delete todos by id, keep data in memory, and "
+            "provide project-owned run/test commands."
+        ),
+        max_sessions=10,
+        scripted_agent=StatefulWebApiScriptedAgent(),
+        checks=(
+            stateful_todo_api_check,
+            file_contains_check("project run command", "Makefile", "run:"),
+            file_contains_check("project test command", "Makefile", "test:"),
+            file_contains_check("usage docs", "README.md", "GET /todos"),
+            file_contains_check("python cache gitignore", ".gitignore", "__pycache__/"),
+        ),
+        expected_roles=(
+            "architect", "planner", "developer", "reviewer", "integrator", "architect",
+        ),
+        expected_sessions=6,
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(
+        tmp_path,
+        diagnostics,
+        scenario,
+        expected_artifact="src/todo_api/server.py",
+    )
 
 
 def test_live_role_sequence_handles_archive_collision_filenames(tmp_path: Path) -> None:

@@ -35,6 +35,7 @@ def write_task(
     *,
     depends_on: list[str] | None = None,
     addresses_findings: list[str] | None = None,
+    domain: str = "general",
 ) -> Path:
     depends_on = depends_on or []
     addresses_findings = addresses_findings or []
@@ -49,6 +50,7 @@ def write_task(
         'status = "open"\n'
         f'milestone = "{milestone}"\n'
         'profile = "default"\n'
+        f'domain = "{domain}"\n'
         f'depends_on = [{depends}]\n'
         f'addresses_findings = [{findings}]\n'
         'validation = []\n'

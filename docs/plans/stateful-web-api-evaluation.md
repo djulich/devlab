@@ -1,5 +1,7 @@
 # Stateful Web API Workflow Evaluation Plan
 
+Status: scripted evaluation implemented as `stateful-web-api-happy-path`; live-agent coverage remains follow-up work.
+
 ## Goal
 
 Add a workflow evaluation that is materially more complex than the CLI calculator and tiny echo HTTP API while remaining deterministic, fast, and dependency-light. The evaluation should prove that DevLab can drive a target project with multiple source files, project-owned commands, HTTP behavior, stateful request flows, tests/docs, Git hygiene, and normal session commit/tag behavior.
