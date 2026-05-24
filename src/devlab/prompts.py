@@ -11,7 +11,7 @@ from pathlib import Path
 from devlab.findings import FindingStatus
 from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
 from devlab.profiles import Profile, load_profile
-from devlab.prompt_resources import read_prompt_resource
+from devlab.prompt_resources import read_optional_prompt_resource, read_prompt_resource
 from devlab.task_tracker import Task
 from devlab.workspace import (
     DESIGN_PLAN,
@@ -26,11 +26,19 @@ CONVENTIONS_RESOURCE = "conventions.md"
 TOOLING_FILE = ".devlab/config/tooling.md"
 
 
-def build_system_prompt(root: Path, role: RoleConfig) -> str:
+def build_system_prompt(
+    root: Path,
+    role: RoleConfig,
+    *,
+    snapshot: WorkspaceSnapshot | None = None,
+    role_name: str | None = None,
+) -> str:
     parts: list[str] = [
         read_prompt_resource(CONVENTIONS_RESOURCE),
         read_prompt_resource(role.prompt_resource),
     ]
+    if snapshot is not None and role_name is not None:
+        parts.extend(_domain_prompt_sections(snapshot, role_name))
     if role.reads_tooling:
         parts.append(read_file(root / TOOLING_FILE))
     return "\n\n---\n\n".join(p for p in parts if p)
@@ -50,6 +58,64 @@ def build_session_prompt(snapshot: WorkspaceSnapshot, role_name: str) -> str:
         prompt = knowledge + "\n\n" + prompt
     return prompt + _handoff_reminder(role_name)
 
+
+
+def _domain_prompt_sections(snapshot: WorkspaceSnapshot, role_name: str) -> list[str]:
+    domains = _active_domains_for_role(snapshot, role_name)
+    sections = []
+    for domain in domains:
+        resource = f"domains/{domain}/{role_name}.md"
+        prompt = read_optional_prompt_resource(resource)
+        if prompt.strip():
+            sections.append(prompt)
+    return sections
+
+
+def _active_domains_for_role(snapshot: WorkspaceSnapshot, role_name: str) -> tuple[str, ...]:
+    if role_name == "developer":
+        task = snapshot.select_next_development_task()
+        return _task_domains(task)
+    if role_name == "reviewer":
+        task = snapshot.select_next_review_task()
+        return _task_domains(task)
+    if role_name == "integrator":
+        milestone = snapshot.select_integration_milestone()
+        if milestone is not None:
+            domains = {
+                task.domain
+                for task in snapshot.tasks_for_milestone(milestone)
+                if task.domain != "general"
+            }
+            if domains:
+                return tuple(sorted(domains))
+        return ("deployment",) if _deployment_spec_has_requirements(snapshot.root) else ()
+    if role_name in {"architect", "planner"}:
+        return ("deployment",) if _deployment_spec_has_requirements(snapshot.root) else ()
+    return ()
+
+
+def _task_domains(task: Task | None) -> tuple[str, ...]:
+    if task is None or task.domain == "general":
+        return ()
+    return (task.domain,)
+
+
+def _deployment_spec_has_requirements(root: Path) -> bool:
+    spec_root = root / ".devlab/specs/deployment"
+    if not spec_root.exists():
+        return False
+    for path in sorted(spec_root.rglob("*.md")):
+        text = read_file(path).strip()
+        if not text:
+            continue
+        normalized = text.removeprefix("# Deployment Specification").strip()
+        if not normalized:
+            continue
+        if "Describe how this project should become deployment-ready" in normalized:
+            continue
+        if "Describe deployment targets" not in normalized:
+            return True
+    return False
 
 
 def _format_project_knowledge(knowledge: ProjectKnowledge) -> str:
@@ -180,7 +246,7 @@ def _format_spec_sections(root: Path) -> str:
 def _format_task_listing(tasks: list[Task]) -> str:
     return "\n".join(
         f"- {task.id} [{task.status.value}] {task.title} "
-        f"({task.path.relative_to(task.path.parents[2])})"
+        f"domain={task.domain} ({task.path.relative_to(task.path.parents[2])})"
         for task in tasks
     )
 

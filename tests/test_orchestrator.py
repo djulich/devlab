@@ -49,6 +49,7 @@ def _write_task(
     profile: str | None = None,
     depends_on: list[str] | None = None,
     validation: list[str] | None = None,
+    domain: str | None = None,
     addresses_findings: list[str] | None = None,
     body: str | None = None,
 ) -> Path:
@@ -58,6 +59,7 @@ def _write_task(
     depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
     milestone_line = f'milestone = "{milestone}"\n' if milestone is not None else ""
     profile_line = f'profile = "{profile}"\n' if profile is not None else ""
+    domain_line = f'domain = "{domain}"\n' if domain is not None else ""
     validation_line = ""
     addresses_findings = addresses_findings or []
     addresses_findings_text = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
@@ -73,6 +75,7 @@ def _write_task(
         f'status = "{status}"\n'
         f"{milestone_line}"
         f"{profile_line}"
+        f"{domain_line}"
         f"depends_on = [{depends}]\n"
         f"addresses_findings = [{addresses_findings_text}]\n"
         f"{validation_line}"
@@ -287,6 +290,59 @@ class TestBuildSystemPrompt:
         role = ROLES["developer"]
         prompt = build_system_prompt(tmp_path, role)
         assert "Tooling" in prompt
+
+    def test_developer_system_prompt_includes_task_domain_overlay(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "Deploy", domain="deployment")
+        role = ROLES["developer"]
+
+        prompt = build_system_prompt(
+            tmp_path,
+            role,
+            snapshot=Workspace(tmp_path).snapshot,
+            role_name="developer",
+        )
+
+        assert "Domain: Deployment / Developer" in prompt
+        assert "Domain: Deployment / Reviewer" not in prompt
+
+    def test_developer_system_prompt_omits_domain_overlay_for_general_task(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "General")
+        role = ROLES["developer"]
+
+        prompt = build_system_prompt(
+            tmp_path,
+            role,
+            snapshot=Workspace(tmp_path).snapshot,
+            role_name="developer",
+        )
+
+        assert "Domain: Deployment" not in prompt
+
+    def test_planner_system_prompt_includes_deployment_overlay_for_deployment_spec(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
+        deployment_spec.parent.mkdir(parents=True)
+        deployment_spec.write_text(
+            "# Deployment Specification\n\nSupport local Podman deployment.\n"
+        )
+        role = ROLES["planner"]
+
+        prompt = build_system_prompt(
+            tmp_path,
+            role,
+            snapshot=Workspace(tmp_path).snapshot,
+            role_name="planner",
+        )
+
+        assert "Domain: Deployment / Planner" in prompt
 
 
 def _checked_task_body(task_id: str, title: str) -> str:

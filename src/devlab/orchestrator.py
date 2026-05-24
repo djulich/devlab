@@ -505,8 +505,9 @@ def run_loop(
         artifacts_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            system_prompt = build_system_prompt(root, role)
-            session_prompt = build_session_prompt(workspace.snapshot, role_name)
+            snapshot = workspace.snapshot
+            system_prompt = build_system_prompt(root, role, snapshot=snapshot, role_name=role_name)
+            session_prompt = build_session_prompt(snapshot, role_name)
             ctx.write_prompt_logs(system_prompt, session_prompt)
             environment = _environment_for_session(root, workspace.snapshot, role_name)
         except ProfileNotFoundError as exc:

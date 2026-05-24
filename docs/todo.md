@@ -100,9 +100,9 @@ Open work:
 
 ## 10. Deployment Specification and Verification
 
-Priority: low. DevLab should support deployment requirements under `.devlab/specs/deployment/` and let the normal workflow plan, implement, review, and integrate deployment artifacts. See `docs/deployment-feature-overview.md` and `docs/plans/deployment-specification-and-verification.md`.
+Status: **foundation implemented; verification/evaluation work remains**. DevLab now initializes a richer deployment spec template, supports primary task domains (`general` by default, `deployment` for deployment work), and adds role-specific deployment prompt overlays from `src/devlab/resources/prompts/domains/deployment/<role>.md` without changing the core workflow roles. Developer/reviewer prompts use the assigned task domain; architect/planner prompts use deployment overlays when deployment specs contain substantive requirements; integrator prompts use deployment overlays for deployment-domain milestone work. See `docs/deployment-feature-overview.md` and `docs/plans/deployment-specification-and-verification.md`.
 
-Required verification layers:
+Required verification layers remain:
 
 1. **Static/artifact validation** — build and inspect deployment artifacts without external infrastructure (docker build, image inspection, RPM build, systemd unit validation).
 2. **Local ephemeral deployment** — run artifacts locally in disposable resources and smoke-test (docker run, compose tests, health checks, teardown via environment lifecycle).
@@ -115,6 +115,14 @@ Constraints:
 - Finished projects should expose project-owned deployment commands, such as Make targets or scripts, for local and disposable/staging environments.
 - Test infrastructure use must be explicit, allowlisted, isolated, and aggressively cleaned up.
 - Deployment implementation remains task-based through the normal role workflow.
+
+Open work:
+
+- Add deterministic workflow evaluations proving deployment-domain tasks produce project-owned deployment artifacts, commands, docs, and verification evidence.
+- Add at least one opt-in live-agent deployment evaluation, likely starting with container runtime or Compose before Kubernetes/kind or RPM/systemd.
+- Decide whether profile validation commands need structured first-class modeling, or whether prompt-guided project-owned commands are sufficient initially.
+- Add non-mutating `doctor`/diagnostic checks for deployment specs, unknown task domains, and optionally deployment tool availability.
+- Expand verification from structural checks toward safe static/artifact validation where host tools are available.
 
 ## 11. Automatic Version Control
 

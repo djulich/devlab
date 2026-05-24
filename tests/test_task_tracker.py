@@ -19,6 +19,7 @@ def _write_task(
     milestone: str | None = None,
     depends_on: list[str] | None = None,
     validation: list[str] | None = None,
+    domain: str | None = None,
     extra_metadata: str = "",
     body: str | None = None,
 ) -> Path:
@@ -28,6 +29,7 @@ def _write_task(
     depends = ", ".join(f'"{dependency}"' for dependency in depends_on)
     milestone_line = f'milestone = "{milestone}"\n' if milestone is not None else ""
     validation_line = ""
+    domain_line = f'domain = "{domain}"\n' if domain is not None else ""
     if validation is not None:
         validation_commands = ", ".join(f'"{command}"' for command in validation)
         validation_line = f"validation = [{validation_commands}]\n"
@@ -40,6 +42,7 @@ def _write_task(
         f'status = "{status}"\n'
         f"{milestone_line}"
         f"depends_on = [{depends}]\n"
+        f"{domain_line}"
         f"{validation_line}"
         f"{extra_metadata}"
         "+++\n\n"
@@ -77,6 +80,7 @@ class TestFileTaskTrackerParsing:
         assert task.status == TaskStatus.CHANGES_REQUESTED
         assert task.milestone == "M1"
         assert task.profile == "api"
+        assert task.domain == "general"
         assert task.depends_on == ("T0000",)
         assert task.addresses_findings == ()
         assert task.validation is None
@@ -149,6 +153,22 @@ class TestFileTaskTrackerParsing:
 
         with pytest.raises(ValueError, match="addresses_findings"):
             FileTaskTracker(tmp_path).list_tasks()
+
+    def test_reads_task_domain(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", domain="deployment")
+
+        task = FileTaskTracker(tmp_path).get("T0001")
+
+        assert task.domain == "deployment"
+        assert task.metadata["domain"] == "deployment"
+
+    def test_rejects_invalid_task_domain(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", domain="../deployment")
+
+        with pytest.raises(ValueError, match="domain"):
+            FileTaskTracker(tmp_path).get("T0001")
 
     def test_reads_validation_commands(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
@@ -405,6 +425,7 @@ class TestFileTaskTrackerStatusTransitions:
             "T0001",
             "First",
             validation=["uv run pytest"],
+            domain="deployment",
             extra_metadata='profile = "api"\nowner = "agent"\n',
             body="# T0001: First\n\n## Goal\nKeep this body.\n",
         )
@@ -414,6 +435,7 @@ class TestFileTaskTrackerStatusTransitions:
         text = path.read_text()
         assert 'validation = ["uv run pytest"]' in text
         assert 'profile = "api"' in text
+        assert 'domain = "deployment"' in text
         assert 'owner = "agent"' in text
         assert "## Goal\nKeep this body." in text
 

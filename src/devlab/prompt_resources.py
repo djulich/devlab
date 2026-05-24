@@ -7,3 +7,8 @@ PROMPT_RESOURCE_PACKAGE = "devlab.resources.prompts"
 
 def read_prompt_resource(name: str) -> str:
     return resources.files(PROMPT_RESOURCE_PACKAGE).joinpath(name).read_text()
+
+
+def read_optional_prompt_resource(name: str) -> str:
+    resource = resources.files(PROMPT_RESOURCE_PACKAGE).joinpath(name)
+    return resource.read_text() if resource.is_file() else ""

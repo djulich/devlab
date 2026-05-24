@@ -11,6 +11,8 @@ from devlab._toml import format_toml_value
 
 TASKS_DIR = ".devlab/tasks"
 TASK_ID_RE = re.compile(r"(?<![A-Z0-9])T\d{3,5}(?!\d)")
+TASK_DOMAIN_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+DEFAULT_TASK_DOMAIN = "general"
 _FRONT_MATTER_RE = re.compile(r"\A\+\+\+\n([\s\S]*?)\n\+\+\+\n?", re.MULTILINE)
 
 
@@ -37,6 +39,7 @@ class Task:
     path: Path
     milestone: str | None
     profile: str | None
+    domain: str
     depends_on: tuple[str, ...]
     addresses_findings: tuple[str, ...]
     # None means validation metadata is omitted; () means explicit validation = [].
@@ -168,6 +171,7 @@ class FileTaskTracker:
             metadata["profile"] = task.profile
         else:
             metadata.pop("profile", None)
+        metadata["domain"] = task.domain
         metadata["depends_on"] = list(task.depends_on)
         metadata["addresses_findings"] = list(task.addresses_findings)
         if task.validation is None:
@@ -186,6 +190,7 @@ class FileTaskTracker:
         status = _parse_status(metadata.get("status"))
         milestone = metadata.get("milestone")
         profile = metadata.get("profile")
+        domain = _parse_domain(metadata.get("domain"))
         depends_on = _parse_depends_on(metadata.get("depends_on"), body)
         addresses_findings = _parse_string_list(
             metadata.get("addresses_findings", []), "addresses_findings"
@@ -197,6 +202,7 @@ class FileTaskTracker:
         normalized_metadata["id"] = task_id
         normalized_metadata["title"] = title
         normalized_metadata["status"] = status.value
+        normalized_metadata["domain"] = domain
         normalized_metadata["addresses_findings"] = list(addresses_findings)
         if validation is not None:
             normalized_metadata["validation"] = list(validation)
@@ -207,6 +213,7 @@ class FileTaskTracker:
             path=path,
             milestone=str(milestone) if milestone is not None else None,
             profile=str(profile) if profile is not None else None,
+            domain=domain,
             depends_on=tuple(depends_on),
             addresses_findings=tuple(addresses_findings),
             validation=tuple(validation) if validation is not None else None,
@@ -231,6 +238,7 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
         "status",
         "milestone",
         "profile",
+        "domain",
         "depends_on",
         "addresses_findings",
         "validation",
@@ -247,6 +255,7 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
         "status",
         "milestone",
         "profile",
+        "domain",
         "depends_on",
         "addresses_findings",
         "validation",
@@ -275,6 +284,18 @@ def _parse_status(value: Any) -> TaskStatus:
     except ValueError as exc:
         allowed = ", ".join(status.value for status in TaskStatus)
         raise ValueError(f"invalid task status {value!r}; expected one of: {allowed}") from exc
+
+
+def _parse_domain(value: Any) -> str:
+    if value is None:
+        return DEFAULT_TASK_DOMAIN
+    domain = str(value)
+    if not TASK_DOMAIN_RE.fullmatch(domain):
+        raise ValueError(
+            "task front matter field 'domain' must match "
+            f"{TASK_DOMAIN_RE.pattern!r}; got {domain!r}"
+        )
+    return domain
 
 
 def _parse_depends_on(value: Any, body: str) -> list[str]:

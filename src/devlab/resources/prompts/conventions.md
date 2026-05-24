@@ -40,6 +40,7 @@ File: `TXXXX_<short-slug>.md` in `.devlab/tasks/` (XXXX = zero-padded).
     status = "open"
     milestone = "M1"
     profile = "default"
+    domain = "general"
     depends_on = []
     addresses_findings = []
     validation = []
@@ -56,6 +57,8 @@ File: `TXXXX_<short-slug>.md` in `.devlab/tasks/` (XXXX = zero-padded).
 Dependencies are task IDs in `depends_on`, for example `depends_on = ["T0001"]`.
 
 Follow-up tasks for findings list finding IDs in `addresses_findings`, for example `addresses_findings = ["F0001"]`.
+
+Each task has one primary domain with `domain = "<domain>"`; if omitted, `domain = "general"` is used. Use `domain = "deployment"` for tasks whose primary acceptance criteria concern packaging, deployment artifacts, runtime environment commands, smoke tests, teardown, or deployment documentation.
 
 Each task may specify one profile with `profile = "<profile-id>"`; if omitted, `profile = "default"` is used. Profiles live in `.devlab/config/profiles/` and define tooling, default validation, and executable lifecycle commands for task types. If a task needs combined tooling/environment behavior, create a dedicated profile for that task type. Existing profiles may be extended or fixed in backward-compatible ways; breaking behavior changes should use a new profile so already-planned tasks keep their expected execution contract.
 
