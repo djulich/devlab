@@ -40,6 +40,8 @@ Open work:
 
 - Run the opt-in `live-stateful-web-api-happy-path` evaluation across local provider environments and collect baseline outcomes.
 - Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect additional baseline outcomes, including `live-static-frontend-todo-app-happy-path` and `live-deployable-web-api-happy-path` across local provider environments.
+- Calibrate quality-warning thresholds after more live baselines, especially high sessions per closed task, same-task rework warnings, integrator finding warnings, and large ignored artifact footprints.
+- Watch whether developer/reviewer task attribution from changed `.devlab/tasks/TXXXX_*.md` artifacts is sufficient in live runs; only add fallback parsing if real handoffs are frequently unattributed.
 - Refine diagnostics/message wording if live failures are hard to triage.
 
 ## 4. Package and User-Facing Documentation

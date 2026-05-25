@@ -259,92 +259,36 @@ Add a simple computed summary:
 
 Only correctness should be a hard test failure initially. Warnings for same-task rework, integrator findings, high sessions per closed task, flagged artifacts, and large ignored artifact footprints are diagnostics until enough live baselines exist.
 
-## Implementation phases
+## Implemented scope
 
-### Phase 1: Diagnostics schema expansion
+The implementation now includes:
 
-Update `tests/evaluations/harness.py`:
+- live role sequence derived from `.devlab/history`
+- live reviewer rejection count derived from archived reviewer handoffs with non-empty Open Issues
+- task status summaries from `FileTaskTracker`
+- per-session developer/reviewer task attribution from changed `.devlab/tasks/TXXXX_*.md` artifacts
+- same-task developer/reviewer cycle counts and task-local rework summaries
+- integrator milestone rework from durable findings whose `source` is `integrator`
+- target profile diagnostics and task usage by profile
+- Git-based artifact hygiene summary for product, ignored, and `.devlab/` files
+- agent/prompt log counts and max prompt log sizes when prompt retention is enabled
+- quality summary/warnings for correctness, task closure, same-task rework, integrator findings, session intensity, flagged artifacts, and large ignored artifacts
+- session start/finish progress lines for live runs
+- expanded calculator black-box checks
+- stricter stateful web API response-shape and negative-case checks
+- static frontend scripted/live scenarios without browser automation
+- deployable web API scripted/live scenarios that inspect local container artifacts without deploying to production
 
-- derive live role sequence from `.devlab/history`
-- derive live reviewer rejection count from archived reviewer handoffs
-- collect task metrics using `FileTaskTracker`
-- collect same-task developer/reviewer cycle metrics
-- collect integrator rework from durable findings whose `source` is `integrator`
-- collect profile diagnostics and task usage by profile
-- collect artifact hygiene summary
-- collect agent/prompt log counts and max sizes
-- compute quality summary/warnings for correctness, task rework, integrator findings, session intensity, and large ignored artifacts
+Default test execution remains deterministic and fast. Live-agent evaluations remain opt-in. The evaluation harness still does not execute arbitrary target-owned test suites or validation commands; scenario checks remain explicit and evaluator-owned.
 
-Keep existing fields for compatibility with previous diagnostics.
+## Remaining work
 
-### Phase 2: Stronger calculator checks
+Open work is tracked in `docs/todo.md` under **DevLab Workflow Evaluations**. The remaining quality-metrics work is operational and calibration-focused rather than a blocker for current scenarios:
 
-Update `tests/evaluations/test_live_workflow_evaluations.py` and scripted calculator scenarios to use expanded command checks:
-
-- add negative-number add/subtract checks
-- add missing-args nonzero check helper
-
-Apply these checks to both deterministic and live calculator scenarios so scripted and live grading stay aligned.
-
-### Phase 3: Documentation
-
-Update `docs/evaluations.md`:
-
-- explain correctness vs hygiene diagnostics
-- document that target test-suite execution is deferred
-- describe flagged artifact directories
-- describe prompt/log metrics when retention is enabled
-
-Update `docs/todo.md` TODO #3 open work to mention collecting baselines with new quality metrics.
-
-### Phase 4: Stateful API contract hardening
-
-Update the stateful web API live and scripted scenarios so they agree on an explicit contract:
-
-- `POST /todos` returns a top-level JSON object with integer `id` and `title`.
-- `GET /todos` returns `{"todos": [...]}`.
-- `DELETE /todos/{id}` returns exactly `{"deleted": <id>}`.
-- invalid JSON, missing title, empty title, and blank title return a 4xx client error.
-- black-box check failures report the observed status and JSON payload.
-
-### Phase 5: Static frontend quality baseline
-
-Add a static frontend scenario that reuses the stateful API black-box contract and adds browser-facing artifact checks without introducing Node, React, Vite, or browser automation:
-
-- exact static artifact paths: `static/index.html`, `static/app.js`, `static/styles.css`
-- vanilla HTML/CSS/JS; no frontend build step
-- UI affordances for listing, adding, and deleting todos plus validation error display
-- JavaScript calls to the exact todo API routes
-- README instructions for running the API and using the static frontend
-- absence of frontend package-manager/build artifacts such as `package.json` or Vite config
-- an opt-in live gate (`DEVLAB_LIVE_STATIC_FRONTEND=1`) and independent session cap
-
-The first static frontend baseline should inspect static artifacts, API route usage, README usage instructions, and absence of frontend build artifacts rather than requiring a browser automation stack or exact documentation phrase. Browser-level checks remain a later profile/tooling question.
-
-### Phase 6: Deployable web API quality baseline
-
-Add a deployable web API scenario that reuses the stateful API black-box contract and adds deployment-specific artifacts without requiring production deployment:
-
-- explicit deployment spec in the temporary target workspace, so architect/planner prompts receive deployment overlays intentionally
-- a `deployment`-domain task in the scripted baseline, so developer/reviewer/integrator domain overlays are exercised
-- checks for `Containerfile`, exact Makefile targets named `image` and `deployment-check`, and README deployment instructions that reference both commands
-- an opt-in live gate (`DEVLAB_LIVE_DEPLOYMENT=1`) and independent session cap
-
-The first deployment baseline should inspect artifacts and project-owned verification commands rather than requiring Podman/Docker availability. Runtime execution of container builds remains a later, tool-availability-gated check. The initial live baselines showed why command names must be explicit: agents may produce valid alternatives such as `image-build` and `deploy-verify`, but the evaluation needs stable project-owned command names to grade without interpretation. Cosmetic documentation wording should be less brittle; for example, a README heading like `Local container deployment` should satisfy a deployment-section check even if it does not use title case.
-
-## Acceptance criteria
-
-- Default tests remain fast and deterministic.
-- Scripted calculator evaluations pass with expanded checks.
-- Live diagnostics include non-empty role sequence after a live run.
-- Live diagnostics count reviewer rejections from archived reviewer handoffs with non-empty Open Issues.
-- Live tests print session start/finish progress lines when run with visible pytest output.
-- Diagnostics include task metrics, artifact hygiene, prompt/log counts, and quality summary.
-- `.venv`/cache directories are flagged as warnings, not hard failures.
-- No target-owned `pytest` or validation command is run by the evaluation harness.
-- Stateful web API live/scripted checks enforce exact response shapes and explicit negative cases.
-- Static frontend scripted/live scenarios check vanilla static UI artifacts, direct todo API route usage, error display, and README instructions without requiring browser automation.
-- Deployable web API scripted/live scenarios check local container artifacts and deployment verification instructions without deploying to production.
+- collect additional live baselines across provider environments
+- tune quality-warning thresholds if more baselines show false positives or weak signals
+- verify task attribution remains sufficient when live agents omit changed task artifacts
+- decide later whether browser automation, React/Vite, or deployment runtime checks need additional profile/tooling modeling
 
 ## Validation
 
