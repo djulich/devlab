@@ -239,6 +239,54 @@ def test_scripted_deployable_web_api_evaluation(tmp_path: Path) -> None:
     )
 
 
+def test_static_frontend_check_accepts_served_static_frontend_docs(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text(
+        '<link rel="stylesheet" href="styles.css">\n'
+        '<form><input name="title"></form><ul></ul>\n'
+        '<p id="error"></p><script src="app.js"></script>\n'
+    )
+    (static_dir / "app.js").write_text(
+        "async function load(){ await fetch('/todos'); }\n"
+        "async function add(){ await fetch('/todos', {method: 'POST'}); }\n"
+        "async function remove(id){ await fetch(`/todos/${id}`, {method: 'DELETE'}); }\n"
+        "function showError(error){ console.log(error); }\n"
+    )
+    (static_dir / "styles.css").write_text("body { font-family: sans-serif; }\n")
+    (tmp_path / "README.md").write_text(
+        "# Todo API and Static Frontend\n\n"
+        "Open the static frontend at http://127.0.0.1:8000/. The same server "
+        "serves /index.html, /app.js, and /styles.css.\n"
+    )
+
+    result = static_frontend_check(tmp_path)
+
+    assert result.passed is True
+
+
+def test_static_frontend_check_rejects_frontend_build_artifacts(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text(
+        '<link rel="stylesheet" href="styles.css">\n'
+        '<form><input name="title"></form><ul></ul>\n'
+        '<p id="error"></p><script src="app.js"></script>\n'
+    )
+    (static_dir / "app.js").write_text(
+        "fetch('/todos', {method: 'POST'});\n"
+        "fetch('/todos/1', {method: 'DELETE'});\n"
+    )
+    (static_dir / "styles.css").write_text("body {}\n")
+    (tmp_path / "README.md").write_text("Static frontend instructions.\n")
+    (tmp_path / "package.json").write_text("{}\n")
+
+    result = static_frontend_check(tmp_path)
+
+    assert result.passed is False
+    assert "package.json" in result.message
+
+
 def test_live_review_rejections_count_reviewer_handoffs_with_open_issues(
     tmp_path: Path,
 ) -> None:

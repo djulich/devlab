@@ -73,7 +73,7 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
 ```
 
-The static frontend live evaluation extends the stateful API scenario with a browser-facing vanilla HTML/CSS/JS UI. It requires exact static artifact paths (`static/index.html`, `static/app.js`, `static/styles.css`), direct calls to the todo API routes, an error display, README usage instructions, and no frontend build step. It is skipped unless explicitly enabled:
+The static frontend live evaluation extends the stateful API scenario with a browser-facing vanilla HTML/CSS/JS UI. It requires exact static artifact paths (`static/index.html`, `static/app.js`, `static/styles.css`), direct calls to the todo API routes, an error display, README usage instructions, and absence of frontend build artifacts such as `package.json` or Vite config. It is skipped unless explicitly enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \

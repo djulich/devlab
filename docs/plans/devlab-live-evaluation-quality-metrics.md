@@ -259,9 +259,10 @@ Add a static frontend scenario that reuses the stateful API black-box contract a
 - UI affordances for listing, adding, and deleting todos plus validation error display
 - JavaScript calls to the exact todo API routes
 - README instructions for running the API and using the static frontend
+- absence of frontend package-manager/build artifacts such as `package.json` or Vite config
 - an opt-in live gate (`DEVLAB_LIVE_STATIC_FRONTEND=1`) and independent session cap
 
-The first static frontend baseline should inspect static artifacts and API route usage rather than requiring a browser automation stack. Browser-level checks remain a later profile/tooling question.
+The first static frontend baseline should inspect static artifacts, API route usage, README usage instructions, and absence of frontend build artifacts rather than requiring a browser automation stack or exact documentation phrase. Browser-level checks remain a later profile/tooling question.
 
 ### Phase 6: Deployable web API quality baseline
 

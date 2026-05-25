@@ -641,8 +641,17 @@ def static_frontend_check(root: Path) -> CheckResult:
         missing_snippets.append("styles.css is empty")
     if "static" not in readme.lower() or "frontend" not in readme.lower():
         missing_snippets.append("README.md lacks static frontend instructions")
-    if "no frontend build" not in readme.lower() and "no build step" not in readme.lower():
-        missing_snippets.append("README.md does not document no frontend build step")
+    frontend_build_files = [
+        "package.json",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "vite.config.js",
+        "vite.config.ts",
+    ]
+    for relative_path in frontend_build_files:
+        if (root / relative_path).exists():
+            missing_snippets.append(f"unexpected frontend build artifact {relative_path}")
 
     message = "; ".join(missing_snippets)
     if missing_snippets:
