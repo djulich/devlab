@@ -83,6 +83,9 @@ class EvaluationDiagnostics:
     agent_logs: dict[str, object] = dataclasses.field(default_factory=dict)
     prompt_logs: dict[str, object] = dataclasses.field(default_factory=dict)
     quality: dict[str, object] = dataclasses.field(default_factory=dict)
+    sessions: list[dict[str, object]] = dataclasses.field(default_factory=list)
+    task_cycles: dict[str, object] = dataclasses.field(default_factory=dict)
+    task_rework: dict[str, object] = dataclasses.field(default_factory=dict)
 
     def write(self, root: Path) -> Path:
         path = root / ".devlab/evaluations" / f"{self.scenario_id}.json"
@@ -203,6 +206,9 @@ def diagnostics_for(
     artifact_hygiene = collect_artifact_hygiene(root)
     agent_logs = collect_agent_log_metrics(root)
     prompt_logs = collect_prompt_log_metrics(root)
+    sessions = derive_session_records(root)
+    task_cycles = derive_task_cycle_metrics(root, sessions)
+    task_rework = derive_task_rework_summary(task_cycles)
     return EvaluationDiagnostics(
         scenario_id=scenario.id,
         provider_mode=provider_mode,
@@ -236,18 +242,132 @@ def diagnostics_for(
             artifact_hygiene=artifact_hygiene,
             sessions_run=result.sessions_run,
         ),
+        sessions=sessions,
+        task_cycles=task_cycles,
+        task_rework=task_rework,
     )
 
 
+_HANDOFF_FILENAME_RE = re.compile(r"^(\d{8}T\d{6})(?:_(\d+))?_([a-z_]+)_handoff\.md$")
+_TASK_ARTIFACT_RE = re.compile(r"\.devlab/tasks/(T\d{3,5})[^\s`)]*\.md")
+
+
 def derive_role_sequence(root: Path) -> list[str]:
-    pattern = re.compile(r"^(\d{8}T\d{6})(?:_(\d+))?_([a-z_]+)_handoff\.md$")
-    parsed: list[tuple[str, int, str]] = []
+    return [str(session["role"]) for session in derive_session_records(root)]
+
+
+def derive_session_records(root: Path) -> list[dict[str, object]]:
+    parsed: list[tuple[str, int, str, Path]] = []
     for path in (root / ".devlab/history").glob("*_handoff.md"):
-        match = pattern.match(path.name)
+        match = _HANDOFF_FILENAME_RE.match(path.name)
         if match:
             counter = int(match.group(2) or "1")
-            parsed.append((match.group(1), counter, match.group(3)))
-    return [role for _, _, role in sorted(parsed)]
+            parsed.append((match.group(1), counter, match.group(3), path))
+
+    sessions: list[dict[str, object]] = []
+    for index, (timestamp, counter, role, path) in enumerate(sorted(parsed), start=1):
+        task_id, task_id_source = _task_id_for_session(path, role)
+        sessions.append(
+            {
+                "index": index,
+                "timestamp": timestamp,
+                "counter": counter,
+                "role": role,
+                "handoff": path.relative_to(root).as_posix(),
+                "task_id": task_id,
+                "task_id_source": task_id_source,
+            }
+        )
+    return sessions
+
+
+def _task_id_for_session(path: Path, role: str) -> tuple[str, str]:
+    if role not in {"developer", "reviewer"}:
+        return "", "not_task_role"
+    try:
+        handoff = parse_handoff(path, role)
+    except HandoffError:
+        return "", "unparseable_handoff"
+    changed_artifacts = handoff.section("Changed Artifacts")
+    task_ids = sorted(set(_TASK_ARTIFACT_RE.findall(changed_artifacts)))
+    if len(task_ids) == 1:
+        return task_ids[0], "changed_task_artifact"
+    if len(task_ids) > 1:
+        return "", "ambiguous_changed_task_artifacts"
+    return "", "no_changed_task_artifact"
+
+
+def derive_task_cycle_metrics(
+    root: Path,
+    sessions: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    session_records = sessions if sessions is not None else derive_session_records(root)
+    metrics: dict[str, dict[str, int | bool]] = {
+        task.id: {
+            "developer_sessions": 0,
+            "reviewer_sessions": 0,
+            "has_rework": False,
+        }
+        for task in FileTaskTracker(root).list_tasks()
+    }
+    unattributed = 0
+    for session in session_records:
+        role = session.get("role")
+        if role not in {"developer", "reviewer"}:
+            continue
+        task_id = session.get("task_id")
+        if not isinstance(task_id, str) or not task_id:
+            unattributed += 1
+            continue
+        if task_id not in metrics:
+            metrics[task_id] = {
+                "developer_sessions": 0,
+                "reviewer_sessions": 0,
+                "has_rework": False,
+            }
+        key = "developer_sessions" if role == "developer" else "reviewer_sessions"
+        metrics_for_task = metrics[task_id]
+        metrics_for_task[key] = metrics_for_task[key] + 1
+
+    for metrics_for_task in metrics.values():
+        metrics_for_task["has_rework"] = (
+            metrics_for_task["developer_sessions"] > 1
+            or metrics_for_task["reviewer_sessions"] > 1
+        )
+
+    return {
+        "tasks": metrics,
+        "unattributed_developer_reviewer_sessions": unattributed,
+    }
+
+
+def derive_task_rework_summary(task_cycles: dict[str, object]) -> dict[str, object]:
+    raw_tasks = task_cycles.get("tasks", {})
+    tasks = (
+        cast("dict[str, dict[str, int | bool]]", raw_tasks)
+        if isinstance(raw_tasks, dict)
+        else {}
+    )
+    tasks_with_rework = [
+        task_id for task_id, metrics in sorted(tasks.items()) if bool(metrics.get("has_rework"))
+    ]
+    max_developer_sessions = max(
+        (cast("int", metrics.get("developer_sessions", 0)) for metrics in tasks.values()),
+        default=0,
+    )
+    max_reviewer_sessions = max(
+        (cast("int", metrics.get("reviewer_sessions", 0)) for metrics in tasks.values()),
+        default=0,
+    )
+    return {
+        "tasks_with_rework": tasks_with_rework,
+        "has_task_rework": bool(tasks_with_rework),
+        "max_developer_sessions_per_task": max_developer_sessions,
+        "max_reviewer_sessions_per_task": max_reviewer_sessions,
+        "unattributed_developer_reviewer_sessions": task_cycles.get(
+            "unattributed_developer_reviewer_sessions", 0
+        ),
+    }
 
 
 def derive_review_rejections(root: Path) -> int:

@@ -1,6 +1,6 @@
 # DevLab Live Evaluation Quality Metrics Plan
 
-Status: implemented and refined with live stateful web API, deployable web API, and static frontend baselines. Diagnostics now include live role sequence, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, live session progress lines, stronger calculator black-box checks, and stricter scenario contracts. Target-owned test-suite execution remains deferred.
+Status: implemented and refined with live stateful web API, deployable web API, and static frontend baselines. Diagnostics now include live role sequence, per-session task attribution, task cycle/rework metrics, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, live session progress lines, stronger calculator black-box checks, and stricter scenario contracts. Target-owned test-suite execution remains deferred.
 
 ## Goal
 
@@ -65,7 +65,7 @@ The static frontend live baselines produced good final applications and highligh
 - **Artifact and behavior checks were more reliable than exact documentation phrases.** One run provided `static/index.html`, `static/app.js`, `static/styles.css`, direct todo API usage, error handling, and README instructions for opening the served static frontend. The only initial failure was that README did not contain the exact phrase "no frontend build step".
 - **Negative evidence is better for "no build step" constraints.** For this scenario, absence of `package.json`, frontend lockfiles, and Vite config better captures the no-React/no-build-step requirement than requiring a specific README sentence.
 - **Static frontend evaluation should stay browser-light initially.** The current checker inspects static artifacts and route usage rather than introducing browser automation. That keeps the scenario deterministic and focused on workflow behavior.
-- **Multiple developer/reviewer pairs are not always rework.** A later passing run used 8 sessions with two planned tasks: one to add a reusable `python-app` profile and one to implement the API/frontend. There were two reviewer sessions but no rejections or findings. Rework metrics should distinguish planned multi-task execution from repeated work on the same task.
+- **Multiple developer/reviewer pairs are not always rework.** A later passing run used 8 sessions with two planned tasks: one to add a reusable `python-app` profile and one to implement the API/frontend. There were two reviewer sessions but no rejections or findings. Rework metrics distinguish planned multi-task execution from repeated work on the same task by attributing developer/reviewer handoffs to task ids from changed task artifacts and counting repeated sessions per task.
 - **Target-owned profile creation is useful but adds workflow overhead.** The generated `python-app` profile made reviewer/integrator validation concrete (`uv run ruff format --check .`, `ruff check`, `ty check`, `pytest`), but it consumed an extra task/session pair. Diagnostics should make this overhead visible without treating it as failure.
 - **Ignored local environments can dominate target size.** The passing run created an ignored `.venv`/cache footprint of roughly tens of megabytes. Git-based hygiene correctly excluded it from product files, but quality reporting should continue surfacing ignored-file counts/bytes and may eventually warn on unexpectedly large ignored artifacts.
 - **Reviewer/integrator behavior was healthy in the passing run.** The reviewer checked implementation against the design/system spec and profile validation; the integrator ran profile validation plus a live server smoke covering API and static asset serving. This is a useful positive baseline for the narrowed reviewer role.
@@ -116,7 +116,9 @@ Useful derived signals:
 
 - all tasks closed
 - number of tasks created for a small scenario
-- developer/reviewer churn inferred from role sequence
+- per-session task attribution for developer/reviewer handoffs, derived from changed `.devlab/tasks/TXXXX_*.md` artifacts
+- repeated developer/reviewer sessions for the same task as task-local rework
+- planned developer/reviewer pairs across different tasks not counted as task-local rework
 - live reviewer rejection count, derived from archived reviewer handoffs whose Open Issues are not `None`
 - integrator finding count and resolved finding count
 - high session count or repeated developer/reviewer cycles as a rework-intensity warning

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import cast
 
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
@@ -14,6 +15,9 @@ from tests.evaluations.harness import (
     command_fails_check,
     derive_review_rejections,
     derive_role_sequence,
+    derive_session_records,
+    derive_task_cycle_metrics,
+    derive_task_rework_summary,
     file_contains_check,
     init_target_workspace,
     run_scripted_evaluation,
@@ -287,6 +291,113 @@ def test_static_frontend_check_rejects_frontend_build_artifacts(tmp_path: Path) 
     assert "package.json" in result.message
 
 
+def test_task_cycle_metrics_distinguish_planned_tasks_from_rework(tmp_path: Path) -> None:
+    tasks_dir = tmp_path / ".devlab/tasks"
+    history = tmp_path / ".devlab/history"
+    tasks_dir.mkdir(parents=True)
+    history.mkdir(parents=True)
+    _write_minimal_task(tasks_dir / "T0001_first.md", "T0001", "First")
+    _write_minimal_task(tasks_dir / "T0002_second.md", "T0002", "Second")
+    _write_handoff(
+        history / "20260519T091112_developer_handoff.md",
+        "developer",
+        ".devlab/tasks/T0001_first.md",
+    )
+    _write_handoff(
+        history / "20260519T091113_reviewer_handoff.md",
+        "reviewer",
+        ".devlab/tasks/T0001_first.md",
+    )
+    _write_handoff(
+        history / "20260519T091114_developer_handoff.md",
+        "developer",
+        ".devlab/tasks/T0002_second.md",
+    )
+    _write_handoff(
+        history / "20260519T091115_reviewer_handoff.md",
+        "reviewer",
+        ".devlab/tasks/T0002_second.md",
+    )
+
+    sessions = derive_session_records(tmp_path)
+    task_cycles = derive_task_cycle_metrics(tmp_path, sessions)
+    rework = derive_task_rework_summary(task_cycles)
+
+    tasks = cast("dict[str, object]", task_cycles["tasks"])
+
+    assert [session["task_id"] for session in sessions] == [
+        "T0001",
+        "T0001",
+        "T0002",
+        "T0002",
+    ]
+    assert tasks["T0001"] == {
+        "developer_sessions": 1,
+        "reviewer_sessions": 1,
+        "has_rework": False,
+    }
+    assert tasks["T0002"] == {
+        "developer_sessions": 1,
+        "reviewer_sessions": 1,
+        "has_rework": False,
+    }
+    assert rework["tasks_with_rework"] == []
+    assert rework["has_task_rework"] is False
+
+
+def test_task_cycle_metrics_detect_repeated_same_task_cycles(tmp_path: Path) -> None:
+    tasks_dir = tmp_path / ".devlab/tasks"
+    history = tmp_path / ".devlab/history"
+    tasks_dir.mkdir(parents=True)
+    history.mkdir(parents=True)
+    _write_minimal_task(tasks_dir / "T0001_first.md", "T0001", "First")
+    _write_handoff(
+        history / "20260519T091112_developer_handoff.md",
+        "developer",
+        ".devlab/tasks/T0001_first.md",
+    )
+    _write_handoff(
+        history / "20260519T091113_reviewer_handoff.md",
+        "reviewer",
+        ".devlab/tasks/T0001_first.md",
+    )
+    _write_handoff(
+        history / "20260519T091114_developer_handoff.md",
+        "developer",
+        ".devlab/tasks/T0001_first.md",
+    )
+    _write_handoff(
+        history / "20260519T091115_reviewer_handoff.md",
+        "reviewer",
+        ".devlab/tasks/T0001_first.md",
+    )
+
+    task_cycles = derive_task_cycle_metrics(tmp_path)
+    rework = derive_task_rework_summary(task_cycles)
+
+    tasks = cast("dict[str, object]", task_cycles["tasks"])
+
+    assert tasks["T0001"] == {
+        "developer_sessions": 2,
+        "reviewer_sessions": 2,
+        "has_rework": True,
+    }
+    assert rework["tasks_with_rework"] == ["T0001"]
+    assert rework["has_task_rework"] is True
+    assert rework["max_developer_sessions_per_task"] == 2
+    assert rework["max_reviewer_sessions_per_task"] == 2
+
+
+def test_task_cycle_metrics_count_unattributed_task_sessions(tmp_path: Path) -> None:
+    history = tmp_path / ".devlab/history"
+    history.mkdir(parents=True)
+    _write_handoff(history / "20260519T091112_developer_handoff.md", "developer", "README.md")
+
+    task_cycles = derive_task_cycle_metrics(tmp_path)
+
+    assert task_cycles["unattributed_developer_reviewer_sessions"] == 1
+
+
 def test_live_review_rejections_count_reviewer_handoffs_with_open_issues(
     tmp_path: Path,
 ) -> None:
@@ -381,6 +492,31 @@ def test_evaluation_init_commits_existing_git_repo_setup(tmp_path: Path) -> None
     after = int(_git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip())
     assert after > before
     assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
+
+
+def _write_minimal_task(path: Path, task_id: str, title: str) -> None:
+    path.write_text(
+        "+++\n"
+        f'id = "{task_id}"\n'
+        f'title = "{title}"\n'
+        'status = "closed"\n'
+        'domain = "general"\n'
+        "depends_on = []\n"
+        "addresses_findings = []\n"
+        "+++\n\n"
+        f"# {task_id}: {title}\n"
+    )
+
+
+def _write_handoff(path: Path, role: str, changed_artifact: str) -> None:
+    path.write_text(
+        f"# Handoff: {role}\n"
+        "## Done\n- Done.\n"
+        f"## Changed Artifacts\n- `{changed_artifact}` (modified)\n"
+        "## Open Issues\n- None\n"
+        "## Addressed Findings\n- None\n"
+        "## Next Session Hint\nContinue.\n"
+    )
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
