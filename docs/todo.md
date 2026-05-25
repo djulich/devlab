@@ -32,14 +32,14 @@ Recommended evaluation roadmap:
 1. **CLI calculator** — existing tiny baseline for workflow smoke coverage.
 2. **Tiny stdlib HTTP API** — existing dependency-light server/runtime baseline.
 3. **Stateful JSON web API** — implemented as a scripted scenario; exercises multi-file source, project-owned commands, docs, `.gitignore`, and black-box HTTP state transitions without third-party dependencies.
-4. **Web API plus deployment artifacts** — connect deployment-domain prompts to container/Compose/kind/RPM-style project-owned artifacts and verification.
+4. **Web API plus deployment artifacts** — initial local-container scripted/live scenarios are implemented; next expand to Compose/kind/RPM-style project-owned artifacts and verification after collecting live baselines.
 5. **Static frontend** — test HTML/CSS/JS behavior without introducing Node/React dependency and browser-tooling volatility.
 6. **React/Vite or full-stack frontend** — later, once dependency/profile handling and live-agent baselines are stable enough to justify the extra moving parts.
 
 Open work:
 
 - Run the opt-in `live-stateful-web-api-happy-path` evaluation across local provider environments and collect baseline outcomes.
-- Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect baseline outcomes.
+- Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect baseline outcomes, including `live-deployable-web-api-happy-path`.
 - Refine diagnostics/message wording if live failures are hard to triage.
 
 ## 4. Package and User-Facing Documentation

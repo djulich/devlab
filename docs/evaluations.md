@@ -19,6 +19,7 @@ Current scenarios cover:
 - integration finding with corrective task and finding resolution
 - tiny standard-library HTTP API happy path
 - stateful JSON web API happy path
+- deployable web API happy path with local container artifacts
 
 The scripted provider writes realistic role artifacts without using LLM tokens. Each scenario records diagnostics in the temporary target repository:
 
@@ -71,6 +72,15 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
 ```
 
+The deployable web API live evaluation extends the stateful API scenario with project-owned local container deployment artifacts. It checks for the API behavior plus `Containerfile`, Makefile image/verification targets, and README deployment instructions. It is skipped unless explicitly enabled:
+
+```bash
+DEVLAB_LIVE_EVALS=1 \
+DEVLAB_LIVE_DEPLOYMENT=1 \
+DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_deployable_web_api_happy_path_evaluation -s
+```
+
 Useful environment variables:
 
 - `DEVLAB_LIVE_EVALS=1`: enable live evaluations.
@@ -81,6 +91,8 @@ Useful environment variables:
 - `DEVLAB_LIVE_MAX_SESSIONS`: optional session cap for the live calculator run.
 - `DEVLAB_LIVE_STATEFUL_WEB_API=1`: enable the additional stateful JSON web API live evaluation.
 - `DEVLAB_LIVE_STATEFUL_MAX_SESSIONS`: optional session cap for the stateful JSON web API live run; defaults to `18`.
+- `DEVLAB_LIVE_DEPLOYMENT=1`: enable the deployable web API live evaluation.
+- `DEVLAB_LIVE_DEPLOYMENT_MAX_SESSIONS`: optional session cap for the deployable web API live run; defaults to `22`.
 - `DEVLAB_EVAL_RESULTS_DIR`: optional directory for persistent diagnostics copies.
 - `DEVLAB_LIVE_RETAIN_PROMPTS=1`: retain split system/session prompt logs under `.devlab/logs/agents/` for live-run debugging.
 

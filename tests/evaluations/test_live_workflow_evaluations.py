@@ -13,7 +13,10 @@ from tests.evaluations.harness import (
     file_contains_check,
     run_live_evaluation,
 )
-from tests.evaluations.scripted_agents import stateful_todo_api_check
+from tests.evaluations.scripted_agents import (
+    deployment_artifacts_check,
+    stateful_todo_api_check,
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("DEVLAB_LIVE_EVALS") != "1",
@@ -59,6 +62,10 @@ def _assert_live_diagnostics(
     assert diagnostics.quality["correctness_passed"] is True, failure_context
 
 
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_SIMPLE_CLI") != "1",
+    reason="simple cli live evaluation requires DEVLAB_LIVE_SIMPLE_CLI=1",
+)
 def test_live_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
     scenario = EvaluationScenario(
         id="live-cli-calculator-happy-path",
@@ -117,6 +124,55 @@ def test_live_stateful_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             file_contains_check("project test command", "Makefile", "test:"),
             file_contains_check("usage docs", "README.md", "GET /todos"),
             file_contains_check("python cache gitignore", ".gitignore", "__pycache__/"),
+        ),
+    )
+
+    diagnostics = _run_live_scenario(tmp_path, scenario)
+
+    _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+
+
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_DEPLOYMENT") != "1",
+    reason="deployment live evaluation requires DEVLAB_LIVE_DEPLOYMENT=1",
+)
+def test_live_deployable_web_api_happy_path_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="live-deployable-web-api-happy-path",
+        title="Live deployable web API happy path",
+        system_spec=(
+            "Build a small Python standard-library JSON HTTP API for todo items. "
+            "Do not use third-party runtime dependencies. Implement the server in "
+            "src/todo_api/server.py and make it runnable from the repository root with "
+            "python -m src.todo_api.server --port <port>. It must expose GET /health "
+            "returning JSON {\"status\": \"ok\"}, POST /todos with JSON "
+            "{\"title\": \"...\"} to create an in-memory item and return a top-level "
+            "JSON object with integer id and title fields, GET /todos to return "
+            "JSON {\"todos\": [<items>]}, DELETE /todos/{id} to delete an item and return "
+            "JSON {\"deleted\": <id>}. POST /todos must return a 4xx client error "
+            "for invalid JSON, missing title, empty title, or blank title. Return 404 "
+            "for unknown routes. Also provide a Makefile with run and test targets, "
+            "a README documenting usage and endpoints, and a .gitignore covering Python "
+            "caches and local runtime artifacts. Deployment support is explicitly in "
+            "scope: provide project-owned local container deployment artifacts and "
+            "verification instructions, but do not deploy to production."
+        ),
+        deployment_spec=(
+            "Deployment target: local OCI-compatible container image for the todo API. "
+            "Deployment environment: local developer machine or CI runner with an "
+            "OCI-compatible image builder such as Podman or Docker. Required project "
+            "artifacts: Containerfile, Makefile target to build the image, Makefile target "
+            "to verify deployment artifacts without requiring production deployment, and "
+            "README deployment instructions. The container must run the API on port 8000 "
+            "using python -m src.todo_api.server --port 8000."
+        ),
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_DEPLOYMENT_MAX_SESSIONS", "22")),
+        checks=(
+            stateful_todo_api_check,
+            deployment_artifacts_check,
+            file_contains_check("project run command", "Makefile", "run:"),
+            file_contains_check("project test command", "Makefile", "test:"),
+            file_contains_check("usage docs", "README.md", "GET /todos"),
         ),
     )
 

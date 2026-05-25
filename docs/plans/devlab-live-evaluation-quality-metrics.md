@@ -228,6 +228,17 @@ Update the stateful web API live and scripted scenarios so they agree on an expl
 - invalid JSON, missing title, empty title, and blank title return a 4xx client error.
 - black-box check failures report the observed status and JSON payload.
 
+### Phase 5: Deployable web API quality baseline
+
+Add a deployable web API scenario that reuses the stateful API black-box contract and adds deployment-specific artifacts without requiring production deployment:
+
+- explicit deployment spec in the temporary target workspace, so architect/planner prompts receive deployment overlays intentionally
+- a `deployment`-domain task in the scripted baseline, so developer/reviewer/integrator domain overlays are exercised
+- checks for `Containerfile`, Makefile image/verification targets, and README deployment instructions
+- an opt-in live gate (`DEVLAB_LIVE_DEPLOYMENT=1`) and independent session cap
+
+The first deployment baseline should inspect artifacts and project-owned verification commands rather than requiring Podman/Docker availability. Runtime execution of container builds remains a later, tool-availability-gated check.
+
 ## Acceptance criteria
 
 - Default tests remain fast and deterministic.
@@ -238,6 +249,7 @@ Update the stateful web API live and scripted scenarios so they agree on an expl
 - `.venv`/cache directories are flagged as warnings, not hard failures.
 - No target-owned `pytest` or validation command is run by the evaluation harness.
 - Stateful web API live/scripted checks enforce exact response shapes and explicit negative cases.
+- Deployable web API scripted/live scenarios check local container artifacts and deployment verification instructions without deploying to production.
 
 ## Validation
 

@@ -47,6 +47,7 @@ class EvaluationScenario:
     system_spec: str
     max_sessions: int
     checks: tuple[BlackBoxCheck, ...]
+    deployment_spec: str = ""
     scripted_agent: ScriptedAgent | None = None
     expected_roles: tuple[str, ...] = ()
     expected_sessions: int | None = None
@@ -93,7 +94,7 @@ class EvaluationDiagnostics:
 def run_scripted_evaluation(root: Path, scenario: EvaluationScenario) -> EvaluationDiagnostics:
     if scenario.scripted_agent is None:
         raise ValueError("scripted scenario requires scripted_agent")
-    init_target_workspace(root, scenario.system_spec)
+    init_target_workspace(root, scenario.system_spec, deployment_spec=scenario.deployment_spec)
     provider = MockProvider(
         on_invoke=scenario.scripted_agent.on_invoke,
         handoff_text=scenario.scripted_agent.handoff_for,
@@ -134,7 +135,7 @@ def run_live_evaluation(
     agent_config: Path | None,
     max_sessions: int,
 ) -> EvaluationDiagnostics:
-    init_target_workspace(root, scenario.system_spec)
+    init_target_workspace(root, scenario.system_spec, deployment_spec=scenario.deployment_spec)
     if agent_config is not None:
         shutil.copyfile(agent_config, root / ".devlab/config/agents.toml")
         _run_git(root, "add", ".devlab/config/agents.toml")
@@ -262,6 +263,7 @@ def collect_task_metrics(root: Path) -> dict[str, object]:
                 "title": task.title,
                 "status": task.status.value,
                 "milestone": task.milestone or "",
+                "domain": task.domain,
             }
             for task in tasks
         ],
@@ -401,11 +403,20 @@ def _total_bytes(root: Path, relative_paths: Sequence[str]) -> int:
     return total
 
 
-def init_target_workspace(root: Path, system_spec: str) -> None:
+def init_target_workspace(
+    root: Path,
+    system_spec: str,
+    *,
+    deployment_spec: str = "",
+) -> None:
     init_workspace(root, automatic_git=True)
     (root / ".devlab/specs/system/README.md").write_text(
         f"# System Specification\n\n{system_spec}\n"
     )
+    if deployment_spec:
+        (root / ".devlab/specs/deployment/README.md").write_text(
+            f"# Deployment Specification\n\n{deployment_spec}\n"
+        )
     (root / ".devlab/config/profiles/default.toml").write_text(
         'version = 1\n'
         'id = "default"\n'

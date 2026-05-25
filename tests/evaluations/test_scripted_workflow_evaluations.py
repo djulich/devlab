@@ -19,8 +19,10 @@ from tests.evaluations.harness import (
 )
 from tests.evaluations.scripted_agents import (
     CalculatorScriptedAgent,
+    DeploymentWebApiScriptedAgent,
     HttpApiScriptedAgent,
     StatefulWebApiScriptedAgent,
+    deployment_artifacts_check,
     stateful_todo_api_check,
     stdlib_http_api_check,
 )
@@ -150,6 +152,47 @@ def test_scripted_stateful_web_api_evaluation(tmp_path: Path) -> None:
         diagnostics,
         scenario,
         expected_artifact="src/todo_api/server.py",
+    )
+
+
+def test_scripted_deployable_web_api_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="deployable-web-api-happy-path",
+        title="Deployable web API happy path",
+        system_spec=(
+            "Build a small Python JSON HTTP API for todo items and include "
+            "project-owned local container deployment artifacts."
+        ),
+        deployment_spec=(
+            "Deployment target: local OCI-compatible container image for the todo API. "
+            "Provide a Containerfile, Makefile targets to build and verify deployment "
+            "artifacts, and README deployment instructions. Do not deploy to production."
+        ),
+        max_sessions=12,
+        scripted_agent=DeploymentWebApiScriptedAgent(),
+        checks=(
+            stateful_todo_api_check,
+            deployment_artifacts_check,
+            file_contains_check(
+                "deployment task domain",
+                ".devlab/tasks/T0002_add-container-deployment-artifacts.md",
+                "domain = \"deployment\"",
+            ),
+        ),
+        expected_roles=(
+            "architect", "planner", "developer", "reviewer", "developer", "reviewer",
+            "integrator", "architect",
+        ),
+        expected_sessions=8,
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(
+        tmp_path,
+        diagnostics,
+        scenario,
+        expected_artifact="Containerfile",
     )
 
 

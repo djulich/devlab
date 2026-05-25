@@ -155,6 +155,56 @@ class HttpApiScriptedAgent:
         return handoff(invocation.role_name)
 
 
+class DeploymentWebApiScriptedAgent:
+    def __init__(self) -> None:
+        self.roles: list[str] = []
+        self.role_counts: dict[str, int] = {}
+        self.review_rejections = 0
+        self.prompt_chars: list[int] = []
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        self.roles.append(invocation.role_name)
+        self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
+        role = invocation.role_name
+        if role == "architect":
+            _design_plan(invocation.root).write_text(
+                "# Design Plan\n\n"
+                "Build a small Python JSON todo API with project-owned deployment "
+                "artifacts. The deployment path uses a Containerfile, Makefile targets, "
+                "and README verification instructions.\n"
+            )
+        elif role == "planner":
+            _project_plan(invocation.root).write_text(
+                "# Project Plan\n\n"
+                "## M1: Deployable todo API\n"
+                "- T0001: Implement stateful todo API\n"
+                "- T0002: Add container deployment artifacts\n"
+            )
+            write_task(invocation.root, "T0001", "Implement stateful todo API", "M1")
+            write_task(
+                invocation.root,
+                "T0002",
+                "Add container deployment artifacts",
+                "M1",
+                depends_on=["T0001"],
+                domain="deployment",
+            )
+        elif role == "developer":
+            task = FileTaskTracker(invocation.root).select_next_development_task()
+            assert task is not None
+            complete_acceptance(invocation.root, task.id)
+            if task.id == "T0001":
+                write_stateful_todo_api(invocation.root)
+            elif task.id == "T0002":
+                write_container_deployment_artifacts(invocation.root)
+        elif role == "reviewer":
+            approve_review_task(invocation.root)
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        return handoff(invocation.role_name)
+
+
 class StatefulWebApiScriptedAgent:
     def __init__(self) -> None:
         self.roles: list[str] = []
@@ -362,6 +412,36 @@ def write_stateful_todo_api(root: Path) -> None:
     (root / ".gitignore").write_text("__pycache__/\n*.pyc\n.pytest_cache/\n.venv/\n")
 
 
+def write_container_deployment_artifacts(root: Path) -> None:
+    (root / "Containerfile").write_text(
+        "FROM python:3.12-slim\n"
+        "WORKDIR /app\n"
+        "COPY src ./src\n"
+        "EXPOSE 8000\n"
+        "CMD [\"python\", \"-m\", \"src.todo_api.server\", \"--port\", \"8000\"]\n"
+    )
+    makefile = root / "Makefile"
+    makefile.write_text(
+        makefile.read_text()
+        + "\n"
+        + ".PHONY: image deployment-check\n"
+        + "IMAGE ?= todo-api:local\n\n"
+        + "image:\n"
+        + "\tpodman build -t $(IMAGE) -f Containerfile .\n\n"
+        + "deployment-check:\n"
+        + "\ttest -f Containerfile\n"
+        + "\tgrep -q 'src.todo_api.server' Containerfile\n"
+    )
+    readme = root / "README.md"
+    readme.write_text(
+        readme.read_text()
+        + "\n\n"
+        + "## Deployment\n\n"
+        + "Build the local container image with `make image`. Verify deployment "
+        + "artifacts with `make deployment-check`. The image runs the API on port 8000.\n"
+    )
+
+
 def http_api_check() -> CheckResult:
     return CheckResult("http api", False, "check must be called with root")
 
@@ -400,6 +480,29 @@ def stdlib_http_api_check(root: Path) -> CheckResult:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=2)
+
+
+def deployment_artifacts_check(root: Path) -> CheckResult:
+    required = {
+        "Containerfile": ["FROM", "COPY src", "src.todo_api.server", "EXPOSE 8000"],
+        "Makefile": ["image:", "deployment-check:", "Containerfile"],
+        "README.md": ["Deployment", "make image", "make deployment-check"],
+    }
+    missing: list[str] = []
+    for relative_path, snippets in required.items():
+        path = root / relative_path
+        if not path.exists():
+            missing.append(f"missing {relative_path}")
+            continue
+        text = path.read_text()
+        for snippet in snippets:
+            if snippet not in text:
+                missing.append(f"{relative_path} lacks {snippet!r}")
+    return CheckResult(
+        "deployment artifacts",
+        not missing,
+        "; ".join(missing),
+    )
 
 
 def stateful_todo_api_check(root: Path) -> CheckResult:
