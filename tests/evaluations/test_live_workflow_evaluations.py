@@ -155,14 +155,17 @@ def test_live_deployable_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             "a README documenting usage and endpoints, and a .gitignore covering Python "
             "caches and local runtime artifacts. Deployment support is explicitly in "
             "scope: provide project-owned local container deployment artifacts and "
-            "verification instructions, but do not deploy to production."
+            "verification instructions, but do not deploy to production. The Makefile "
+            "must include an image target named exactly `image` and a deployment "
+            "artifact verification target named exactly `deployment-check`."
         ),
         deployment_spec=(
             "Deployment target: local OCI-compatible container image for the todo API. "
             "Deployment environment: local developer machine or CI runner with an "
             "OCI-compatible image builder such as Podman or Docker. Required project "
-            "artifacts: Containerfile, Makefile target to build the image, Makefile target "
-            "to verify deployment artifacts without requiring production deployment, and "
+            "artifacts: Containerfile, Makefile target named exactly `image` to build "
+            "the image, Makefile target named exactly `deployment-check` to verify "
+            "deployment artifacts without requiring production deployment, and "
             "README deployment instructions. The container must run the API on port 8000 "
             "using python -m src.todo_api.server --port 8000."
         ),

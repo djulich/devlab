@@ -234,10 +234,10 @@ Add a deployable web API scenario that reuses the stateful API black-box contrac
 
 - explicit deployment spec in the temporary target workspace, so architect/planner prompts receive deployment overlays intentionally
 - a `deployment`-domain task in the scripted baseline, so developer/reviewer/integrator domain overlays are exercised
-- checks for `Containerfile`, Makefile image/verification targets, and README deployment instructions
+- checks for `Containerfile`, exact Makefile targets named `image` and `deployment-check`, and README deployment instructions that reference both commands
 - an opt-in live gate (`DEVLAB_LIVE_DEPLOYMENT=1`) and independent session cap
 
-The first deployment baseline should inspect artifacts and project-owned verification commands rather than requiring Podman/Docker availability. Runtime execution of container builds remains a later, tool-availability-gated check.
+The first deployment baseline should inspect artifacts and project-owned verification commands rather than requiring Podman/Docker availability. Runtime execution of container builds remains a later, tool-availability-gated check. The initial live baseline showed why command names must be explicit: agents may produce valid alternatives such as `image-build` and `deploy-verify`, but the evaluation needs stable project-owned command names to grade without interpretation.
 
 ## Acceptance criteria
 

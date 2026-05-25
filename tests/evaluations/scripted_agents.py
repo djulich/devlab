@@ -498,11 +498,13 @@ def deployment_artifacts_check(root: Path) -> CheckResult:
         for snippet in snippets:
             if snippet not in text:
                 missing.append(f"{relative_path} lacks {snippet!r}")
-    return CheckResult(
-        "deployment artifacts",
-        not missing,
-        "; ".join(missing),
-    )
+    message = "; ".join(missing)
+    if missing:
+        message += (
+            "; expected exact deployment contract: Containerfile, Makefile targets "
+            "`image` and `deployment-check`, and README references to both commands"
+        )
+    return CheckResult("deployment artifacts", not missing, message)
 
 
 def stateful_todo_api_check(root: Path) -> CheckResult:

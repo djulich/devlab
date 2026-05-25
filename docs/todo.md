@@ -32,7 +32,7 @@ Recommended evaluation roadmap:
 1. **CLI calculator** — existing tiny baseline for workflow smoke coverage.
 2. **Tiny stdlib HTTP API** — existing dependency-light server/runtime baseline.
 3. **Stateful JSON web API** — implemented as a scripted scenario; exercises multi-file source, project-owned commands, docs, `.gitignore`, and black-box HTTP state transitions without third-party dependencies.
-4. **Web API plus deployment artifacts** — initial local-container scripted/live scenarios are implemented; next expand to Compose/kind/RPM-style project-owned artifacts and verification after collecting live baselines.
+4. **Web API plus deployment artifacts** — initial local-container scripted/live scenarios are implemented with exact `image` and `deployment-check` command contracts; next expand to Compose/kind/RPM-style project-owned artifacts and verification after collecting live baselines.
 5. **Static frontend** — test HTML/CSS/JS behavior without introducing Node/React dependency and browser-tooling volatility.
 6. **React/Vite or full-stack frontend** — later, once dependency/profile handling and live-agent baselines are stable enough to justify the extra moving parts.
 
