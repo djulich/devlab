@@ -1,6 +1,6 @@
 # DevLab Live Evaluation Quality Metrics Plan
 
-Status: implemented and refined with live stateful web API baselines. Diagnostics now include live role sequence, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, live session progress lines, stronger calculator black-box checks, and a stricter stateful API contract. Target-owned test-suite execution remains deferred.
+Status: implemented and refined with live stateful web API, deployable web API, and static frontend baselines. Diagnostics now include live role sequence, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, live session progress lines, stronger calculator black-box checks, and stricter scenario contracts. Target-owned test-suite execution remains deferred.
 
 ## Goal
 
@@ -57,6 +57,26 @@ Recommended actions from this run:
 2. Derive live review rejection counts from archived reviewer handoffs rather than leaving them at zero.
 3. Add or refine diagnostics for rework intensity, such as session-count warnings, reviewer rejection count, integrator finding count, and per-task review cycles.
 4. Keep integrator architecture/spec sync as a required safety net; the run showed it catches drift that may escape task review.
+
+### Static frontend
+
+The static frontend live baselines produced good final applications and highlighted where quality metrics need to distinguish workflow overhead from rework:
+
+- **Artifact and behavior checks were more reliable than exact documentation phrases.** One run provided `static/index.html`, `static/app.js`, `static/styles.css`, direct todo API usage, error handling, and README instructions for opening the served static frontend. The only initial failure was that README did not contain the exact phrase "no frontend build step".
+- **Negative evidence is better for "no build step" constraints.** For this scenario, absence of `package.json`, frontend lockfiles, and Vite config better captures the no-React/no-build-step requirement than requiring a specific README sentence.
+- **Static frontend evaluation should stay browser-light initially.** The current checker inspects static artifacts and route usage rather than introducing browser automation. That keeps the scenario deterministic and focused on workflow behavior.
+- **Multiple developer/reviewer pairs are not always rework.** A later passing run used 8 sessions with two planned tasks: one to add a reusable `python-app` profile and one to implement the API/frontend. There were two reviewer sessions but no rejections or findings. Rework metrics should distinguish planned multi-task execution from repeated work on the same task.
+- **Target-owned profile creation is useful but adds workflow overhead.** The generated `python-app` profile made reviewer/integrator validation concrete (`uv run ruff format --check .`, `ruff check`, `ty check`, `pytest`), but it consumed an extra task/session pair. Diagnostics should make this overhead visible without treating it as failure.
+- **Ignored local environments can dominate target size.** The passing run created an ignored `.venv`/cache footprint of roughly tens of megabytes. Git-based hygiene correctly excluded it from product files, but quality reporting should continue surfacing ignored-file counts/bytes and may eventually warn on unexpectedly large ignored artifacts.
+- **Reviewer/integrator behavior was healthy in the passing run.** The reviewer checked implementation against the design/system spec and profile validation; the integrator ran profile validation plus a live server smoke covering API and static asset serving. This is a useful positive baseline for the narrowed reviewer role.
+
+Recommended actions from these runs:
+
+1. Prefer exact checks for externally consumed contracts and artifact paths, but avoid exact prose requirements unless the prose itself is the contract.
+2. Enforce no-build-step frontend constraints by detecting build artifacts rather than requiring agents to document a magic phrase.
+3. Revisit browser automation only after static artifact baselines are stable and profile/tooling setup can model browser dependencies explicitly.
+4. Refine rework metrics to count repeated developer/reviewer cycles per task, not just total role alternations.
+5. Track target-created profiles and ignored artifact size as supporting diagnostics, not hard failures.
 
 ## Metrics to add
 
