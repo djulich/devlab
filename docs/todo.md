@@ -110,7 +110,18 @@ Open work:
 - Keep multi-step workflow policy visible in `orchestrator.py`; handles should expose atomic domain transitions only.
 - Add tests that discourage direct parsing/mutation outside tracker/workspace boundaries.
 
-## 10. Deployment Specification and Verification
+## 10. Codebase Maintainability for Agent Work
+
+Priority: medium. Keep modules scoped so an agent can work on one topic without loading unrelated workflow, prompt, evaluation, and CLI details into context. The evaluation harness has been split so checks and metrics live outside the workflow runner.
+
+Open work:
+
+- Consider extracting orchestrator session execution, handoff processing, and Git commit/tag policy into smaller internal modules if `src/devlab/orchestrator.py` grows further. Keep the public workflow loop in `orchestrator.py`.
+- Consider splitting `src/devlab/doctor.py` by validation domain if more checks are added for deployment, trust/safety, or prompt context.
+- Consider splitting large scripted evaluation agents by scenario family if future scenarios make `tests/evaluations/scripted_agents.py` harder to scan.
+- Keep prompt assembly helpers grouped by role/domain; if `src/devlab/prompts.py` grows, extract profile/domain formatting without moving workflow decisions into prompt construction.
+
+## 11. Deployment Specification and Verification
 
 Status: **foundation implemented; verification/evaluation work remains**. DevLab now initializes a richer deployment spec template, supports primary task domains (`general` by default, `deployment` for deployment work), and adds role-specific deployment prompt overlays from `src/devlab/resources/prompts/domains/deployment/<role>.md` without changing the core workflow roles. Developer/reviewer prompts use the assigned task domain; architect/planner prompts use deployment overlays when deployment specs contain substantive requirements; integrator prompts use deployment overlays for deployment-domain milestone work. See `docs/deployment-feature-overview.md` and `docs/plans/deployment-specification-and-verification.md`.
 
@@ -136,7 +147,7 @@ Open work:
 - Add non-mutating `doctor`/diagnostic checks for deployment specs, unknown task domains, and optionally deployment tool availability.
 - Expand verification from structural checks toward safe static/artifact validation where host tools are available.
 
-## 11. Automatic Version Control
+## 12. Automatic Version Control
 
 Status: **initial implementation complete**. `devlab init` initializes Git when needed, configures a usable identity from CLI flags, existing Git config, or DevLab defaults, and creates an initial commit. Existing Git repositories must be clean before init so DevLab does not mix user changes with bootstrap state. `devlab run` requires a Git repository with a clean working tree, commits all non-ignored changes after every valid session, and creates `devlab/milestone/<milestone-id>` tags when milestones are integrated. Failed integration findings are committed like any other valid session. Agents may provide an optional `## Commit Message` handoff section with a one-line description; the orchestrator adds the task/role prefix and falls back to task/role-derived messages when the section is absent.
 
@@ -147,7 +158,7 @@ Open work:
 - Consider commit message bodies if one-line summaries prove insufficient.
 - Defer per-milestone feature branches; use milestone tags first.
 
-## 12. Multi-session Architecture Planning for Large Specs
+## 13. Multi-session Architecture Planning for Large Specs
 
 Priority: medium-low. Useful for substantial target systems where one architect session cannot produce a reliable design plan, but lower priority until workflow evaluations show concrete context or quality failures on large specs.
 
@@ -158,7 +169,7 @@ Open work:
 - Avoid overloading implementation tasks for pre-planning work; if design slices are needed, store them as architecture-planning artifacts rather than normal developer tasks.
 - Add tests/evaluations with an intentionally large spec that requires multiple architecture passes.
 
-## 13. DevLab CLI and Library Logging Facility
+## 14. DevLab CLI and Library Logging Facility
 
 Status: **initial implementation complete**. DevLab now uses Python's standard `logging` module with a single `devlab` logger for workflow progress/errors, while `init`, `status`, `doctor`, and interactive handoff previews remain direct user output. `devlab run` supports `--quiet`, `--verbose`, and `--log-file`; file logs capture DEBUG diagnostics. This complements, but does not replace, agent stdout/stderr capture in Agent Invocation Observability.
 
