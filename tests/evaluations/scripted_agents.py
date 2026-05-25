@@ -486,7 +486,7 @@ def deployment_artifacts_check(root: Path) -> CheckResult:
     required = {
         "Containerfile": ["FROM", "COPY src", "src.todo_api.server", "EXPOSE 8000"],
         "Makefile": ["image:", "deployment-check:", "Containerfile"],
-        "README.md": ["Deployment", "make image", "make deployment-check"],
+        "README.md": ["make image", "make deployment-check"],
     }
     missing: list[str] = []
     for relative_path, snippets in required.items():
@@ -498,6 +498,8 @@ def deployment_artifacts_check(root: Path) -> CheckResult:
         for snippet in snippets:
             if snippet not in text:
                 missing.append(f"{relative_path} lacks {snippet!r}")
+        if relative_path == "README.md" and "deployment" not in text.lower():
+            missing.append("README.md lacks a deployment section")
     message = "; ".join(missing)
     if missing:
         message += (

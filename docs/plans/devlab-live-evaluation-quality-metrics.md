@@ -237,7 +237,7 @@ Add a deployable web API scenario that reuses the stateful API black-box contrac
 - checks for `Containerfile`, exact Makefile targets named `image` and `deployment-check`, and README deployment instructions that reference both commands
 - an opt-in live gate (`DEVLAB_LIVE_DEPLOYMENT=1`) and independent session cap
 
-The first deployment baseline should inspect artifacts and project-owned verification commands rather than requiring Podman/Docker availability. Runtime execution of container builds remains a later, tool-availability-gated check. The initial live baseline showed why command names must be explicit: agents may produce valid alternatives such as `image-build` and `deploy-verify`, but the evaluation needs stable project-owned command names to grade without interpretation.
+The first deployment baseline should inspect artifacts and project-owned verification commands rather than requiring Podman/Docker availability. Runtime execution of container builds remains a later, tool-availability-gated check. The initial live baselines showed why command names must be explicit: agents may produce valid alternatives such as `image-build` and `deploy-verify`, but the evaluation needs stable project-owned command names to grade without interpretation. Cosmetic documentation wording should be less brittle; for example, a README heading like `Local container deployment` should satisfy a deployment-section check even if it does not use title case.
 
 ## Acceptance criteria
 
