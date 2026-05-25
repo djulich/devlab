@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 from pathlib import Path
@@ -81,6 +82,39 @@ def test_cli_status_verbose_reports_agent_configuration(
     assert "Next role: architect" in output
     assert "Agent configuration:" in output
     assert "Source: .devlab/config/agents.toml" in output
+
+
+def test_cli_diagnostics_reports_workflow_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(monkeypatch, "diagnostics", "--root", str(tmp_path))
+
+    output = capsys.readouterr().out
+    assert "Workflow diagnostics:" in output
+    assert "Sessions: 0" in output
+    assert "Role sequence: none" in output
+    assert "Profiles: default" in output
+    assert "Warnings: none" in output
+
+
+def test_cli_diagnostics_json_reports_structured_workflow_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(monkeypatch, "diagnostics", "--json", "--root", str(tmp_path))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["roles"] == []
+    assert payload["tasks"]["total"] == 0
+    assert payload["profiles"]["ids"] == ["default"]
+    assert payload["quality"]["correctness_checked"] is False
+    assert payload["quality"]["correctness_passed"] is None
+    assert payload["quality"]["warnings"] == []
 
 
 def test_cli_doctor_reports_ok_for_initialized_workspace(

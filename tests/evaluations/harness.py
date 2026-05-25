@@ -16,14 +16,7 @@ from devlab.agents import AgentInvocation, MockProvider
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
-from tests.evaluations.checks import (
-    BlackBoxCheck,
-    CheckResult,
-    command_check,
-    command_fails_check,
-    file_contains_check,
-)
-from tests.evaluations.metrics import (
+from devlab.workflow_diagnostics import (
     collect_agent_log_metrics,
     collect_artifact_hygiene,
     collect_profile_metrics,
@@ -36,6 +29,13 @@ from tests.evaluations.metrics import (
     derive_task_cycle_metrics,
     derive_task_rework_summary,
     quality_summary,
+)
+from tests.evaluations.checks import (
+    BlackBoxCheck,
+    CheckResult,
+    command_check,
+    command_fails_check,
+    file_contains_check,
 )
 
 __all__ = [

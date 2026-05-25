@@ -9,6 +9,7 @@ from devlab.doctor import check_workspace, format_doctor_report
 from devlab.init import format_init_result, init_workspace
 from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop
 from devlab.status import format_status
+from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
 
 
 def main() -> None:
@@ -117,6 +118,26 @@ def main() -> None:
         help="Show resolved agent configuration details.",
     )
 
+    diagnostics_parser = subparsers.add_parser(
+        "diagnostics", help="Show workflow diagnostics and quality warnings."
+    )
+    diagnostics_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to inspect (default: current working directory).",
+    )
+    diagnostics_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show per-session, per-task, profile, and log details.",
+    )
+    diagnostics_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit diagnostics as JSON for tools and agents.",
+    )
+
     doctor_parser = subparsers.add_parser(
         "doctor", help="Validate DevLab workspace configuration."
     )
@@ -155,6 +176,11 @@ def main() -> None:
             raise SystemExit(result.exit_code)
     elif args.command == "status":
         print(format_status(root, verbose=args.verbose))
+    elif args.command == "diagnostics":
+        if args.json:
+            print(build_workflow_diagnostics(root).to_json())
+        else:
+            print(format_workflow_diagnostics(root, verbose=args.verbose))
     elif args.command == "doctor":
         problems = check_workspace(root)
         print(format_doctor_report(problems))

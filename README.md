@@ -62,6 +62,7 @@ Inspect the workspace:
 ```bash
 uv run devlab doctor --root /path/to/target-project
 uv run devlab status --root /path/to/target-project --verbose
+uv run devlab diagnostics --root /path/to/target-project
 ```
 
 Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session:
@@ -83,6 +84,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
 - `devlab run [--root PATH] [--auto] [--max-sessions N] [...]` — run the workflow loop.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
+- `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
 
 Useful `run` options include `--provider`, `--model`, `--effort`, `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`.

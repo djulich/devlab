@@ -1,19 +1,111 @@
 from __future__ import annotations
 
+import dataclasses
+import json
 import re
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
-from devlab.findings import Finding, FindingStatus
+from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.handoffs import HandoffError, parse_handoff
 from devlab.profiles import DEFAULT_PROFILE, PROFILES_DIR, load_profile
 from devlab.task_tracker import FileTaskTracker, TaskStatus
-from tests.evaluations.checks import CheckResult
 
 _HANDOFF_FILENAME_RE = re.compile(r"^(\d{8}T\d{6})(?:_(\d+))?_([a-z_]+)_handoff\.md$")
 _TASK_ARTIFACT_RE = re.compile(r"\.devlab/tasks/(T\d{3,5})[^\s`)]*\.md")
+LARGE_IGNORED_BYTES_WARNING = 100_000_000
+LARGE_IGNORED_FILES_WARNING = 5_000
+HIGH_SESSIONS_PER_CLOSED_TASK_WARNING = 6
+
+
+class DiagnosticCheck(Protocol):
+    passed: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkflowDiagnostics:
+    sessions: list[dict[str, object]]
+    roles: list[str]
+    tasks: dict[str, object]
+    task_cycles: dict[str, object]
+    task_rework: dict[str, object]
+    findings_created: int
+    findings_resolved: int
+    review_rejections: int
+    integrator_rework: dict[str, object]
+    profiles: dict[str, object]
+    artifact_hygiene: dict[str, object]
+    agent_logs: dict[str, object]
+    prompt_logs: dict[str, object]
+    quality: dict[str, object]
+
+    def as_dict(self) -> dict[str, object]:
+        return dataclasses.asdict(self)
+
+    def to_json(self) -> str:
+        return json.dumps(self.as_dict(), indent=2, sort_keys=True)
+
+
+def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
+    findings = FileFindingTracker(root).list_findings()
+    sessions = derive_session_records(root)
+    task_metrics = collect_task_metrics(root)
+    artifact_hygiene = collect_artifact_hygiene(root)
+    task_cycles = derive_task_cycle_metrics(root, sessions)
+    task_rework = derive_task_rework_summary(task_cycles)
+    integrator_rework = derive_integrator_rework_summary(findings)
+    return WorkflowDiagnostics(
+        sessions=sessions,
+        roles=[str(session["role"]) for session in sessions],
+        tasks=task_metrics,
+        task_cycles=task_cycles,
+        task_rework=task_rework,
+        findings_created=len(findings),
+        findings_resolved=sum(
+            1 for finding in findings if finding.status == FindingStatus.RESOLVED
+        ),
+        review_rejections=derive_review_rejections(root),
+        integrator_rework=integrator_rework,
+        profiles=collect_profile_metrics(root),
+        artifact_hygiene=artifact_hygiene,
+        agent_logs=collect_agent_log_metrics(root),
+        prompt_logs=collect_prompt_log_metrics(root),
+        quality=quality_summary(
+            checks=[],
+            task_metrics=task_metrics,
+            artifact_hygiene=artifact_hygiene,
+            sessions_run=len(sessions),
+            task_rework=task_rework,
+            integrator_rework=integrator_rework,
+        ),
+    )
+
+
+def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
+    diagnostics = build_workflow_diagnostics(root)
+    lines = ["Workflow diagnostics:"]
+    lines.append(f"Sessions: {len(diagnostics.sessions)}")
+    lines.append(
+        "Role sequence: " + (" -> ".join(diagnostics.roles) if diagnostics.roles else "none")
+    )
+    lines.append(_format_task_summary(diagnostics.tasks))
+    lines.append(_format_rework_summary(diagnostics.task_rework))
+    lines.append(_format_integrator_summary(diagnostics.integrator_rework))
+    lines.append(_format_profile_summary(diagnostics.profiles))
+    lines.append(_format_artifact_hygiene_summary(diagnostics.artifact_hygiene))
+    warnings = diagnostics.quality.get("warnings", [])
+    warning_list = [str(warning) for warning in warnings] if isinstance(warnings, list) else []
+    if warning_list:
+        lines.append("Warnings:")
+        lines.extend(f"- {warning}" for warning in warning_list)
+    else:
+        lines.append("Warnings: none")
+
+    if verbose:
+        lines.extend(["", *_format_verbose_sections(diagnostics)])
+    return "\n".join(lines)
 
 
 def derive_role_sequence(root: Path) -> list[str]:
@@ -304,7 +396,7 @@ def collect_prompt_log_metrics(root: Path) -> dict[str, object]:
 
 def quality_summary(
     *,
-    checks: list[CheckResult],
+    checks: Sequence[DiagnosticCheck],
     task_metrics: dict[str, object],
     artifact_hygiene: dict[str, object],
     sessions_run: int,
@@ -326,21 +418,136 @@ def quality_summary(
     integrator_findings = integrator_rework.get("findings_created", 0)
     if isinstance(integrator_findings, int) and integrator_findings:
         warnings.append(f"integrator findings created: {integrator_findings}")
-    if closed and sessions_run / closed > 6:
+    if closed and sessions_run / closed > HIGH_SESSIONS_PER_CLOSED_TASK_WARNING:
         warnings.append(f"high session count per closed task: {sessions_run}/{closed}")
     ignored_file_count = artifact_hygiene.get("ignored_file_count", 0)
     ignored_total_bytes = artifact_hygiene.get("ignored_total_bytes", 0)
-    if isinstance(ignored_total_bytes, int) and ignored_total_bytes > 100_000_000:
+    if isinstance(ignored_total_bytes, int) and ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING:
         warnings.append(f"large ignored artifact footprint: {ignored_total_bytes} bytes")
-    if isinstance(ignored_file_count, int) and ignored_file_count > 5_000:
+    if isinstance(ignored_file_count, int) and ignored_file_count > LARGE_IGNORED_FILES_WARNING:
         warnings.append(f"large ignored artifact file count: {ignored_file_count}")
+    correctness_checked = bool(checks)
+    correctness_passed = all(check.passed for check in checks) if correctness_checked else None
     return {
-        "correctness_passed": all(check.passed for check in checks),
+        "correctness_checked": correctness_checked,
+        "correctness_passed": correctness_passed,
         "all_tasks_closed": all_tasks_closed,
         "has_flagged_artifacts": bool(flagged_list),
         "session_count": sessions_run,
         "warnings": warnings,
     }
+
+
+def _format_task_summary(tasks: dict[str, object]) -> str:
+    total = tasks.get("total", 0)
+    by_status = tasks.get("by_status", {})
+    if not isinstance(by_status, dict) or not by_status:
+        return f"Tasks: {total} total"
+    status_parts = ", ".join(
+        f"{count} {status}" for status, count in sorted(by_status.items())
+    )
+    return f"Tasks: {total} total ({status_parts})"
+
+
+def _format_rework_summary(task_rework: dict[str, object]) -> str:
+    tasks = task_rework.get("tasks_with_rework", [])
+    if isinstance(tasks, list) and tasks:
+        return "Task rework: " + ", ".join(str(task_id) for task_id in tasks)
+    return "Task rework: none"
+
+
+def _format_integrator_summary(integrator_rework: dict[str, object]) -> str:
+    created = integrator_rework.get("findings_created", 0)
+    resolved = integrator_rework.get("findings_resolved", 0)
+    open_count = integrator_rework.get("findings_open", 0)
+    planned = integrator_rework.get("findings_planned", 0)
+    return (
+        "Integrator findings: "
+        f"{created} created, {resolved} resolved, {open_count} open, {planned} planned"
+    )
+
+
+def _format_profile_summary(profiles: dict[str, object]) -> str:
+    ids = profiles.get("ids", [])
+    if isinstance(ids, list) and ids:
+        return "Profiles: " + ", ".join(str(profile_id) for profile_id in ids)
+    return "Profiles: none"
+
+
+def _format_artifact_hygiene_summary(artifact_hygiene: dict[str, object]) -> str:
+    return (
+        "Artifact hygiene: "
+        f"{artifact_hygiene.get('product_file_count', 0)} product files, "
+        f"{artifact_hygiene.get('ignored_file_count', 0)} ignored files, "
+        f"{len(cast('list[object]', artifact_hygiene.get('flagged_paths', [])))} flagged paths"
+    )
+
+
+def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
+    lines = ["Sessions:"]
+    if diagnostics.sessions:
+        for session in diagnostics.sessions:
+            task_id = str(session.get("task_id") or "")
+            task_text = f" task={task_id}" if task_id else ""
+            source = session.get("task_id_source", "")
+            lines.append(
+                f"- {session.get('index')}: {session.get('role')}{task_text} source={source}"
+            )
+    else:
+        lines.append("- none")
+
+    lines.append("")
+    lines.append("Task cycles:")
+    raw_tasks = diagnostics.task_cycles.get("tasks", {})
+    task_cycles = (
+        cast("dict[str, dict[str, object]]", raw_tasks) if isinstance(raw_tasks, dict) else {}
+    )
+    if task_cycles:
+        for task_id, metrics in sorted(task_cycles.items()):
+            lines.append(
+                f"- {task_id}: developer_sessions={metrics.get('developer_sessions', 0)} "
+                f"reviewer_sessions={metrics.get('reviewer_sessions', 0)} "
+                f"rework={_bool_text(bool(metrics.get('has_rework')))}"
+            )
+    else:
+        lines.append("- none")
+
+    lines.append("")
+    lines.append("Profiles:")
+    profile_items = diagnostics.profiles.get("items", [])
+    if isinstance(profile_items, list) and profile_items:
+        for item in profile_items:
+            if not isinstance(item, dict):
+                continue
+            profile = cast("dict[str, object]", item)
+            managed_roles = ", ".join(
+                cast("list[str]", profile.get("managed_roles", []))
+            ) or "none"
+            lines.append(
+                f"- {profile.get('id')}: validation_commands="
+                f"{profile.get('default_validation_count', 0)} "
+                f"managed_roles={managed_roles} "
+                f"valid={_bool_text(bool(profile.get('valid')))}"
+            )
+    else:
+        lines.append("- none")
+
+    lines.append("")
+    lines.append("Logs:")
+    lines.append(
+        "- agent: "
+        f"stdout={diagnostics.agent_logs.get('stdout_count', 0)} "
+        f"stderr={diagnostics.agent_logs.get('stderr_count', 0)} "
+        f"config={diagnostics.agent_logs.get('config_count', 0)}"
+    )
+    lines.append(
+        "- prompts: "
+        f"system={diagnostics.prompt_logs.get('system_count', 0)} "
+        f"session={diagnostics.prompt_logs.get('session_count', 0)} "
+        f"max_system_bytes={diagnostics.prompt_logs.get('max_system_prompt_bytes', 0)} "
+        f"max_session_bytes={diagnostics.prompt_logs.get('max_session_prompt_bytes', 0)}"
+    )
+    return lines
 
 
 def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -370,3 +577,7 @@ def _total_bytes(root: Path, relative_paths: Sequence[str]) -> int:
         if path.is_file():
             total += path.stat().st_size
     return total
+
+
+def _bool_text(value: bool) -> str:
+    return "true" if value else "false"

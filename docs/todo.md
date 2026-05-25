@@ -112,7 +112,7 @@ Open work:
 
 ## 10. Codebase Maintainability for Agent Work
 
-Priority: medium. Keep modules scoped so an agent can work on one topic without loading unrelated workflow, prompt, evaluation, and CLI details into context. The evaluation harness has been split so checks and metrics live outside the workflow runner.
+Priority: medium. Keep modules scoped so an agent can work on one topic without loading unrelated workflow, prompt, evaluation, and CLI details into context. The evaluation harness has been split so black-box checks live in `tests/evaluations/checks.py`, while reusable workflow metrics live in production code under `src/devlab/workflow_diagnostics.py`.
 
 Open work:
 
