@@ -1,12 +1,12 @@
 # DevLab Live Evaluation Quality Metrics Plan
 
-Status: implemented. Diagnostics now include live role sequence, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, and stronger calculator black-box checks. Target-owned test-suite execution remains deferred.
+Status: implemented and refined with live stateful web API baselines. Diagnostics now include live role sequence, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, live session progress lines, stronger calculator black-box checks, and a stricter stateful API contract. Target-owned test-suite execution remains deferred.
 
 ## Goal
 
 Strengthen workflow evaluations so a passing live eval means more than "the final command happened to work". The first live calculator eval proved end-to-end workflow viability, but the grading is too shallow for produced-system quality.
 
-This plan adds lightweight, deterministic quality metrics and stronger black-box checks while deferring target-owned test-suite execution.
+This plan adds lightweight, deterministic quality metrics and stronger black-box checks while deferring target-owned test-suite execution. Subsequent stateful web API live runs showed that the main source of false-negative churn was underspecified API contracts, not missing repository metrics.
 
 ## Non-goals
 
@@ -27,6 +27,18 @@ Observed first successful live run:
 - retained split prompt logs successfully
 
 Takeaway: workflow viability is proven for a small scenario; produced-system quality needs stronger metrics.
+
+## Findings from stateful web API live baselines
+
+The first stateful web API live runs completed the DevLab workflow but failed black-box correctness checks. The failures were useful quality signals and led to these refinements:
+
+- **Scenario specs must state exact response shapes.** Agents produced plausible alternatives such as `{"todo": {"id": 1, "title": "write eval"}}`, but the evaluator needed a top-level `{"id": 1, "title": "write eval"}` object to drive follow-up requests. Live specs and the companion plan now require top-level `id` and `title` fields.
+- **Destructive-operation contracts should be exact when the product spec says so.** `DELETE /todos/{id}` briefly returned semantically rich variants such as `{"deleted": true, "id": 1}`. The scenario now requires exactly `{"deleted": <id>}`.
+- **Negative cases need explicit edge-case wording.** A live run accepted `{"title": ""}` and created an empty todo. The scenario now requires 4xx responses for invalid JSON, missing title, empty title, and blank title.
+- **Live failures should expose enough context without manual log spelunking.** Failure messages now include the target root, diagnostics path, agent log path, and diagnostics JSON. Live evaluation sessions also print start/finish role progress lines for long-running tests.
+- **Correctness remains the hard gate.** The failed runs had closed tasks and reasonable hygiene diagnostics, but the product was wrong. This confirms that black-box scenario checks are the primary pass/fail signal; task closure, session count, and hygiene remain supporting diagnostics.
+
+Implication: each new live scenario should first define its externally observable contract in exact request/response terms, including negative cases. The evaluator should fail with a contract-specific message before falling back to broad diagnostic summaries.
 
 ## Metrics to add
 
@@ -133,7 +145,30 @@ Also record agent log counts:
 
 Do not export prompt contents.
 
-### 6. Quality gate summary
+### 6. Live session progress output
+
+Long live evaluations can run for several minutes with no pytest output. Print one progress line when each session starts and one when it finishes:
+
+```text
+[12:34:56] live eval session 3 start: developer
+[12:36:10] live eval session 3 finish: developer
+```
+
+This is operator feedback only; it is not part of the persisted quality schema. Use `pytest -s` when pytest output capture would otherwise hide the progress lines until the test ends.
+
+### 7. Scenario-specific contract checks
+
+For stateful/live API scenarios, hard correctness checks should verify exact externally observable contracts rather than broad semantic equivalence:
+
+- response status codes for happy path and negative path requests
+- top-level response fields needed by clients/evaluators
+- exact response bodies where the scenario specifies them
+- final state after mutating operations
+- project-owned documentation/command artifacts by file presence/content, without executing target-owned test suites
+
+Failure messages should name the violated contract and include the observed status/body.
+
+### 8. Quality gate summary
 
 Add a simple computed summary:
 
@@ -183,14 +218,26 @@ Update `docs/evaluations.md`:
 
 Update `docs/todo.md` TODO #3 open work to mention collecting baselines with new quality metrics.
 
+### Phase 4: Stateful API contract hardening
+
+Update the stateful web API live and scripted scenarios so they agree on an explicit contract:
+
+- `POST /todos` returns a top-level JSON object with integer `id` and `title`.
+- `GET /todos` returns `{"todos": [...]}`.
+- `DELETE /todos/{id}` returns exactly `{"deleted": <id>}`.
+- invalid JSON, missing title, empty title, and blank title return a 4xx client error.
+- black-box check failures report the observed status and JSON payload.
+
 ## Acceptance criteria
 
 - Default tests remain fast and deterministic.
 - Scripted calculator evaluations pass with expanded checks.
 - Live diagnostics include non-empty role sequence after a live run.
+- Live tests print session start/finish progress lines when run with visible pytest output.
 - Diagnostics include task metrics, artifact hygiene, prompt/log counts, and quality summary.
 - `.venv`/cache directories are flagged as warnings, not hard failures.
 - No target-owned `pytest` or validation command is run by the evaluation harness.
+- Stateful web API live/scripted checks enforce exact response shapes and explicit negative cases.
 
 ## Validation
 
