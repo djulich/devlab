@@ -8,9 +8,11 @@ from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.task_tracker import FileTaskTracker, TaskStatus
 from tests.evaluations.harness import (
+    CheckResult,
     EvaluationDiagnostics,
     EvaluationScenario,
     collect_artifact_hygiene,
+    collect_profile_metrics,
     command_check,
     command_fails_check,
     derive_integrator_rework_summary,
@@ -21,6 +23,7 @@ from tests.evaluations.harness import (
     derive_task_rework_summary,
     file_contains_check,
     init_target_workspace,
+    quality_summary,
     run_scripted_evaluation,
 )
 from tests.evaluations.scripted_agents import (
@@ -496,6 +499,65 @@ def test_live_role_sequence_handles_archive_collision_filenames(tmp_path: Path) 
     assert derive_role_sequence(tmp_path) == ["reviewer", "developer"]
 
 
+def test_collect_profile_metrics_lists_profiles_and_task_usage(tmp_path: Path) -> None:
+    profiles_dir = tmp_path / ".devlab/config/profiles"
+    tasks_dir = tmp_path / ".devlab/tasks"
+    profiles_dir.mkdir(parents=True)
+    tasks_dir.mkdir(parents=True)
+    (profiles_dir / "default.toml").write_text(
+        'version = 1\nid = "default"\ntitle = "Default"\n\n'
+        '[tooling]\ndefault_validation = []\n\n'
+        '[environment]\nmanaged_roles = []\n'
+    )
+    (profiles_dir / "python-app.toml").write_text(
+        'version = 1\nid = "python-app"\ntitle = "Python App"\n\n'
+        '[tooling]\ndefault_validation = ["uv run pytest"]\n\n'
+        '[environment]\nmanaged_roles = ["developer"]\n'
+    )
+    _write_minimal_task(tasks_dir / "T0001_default.md", "T0001", "Default")
+    _write_minimal_task(
+        tasks_dir / "T0002_python.md",
+        "T0002",
+        "Python",
+        profile="python-app",
+    )
+
+    metrics = collect_profile_metrics(tmp_path)
+
+    items = cast("list[dict[str, object]]", metrics["items"])
+
+    assert metrics["count"] == 2
+    assert metrics["ids"] == ["default", "python-app"]
+    assert metrics["non_default_ids"] == ["python-app"]
+    assert metrics["tasks_by_profile"] == {"default": ["T0001"], "python-app": ["T0002"]}
+    assert items[1]["default_validation_count"] == 1
+    assert items[1]["managed_roles"] == ["developer"]
+
+
+def test_quality_summary_warns_for_rework_and_large_ignored_artifacts() -> None:
+    summary = quality_summary(
+        checks=[CheckResult("ok", True)],
+        task_metrics={"total": 1, "by_status": {"closed": 1}},
+        artifact_hygiene={
+            "flagged_paths": [],
+            "ignored_file_count": 5_001,
+            "ignored_total_bytes": 100_000_001,
+        },
+        sessions_run=7,
+        task_rework={"tasks_with_rework": ["T0001"]},
+        integrator_rework={"findings_created": 1},
+    )
+
+    warnings = cast("list[str]", summary["warnings"])
+
+    assert summary["correctness_passed"] is True
+    assert "task rework detected: T0001" in warnings
+    assert "integrator findings created: 1" in warnings
+    assert "high session count per closed task: 7/1" in warnings
+    assert "large ignored artifact footprint: 100000001 bytes" in warnings
+    assert "large ignored artifact file count: 5001" in warnings
+
+
 def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
     tmp_path: Path,
 ) -> None:
@@ -558,12 +620,20 @@ def test_evaluation_init_commits_existing_git_repo_setup(tmp_path: Path) -> None
     assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
 
 
-def _write_minimal_task(path: Path, task_id: str, title: str) -> None:
+def _write_minimal_task(
+    path: Path,
+    task_id: str,
+    title: str,
+    *,
+    profile: str | None = None,
+) -> None:
+    profile_line = f'profile = "{profile}"\n' if profile else ""
     path.write_text(
         "+++\n"
         f'id = "{task_id}"\n'
         f'title = "{title}"\n'
         'status = "closed"\n'
+        f"{profile_line}"
         'domain = "general"\n'
         "depends_on = []\n"
         "addresses_findings = []\n"

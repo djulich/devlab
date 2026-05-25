@@ -18,6 +18,7 @@ from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.handoffs import HandoffError, parse_handoff
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
+from devlab.profiles import DEFAULT_PROFILE, PROFILES_DIR, load_profile
 from devlab.task_tracker import FileTaskTracker, TaskStatus
 
 
@@ -87,6 +88,7 @@ class EvaluationDiagnostics:
     task_cycles: dict[str, object] = dataclasses.field(default_factory=dict)
     task_rework: dict[str, object] = dataclasses.field(default_factory=dict)
     integrator_rework: dict[str, object] = dataclasses.field(default_factory=dict)
+    profiles: dict[str, object] = dataclasses.field(default_factory=dict)
 
     def write(self, root: Path) -> Path:
         path = root / ".devlab/evaluations" / f"{self.scenario_id}.json"
@@ -211,6 +213,7 @@ def diagnostics_for(
     task_cycles = derive_task_cycle_metrics(root, sessions)
     task_rework = derive_task_rework_summary(task_cycles)
     integrator_rework = derive_integrator_rework_summary(findings)
+    profile_metrics = collect_profile_metrics(root)
     return EvaluationDiagnostics(
         scenario_id=scenario.id,
         provider_mode=provider_mode,
@@ -243,11 +246,14 @@ def diagnostics_for(
             task_metrics=task_metrics,
             artifact_hygiene=artifact_hygiene,
             sessions_run=result.sessions_run,
+            task_rework=task_rework,
+            integrator_rework=integrator_rework,
         ),
         sessions=sessions,
         task_cycles=task_cycles,
         task_rework=task_rework,
         integrator_rework=integrator_rework,
+        profiles=profile_metrics,
     )
 
 
@@ -423,6 +429,54 @@ def collect_task_metrics(root: Path) -> dict[str, object]:
     }
 
 
+def collect_profile_metrics(root: Path) -> dict[str, object]:
+    profiles = []
+    profiles_path = root / PROFILES_DIR
+    for path in sorted(profiles_path.glob("*.toml")):
+        profile_id = path.stem
+        try:
+            profile = load_profile(root, profile_id)
+        except (OSError, ValueError):
+            profiles.append(
+                {
+                    "id": profile_id,
+                    "title": profile_id,
+                    "path": path.relative_to(root).as_posix(),
+                    "default_validation_count": 0,
+                    "managed_roles": [],
+                    "valid": False,
+                }
+            )
+            continue
+        profiles.append(
+            {
+                "id": profile.id,
+                "title": profile.title,
+                "path": path.relative_to(root).as_posix(),
+                "default_validation_count": len(profile.tooling.default_validation),
+                "managed_roles": list(profile.environment.managed_roles),
+                "valid": True,
+            }
+        )
+
+    tasks = FileTaskTracker(root).list_tasks()
+    tasks_by_profile: dict[str, list[str]] = {}
+    for task in tasks:
+        profile_id = task.profile or DEFAULT_PROFILE
+        tasks_by_profile.setdefault(profile_id, []).append(task.id)
+
+    ids = [str(profile["id"]) for profile in profiles]
+    return {
+        "count": len(profiles),
+        "ids": ids,
+        "non_default_ids": [profile_id for profile_id in ids if profile_id != DEFAULT_PROFILE],
+        "items": profiles,
+        "tasks_by_profile": {
+            key: sorted(value) for key, value in sorted(tasks_by_profile.items())
+        },
+    }
+
+
 def collect_artifact_hygiene(root: Path) -> dict[str, object]:
     product_files = [
         path
@@ -499,6 +553,8 @@ def quality_summary(
     task_metrics: dict[str, object],
     artifact_hygiene: dict[str, object],
     sessions_run: int,
+    task_rework: dict[str, object] | None = None,
+    integrator_rework: dict[str, object] | None = None,
 ) -> dict[str, object]:
     raw_by_status = task_metrics.get("by_status", {})
     by_status = cast("dict[str, int]", raw_by_status) if isinstance(raw_by_status, dict) else {}
@@ -506,12 +562,29 @@ def quality_summary(
     all_tasks_closed = task_metrics.get("total") == closed
     flagged_paths = artifact_hygiene.get("flagged_paths", [])
     flagged_list = list(flagged_paths) if isinstance(flagged_paths, list) else []
+    warnings = [f"flagged artifact path: {path}" for path in flagged_list]
+    task_rework = task_rework or {}
+    integrator_rework = integrator_rework or {}
+    reworked_tasks = task_rework.get("tasks_with_rework", [])
+    if isinstance(reworked_tasks, list):
+        warnings.extend(f"task rework detected: {task_id}" for task_id in reworked_tasks)
+    integrator_findings = integrator_rework.get("findings_created", 0)
+    if isinstance(integrator_findings, int) and integrator_findings:
+        warnings.append(f"integrator findings created: {integrator_findings}")
+    if closed and sessions_run / closed > 6:
+        warnings.append(f"high session count per closed task: {sessions_run}/{closed}")
+    ignored_file_count = artifact_hygiene.get("ignored_file_count", 0)
+    ignored_total_bytes = artifact_hygiene.get("ignored_total_bytes", 0)
+    if isinstance(ignored_total_bytes, int) and ignored_total_bytes > 100_000_000:
+        warnings.append(f"large ignored artifact footprint: {ignored_total_bytes} bytes")
+    if isinstance(ignored_file_count, int) and ignored_file_count > 5_000:
+        warnings.append(f"large ignored artifact file count: {ignored_file_count}")
     return {
         "correctness_passed": all(check.passed for check in checks),
         "all_tasks_closed": all_tasks_closed,
         "has_flagged_artifacts": bool(flagged_list),
         "session_count": sessions_run,
-        "warnings": [f"flagged artifact path: {path}" for path in flagged_list],
+        "warnings": warnings,
     }
 
 

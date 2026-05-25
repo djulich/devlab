@@ -124,7 +124,33 @@ Useful derived signals:
 - integrator finding count and resolved finding count
 - high session count or repeated developer/reviewer cycles as a rework-intensity warning
 
-### 3. Artifact hygiene metrics
+### 3. Profile diagnostics
+
+Record target-owned profiles and task usage so profile creation/selection is visible as workflow context rather than inferred from extra tasks:
+
+```json
+"profiles": {
+  "count": 2,
+  "ids": ["default", "python-app"],
+  "non_default_ids": ["python-app"],
+  "tasks_by_profile": {
+    "default": ["T0001"],
+    "python-app": ["T0002"]
+  },
+  "items": [
+    {
+      "id": "python-app",
+      "default_validation_count": 4,
+      "managed_roles": [],
+      "valid": true
+    }
+  ]
+}
+```
+
+Creating a profile is not a warning by default. It can be useful overhead, as in the static frontend baseline where a generated `python-app` profile made validation concrete for later reviewer/integrator sessions.
+
+### 4. Artifact hygiene metrics
 
 Record repo artifact summary without failing by default:
 
@@ -148,7 +174,9 @@ Flag, but do not initially fail on:
 
 Rationale: these may indicate agents are doing environment setup inside the target repo, but making them hard failures immediately could obscure the first baseline runs.
 
-### 4. Stronger calculator black-box checks
+Quality warnings include unusually large ignored footprints only above high thresholds. The static frontend baseline's ignored `.venv`/cache footprint was useful context but not a failure.
+
+### 5. Stronger calculator black-box checks
 
 Expand hard checks beyond two happy-path commands:
 
@@ -164,7 +192,7 @@ Add one negative/usage check if stable across implementations:
 
 Avoid requiring a specific invalid-operation message because implementations may rely on `argparse`, custom parser text, or package entry points.
 
-### 5. Prompt/log metrics
+### 6. Prompt/log metrics
 
 When prompt retention is enabled, record:
 
@@ -189,7 +217,7 @@ Also record agent log counts:
 
 Do not export prompt contents.
 
-### 6. Live session progress output
+### 7. Live session progress output
 
 Long live evaluations can run for several minutes with no pytest output. Print one progress line when each session starts and one when it finishes:
 
@@ -200,7 +228,7 @@ Long live evaluations can run for several minutes with no pytest output. Print o
 
 This is operator feedback only; it is not part of the persisted quality schema. Use `pytest -s` when pytest output capture would otherwise hide the progress lines until the test ends.
 
-### 7. Scenario-specific contract checks
+### 8. Scenario-specific contract checks
 
 For stateful/live API scenarios, hard correctness checks should verify exact externally observable contracts rather than broad semantic equivalence:
 
@@ -212,7 +240,7 @@ For stateful/live API scenarios, hard correctness checks should verify exact ext
 
 Failure messages should name the violated contract and include the observed status/body.
 
-### 8. Quality gate summary
+### 9. Quality gate summary
 
 Add a simple computed summary:
 
@@ -222,11 +250,14 @@ Add a simple computed summary:
   "all_tasks_closed": true,
   "has_flagged_artifacts": true,
   "session_count": 10,
-  "warnings": ["flagged artifact directory: .venv"]
+  "warnings": [
+    "task rework detected: T0002",
+    "integrator findings created: 1"
+  ]
 }
 ```
 
-Only correctness should be a hard test failure initially. Hygiene warnings are diagnostics until enough live baselines exist.
+Only correctness should be a hard test failure initially. Warnings for same-task rework, integrator findings, high sessions per closed task, flagged artifacts, and large ignored artifact footprints are diagnostics until enough live baselines exist.
 
 ## Implementation phases
 
@@ -237,9 +268,12 @@ Update `tests/evaluations/harness.py`:
 - derive live role sequence from `.devlab/history`
 - derive live reviewer rejection count from archived reviewer handoffs
 - collect task metrics using `FileTaskTracker`
+- collect same-task developer/reviewer cycle metrics
+- collect integrator rework from durable findings whose `source` is `integrator`
+- collect profile diagnostics and task usage by profile
 - collect artifact hygiene summary
 - collect agent/prompt log counts and max sizes
-- compute quality summary/warnings
+- compute quality summary/warnings for correctness, task rework, integrator findings, session intensity, and large ignored artifacts
 
 Keep existing fields for compatibility with previous diagnostics.
 
