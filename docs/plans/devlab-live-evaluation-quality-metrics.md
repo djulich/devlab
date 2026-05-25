@@ -250,7 +250,20 @@ Update the stateful web API live and scripted scenarios so they agree on an expl
 - invalid JSON, missing title, empty title, and blank title return a 4xx client error.
 - black-box check failures report the observed status and JSON payload.
 
-### Phase 5: Deployable web API quality baseline
+### Phase 5: Static frontend quality baseline
+
+Add a static frontend scenario that reuses the stateful API black-box contract and adds browser-facing artifact checks without introducing Node, React, Vite, or browser automation:
+
+- exact static artifact paths: `static/index.html`, `static/app.js`, `static/styles.css`
+- vanilla HTML/CSS/JS; no frontend build step
+- UI affordances for listing, adding, and deleting todos plus validation error display
+- JavaScript calls to the exact todo API routes
+- README instructions for running the API and using the static frontend
+- an opt-in live gate (`DEVLAB_LIVE_STATIC_FRONTEND=1`) and independent session cap
+
+The first static frontend baseline should inspect static artifacts and API route usage rather than requiring a browser automation stack. Browser-level checks remain a later profile/tooling question.
+
+### Phase 6: Deployable web API quality baseline
 
 Add a deployable web API scenario that reuses the stateful API black-box contract and adds deployment-specific artifacts without requiring production deployment:
 
@@ -272,6 +285,7 @@ The first deployment baseline should inspect artifacts and project-owned verific
 - `.venv`/cache directories are flagged as warnings, not hard failures.
 - No target-owned `pytest` or validation command is run by the evaluation harness.
 - Stateful web API live/scripted checks enforce exact response shapes and explicit negative cases.
+- Static frontend scripted/live scenarios check vanilla static UI artifacts, direct todo API route usage, error display, and README instructions without requiring browser automation.
 - Deployable web API scripted/live scenarios check local container artifacts and deployment verification instructions without deploying to production.
 
 ## Validation

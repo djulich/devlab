@@ -205,6 +205,45 @@ class DeploymentWebApiScriptedAgent:
         return handoff(invocation.role_name)
 
 
+class StaticFrontendScriptedAgent:
+    def __init__(self) -> None:
+        self.roles: list[str] = []
+        self.role_counts: dict[str, int] = {}
+        self.review_rejections = 0
+        self.prompt_chars: list[int] = []
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        self.roles.append(invocation.role_name)
+        self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
+        role = invocation.role_name
+        if role == "architect":
+            _design_plan(invocation.root).write_text(
+                "# Design Plan\n\n"
+                "Build a small Python JSON todo API and a static vanilla HTML/CSS/JS "
+                "frontend in static/. The frontend calls the API endpoints directly and "
+                "has no frontend package manager or build step.\n"
+            )
+        elif role == "planner":
+            _project_plan(invocation.root).write_text(
+                "# Project Plan\n\n"
+                "## M1: Static todo application\n"
+                "- T0001: Implement todo API and static frontend\n"
+            )
+            write_task(invocation.root, "T0001", "Implement todo API and static frontend", "M1")
+        elif role == "developer":
+            task = FileTaskTracker(invocation.root).select_next_development_task()
+            assert task is not None
+            complete_acceptance(invocation.root, task.id)
+            write_stateful_todo_api(invocation.root)
+            write_static_frontend(invocation.root)
+        elif role == "reviewer":
+            approve_review_task(invocation.root)
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        return handoff(invocation.role_name)
+
+
 class StatefulWebApiScriptedAgent:
     def __init__(self) -> None:
         self.roles: list[str] = []
@@ -412,6 +451,95 @@ def write_stateful_todo_api(root: Path) -> None:
     (root / ".gitignore").write_text("__pycache__/\n*.pyc\n.pytest_cache/\n.venv/\n")
 
 
+def write_static_frontend(root: Path) -> None:
+    static_dir = root / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text(
+        "<!doctype html>\n"
+        "<html lang=\"en\">\n"
+        "<head>\n"
+        "  <meta charset=\"utf-8\">\n"
+        "  <title>Todo App</title>\n"
+        "  <link rel=\"stylesheet\" href=\"styles.css\">\n"
+        "</head>\n"
+        "<body>\n"
+        "  <main>\n"
+        "    <h1>Todo App</h1>\n"
+        "    <form id=\"todo-form\">\n"
+        "      <label for=\"todo-title\">Title</label>\n"
+        "      <input id=\"todo-title\" name=\"title\" required>\n"
+        "      <button type=\"submit\">Add todo</button>\n"
+        "    </form>\n"
+        "    <p id=\"error-message\" role=\"alert\"></p>\n"
+        "    <ul id=\"todo-list\"></ul>\n"
+        "  </main>\n"
+        "  <script src=\"app.js\"></script>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+    (static_dir / "app.js").write_text(
+        "const form = document.querySelector('#todo-form');\n"
+        "const input = document.querySelector('#todo-title');\n"
+        "const list = document.querySelector('#todo-list');\n"
+        "const errorMessage = document.querySelector('#error-message');\n\n"
+        "function showError(message) { errorMessage.textContent = message || ''; }\n\n"
+        "async function loadTodos() {\n"
+        "  const response = await fetch('/todos');\n"
+        "  const data = await response.json();\n"
+        "  renderTodos(data.todos || []);\n"
+        "}\n\n"
+        "function renderTodos(todos) {\n"
+        "  list.innerHTML = '';\n"
+        "  for (const todo of todos) {\n"
+        "    const item = document.createElement('li');\n"
+        "    item.textContent = todo.title + ' ';\n"
+        "    const button = document.createElement('button');\n"
+        "    button.type = 'button';\n"
+        "    button.textContent = 'Delete';\n"
+        "    button.addEventListener('click', () => deleteTodo(todo.id));\n"
+        "    item.appendChild(button);\n"
+        "    list.appendChild(item);\n"
+        "  }\n"
+        "}\n\n"
+        "async function addTodo(title) {\n"
+        "  const response = await fetch('/todos', {\n"
+        "    method: 'POST',\n"
+        "    headers: {'Content-Type': 'application/json'},\n"
+        "    body: JSON.stringify({title})\n"
+        "  });\n"
+        "  if (!response.ok) { showError('Todo title is required.'); return; }\n"
+        "  input.value = '';\n"
+        "  showError('');\n"
+        "  await loadTodos();\n"
+        "}\n\n"
+        "async function deleteTodo(id) {\n"
+        "  const response = await fetch(`/todos/${id}`, {method: 'DELETE'});\n"
+        "  if (!response.ok) { showError('Could not delete todo.'); return; }\n"
+        "  showError('');\n"
+        "  await loadTodos();\n"
+        "}\n\n"
+        "form.addEventListener('submit', event => {\n"
+        "  event.preventDefault();\n"
+        "  addTodo(input.value);\n"
+        "});\n\n"
+        "loadTodos();\n"
+    )
+    (static_dir / "styles.css").write_text(
+        "body { font-family: sans-serif; max-width: 42rem; margin: 2rem auto; }\n"
+        "form { display: flex; gap: 0.5rem; }\n"
+        "#error-message { color: #b00020; }\n"
+    )
+    readme = root / "README.md"
+    readme.write_text(
+        readme.read_text()
+        + "\n\n"
+        + "## Static frontend\n\n"
+        + "The vanilla HTML/CSS/JS frontend is in `static/`. Open `static/index.html` "
+        + "through a local static file server or serve it alongside the API so browser "
+        + "requests to `/todos` reach the todo API. There is no frontend build step.\n"
+    )
+
+
 def write_container_deployment_artifacts(root: Path) -> None:
     (root / "Containerfile").write_text(
         "FROM python:3.12-slim\n"
@@ -480,6 +608,50 @@ def stdlib_http_api_check(root: Path) -> CheckResult:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=2)
+
+
+def static_frontend_check(root: Path) -> CheckResult:
+    required_files = ["static/index.html", "static/app.js", "static/styles.css"]
+    missing = [relative for relative in required_files if not (root / relative).exists()]
+    if missing:
+        return CheckResult("static frontend", False, "missing " + ", ".join(missing))
+
+    index = (root / "static/index.html").read_text()
+    script = (root / "static/app.js").read_text()
+    styles = (root / "static/styles.css").read_text()
+    readme = (root / "README.md").read_text() if (root / "README.md").exists() else ""
+
+    missing_snippets: list[str] = []
+    for snippet in ("app.js", "styles.css"):
+        if snippet not in index:
+            missing_snippets.append(f"index.html lacks {snippet!r}")
+    lower_index = index.lower()
+    if "<form" not in lower_index:
+        missing_snippets.append("index.html lacks a todo form")
+    if "<input" not in lower_index:
+        missing_snippets.append("index.html lacks a todo title input")
+    if "<ul" not in lower_index and "<ol" not in lower_index:
+        missing_snippets.append("index.html lacks a todo list container")
+    for snippet in ("/todos", "POST", "DELETE"):
+        if snippet not in script:
+            missing_snippets.append(f"app.js lacks {snippet!r}")
+    if "error" not in index.lower() and "error" not in script.lower():
+        missing_snippets.append("frontend lacks error display/handling")
+    if not styles.strip():
+        missing_snippets.append("styles.css is empty")
+    if "static" not in readme.lower() or "frontend" not in readme.lower():
+        missing_snippets.append("README.md lacks static frontend instructions")
+    if "no frontend build" not in readme.lower() and "no build step" not in readme.lower():
+        missing_snippets.append("README.md does not document no frontend build step")
+
+    message = "; ".join(missing_snippets)
+    if missing_snippets:
+        message += (
+            "; expected vanilla static frontend contract: static/index.html, "
+            "static/app.js, static/styles.css, API calls for GET/POST/DELETE /todos, "
+            "error display, and README usage instructions"
+        )
+    return CheckResult("static frontend", not missing_snippets, message)
 
 
 def deployment_artifacts_check(root: Path) -> CheckResult:

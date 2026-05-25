@@ -25,7 +25,7 @@ Open work:
 
 ## 3. DevLab Workflow Evaluations
 
-Status: **evaluation harness implemented; live result collection pending**. Deterministic evaluations under `tests/evaluations/` create temporary target repositories, run the normal workflow with scripted fake agents, grade generated systems with black-box checks, and write diagnostics JSON artifacts. The suite includes CLI calculator, corrective workflow, tiny stdlib HTTP API, and stateful JSON web API scenarios. A skipped-by-default live-agent evaluation reuses the same harness. See `docs/evaluations.md`, `docs/plans/devlab-workflow-evaluations.md`, `docs/plans/devlab-workflow-evaluations-remaining.md`, and `docs/plans/stateful-web-api-evaluation.md`.
+Status: **evaluation harness implemented; live result collection pending**. Deterministic evaluations under `tests/evaluations/` create temporary target repositories, run the normal workflow with scripted fake agents, grade generated systems with black-box checks, and write diagnostics JSON artifacts. The suite includes CLI calculator, corrective workflow, tiny stdlib HTTP API, stateful JSON web API, static frontend, and deployable web API scenarios. Skipped-by-default live-agent evaluations reuse the same harness. See `docs/evaluations.md`, `docs/plans/devlab-workflow-evaluations.md`, `docs/plans/devlab-workflow-evaluations-remaining.md`, and `docs/plans/stateful-web-api-evaluation.md`.
 
 Recommended evaluation roadmap:
 
@@ -33,13 +33,13 @@ Recommended evaluation roadmap:
 2. **Tiny stdlib HTTP API** — existing dependency-light server/runtime baseline.
 3. **Stateful JSON web API** — implemented as a scripted scenario; exercises multi-file source, project-owned commands, docs, `.gitignore`, and black-box HTTP state transitions without third-party dependencies.
 4. **Web API plus deployment artifacts** — initial local-container scripted/live scenarios are implemented with exact `image` and `deployment-check` command contracts; next expand to Compose/kind/RPM-style project-owned artifacts and verification after collecting live baselines.
-5. **Static frontend** — test HTML/CSS/JS behavior without introducing Node/React dependency and browser-tooling volatility.
+5. **Static frontend** — scripted and opt-in live scenarios are implemented for vanilla HTML/CSS/JS without Node/React dependency or browser-tooling volatility; next collect live baselines.
 6. **React/Vite or full-stack frontend** — later, once dependency/profile handling and live-agent baselines are stable enough to justify the extra moving parts.
 
 Open work:
 
 - Run the opt-in `live-stateful-web-api-happy-path` evaluation across local provider environments and collect baseline outcomes.
-- Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect baseline outcomes, including `live-deployable-web-api-happy-path`.
+- Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect baseline outcomes, including `live-static-frontend-todo-app-happy-path` and `live-deployable-web-api-happy-path`.
 - Refine diagnostics/message wording if live failures are hard to triage.
 
 ## 4. Package and User-Facing Documentation

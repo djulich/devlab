@@ -23,8 +23,10 @@ from tests.evaluations.scripted_agents import (
     DeploymentWebApiScriptedAgent,
     HttpApiScriptedAgent,
     StatefulWebApiScriptedAgent,
+    StaticFrontendScriptedAgent,
     deployment_artifacts_check,
     stateful_todo_api_check,
+    static_frontend_check,
     stdlib_http_api_check,
 )
 
@@ -153,6 +155,46 @@ def test_scripted_stateful_web_api_evaluation(tmp_path: Path) -> None:
         diagnostics,
         scenario,
         expected_artifact="src/todo_api/server.py",
+    )
+
+
+def test_scripted_static_frontend_todo_app_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="static-frontend-todo-app-happy-path",
+        title="Static frontend todo app happy path",
+        system_spec=(
+            "Build a small Python standard-library JSON HTTP API for todo items plus a "
+            "static vanilla HTML/CSS/JS frontend. Do not use React, Vite, npm, or a "
+            "frontend build step. Implement the API in src/todo_api/server.py, runnable "
+            "from the repository root with python -m src.todo_api.server --port <port>. "
+            "The API must expose GET /health, POST /todos, GET /todos, and "
+            "DELETE /todos/{id} with the exact stateful todo API response contract. "
+            "Place frontend files at static/index.html, static/app.js, and "
+            "static/styles.css. The UI must list todos, add todos, delete todos, display "
+            "validation errors, and call the API routes directly. Provide project-owned "
+            "run/test commands and README usage instructions."
+        ),
+        max_sessions=12,
+        scripted_agent=StaticFrontendScriptedAgent(),
+        checks=(
+            stateful_todo_api_check,
+            static_frontend_check,
+            file_contains_check("project run command", "Makefile", "run:"),
+            file_contains_check("project test command", "Makefile", "test:"),
+        ),
+        expected_roles=(
+            "architect", "planner", "developer", "reviewer", "integrator", "architect",
+        ),
+        expected_sessions=6,
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(
+        tmp_path,
+        diagnostics,
+        scenario,
+        expected_artifact="static/index.html",
     )
 
 

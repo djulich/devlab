@@ -16,6 +16,7 @@ from tests.evaluations.harness import (
 from tests.evaluations.scripted_agents import (
     deployment_artifacts_check,
     stateful_todo_api_check,
+    static_frontend_check,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -124,6 +125,47 @@ def test_live_stateful_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             file_contains_check("project test command", "Makefile", "test:"),
             file_contains_check("usage docs", "README.md", "GET /todos"),
             file_contains_check("python cache gitignore", ".gitignore", "__pycache__/"),
+        ),
+    )
+
+    diagnostics = _run_live_scenario(tmp_path, scenario)
+
+    _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+
+
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_STATIC_FRONTEND") != "1",
+    reason="static frontend live evaluation requires DEVLAB_LIVE_STATIC_FRONTEND=1",
+)
+def test_live_static_frontend_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="live-static-frontend-todo-app-happy-path",
+        title="Live static frontend todo app happy path",
+        system_spec=(
+            "Build a small Python standard-library JSON HTTP API for todo items plus a "
+            "static vanilla HTML/CSS/JS frontend. Do not use React, Vite, npm, or a "
+            "frontend build step. Implement the API in src/todo_api/server.py and make "
+            "it runnable from the repository root with python -m src.todo_api.server "
+            "--port <port>. It must expose GET /health returning JSON "
+            "{\"status\": \"ok\"}, POST /todos with JSON {\"title\": \"...\"} to "
+            "create an in-memory item and return a top-level JSON object with integer "
+            "id and title fields, GET /todos to return JSON {\"todos\": [<items>]}, "
+            "DELETE /todos/{id} to delete an item and return JSON {\"deleted\": <id>}. "
+            "POST /todos must return a 4xx client error for invalid JSON, missing "
+            "title, empty title, or blank title. Return 404 for unknown routes. Place "
+            "frontend files at exactly static/index.html, static/app.js, and "
+            "static/styles.css. The UI must list todos, add todos, delete todos, display "
+            "validation errors, and call the API routes directly. Provide a Makefile "
+            "with run and test targets and README instructions for running the API and "
+            "using the static frontend."
+        ),
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_STATIC_FRONTEND_MAX_SESSIONS", "20")),
+        checks=(
+            stateful_todo_api_check,
+            static_frontend_check,
+            file_contains_check("project run command", "Makefile", "run:"),
+            file_contains_check("project test command", "Makefile", "test:"),
+            file_contains_check("usage docs", "README.md", "static"),
         ),
     )
 

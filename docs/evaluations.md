@@ -19,6 +19,7 @@ Current scenarios cover:
 - integration finding with corrective task and finding resolution
 - tiny standard-library HTTP API happy path
 - stateful JSON web API happy path
+- static frontend todo app happy path with vanilla HTML/CSS/JS
 - deployable web API happy path with local container artifacts
 
 The scripted provider writes realistic role artifacts without using LLM tokens. Each scenario records diagnostics in the temporary target repository:
@@ -72,6 +73,15 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
 ```
 
+The static frontend live evaluation extends the stateful API scenario with a browser-facing vanilla HTML/CSS/JS UI. It requires exact static artifact paths (`static/index.html`, `static/app.js`, `static/styles.css`), direct calls to the todo API routes, an error display, README usage instructions, and no frontend build step. It is skipped unless explicitly enabled:
+
+```bash
+DEVLAB_LIVE_EVALS=1 \
+DEVLAB_LIVE_STATIC_FRONTEND=1 \
+DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_static_frontend_todo_app_happy_path_evaluation -s
+```
+
 The deployable web API live evaluation extends the stateful API scenario with project-owned local container deployment artifacts. It checks for the API behavior plus `Containerfile`, exact Makefile targets named `image` and `deployment-check`, and README deployment instructions that reference both commands. The README deployment-section check is case-insensitive. It is skipped unless explicitly enabled:
 
 ```bash
@@ -91,6 +101,8 @@ Useful environment variables:
 - `DEVLAB_LIVE_MAX_SESSIONS`: optional session cap for the live calculator run.
 - `DEVLAB_LIVE_STATEFUL_WEB_API=1`: enable the additional stateful JSON web API live evaluation.
 - `DEVLAB_LIVE_STATEFUL_MAX_SESSIONS`: optional session cap for the stateful JSON web API live run; defaults to `18`.
+- `DEVLAB_LIVE_STATIC_FRONTEND=1`: enable the static frontend todo app live evaluation.
+- `DEVLAB_LIVE_STATIC_FRONTEND_MAX_SESSIONS`: optional session cap for the static frontend live run; defaults to `20`.
 - `DEVLAB_LIVE_DEPLOYMENT=1`: enable the deployable web API live evaluation.
 - `DEVLAB_LIVE_DEPLOYMENT_MAX_SESSIONS`: optional session cap for the deployable web API live run; defaults to `22`.
 - `DEVLAB_EVAL_RESULTS_DIR`: optional directory for persistent diagnostics copies.
