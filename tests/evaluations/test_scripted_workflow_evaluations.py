@@ -13,6 +13,7 @@ from tests.evaluations.harness import (
     collect_artifact_hygiene,
     command_check,
     command_fails_check,
+    derive_integrator_rework_summary,
     derive_review_rejections,
     derive_role_sequence,
     derive_session_records,
@@ -102,6 +103,14 @@ def test_scripted_cli_calculator_integration_finding_evaluation(tmp_path: Path) 
     _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="calculator.py")
     finding = FileFindingTracker(tmp_path).get("F0001")
     assert finding.status == FindingStatus.RESOLVED
+    assert diagnostics.integrator_rework == {
+        "findings_created": 1,
+        "findings_resolved": 1,
+        "findings_open": 0,
+        "findings_planned": 0,
+        "finding_ids": ["F0001"],
+        "has_integrator_rework": True,
+    }
     task = FileTaskTracker(tmp_path).get("T0002")
     assert task.addresses_findings == ("F0001",)
 
@@ -289,6 +298,61 @@ def test_static_frontend_check_rejects_frontend_build_artifacts(tmp_path: Path) 
 
     assert result.passed is False
     assert "package.json" in result.message
+
+
+def test_integrator_rework_summary_counts_integrator_findings(tmp_path: Path) -> None:
+    tracker = FileFindingTracker(tmp_path)
+    integrator_open = tracker.create(
+        title="Integrator open",
+        source="integrator",
+        milestone="M1",
+        body="# Finding\n",
+    )
+    integrator_resolved = tracker.create(
+        title="Integrator resolved",
+        source="integrator",
+        milestone="M1",
+        body="# Finding\n",
+    )
+    tracker.mark_resolved(integrator_resolved.id)
+    tracker.create(
+        title="Architect finding",
+        source="architect",
+        milestone="M1",
+        body="# Finding\n",
+    )
+
+    summary = derive_integrator_rework_summary(tracker.list_findings())
+
+    assert summary == {
+        "findings_created": 2,
+        "findings_resolved": 1,
+        "findings_open": 1,
+        "findings_planned": 0,
+        "finding_ids": [integrator_open.id, integrator_resolved.id],
+        "has_integrator_rework": True,
+    }
+
+
+def test_integrator_rework_summary_reports_clean_integration(tmp_path: Path) -> None:
+    tracker = FileFindingTracker(tmp_path)
+    tracker.create(
+        title="Architect finding",
+        source="architect",
+        milestone="M1",
+        body="# Finding\n",
+    )
+
+    summary = derive_integrator_rework_summary(tracker.list_findings())
+
+    assert summary == {
+        "findings_created": 0,
+        "findings_resolved": 0,
+        "findings_open": 0,
+        "findings_planned": 0,
+        "finding_ids": [],
+        "has_integrator_rework": False,
+    }
 
 
 def test_task_cycle_metrics_distinguish_planned_tasks_from_rework(tmp_path: Path) -> None:

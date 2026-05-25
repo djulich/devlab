@@ -1,6 +1,6 @@
 # DevLab Live Evaluation Quality Metrics Plan
 
-Status: implemented and refined with live stateful web API, deployable web API, and static frontend baselines. Diagnostics now include live role sequence, per-session task attribution, task cycle/rework metrics, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, live session progress lines, stronger calculator black-box checks, and stricter scenario contracts. Target-owned test-suite execution remains deferred.
+Status: implemented and refined with live stateful web API, deployable web API, and static frontend baselines. Diagnostics now include live role sequence, per-session task attribution, task cycle/rework metrics, integrator finding/rework metrics, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, live session progress lines, stronger calculator black-box checks, and stricter scenario contracts. Target-owned test-suite execution remains deferred.
 
 ## Goal
 
@@ -120,6 +120,7 @@ Useful derived signals:
 - repeated developer/reviewer sessions for the same task as task-local rework
 - planned developer/reviewer pairs across different tasks not counted as task-local rework
 - live reviewer rejection count, derived from archived reviewer handoffs whose Open Issues are not `None`
+- integrator rework count, derived from durable findings whose `source` is `integrator`
 - integrator finding count and resolved finding count
 - high session count or repeated developer/reviewer cycles as a rework-intensity warning
 

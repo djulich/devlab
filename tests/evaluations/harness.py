@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from devlab.agents import AgentInvocation, MockProvider
-from devlab.findings import FileFindingTracker, FindingStatus
+from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.handoffs import HandoffError, parse_handoff
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
@@ -86,6 +86,7 @@ class EvaluationDiagnostics:
     sessions: list[dict[str, object]] = dataclasses.field(default_factory=list)
     task_cycles: dict[str, object] = dataclasses.field(default_factory=dict)
     task_rework: dict[str, object] = dataclasses.field(default_factory=dict)
+    integrator_rework: dict[str, object] = dataclasses.field(default_factory=dict)
 
     def write(self, root: Path) -> Path:
         path = root / ".devlab/evaluations" / f"{self.scenario_id}.json"
@@ -209,6 +210,7 @@ def diagnostics_for(
     sessions = derive_session_records(root)
     task_cycles = derive_task_cycle_metrics(root, sessions)
     task_rework = derive_task_rework_summary(task_cycles)
+    integrator_rework = derive_integrator_rework_summary(findings)
     return EvaluationDiagnostics(
         scenario_id=scenario.id,
         provider_mode=provider_mode,
@@ -245,6 +247,7 @@ def diagnostics_for(
         sessions=sessions,
         task_cycles=task_cycles,
         task_rework=task_rework,
+        integrator_rework=integrator_rework,
     )
 
 
@@ -338,6 +341,23 @@ def derive_task_cycle_metrics(
     return {
         "tasks": metrics,
         "unattributed_developer_reviewer_sessions": unattributed,
+    }
+
+
+def derive_integrator_rework_summary(findings: Sequence[Finding]) -> dict[str, object]:
+    integrator_findings = [finding for finding in findings if finding.source == "integrator"]
+    by_status: dict[str, int] = {}
+    finding_ids: list[str] = []
+    for finding in integrator_findings:
+        by_status[finding.status.value] = by_status.get(finding.status.value, 0) + 1
+        finding_ids.append(finding.id)
+    return {
+        "findings_created": len(integrator_findings),
+        "findings_resolved": by_status.get(FindingStatus.RESOLVED.value, 0),
+        "findings_open": by_status.get(FindingStatus.OPEN.value, 0),
+        "findings_planned": by_status.get(FindingStatus.PLANNED.value, 0),
+        "finding_ids": sorted(finding_id for finding_id in finding_ids if finding_id),
+        "has_integrator_rework": bool(integrator_findings),
     }
 
 
