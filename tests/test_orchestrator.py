@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from devlab._logging import logger
 from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider, ProviderError
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
@@ -440,6 +442,40 @@ class TestRunLoop:
         )
 
         assert events == [("start", 1, "developer"), ("finish", 1, "developer")]
+
+    def test_run_logs_session_context(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path,
+            "T0001",
+            "First",
+            milestone="M1",
+            profile="default",
+            domain="deployment",
+        )
+        provider = MockProvider()
+        monkeypatch.setattr(logger, "propagate", True)
+        caplog.set_level(logging.INFO, logger="devlab")
+
+        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert any(
+            message
+            == "Starting session 1: developer task=T0001 status=open profile=default "
+            "domain=deployment milestone=M1"
+            for message in messages
+        )
+        assert any(
+            message == "Finished session 1: developer task=T0001 status=open next=developer"
+            for message in messages
+        )
 
     def test_developer_incomplete_task_stays_open(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

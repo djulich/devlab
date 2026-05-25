@@ -1,6 +1,6 @@
 # Logging Facility Plan
 
-Status: initial implementation complete. DevLab uses a single `devlab` logger for `run` workflow output, supports `devlab run --quiet`, `--verbose`, and `--log-file`, and leaves report/interactive command output as direct prints.
+Status: initial implementation complete. DevLab uses a single `devlab` logger for `run` workflow output, supports `devlab run --quiet`, `--verbose`, and `--log-file`, includes lightweight session start/finish context, and leaves report/interactive command output as direct prints.
 
 ## Motivation
 
@@ -30,7 +30,7 @@ Map the existing print calls to standard levels:
 |-------|----------|---------|
 | `ERROR` | Failures that stop the loop | `ERROR: agent command not found`, `ERROR: Invalid handoff` |
 | `WARNING` | Conditions that might indicate problems | (none currently; available for future use) |
-| `INFO` | Workflow progress visible during normal runs | `Session 3: selecting role 'developer'`, `Task T0001 completed`, `Milestone M1 marked integrated` |
+| `INFO` | Workflow progress visible during normal runs | `Starting session 3: developer task=T0001 ...`, `Finished session 3: developer task=T0001 status=in_review next=reviewer`, `Milestone M1 marked integrated` |
 | `DEBUG` | Diagnostic detail useful for troubleshooting | Resolved agent config paths, handoff validation details, environment setup/teardown steps |
 
 The 6 existing `ERROR:` prefixed prints become `logger.error()`. The ~19 workflow progress prints become `logger.info()`. Visual separators (`===`, `---`) are formatting concerns handled by the log formatter, not the log messages themselves. The 3 `cli.py` prints of formatted command output (`status`, `doctor`, `init`) stay as `print()` — they are command output, not log messages.
@@ -56,6 +56,24 @@ Library callers who don't call `configure_logging()` get Python's default behavi
 ### Formatter
 
 Console output uses a minimal formatter: `%(message)s` at INFO level (same feel as current print output), `%(levelname)s: %(message)s` at DEBUG level (adds the level prefix for diagnostic context). File output always includes timestamps: `%(asctime)s %(levelname)-5s %(message)s`.
+
+### Session context
+
+Normal run logs include lightweight context at session boundaries without parsing extra handoff prose or computing full workflow diagnostics:
+
+```text
+Starting session 5: developer task=T0002 status=open profile=python-app domain=general milestone=M1
+Finished session 5: developer task=T0002 status=in_review next=reviewer
+```
+
+Role-specific start context is intentionally small:
+
+- developer/reviewer: task id, status, profile, domain, milestone when present
+- planner: task/open-finding counts
+- integrator: selected milestone and closed task count
+- architect: initial design or architecture-review mode
+
+Finish context reports the same task/milestone identity where known plus the next selected role, or `next=complete`. Full historical diagnostics belong in `devlab diagnostics`, not normal run logs.
 
 ### Non-interactive run output
 
