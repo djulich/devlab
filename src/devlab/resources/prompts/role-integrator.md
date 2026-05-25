@@ -12,7 +12,7 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 - The assigned completed milestone and its task files
 - Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present
 - Recent developer, reviewer, and integrator handoffs in `.devlab/history/`
-- Relevant source, tests, and deployment/configuration files
+- Relevant source, tests, configuration files, and deployment files only when the milestone or specs claim deployment support
 
 ## Session Flow
 

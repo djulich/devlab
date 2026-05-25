@@ -18,6 +18,7 @@ Current scenarios cover:
 - reviewer rejection and developer rework
 - integration finding with corrective task and finding resolution
 - tiny standard-library HTTP API happy path
+- stateful JSON web API happy path
 
 The scripted provider writes realistic role artifacts without using LLM tokens. Each scenario records diagnostics in the temporary target repository:
 
@@ -61,6 +62,15 @@ uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
 
 These files are local operator config: they may encode installed CLIs, account-specific providers, models, auth assumptions, or machine-specific timeouts. Commit sanitized examples separately if a shared starting point is useful.
 
+The stateful JSON web API live evaluation is an additional opt-in scenario. It is skipped unless explicitly enabled:
+
+```bash
+DEVLAB_LIVE_EVALS=1 \
+DEVLAB_LIVE_STATEFUL_WEB_API=1 \
+DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
+```
+
 Useful environment variables:
 
 - `DEVLAB_LIVE_EVALS=1`: enable live evaluations.
@@ -68,9 +78,13 @@ Useful environment variables:
 - `DEVLAB_LIVE_PROVIDER`: optional provider override passed to `run_loop`.
 - `DEVLAB_LIVE_MODEL`: optional model override passed to `run_loop`.
 - `DEVLAB_LIVE_EFFORT`: optional effort override passed to `run_loop`.
-- `DEVLAB_LIVE_MAX_SESSIONS`: optional session cap for live runs.
+- `DEVLAB_LIVE_MAX_SESSIONS`: optional session cap for the live calculator run.
+- `DEVLAB_LIVE_STATEFUL_WEB_API=1`: enable the additional stateful JSON web API live evaluation.
+- `DEVLAB_LIVE_STATEFUL_MAX_SESSIONS`: optional session cap for the stateful JSON web API live run; defaults to `18`.
 - `DEVLAB_EVAL_RESULTS_DIR`: optional directory for persistent diagnostics copies.
 - `DEVLAB_LIVE_RETAIN_PROMPTS=1`: retain split system/session prompt logs under `.devlab/logs/agents/` for live-run debugging.
+
+Live evaluations print a progress line when each agent session starts and when it finishes, for example `live eval session 3 start: developer`. Use `pytest -s` if your pytest invocation captures output and you want to watch those lines as they happen.
 
 Live evaluation failures report the temporary target root, diagnostics JSON path, and `.devlab/logs/agents/` path.
 

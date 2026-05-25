@@ -1,6 +1,6 @@
 # Deployment Specification
 
-Describe how this project should become deployment-ready. DevLab should generate and verify deployment artifacts, but it should not deploy to production by default.
+Describe how this project should become deployment-ready when deployment support is in scope. This file is a placeholder until project-specific deployment requirements are added. DevLab should generate and verify deployment artifacts, but it should not deploy to production by default.
 
 ## Deployment Targets
 

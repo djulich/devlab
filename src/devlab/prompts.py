@@ -111,6 +111,11 @@ def _deployment_spec_has_requirements(root: Path) -> bool:
         normalized = text.removeprefix("# Deployment Specification").strip()
         if not normalized:
             continue
+        placeholder_marker = (
+            "This file is a placeholder until project-specific deployment requirements"
+        )
+        if placeholder_marker in normalized:
+            continue
         if "Describe how this project should become deployment-ready" in normalized:
             continue
         if "Describe deployment targets" not in normalized:

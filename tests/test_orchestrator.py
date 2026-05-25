@@ -344,6 +344,29 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment / Planner" in prompt
 
+    def test_planner_system_prompt_ignores_placeholder_deployment_spec(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
+        deployment_spec.parent.mkdir(parents=True)
+        deployment_spec.write_text(
+            "# Deployment Specification\n\n"
+            "Describe how this project should become deployment-ready when deployment "
+            "support is in scope. This file is a placeholder until project-specific "
+            "deployment requirements are added.\n"
+        )
+        role = ROLES["planner"]
+
+        prompt = build_system_prompt(
+            tmp_path,
+            role,
+            snapshot=Workspace(tmp_path).snapshot,
+            role_name="planner",
+        )
+
+        assert "Domain: Deployment" not in prompt
+
 
 def _checked_task_body(task_id: str, title: str) -> str:
     return f"# {task_id}: {title}\n\n## Acceptance Criteria\n- [x] Done\n"
@@ -398,6 +421,25 @@ class TestRunLoop:
         assert len(provider.calls) == 1
         assert provider.calls[0].role_name == "developer"
         assert 'status = "in_review"' in task.read_text()
+
+    def test_session_progress_callback_reports_start_and_finish(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider()
+        events: list[tuple[str, int, str]] = []
+
+        run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=1,
+            agent_providers={"default": provider},
+            session_progress=lambda event, number, role: events.append((event, number, role)),
+        )
+
+        assert events == [("start", 1, "developer"), ("finish", 1, "developer")]
 
     def test_developer_incomplete_task_stays_open(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

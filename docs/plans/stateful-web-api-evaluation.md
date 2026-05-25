@@ -1,6 +1,6 @@
 # Stateful Web API Workflow Evaluation Plan
 
-Status: scripted evaluation implemented as `stateful-web-api-happy-path`; live-agent coverage remains follow-up work.
+Status: scripted evaluation implemented as `stateful-web-api-happy-path`; opt-in live-agent evaluation implemented as `live-stateful-web-api-happy-path`; provider baseline collection remains follow-up work.
 
 ## Goal
 
@@ -17,10 +17,10 @@ Target system spec:
 Required behavior:
 
 - `GET /health` returns JSON `{"status": "ok"}`.
-- `POST /todos` with JSON `{"title": "..."}` creates an item and returns an id, title, and completion state.
-- `GET /todos` returns all current items.
-- `DELETE /todos/{id}` deletes an item and returns a success response or 204.
-- Invalid JSON or missing title returns a client error.
+- `POST /todos` with JSON `{"title": "..."}` creates an item and returns a top-level JSON object with integer `id` and `title` fields.
+- `GET /todos` returns all current items as `{"todos": [...]}`.
+- `DELETE /todos/{id}` deletes an item and returns exactly `{"deleted": <id>}`.
+- Invalid JSON, missing title, empty title, or blank title returns a 4xx client error.
 - Unknown routes return 404.
 - State is in-memory only; persistence is not required.
 
@@ -88,4 +88,4 @@ Task expectations:
 
 ## Follow-up Live Evaluation
 
-After the scripted version is stable, add an opt-in live-agent version of the same scenario. Live-agent checks should remain black-box and provider-independent, with quality diagnostics initially warning rather than failing on hygiene issues unless correctness breaks.
+The opt-in live-agent version is enabled with `DEVLAB_LIVE_EVALS=1 DEVLAB_LIVE_STATEFUL_WEB_API=1`. Its checks remain black-box and provider-independent, with quality diagnostics initially warning rather than failing on hygiene issues unless correctness breaks. Remaining work is to collect baseline outcomes across local provider environments.

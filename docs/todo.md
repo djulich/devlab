@@ -38,7 +38,7 @@ Recommended evaluation roadmap:
 
 Open work:
 
-- Add an opt-in live-agent variant or scenario selection for `stateful-web-api-happy-path` once the scripted scenario has proven stable.
+- Run the opt-in `live-stateful-web-api-happy-path` evaluation across local provider environments and collect baseline outcomes.
 - Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect baseline outcomes.
 - Refine diagnostics/message wording if live failures are hard to triage.
 

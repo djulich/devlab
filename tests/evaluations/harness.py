@@ -149,6 +149,7 @@ def run_live_evaluation(
         effort=effort,
         retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
         automatic_version_control=True,
+        session_progress=_print_live_session_progress,
     )
     duration = time.monotonic() - started
     checks = [check(root) for check in scenario.checks]
@@ -169,6 +170,15 @@ def run_live_evaluation(
     path = diagnostics.write(root)
     assert path.exists()
     return diagnostics
+
+
+def _print_live_session_progress(event: str, session_number: int, role_name: str) -> None:
+    timestamp = datetime.now(UTC).strftime("%H:%M:%S")
+    print(
+        f"[{timestamp}] live eval session {session_number} {event}: {role_name}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def diagnostics_for(

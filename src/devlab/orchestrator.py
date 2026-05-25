@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import shutil
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -43,6 +44,9 @@ from devlab.workspace import (
 )
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
+
+SessionProgressCallback = Callable[[str, int, str], None]
+
 
 @dataclasses.dataclass(frozen=True)
 class SessionError:
@@ -419,6 +423,20 @@ def _log_path_details(
     return details
 
 
+def _notify_session_progress(
+    callback: SessionProgressCallback | None,
+    event: str,
+    session_number: int,
+    role_name: str,
+) -> None:
+    if callback is None:
+        return
+    try:
+        callback(event, session_number, role_name)
+    except Exception as exc:  # pragma: no cover - defensive observability path
+        logger.warning("Session progress callback failed: %s", exc)
+
+
 def run_loop(
     root: Path,
     *,
@@ -432,6 +450,7 @@ def run_loop(
     agent_providers: dict[str, AgentProvider] | None = None,
     role_agent_providers: dict[str, str] | None = None,
     automatic_version_control: bool = False,
+    session_progress: SessionProgressCallback | None = None,
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
     sessions_run = 0
@@ -493,6 +512,7 @@ def run_loop(
         config_log: Path | None = None
 
         logger.info("Session %s: selecting role '%s'", ctx.session_number, role_name)
+        _notify_session_progress(session_progress, "start", ctx.session_number, role_name)
         if resolved_agent_configs is not None:
             config_log = ctx.log_resolved_config(resolved_agent_configs[role_name])
             logger.debug("Resolved agent config written to %s", config_log)
@@ -612,6 +632,7 @@ def run_loop(
                     1,
                     (SessionError("version_control", str(exc), 1),),
                 )
+        _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
 
         if not auto:

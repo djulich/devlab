@@ -417,30 +417,39 @@ def stateful_todo_api_check(root: Path) -> CheckResult:
         if health_status != 200 or health != {"status": "ok"}:
             return CheckResult("stateful todo api", False, f"bad health: {health_status} {health}")
 
-        invalid_status, _ = _http_json(port, "POST", "/todos", {"title": ""})
+        invalid_status, invalid = _http_json(port, "POST", "/todos", {"title": ""})
         create_status, created = _http_json(port, "POST", "/todos", {"title": "write eval"})
-        list_status, listed = _http_json(port, "GET", "/todos")
         created_item = cast(dict[str, object], created) if isinstance(created, dict) else {}
         todo_id = created_item.get("id")
+        if not (
+            create_status == 201
+            and isinstance(todo_id, int)
+            and created_item.get("title") == "write eval"
+        ):
+            return CheckResult(
+                "stateful todo api",
+                False,
+                "POST /todos must return a top-level JSON object with integer "
+                f"id and title fields; status={create_status} body={created!r}",
+            )
+
+        list_status, listed = _http_json(port, "GET", "/todos")
         delete_status, deleted = _http_json(port, "DELETE", f"/todos/{todo_id}")
         final_status, final = _http_json(port, "GET", "/todos")
         missing_status, _ = _http_json(port, "GET", "/missing")
 
         passed = (
-            invalid_status == 400
-            and create_status == 201
-            and created_item.get("title") == "write eval"
-            and created_item.get("completed") is False
+            400 <= invalid_status < 500
             and list_status == 200
-            and listed == {"todos": [created]}
+            and _todo_collection(listed) == [created_item]
             and delete_status == 200
             and deleted == {"deleted": todo_id}
             and final_status == 200
-            and final == {"todos": []}
+            and _todo_collection(final) == []
             and missing_status == 404
         )
         details = (
-            f"invalid={invalid_status} create={create_status}:{created!r} "
+            f"empty-title={invalid_status}:{invalid!r} create={create_status}:{created!r} "
             f"list={list_status}:{listed!r} delete={delete_status}:{deleted!r} "
             f"final={final_status}:{final!r} missing={missing_status}"
         )
@@ -460,6 +469,16 @@ def stateful_todo_api_check(root: Path) -> CheckResult:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=2)
+
+
+def _todo_collection(payload: object) -> list[object] | None:
+    if isinstance(payload, dict):
+        payload_dict = cast(dict[str, object], payload)
+        todos = payload_dict.get("todos")
+        if isinstance(todos, list):
+            return cast(list[object], todos)
+    return None
+
 
 
 def finding_exists(root: Path, finding_id: str) -> bool:
