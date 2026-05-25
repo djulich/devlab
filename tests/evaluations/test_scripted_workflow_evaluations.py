@@ -12,6 +12,7 @@ from tests.evaluations.harness import (
     collect_artifact_hygiene,
     command_check,
     command_fails_check,
+    derive_review_rejections,
     derive_role_sequence,
     file_contains_check,
     init_target_workspace,
@@ -194,6 +195,31 @@ def test_scripted_deployable_web_api_evaluation(tmp_path: Path) -> None:
         scenario,
         expected_artifact="Containerfile",
     )
+
+
+def test_live_review_rejections_count_reviewer_handoffs_with_open_issues(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / ".devlab/history"
+    history.mkdir(parents=True)
+    (history / "20260519T091112_reviewer_handoff.md").write_text(
+        "# Handoff: reviewer\n"
+        "## Done\n- Reviewed.\n"
+        "## Changed Artifacts\n- None\n"
+        "## Open Issues\n- Response shape is wrong.\n"
+        "## Addressed Findings\n- None\n"
+        "## Next Session Hint\nFix response shape.\n"
+    )
+    (history / "20260519T091113_reviewer_handoff.md").write_text(
+        "# Handoff: reviewer\n"
+        "## Done\n- Reviewed.\n"
+        "## Changed Artifacts\n- None\n"
+        "## Open Issues\n- None\n"
+        "## Addressed Findings\n- None\n"
+        "## Next Session Hint\nContinue.\n"
+    )
+
+    assert derive_review_rejections(tmp_path) == 1
 
 
 def test_live_role_sequence_handles_archive_collision_filenames(tmp_path: Path) -> None:

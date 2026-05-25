@@ -28,7 +28,9 @@ Observed first successful live run:
 
 Takeaway: workflow viability is proven for a small scenario; produced-system quality needs stronger metrics.
 
-## Findings from stateful web API live baselines
+## Findings from live baselines
+
+### Stateful web API
 
 The first stateful web API live runs completed the DevLab workflow but failed black-box correctness checks. The failures were useful quality signals and led to these refinements:
 
@@ -39,6 +41,22 @@ The first stateful web API live runs completed the DevLab workflow but failed bl
 - **Correctness remains the hard gate.** The failed runs had closed tasks and reasonable hygiene diagnostics, but the product was wrong. This confirms that black-box scenario checks are the primary pass/fail signal; task closure, session count, and hygiene remain supporting diagnostics.
 
 Implication: each new live scenario should first define its externally observable contract in exact request/response terms, including negative cases. The evaluator should fail with a contract-specific message before falling back to broad diagnostic summaries.
+
+### Deployable web API
+
+The first passing deployable web API live run completed successfully but exposed workflow-quality signals that were not captured well enough by the diagnostics:
+
+- **Reviewer missed an API contract mismatch that integrator later found.** The initial API task was approved even though `POST /todos` and `DELETE /todos/{id}` returned/documented the wrong success shapes. Integrator created a finding, planner created a corrective task, and the workflow recovered. This is a success for the milestone-boundary review, but a concern for reviewer effectiveness.
+- **Reviewer did catch a deployment runtime defect.** During the deployment task review, the reviewer built and smoke-tested the local container and found that the service bound to container-local `127.0.0.1`, making host port publishing unusable. The developer fixed this with configurable host binding and container environment defaults. This is a positive signal for deployment-domain review behavior.
+- **Live `review_rejections` was undercounted.** Scripted evaluations can count rejections from the scripted agent, but live evaluations need to derive rejection counts from archived reviewer handoffs with non-empty Open Issues. Otherwise diagnostics can show `review_rejections = 0` even when reviewers requested changes.
+- **Passing after substantial rework should be visible.** The deployable baseline passed after 16 sessions, one integrator finding, and multiple review/development cycles. Correctness remains the hard gate, but high session counts and rework cycles should be recorded as quality warnings or at least surfaced prominently.
+
+Recommended actions from this run:
+
+1. Strengthen reviewer instructions to compare implementation, tests, and documentation against exact externally observable system/deployment contracts before approval.
+2. Derive live review rejection counts from archived reviewer handoffs rather than leaving them at zero.
+3. Add or refine diagnostics for rework intensity, such as session-count warnings, reviewer rejection count, integrator finding count, and per-task review cycles.
+4. Keep integrator architecture/spec sync as a required safety net; the run showed it catches drift that may escape task review.
 
 ## Metrics to add
 
@@ -60,7 +78,7 @@ Record:
 
 This enables detecting excessive rework and comparing live runs to scripted baselines.
 
-### 2. Task metrics
+### 2. Task and rework metrics
 
 Record task counts by status and task ids/titles:
 
@@ -79,6 +97,9 @@ Useful derived signals:
 - all tasks closed
 - number of tasks created for a small scenario
 - developer/reviewer churn inferred from role sequence
+- live reviewer rejection count, derived from archived reviewer handoffs whose Open Issues are not `None`
+- integrator finding count and resolved finding count
+- high session count or repeated developer/reviewer cycles as a rework-intensity warning
 
 ### 3. Artifact hygiene metrics
 
@@ -191,6 +212,7 @@ Only correctness should be a hard test failure initially. Hygiene warnings are d
 Update `tests/evaluations/harness.py`:
 
 - derive live role sequence from `.devlab/history`
+- derive live reviewer rejection count from archived reviewer handoffs
 - collect task metrics using `FileTaskTracker`
 - collect artifact hygiene summary
 - collect agent/prompt log counts and max sizes
@@ -244,6 +266,7 @@ The first deployment baseline should inspect artifacts and project-owned verific
 - Default tests remain fast and deterministic.
 - Scripted calculator evaluations pass with expanded checks.
 - Live diagnostics include non-empty role sequence after a live run.
+- Live diagnostics count reviewer rejections from archived reviewer handoffs with non-empty Open Issues.
 - Live tests print session start/finish progress lines when run with visible pytest output.
 - Diagnostics include task metrics, artifact hygiene, prompt/log counts, and quality summary.
 - `.venv`/cache directories are flagged as warnings, not hard failures.

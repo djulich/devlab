@@ -15,6 +15,7 @@ from typing import Protocol, cast
 
 from devlab.agents import AgentInvocation, MockProvider
 from devlab.findings import FileFindingTracker, FindingStatus
+from devlab.handoffs import HandoffError, parse_handoff
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
 from devlab.task_tracker import FileTaskTracker, TaskStatus
@@ -162,7 +163,7 @@ def run_live_evaluation(
         duration,
         provider_mode="live",
         roles=derive_role_sequence(root),
-        review_rejections=0,
+        review_rejections=derive_review_rejections(root),
         prompt_chars=[],
         provider=provider or "",
         model=model or "",
@@ -247,6 +248,18 @@ def derive_role_sequence(root: Path) -> list[str]:
             counter = int(match.group(2) or "1")
             parsed.append((match.group(1), counter, match.group(3)))
     return [role for _, _, role in sorted(parsed)]
+
+
+def derive_review_rejections(root: Path) -> int:
+    rejections = 0
+    for path in (root / ".devlab/history").glob("*_reviewer_handoff.md"):
+        try:
+            handoff = parse_handoff(path, "reviewer")
+        except HandoffError:
+            continue
+        if handoff.has_open_issues:
+            rejections += 1
+    return rejections
 
 
 def collect_task_metrics(root: Path) -> dict[str, object]:

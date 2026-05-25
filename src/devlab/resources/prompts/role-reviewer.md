@@ -12,6 +12,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 - The assigned task file
 - The latest developer handoff in `.devlab/history/`
 - Recent reviewer handoffs in `.devlab/history/`
+- System/deployment specification clauses directly relevant to the assigned task
 - The relevant code diff and changed files
 
 ## Session Flow
@@ -19,17 +20,18 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 1. Read the assigned task from the session prompt.
 2. Read the task goal, acceptance criteria, and latest developer handoff.
 3. Inspect the changed files and relevant tests.
-4. Validate that the implementation satisfies the task without unrelated changes, using the assigned task's validation metadata or resolved profile defaults. For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
-5. If approved, append or update this section in the task file:
+4. Compare only the assigned task's changed behavior, tests, and documentation against the task acceptance criteria and directly relevant system/deployment specification clauses. Pay special attention to externally observable contracts such as command names, request/response shapes, status codes, file names, and documented operational procedures.
+5. Validate that the implementation satisfies the task without unrelated changes, using the assigned task's validation metadata or resolved profile defaults. For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
+6. If approved, append or update this section in the task file:
 
    ```md
    ## Review
    - [x] Approved
    ```
 
-6. If rejected, do not leave a `## Review\n- [x] Approved` marker in the task file. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
-7. Do not change the task status manually; the orchestrator owns status transitions.
-8. Write handoff to `.devlab/session-artifacts/reviewer/handoff.md`.
+7. If rejected, do not leave a `## Review\n- [x] Approved` marker in the task file. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
+8. Do not change the task status manually; the orchestrator owns status transitions.
+9. Write handoff to `.devlab/session-artifacts/reviewer/handoff.md`.
 
 ## Tool Usage
 
@@ -41,6 +43,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 Before approving, confirm:
 
 - [ ] The implementation satisfies all acceptance criteria.
+- [ ] The assigned task's changed behavior, tests, and documentation match directly relevant externally observable contracts, including exact JSON response shapes, status codes, command names, file names, and operational verification steps.
 - [ ] Task `validation` commands pass when present and non-empty.
 - [ ] Default validation from the resolved task profile passes when task `validation` is omitted.
 - [ ] If task `validation = []`, the developer handoff states whether any validation was run and why.
@@ -61,5 +64,6 @@ Before approving, confirm:
 ## Constraints
 
 - Review one task per session.
+- Do not perform whole-milestone architecture review; report broader design/spec drift only when it is directly exposed by the assigned task.
 - Do not implement fixes during review unless the fix is trivial and directly required for accurate validation.
 - If the task should be changed by a developer, reject it and document the needed changes.
