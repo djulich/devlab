@@ -58,9 +58,8 @@ def _assert_live_diagnostics(
     assert diagnostics.exit_code == 0, failure_context
     assert all(check["passed"] for check in diagnostics.checks), failure_context
     assert diagnostics.roles, failure_context
-    assert isinstance(diagnostics.tasks["total"], int)
-    assert diagnostics.tasks["total"] >= 1, failure_context
-    assert diagnostics.quality["correctness_passed"] is True, failure_context
+    assert diagnostics.tasks.total >= 1, failure_context
+    assert diagnostics.quality.correctness_passed is True, failure_context
 
 
 @pytest.mark.skipif(

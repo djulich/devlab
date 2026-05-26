@@ -6,7 +6,7 @@ import re
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.handoffs import HandoffError, parse_handoff
@@ -25,21 +25,139 @@ class DiagnosticCheck(Protocol):
 
 
 @dataclasses.dataclass(frozen=True)
+class SessionRecord:
+    index: int
+    timestamp: str
+    counter: int
+    role: str
+    handoff: str
+    task_id: str
+    task_id_source: str
+
+
+@dataclasses.dataclass(frozen=True)
+class TaskCycleEntry:
+    developer_sessions: int
+    reviewer_sessions: int
+    has_rework: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class TaskCycleMetrics:
+    tasks: dict[str, TaskCycleEntry]
+    unattributed_developer_reviewer_sessions: int
+
+
+@dataclasses.dataclass(frozen=True)
+class IntegratorReworkSummary:
+    findings_created: int
+    findings_resolved: int
+    findings_open: int
+    findings_planned: int
+    finding_ids: list[str]
+    has_integrator_rework: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class TaskReworkSummary:
+    tasks_with_rework: list[str]
+    has_task_rework: bool
+    max_developer_sessions_per_task: int
+    max_reviewer_sessions_per_task: int
+    unattributed_developer_reviewer_sessions: int
+
+
+@dataclasses.dataclass(frozen=True)
+class TaskItem:
+    id: str
+    title: str
+    status: str
+    milestone: str
+    domain: str
+
+
+@dataclasses.dataclass(frozen=True)
+class TaskMetrics:
+    total: int
+    by_status: dict[str, int]
+    items: list[TaskItem]
+
+
+@dataclasses.dataclass(frozen=True)
+class ProfileItem:
+    id: str
+    title: str
+    path: str
+    default_validation_count: int
+    managed_roles: list[str]
+    valid: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class ProfileMetrics:
+    count: int
+    ids: list[str]
+    non_default_ids: list[str]
+    items: list[ProfileItem]
+    tasks_by_profile: dict[str, list[str]]
+
+
+@dataclasses.dataclass(frozen=True)
+class ArtifactHygiene:
+    file_count: int
+    total_bytes: int
+    product_file_count: int
+    product_total_bytes: int
+    ignored_file_count: int
+    ignored_total_bytes: int
+    devlab_file_count: int
+    devlab_total_bytes: int
+    flagged_paths: list[str]
+    source_files: list[str]
+    test_files: list[str]
+
+
+@dataclasses.dataclass(frozen=True)
+class AgentLogMetrics:
+    stdout_count: int
+    stderr_count: int
+    config_count: int
+
+
+@dataclasses.dataclass(frozen=True)
+class PromptLogMetrics:
+    system_count: int
+    session_count: int
+    max_system_prompt_bytes: int
+    max_session_prompt_bytes: int
+
+
+@dataclasses.dataclass(frozen=True)
+class QualitySummary:
+    correctness_checked: bool
+    correctness_passed: bool | None
+    all_tasks_closed: bool
+    has_flagged_artifacts: bool
+    session_count: int
+    warnings: list[str]
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkflowDiagnostics:
-    sessions: list[dict[str, object]]
+    sessions: list[SessionRecord]
     roles: list[str]
-    tasks: dict[str, object]
-    task_cycles: dict[str, object]
-    task_rework: dict[str, object]
+    tasks: TaskMetrics
+    task_cycles: TaskCycleMetrics
+    task_rework: TaskReworkSummary
     findings_created: int
     findings_resolved: int
     review_rejections: int
-    integrator_rework: dict[str, object]
-    profiles: dict[str, object]
-    artifact_hygiene: dict[str, object]
-    agent_logs: dict[str, object]
-    prompt_logs: dict[str, object]
-    quality: dict[str, object]
+    integrator_rework: IntegratorReworkSummary
+    profiles: ProfileMetrics
+    artifact_hygiene: ArtifactHygiene
+    agent_logs: AgentLogMetrics
+    prompt_logs: PromptLogMetrics
+    quality: QualitySummary
 
     def as_dict(self) -> dict[str, object]:
         return dataclasses.asdict(self)
@@ -58,7 +176,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
     integrator_rework = derive_integrator_rework_summary(findings)
     return WorkflowDiagnostics(
         sessions=sessions,
-        roles=[str(session["role"]) for session in sessions],
+        roles=[session.role for session in sessions],
         tasks=task_metrics,
         task_cycles=task_cycles,
         task_rework=task_rework,
@@ -95,11 +213,9 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
     lines.append(_format_integrator_summary(diagnostics.integrator_rework))
     lines.append(_format_profile_summary(diagnostics.profiles))
     lines.append(_format_artifact_hygiene_summary(diagnostics.artifact_hygiene))
-    warnings = diagnostics.quality.get("warnings", [])
-    warning_list = [str(warning) for warning in warnings] if isinstance(warnings, list) else []
-    if warning_list:
+    if diagnostics.quality.warnings:
         lines.append("Warnings:")
-        lines.extend(f"- {warning}" for warning in warning_list)
+        lines.extend(f"- {warning}" for warning in diagnostics.quality.warnings)
     else:
         lines.append("Warnings: none")
 
@@ -109,10 +225,10 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
 
 
 def derive_role_sequence(root: Path) -> list[str]:
-    return [str(session["role"]) for session in derive_session_records(root)]
+    return [session.role for session in derive_session_records(root)]
 
 
-def derive_session_records(root: Path) -> list[dict[str, object]]:
+def derive_session_records(root: Path) -> list[SessionRecord]:
     parsed: list[tuple[str, int, str, Path]] = []
     for path in (root / ".devlab/history").glob("*_handoff.md"):
         match = _HANDOFF_FILENAME_RE.match(path.name)
@@ -120,19 +236,19 @@ def derive_session_records(root: Path) -> list[dict[str, object]]:
             counter = int(match.group(2) or "1")
             parsed.append((match.group(1), counter, match.group(3), path))
 
-    sessions: list[dict[str, object]] = []
+    sessions: list[SessionRecord] = []
     for index, (timestamp, counter, role, path) in enumerate(sorted(parsed), start=1):
         task_id, task_id_source = _task_id_for_session(path, role)
         sessions.append(
-            {
-                "index": index,
-                "timestamp": timestamp,
-                "counter": counter,
-                "role": role,
-                "handoff": path.relative_to(root).as_posix(),
-                "task_id": task_id,
-                "task_id_source": task_id_source,
-            }
+            SessionRecord(
+                index=index,
+                timestamp=timestamp,
+                counter=counter,
+                role=role,
+                handoff=path.relative_to(root).as_posix(),
+                task_id=task_id,
+                task_id_source=task_id_source,
+            )
         )
     return sessions
 
@@ -155,92 +271,74 @@ def _task_id_for_session(path: Path, role: str) -> tuple[str, str]:
 
 def derive_task_cycle_metrics(
     root: Path,
-    sessions: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
+    sessions: list[SessionRecord] | None = None,
+) -> TaskCycleMetrics:
     session_records = sessions if sessions is not None else derive_session_records(root)
-    metrics: dict[str, dict[str, int | bool]] = {
-        task.id: {
-            "developer_sessions": 0,
-            "reviewer_sessions": 0,
-            "has_rework": False,
-        }
+    counts: dict[str, list[int]] = {
+        task.id: [0, 0]
         for task in FileTaskTracker(root).list_tasks()
     }
     unattributed = 0
     for session in session_records:
-        role = session.get("role")
-        if role not in {"developer", "reviewer"}:
+        if session.role not in {"developer", "reviewer"}:
             continue
-        task_id = session.get("task_id")
-        if not isinstance(task_id, str) or not task_id:
+        if not session.task_id:
             unattributed += 1
             continue
-        if task_id not in metrics:
-            metrics[task_id] = {
-                "developer_sessions": 0,
-                "reviewer_sessions": 0,
-                "has_rework": False,
-            }
-        key = "developer_sessions" if role == "developer" else "reviewer_sessions"
-        metrics_for_task = metrics[task_id]
-        metrics_for_task[key] = metrics_for_task[key] + 1
+        if session.task_id not in counts:
+            counts[session.task_id] = [0, 0]
+        idx = 0 if session.role == "developer" else 1
+        counts[session.task_id][idx] += 1
 
-    for metrics_for_task in metrics.values():
-        metrics_for_task["has_rework"] = (
-            metrics_for_task["developer_sessions"] > 1
-            or metrics_for_task["reviewer_sessions"] > 1
-        )
-
-    return {
-        "tasks": metrics,
-        "unattributed_developer_reviewer_sessions": unattributed,
-    }
+    return TaskCycleMetrics(
+        tasks={
+            task_id: TaskCycleEntry(
+                developer_sessions=c[0],
+                reviewer_sessions=c[1],
+                has_rework=c[0] > 1 or c[1] > 1,
+            )
+            for task_id, c in counts.items()
+        },
+        unattributed_developer_reviewer_sessions=unattributed,
+    )
 
 
-def derive_integrator_rework_summary(findings: Sequence[Finding]) -> dict[str, object]:
+def derive_integrator_rework_summary(findings: Sequence[Finding]) -> IntegratorReworkSummary:
     integrator_findings = [finding for finding in findings if finding.source == "integrator"]
     by_status: dict[str, int] = {}
     finding_ids: list[str] = []
     for finding in integrator_findings:
         by_status[finding.status.value] = by_status.get(finding.status.value, 0) + 1
         finding_ids.append(finding.id)
-    return {
-        "findings_created": len(integrator_findings),
-        "findings_resolved": by_status.get(FindingStatus.RESOLVED.value, 0),
-        "findings_open": by_status.get(FindingStatus.OPEN.value, 0),
-        "findings_planned": by_status.get(FindingStatus.PLANNED.value, 0),
-        "finding_ids": sorted(finding_id for finding_id in finding_ids if finding_id),
-        "has_integrator_rework": bool(integrator_findings),
-    }
-
-
-def derive_task_rework_summary(task_cycles: dict[str, object]) -> dict[str, object]:
-    raw_tasks = task_cycles.get("tasks", {})
-    tasks = (
-        cast("dict[str, dict[str, int | bool]]", raw_tasks)
-        if isinstance(raw_tasks, dict)
-        else {}
+    return IntegratorReworkSummary(
+        findings_created=len(integrator_findings),
+        findings_resolved=by_status.get(FindingStatus.RESOLVED.value, 0),
+        findings_open=by_status.get(FindingStatus.OPEN.value, 0),
+        findings_planned=by_status.get(FindingStatus.PLANNED.value, 0),
+        finding_ids=sorted(finding_id for finding_id in finding_ids if finding_id),
+        has_integrator_rework=bool(integrator_findings),
     )
+
+
+def derive_task_rework_summary(task_cycles: TaskCycleMetrics) -> TaskReworkSummary:
     tasks_with_rework = [
-        task_id for task_id, metrics in sorted(tasks.items()) if bool(metrics.get("has_rework"))
+        task_id
+        for task_id, entry in sorted(task_cycles.tasks.items())
+        if entry.has_rework
     ]
-    max_developer_sessions = max(
-        (cast("int", metrics.get("developer_sessions", 0)) for metrics in tasks.values()),
-        default=0,
-    )
-    max_reviewer_sessions = max(
-        (cast("int", metrics.get("reviewer_sessions", 0)) for metrics in tasks.values()),
-        default=0,
-    )
-    return {
-        "tasks_with_rework": tasks_with_rework,
-        "has_task_rework": bool(tasks_with_rework),
-        "max_developer_sessions_per_task": max_developer_sessions,
-        "max_reviewer_sessions_per_task": max_reviewer_sessions,
-        "unattributed_developer_reviewer_sessions": task_cycles.get(
-            "unattributed_developer_reviewer_sessions", 0
+    return TaskReworkSummary(
+        tasks_with_rework=tasks_with_rework,
+        has_task_rework=bool(tasks_with_rework),
+        max_developer_sessions_per_task=max(
+            (entry.developer_sessions for entry in task_cycles.tasks.values()),
+            default=0,
         ),
-    }
+        max_reviewer_sessions_per_task=max(
+            (entry.reviewer_sessions for entry in task_cycles.tasks.values()),
+            default=0,
+        ),
+        unattributed_developer_reviewer_sessions=task_cycles.unattributed_developer_reviewer_sessions,
+    )
 
 
 def derive_review_rejections(root: Path) -> int:
@@ -255,29 +353,29 @@ def derive_review_rejections(root: Path) -> int:
     return rejections
 
 
-def collect_task_metrics(root: Path) -> dict[str, object]:
+def collect_task_metrics(root: Path) -> TaskMetrics:
     tasks = FileTaskTracker(root).list_tasks()
     by_status: dict[str, int] = {}
     for task in tasks:
         by_status[task.status.value] = by_status.get(task.status.value, 0) + 1
-    return {
-        "total": len(tasks),
-        "by_status": by_status,
-        "items": [
-            {
-                "id": task.id,
-                "title": task.title,
-                "status": task.status.value,
-                "milestone": task.milestone or "",
-                "domain": task.domain,
-            }
+    return TaskMetrics(
+        total=len(tasks),
+        by_status=by_status,
+        items=[
+            TaskItem(
+                id=task.id,
+                title=task.title,
+                status=task.status.value,
+                milestone=task.milestone or "",
+                domain=task.domain,
+            )
             for task in tasks
         ],
-    }
+    )
 
 
-def collect_profile_metrics(root: Path) -> dict[str, object]:
-    profiles = []
+def collect_profile_metrics(root: Path) -> ProfileMetrics:
+    profiles: list[ProfileItem] = []
     profiles_path = root / PROFILES_DIR
     for path in sorted(profiles_path.glob("*.toml")):
         profile_id = path.stem
@@ -285,25 +383,25 @@ def collect_profile_metrics(root: Path) -> dict[str, object]:
             profile = load_profile(root, profile_id)
         except (OSError, ValueError):
             profiles.append(
-                {
-                    "id": profile_id,
-                    "title": profile_id,
-                    "path": path.relative_to(root).as_posix(),
-                    "default_validation_count": 0,
-                    "managed_roles": [],
-                    "valid": False,
-                }
+                ProfileItem(
+                    id=profile_id,
+                    title=profile_id,
+                    path=path.relative_to(root).as_posix(),
+                    default_validation_count=0,
+                    managed_roles=[],
+                    valid=False,
+                )
             )
             continue
         profiles.append(
-            {
-                "id": profile.id,
-                "title": profile.title,
-                "path": path.relative_to(root).as_posix(),
-                "default_validation_count": len(profile.tooling.default_validation),
-                "managed_roles": list(profile.environment.managed_roles),
-                "valid": True,
-            }
+            ProfileItem(
+                id=profile.id,
+                title=profile.title,
+                path=path.relative_to(root).as_posix(),
+                default_validation_count=len(profile.tooling.default_validation),
+                managed_roles=list(profile.environment.managed_roles),
+                valid=True,
+            )
         )
 
     tasks = FileTaskTracker(root).list_tasks()
@@ -312,19 +410,19 @@ def collect_profile_metrics(root: Path) -> dict[str, object]:
         profile_id = task.profile or DEFAULT_PROFILE
         tasks_by_profile.setdefault(profile_id, []).append(task.id)
 
-    ids = [str(profile["id"]) for profile in profiles]
-    return {
-        "count": len(profiles),
-        "ids": ids,
-        "non_default_ids": [profile_id for profile_id in ids if profile_id != DEFAULT_PROFILE],
-        "items": profiles,
-        "tasks_by_profile": {
+    ids = [item.id for item in profiles]
+    return ProfileMetrics(
+        count=len(profiles),
+        ids=ids,
+        non_default_ids=[profile_id for profile_id in ids if profile_id != DEFAULT_PROFILE],
+        items=profiles,
+        tasks_by_profile={
             key: sorted(value) for key, value in sorted(tasks_by_profile.items())
         },
-    }
+    )
 
 
-def collect_artifact_hygiene(root: Path) -> dict[str, object]:
+def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
     product_files = [
         path
         for path in _git_ls_files(
@@ -358,128 +456,119 @@ def collect_artifact_hygiene(root: Path) -> dict[str, object]:
         for path in product_files
         if Path(path).name.startswith("test_") or Path(path).name.endswith("_test.py")
     ]
-    return {
-        "file_count": len(product_files),
-        "total_bytes": product_total_bytes,
-        "product_file_count": len(product_files),
-        "product_total_bytes": product_total_bytes,
-        "ignored_file_count": len(ignored_files),
-        "ignored_total_bytes": ignored_total_bytes,
-        "devlab_file_count": len(devlab_files),
-        "devlab_total_bytes": devlab_total_bytes,
-        "flagged_paths": [],
-        "source_files": sorted(source_files),
-        "test_files": sorted(test_files),
-    }
+    return ArtifactHygiene(
+        file_count=len(product_files),
+        total_bytes=product_total_bytes,
+        product_file_count=len(product_files),
+        product_total_bytes=product_total_bytes,
+        ignored_file_count=len(ignored_files),
+        ignored_total_bytes=ignored_total_bytes,
+        devlab_file_count=len(devlab_files),
+        devlab_total_bytes=devlab_total_bytes,
+        flagged_paths=[],
+        source_files=sorted(source_files),
+        test_files=sorted(test_files),
+    )
 
 
-def collect_agent_log_metrics(root: Path) -> dict[str, object]:
+def collect_agent_log_metrics(root: Path) -> AgentLogMetrics:
     log_dir = root / ".devlab/logs/agents"
-    return {
-        "stdout_count": len(list(log_dir.glob("*.stdout.log"))),
-        "stderr_count": len(list(log_dir.glob("*.stderr.log"))),
-        "config_count": len(list(log_dir.glob("*.config.toml"))),
-    }
+    return AgentLogMetrics(
+        stdout_count=len(list(log_dir.glob("*.stdout.log"))),
+        stderr_count=len(list(log_dir.glob("*.stderr.log"))),
+        config_count=len(list(log_dir.glob("*.config.toml"))),
+    )
 
 
-def collect_prompt_log_metrics(root: Path) -> dict[str, object]:
+def collect_prompt_log_metrics(root: Path) -> PromptLogMetrics:
     log_dir = root / ".devlab/logs/agents"
     system_logs = list(log_dir.glob("*.system-prompt.md"))
     session_logs = list(log_dir.glob("*.session-prompt.md"))
-    return {
-        "system_count": len(system_logs),
-        "session_count": len(session_logs),
-        "max_system_prompt_bytes": max((path.stat().st_size for path in system_logs), default=0),
-        "max_session_prompt_bytes": max((path.stat().st_size for path in session_logs), default=0),
-    }
+    return PromptLogMetrics(
+        system_count=len(system_logs),
+        session_count=len(session_logs),
+        max_system_prompt_bytes=max((path.stat().st_size for path in system_logs), default=0),
+        max_session_prompt_bytes=max((path.stat().st_size for path in session_logs), default=0),
+    )
 
 
 def quality_summary(
     *,
     checks: Sequence[DiagnosticCheck],
-    task_metrics: dict[str, object],
-    artifact_hygiene: dict[str, object],
+    task_metrics: TaskMetrics,
+    artifact_hygiene: ArtifactHygiene,
     sessions_run: int,
-    task_rework: dict[str, object] | None = None,
-    integrator_rework: dict[str, object] | None = None,
-) -> dict[str, object]:
-    raw_by_status = task_metrics.get("by_status", {})
-    by_status = cast("dict[str, int]", raw_by_status) if isinstance(raw_by_status, dict) else {}
-    closed = by_status.get(TaskStatus.CLOSED.value, 0)
-    all_tasks_closed = task_metrics.get("total") == closed
-    flagged_paths = artifact_hygiene.get("flagged_paths", [])
-    flagged_list = list(flagged_paths) if isinstance(flagged_paths, list) else []
-    warnings = [f"flagged artifact path: {path}" for path in flagged_list]
-    task_rework = task_rework or {}
-    integrator_rework = integrator_rework or {}
-    reworked_tasks = task_rework.get("tasks_with_rework", [])
-    if isinstance(reworked_tasks, list):
-        warnings.extend(f"task rework detected: {task_id}" for task_id in reworked_tasks)
-    integrator_findings = integrator_rework.get("findings_created", 0)
-    if isinstance(integrator_findings, int) and integrator_findings:
-        warnings.append(f"integrator findings created: {integrator_findings}")
+    task_rework: TaskReworkSummary | None = None,
+    integrator_rework: IntegratorReworkSummary | None = None,
+) -> QualitySummary:
+    closed = task_metrics.by_status.get(TaskStatus.CLOSED.value, 0)
+    all_tasks_closed = task_metrics.total == closed
+    warnings = [f"flagged artifact path: {path}" for path in artifact_hygiene.flagged_paths]
+    if task_rework is not None:
+        warnings.extend(
+            f"task rework detected: {task_id}" for task_id in task_rework.tasks_with_rework
+        )
+    if integrator_rework is not None and integrator_rework.findings_created:
+        warnings.append(f"integrator findings created: {integrator_rework.findings_created}")
     if closed and sessions_run / closed > HIGH_SESSIONS_PER_CLOSED_TASK_WARNING:
         warnings.append(f"high session count per closed task: {sessions_run}/{closed}")
-    ignored_file_count = artifact_hygiene.get("ignored_file_count", 0)
-    ignored_total_bytes = artifact_hygiene.get("ignored_total_bytes", 0)
-    if isinstance(ignored_total_bytes, int) and ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING:
-        warnings.append(f"large ignored artifact footprint: {ignored_total_bytes} bytes")
-    if isinstance(ignored_file_count, int) and ignored_file_count > LARGE_IGNORED_FILES_WARNING:
-        warnings.append(f"large ignored artifact file count: {ignored_file_count}")
+    if artifact_hygiene.ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING:
+        warnings.append(
+            f"large ignored artifact footprint: {artifact_hygiene.ignored_total_bytes} bytes"
+        )
+    if artifact_hygiene.ignored_file_count > LARGE_IGNORED_FILES_WARNING:
+        warnings.append(
+            f"large ignored artifact file count: {artifact_hygiene.ignored_file_count}"
+        )
     correctness_checked = bool(checks)
     correctness_passed = all(check.passed for check in checks) if correctness_checked else None
-    return {
-        "correctness_checked": correctness_checked,
-        "correctness_passed": correctness_passed,
-        "all_tasks_closed": all_tasks_closed,
-        "has_flagged_artifacts": bool(flagged_list),
-        "session_count": sessions_run,
-        "warnings": warnings,
-    }
-
-
-def _format_task_summary(tasks: dict[str, object]) -> str:
-    total = tasks.get("total", 0)
-    by_status = tasks.get("by_status", {})
-    if not isinstance(by_status, dict) or not by_status:
-        return f"Tasks: {total} total"
-    status_parts = ", ".join(
-        f"{count} {status}" for status, count in sorted(by_status.items())
+    return QualitySummary(
+        correctness_checked=correctness_checked,
+        correctness_passed=correctness_passed,
+        all_tasks_closed=all_tasks_closed,
+        has_flagged_artifacts=bool(artifact_hygiene.flagged_paths),
+        session_count=sessions_run,
+        warnings=warnings,
     )
-    return f"Tasks: {total} total ({status_parts})"
 
 
-def _format_rework_summary(task_rework: dict[str, object]) -> str:
-    tasks = task_rework.get("tasks_with_rework", [])
-    if isinstance(tasks, list) and tasks:
-        return "Task rework: " + ", ".join(str(task_id) for task_id in tasks)
+def _format_task_summary(tasks: TaskMetrics) -> str:
+    if not tasks.by_status:
+        return f"Tasks: {tasks.total} total"
+    status_parts = ", ".join(
+        f"{count} {status}" for status, count in sorted(tasks.by_status.items())
+    )
+    return f"Tasks: {tasks.total} total ({status_parts})"
+
+
+def _format_rework_summary(task_rework: TaskReworkSummary) -> str:
+    if task_rework.tasks_with_rework:
+        return "Task rework: " + ", ".join(task_rework.tasks_with_rework)
     return "Task rework: none"
 
 
-def _format_integrator_summary(integrator_rework: dict[str, object]) -> str:
-    created = integrator_rework.get("findings_created", 0)
-    resolved = integrator_rework.get("findings_resolved", 0)
-    open_count = integrator_rework.get("findings_open", 0)
-    planned = integrator_rework.get("findings_planned", 0)
+def _format_integrator_summary(integrator_rework: IntegratorReworkSummary) -> str:
     return (
         "Integrator findings: "
-        f"{created} created, {resolved} resolved, {open_count} open, {planned} planned"
+        f"{integrator_rework.findings_created} created, "
+        f"{integrator_rework.findings_resolved} resolved, "
+        f"{integrator_rework.findings_open} open, "
+        f"{integrator_rework.findings_planned} planned"
     )
 
 
-def _format_profile_summary(profiles: dict[str, object]) -> str:
-    ids = profiles.get("ids", [])
-    if isinstance(ids, list) and ids:
-        return "Profiles: " + ", ".join(str(profile_id) for profile_id in ids)
+def _format_profile_summary(profiles: ProfileMetrics) -> str:
+    if profiles.ids:
+        return "Profiles: " + ", ".join(profiles.ids)
     return "Profiles: none"
 
 
-def _format_artifact_hygiene_summary(artifact_hygiene: dict[str, object]) -> str:
+def _format_artifact_hygiene_summary(artifact_hygiene: ArtifactHygiene) -> str:
     return (
         "Artifact hygiene: "
-        f"{artifact_hygiene.get('product_file_count', 0)} product files, "
-        f"{artifact_hygiene.get('ignored_file_count', 0)} ignored files, "
-        f"{len(cast('list[object]', artifact_hygiene.get('flagged_paths', [])))} flagged paths"
+        f"{artifact_hygiene.product_file_count} product files, "
+        f"{artifact_hygiene.ignored_file_count} ignored files, "
+        f"{len(artifact_hygiene.flagged_paths)} flagged paths"
     )
 
 
@@ -487,47 +576,35 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     lines = ["Sessions:"]
     if diagnostics.sessions:
         for session in diagnostics.sessions:
-            task_id = str(session.get("task_id") or "")
-            task_text = f" task={task_id}" if task_id else ""
-            source = session.get("task_id_source", "")
+            task_text = f" task={session.task_id}" if session.task_id else ""
             lines.append(
-                f"- {session.get('index')}: {session.get('role')}{task_text} source={source}"
+                f"- {session.index}: {session.role}{task_text} "
+                f"source={session.task_id_source}"
             )
     else:
         lines.append("- none")
 
     lines.append("")
     lines.append("Task cycles:")
-    raw_tasks = diagnostics.task_cycles.get("tasks", {})
-    task_cycles = (
-        cast("dict[str, dict[str, object]]", raw_tasks) if isinstance(raw_tasks, dict) else {}
-    )
-    if task_cycles:
-        for task_id, metrics in sorted(task_cycles.items()):
+    if diagnostics.task_cycles.tasks:
+        for task_id, entry in sorted(diagnostics.task_cycles.tasks.items()):
             lines.append(
-                f"- {task_id}: developer_sessions={metrics.get('developer_sessions', 0)} "
-                f"reviewer_sessions={metrics.get('reviewer_sessions', 0)} "
-                f"rework={_bool_text(bool(metrics.get('has_rework')))}"
+                f"- {task_id}: developer_sessions={entry.developer_sessions} "
+                f"reviewer_sessions={entry.reviewer_sessions} "
+                f"rework={_bool_text(entry.has_rework)}"
             )
     else:
         lines.append("- none")
 
     lines.append("")
     lines.append("Profiles:")
-    profile_items = diagnostics.profiles.get("items", [])
-    if isinstance(profile_items, list) and profile_items:
-        for item in profile_items:
-            if not isinstance(item, dict):
-                continue
-            profile = cast("dict[str, object]", item)
-            managed_roles = ", ".join(
-                cast("list[str]", profile.get("managed_roles", []))
-            ) or "none"
+    if diagnostics.profiles.items:
+        for item in diagnostics.profiles.items:
+            managed_roles = ", ".join(item.managed_roles) or "none"
             lines.append(
-                f"- {profile.get('id')}: validation_commands="
-                f"{profile.get('default_validation_count', 0)} "
+                f"- {item.id}: validation_commands={item.default_validation_count} "
                 f"managed_roles={managed_roles} "
-                f"valid={_bool_text(bool(profile.get('valid')))}"
+                f"valid={_bool_text(item.valid)}"
             )
     else:
         lines.append("- none")
@@ -536,16 +613,16 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     lines.append("Logs:")
     lines.append(
         "- agent: "
-        f"stdout={diagnostics.agent_logs.get('stdout_count', 0)} "
-        f"stderr={diagnostics.agent_logs.get('stderr_count', 0)} "
-        f"config={diagnostics.agent_logs.get('config_count', 0)}"
+        f"stdout={diagnostics.agent_logs.stdout_count} "
+        f"stderr={diagnostics.agent_logs.stderr_count} "
+        f"config={diagnostics.agent_logs.config_count}"
     )
     lines.append(
         "- prompts: "
-        f"system={diagnostics.prompt_logs.get('system_count', 0)} "
-        f"session={diagnostics.prompt_logs.get('session_count', 0)} "
-        f"max_system_bytes={diagnostics.prompt_logs.get('max_system_prompt_bytes', 0)} "
-        f"max_session_bytes={diagnostics.prompt_logs.get('max_session_prompt_bytes', 0)}"
+        f"system={diagnostics.prompt_logs.system_count} "
+        f"session={diagnostics.prompt_logs.session_count} "
+        f"max_system_bytes={diagnostics.prompt_logs.max_system_prompt_bytes} "
+        f"max_session_bytes={diagnostics.prompt_logs.max_session_prompt_bytes}"
     )
     return lines
 

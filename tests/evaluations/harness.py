@@ -17,6 +17,17 @@ from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
 from devlab.workflow_diagnostics import (
+    AgentLogMetrics,
+    ArtifactHygiene,
+    IntegratorReworkSummary,
+    ProfileMetrics,
+    PromptLogMetrics,
+    QualitySummary,
+    SessionRecord,
+    TaskCycleEntry,
+    TaskCycleMetrics,
+    TaskMetrics,
+    TaskReworkSummary,
     collect_agent_log_metrics,
     collect_artifact_hygiene,
     collect_profile_metrics,
@@ -39,11 +50,22 @@ from tests.evaluations.checks import (
 )
 
 __all__ = [
+    "AgentLogMetrics",
+    "ArtifactHygiene",
     "BlackBoxCheck",
     "CheckResult",
     "EvaluationDiagnostics",
     "EvaluationScenario",
+    "IntegratorReworkSummary",
+    "ProfileMetrics",
+    "PromptLogMetrics",
+    "QualitySummary",
     "ScriptedAgent",
+    "SessionRecord",
+    "TaskCycleEntry",
+    "TaskCycleMetrics",
+    "TaskMetrics",
+    "TaskReworkSummary",
     "collect_artifact_hygiene",
     "collect_profile_metrics",
     "command_check",
@@ -109,16 +131,58 @@ class EvaluationDiagnostics:
     provider: str = ""
     model: str = ""
     effort: str = ""
-    tasks: dict[str, object] = dataclasses.field(default_factory=dict)
-    artifact_hygiene: dict[str, object] = dataclasses.field(default_factory=dict)
-    agent_logs: dict[str, object] = dataclasses.field(default_factory=dict)
-    prompt_logs: dict[str, object] = dataclasses.field(default_factory=dict)
-    quality: dict[str, object] = dataclasses.field(default_factory=dict)
-    sessions: list[dict[str, object]] = dataclasses.field(default_factory=list)
-    task_cycles: dict[str, object] = dataclasses.field(default_factory=dict)
-    task_rework: dict[str, object] = dataclasses.field(default_factory=dict)
-    integrator_rework: dict[str, object] = dataclasses.field(default_factory=dict)
-    profiles: dict[str, object] = dataclasses.field(default_factory=dict)
+    tasks: TaskMetrics = dataclasses.field(
+        default_factory=lambda: TaskMetrics(total=0, by_status={}, items=[])
+    )
+    artifact_hygiene: ArtifactHygiene = dataclasses.field(
+        default_factory=lambda: ArtifactHygiene(
+            file_count=0, total_bytes=0, product_file_count=0, product_total_bytes=0,
+            ignored_file_count=0, ignored_total_bytes=0, devlab_file_count=0,
+            devlab_total_bytes=0, flagged_paths=[], source_files=[], test_files=[],
+        )
+    )
+    agent_logs: AgentLogMetrics = dataclasses.field(
+        default_factory=lambda: AgentLogMetrics(
+            stdout_count=0, stderr_count=0, config_count=0,
+        )
+    )
+    prompt_logs: PromptLogMetrics = dataclasses.field(
+        default_factory=lambda: PromptLogMetrics(
+            system_count=0, session_count=0,
+            max_system_prompt_bytes=0, max_session_prompt_bytes=0,
+        )
+    )
+    quality: QualitySummary = dataclasses.field(
+        default_factory=lambda: QualitySummary(
+            correctness_checked=False, correctness_passed=None,
+            all_tasks_closed=False, has_flagged_artifacts=False,
+            session_count=0, warnings=[],
+        )
+    )
+    sessions: list[SessionRecord] = dataclasses.field(default_factory=list)
+    task_cycles: TaskCycleMetrics = dataclasses.field(
+        default_factory=lambda: TaskCycleMetrics(
+            tasks={}, unattributed_developer_reviewer_sessions=0,
+        )
+    )
+    task_rework: TaskReworkSummary = dataclasses.field(
+        default_factory=lambda: TaskReworkSummary(
+            tasks_with_rework=[], has_task_rework=False,
+            max_developer_sessions_per_task=0, max_reviewer_sessions_per_task=0,
+            unattributed_developer_reviewer_sessions=0,
+        )
+    )
+    integrator_rework: IntegratorReworkSummary = dataclasses.field(
+        default_factory=lambda: IntegratorReworkSummary(
+            findings_created=0, findings_resolved=0, findings_open=0,
+            findings_planned=0, finding_ids=[], has_integrator_rework=False,
+        )
+    )
+    profiles: ProfileMetrics = dataclasses.field(
+        default_factory=lambda: ProfileMetrics(
+            count=0, ids=[], non_default_ids=[], items=[], tasks_by_profile={},
+        )
+    )
 
     def write(self, root: Path) -> Path:
         path = root / ".devlab/evaluations" / f"{self.scenario_id}.json"

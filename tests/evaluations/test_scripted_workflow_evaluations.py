@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import cast
 
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.task_tracker import FileTaskTracker, TaskStatus
 from tests.evaluations.harness import (
+    ArtifactHygiene,
     CheckResult,
     EvaluationDiagnostics,
     EvaluationScenario,
+    IntegratorReworkSummary,
+    TaskCycleEntry,
+    TaskMetrics,
+    TaskReworkSummary,
     collect_artifact_hygiene,
     collect_profile_metrics,
     command_check,
@@ -106,14 +110,14 @@ def test_scripted_cli_calculator_integration_finding_evaluation(tmp_path: Path) 
     _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="calculator.py")
     finding = FileFindingTracker(tmp_path).get("F0001")
     assert finding.status == FindingStatus.RESOLVED
-    assert diagnostics.integrator_rework == {
-        "findings_created": 1,
-        "findings_resolved": 1,
-        "findings_open": 0,
-        "findings_planned": 0,
-        "finding_ids": ["F0001"],
-        "has_integrator_rework": True,
-    }
+    assert diagnostics.integrator_rework == IntegratorReworkSummary(
+        findings_created=1,
+        findings_resolved=1,
+        findings_open=0,
+        findings_planned=0,
+        finding_ids=["F0001"],
+        has_integrator_rework=True,
+    )
     task = FileTaskTracker(tmp_path).get("T0002")
     assert task.addresses_findings == ("F0001",)
 
@@ -327,14 +331,14 @@ def test_integrator_rework_summary_counts_integrator_findings(tmp_path: Path) ->
 
     summary = derive_integrator_rework_summary(tracker.list_findings())
 
-    assert summary == {
-        "findings_created": 2,
-        "findings_resolved": 1,
-        "findings_open": 1,
-        "findings_planned": 0,
-        "finding_ids": [integrator_open.id, integrator_resolved.id],
-        "has_integrator_rework": True,
-    }
+    assert summary == IntegratorReworkSummary(
+        findings_created=2,
+        findings_resolved=1,
+        findings_open=1,
+        findings_planned=0,
+        finding_ids=[integrator_open.id, integrator_resolved.id],
+        has_integrator_rework=True,
+    )
 
 
 def test_integrator_rework_summary_reports_clean_integration(tmp_path: Path) -> None:
@@ -348,14 +352,14 @@ def test_integrator_rework_summary_reports_clean_integration(tmp_path: Path) -> 
 
     summary = derive_integrator_rework_summary(tracker.list_findings())
 
-    assert summary == {
-        "findings_created": 0,
-        "findings_resolved": 0,
-        "findings_open": 0,
-        "findings_planned": 0,
-        "finding_ids": [],
-        "has_integrator_rework": False,
-    }
+    assert summary == IntegratorReworkSummary(
+        findings_created=0,
+        findings_resolved=0,
+        findings_open=0,
+        findings_planned=0,
+        finding_ids=[],
+        has_integrator_rework=False,
+    )
 
 
 def test_task_cycle_metrics_distinguish_planned_tasks_from_rework(tmp_path: Path) -> None:
@@ -390,26 +394,20 @@ def test_task_cycle_metrics_distinguish_planned_tasks_from_rework(tmp_path: Path
     task_cycles = derive_task_cycle_metrics(tmp_path, sessions)
     rework = derive_task_rework_summary(task_cycles)
 
-    tasks = cast("dict[str, object]", task_cycles["tasks"])
-
-    assert [session["task_id"] for session in sessions] == [
+    assert [session.task_id for session in sessions] == [
         "T0001",
         "T0001",
         "T0002",
         "T0002",
     ]
-    assert tasks["T0001"] == {
-        "developer_sessions": 1,
-        "reviewer_sessions": 1,
-        "has_rework": False,
-    }
-    assert tasks["T0002"] == {
-        "developer_sessions": 1,
-        "reviewer_sessions": 1,
-        "has_rework": False,
-    }
-    assert rework["tasks_with_rework"] == []
-    assert rework["has_task_rework"] is False
+    assert task_cycles.tasks["T0001"] == TaskCycleEntry(
+        developer_sessions=1, reviewer_sessions=1, has_rework=False,
+    )
+    assert task_cycles.tasks["T0002"] == TaskCycleEntry(
+        developer_sessions=1, reviewer_sessions=1, has_rework=False,
+    )
+    assert rework.tasks_with_rework == []
+    assert rework.has_task_rework is False
 
 
 def test_task_cycle_metrics_detect_repeated_same_task_cycles(tmp_path: Path) -> None:
@@ -442,17 +440,13 @@ def test_task_cycle_metrics_detect_repeated_same_task_cycles(tmp_path: Path) -> 
     task_cycles = derive_task_cycle_metrics(tmp_path)
     rework = derive_task_rework_summary(task_cycles)
 
-    tasks = cast("dict[str, object]", task_cycles["tasks"])
-
-    assert tasks["T0001"] == {
-        "developer_sessions": 2,
-        "reviewer_sessions": 2,
-        "has_rework": True,
-    }
-    assert rework["tasks_with_rework"] == ["T0001"]
-    assert rework["has_task_rework"] is True
-    assert rework["max_developer_sessions_per_task"] == 2
-    assert rework["max_reviewer_sessions_per_task"] == 2
+    assert task_cycles.tasks["T0001"] == TaskCycleEntry(
+        developer_sessions=2, reviewer_sessions=2, has_rework=True,
+    )
+    assert rework.tasks_with_rework == ["T0001"]
+    assert rework.has_task_rework is True
+    assert rework.max_developer_sessions_per_task == 2
+    assert rework.max_reviewer_sessions_per_task == 2
 
 
 def test_task_cycle_metrics_count_unattributed_task_sessions(tmp_path: Path) -> None:
@@ -462,7 +456,7 @@ def test_task_cycle_metrics_count_unattributed_task_sessions(tmp_path: Path) -> 
 
     task_cycles = derive_task_cycle_metrics(tmp_path)
 
-    assert task_cycles["unattributed_developer_reviewer_sessions"] == 1
+    assert task_cycles.unattributed_developer_reviewer_sessions == 1
 
 
 def test_live_review_rejections_count_reviewer_handoffs_with_open_issues(
@@ -524,38 +518,42 @@ def test_collect_profile_metrics_lists_profiles_and_task_usage(tmp_path: Path) -
 
     metrics = collect_profile_metrics(tmp_path)
 
-    items = cast("list[dict[str, object]]", metrics["items"])
-
-    assert metrics["count"] == 2
-    assert metrics["ids"] == ["default", "python-app"]
-    assert metrics["non_default_ids"] == ["python-app"]
-    assert metrics["tasks_by_profile"] == {"default": ["T0001"], "python-app": ["T0002"]}
-    assert items[1]["default_validation_count"] == 1
-    assert items[1]["managed_roles"] == ["developer"]
+    assert metrics.count == 2
+    assert metrics.ids == ["default", "python-app"]
+    assert metrics.non_default_ids == ["python-app"]
+    assert metrics.tasks_by_profile == {"default": ["T0001"], "python-app": ["T0002"]}
+    assert metrics.items[1].default_validation_count == 1
+    assert metrics.items[1].managed_roles == ["developer"]
 
 
 def test_quality_summary_warns_for_rework_and_large_ignored_artifacts() -> None:
     summary = quality_summary(
         checks=[CheckResult("ok", True)],
-        task_metrics={"total": 1, "by_status": {"closed": 1}},
-        artifact_hygiene={
-            "flagged_paths": [],
-            "ignored_file_count": 5_001,
-            "ignored_total_bytes": 100_000_001,
-        },
+        task_metrics=TaskMetrics(total=1, by_status={"closed": 1}, items=[]),
+        artifact_hygiene=ArtifactHygiene(
+            file_count=0, total_bytes=0, product_file_count=0, product_total_bytes=0,
+            ignored_file_count=5_001, ignored_total_bytes=100_000_001,
+            devlab_file_count=0, devlab_total_bytes=0,
+            flagged_paths=[], source_files=[], test_files=[],
+        ),
         sessions_run=7,
-        task_rework={"tasks_with_rework": ["T0001"]},
-        integrator_rework={"findings_created": 1},
+        task_rework=TaskReworkSummary(
+            tasks_with_rework=["T0001"], has_task_rework=True,
+            max_developer_sessions_per_task=0, max_reviewer_sessions_per_task=0,
+            unattributed_developer_reviewer_sessions=0,
+        ),
+        integrator_rework=IntegratorReworkSummary(
+            findings_created=1, findings_resolved=0, findings_open=1,
+            findings_planned=0, finding_ids=[], has_integrator_rework=True,
+        ),
     )
 
-    warnings = cast("list[str]", summary["warnings"])
-
-    assert summary["correctness_passed"] is True
-    assert "task rework detected: T0001" in warnings
-    assert "integrator findings created: 1" in warnings
-    assert "high session count per closed task: 7/1" in warnings
-    assert "large ignored artifact footprint: 100000001 bytes" in warnings
-    assert "large ignored artifact file count: 5001" in warnings
+    assert summary.correctness_passed is True
+    assert "task rework detected: T0001" in summary.warnings
+    assert "integrator findings created: 1" in summary.warnings
+    assert "high session count per closed task: 7/1" in summary.warnings
+    assert "large ignored artifact footprint: 100000001 bytes" in summary.warnings
+    assert "large ignored artifact file count: 5001" in summary.warnings
 
 
 def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
@@ -578,12 +576,12 @@ def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
 
     hygiene = collect_artifact_hygiene(tmp_path)
 
-    assert hygiene["product_file_count"] == 3
-    assert hygiene["ignored_file_count"] == 3
-    assert hygiene["devlab_file_count"] == 1
-    assert hygiene["flagged_paths"] == []
-    assert hygiene["source_files"] == ["src/app.py", "tests/test_app.py"]
-    assert hygiene["test_files"] == ["tests/test_app.py"]
+    assert hygiene.product_file_count == 3
+    assert hygiene.ignored_file_count == 3
+    assert hygiene.devlab_file_count == 1
+    assert hygiene.flagged_paths == []
+    assert hygiene.source_files == ["src/app.py", "tests/test_app.py"]
+    assert hygiene.test_files == ["tests/test_app.py"]
 
 
 def test_artifact_hygiene_counts_unignored_files_as_product(tmp_path: Path) -> None:
@@ -593,10 +591,10 @@ def test_artifact_hygiene_counts_unignored_files_as_product(tmp_path: Path) -> N
 
     hygiene = collect_artifact_hygiene(tmp_path)
 
-    assert hygiene["product_file_count"] == 1
-    assert hygiene["ignored_file_count"] == 0
-    assert hygiene["flagged_paths"] == []
-    assert hygiene["source_files"] == [".venv/lib/site.py"]
+    assert hygiene.product_file_count == 1
+    assert hygiene.ignored_file_count == 0
+    assert hygiene.flagged_paths == []
+    assert hygiene.source_files == [".venv/lib/site.py"]
 
 
 def test_evaluation_init_creates_git_repo_when_absent(tmp_path: Path) -> None:
@@ -690,12 +688,11 @@ def _assert_diagnostics(
     assert diagnostics.max_prompt_chars > 0
     assert expected_artifact in diagnostics.artifacts
     assert diagnostics.agent_log_dir.endswith(".devlab/logs/agents")
-    assert isinstance(diagnostics.tasks["total"], int)
-    assert diagnostics.tasks["total"] >= 1
-    assert diagnostics.quality["correctness_passed"] is True
-    assert diagnostics.quality["all_tasks_closed"] is True
-    assert "file_count" in diagnostics.artifact_hygiene
-    assert "stdout_count" in diagnostics.agent_logs
+    assert diagnostics.tasks.total >= 1
+    assert diagnostics.quality.correctness_passed is True
+    assert diagnostics.quality.all_tasks_closed is True
+    assert diagnostics.artifact_hygiene.file_count >= 0
+    assert diagnostics.agent_logs.stdout_count >= 0
     assert scenario.expected_sessions is not None
     commit_count = int(_git(root, "rev-list", "--count", "HEAD").stdout.strip())
     assert commit_count >= scenario.expected_sessions + 1
