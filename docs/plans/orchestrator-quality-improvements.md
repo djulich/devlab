@@ -1,82 +1,116 @@
 # Plan: Orchestrator Quality Improvements
 
-Seven weaknesses identified in the current codebase after the logging, handoff extraction, agent invocation, and evaluation harness work. Grouped by priority and sequenced to minimize churn.
+Status: **mostly implemented; a few cleanup/design follow-ups remain**.
 
-**Status:** All items are addresses but one: 2a has not been implemented because the `close_task` function might be needed later.
+This plan is a historical quality-improvement checklist for `src/devlab/orchestrator.py` after the logging, handoff extraction, agent invocation, evaluation, version-control, and session-context work. Keep `docs/todo.md` as the canonical cross-project backlog; this file tracks orchestrator-specific cleanup candidates and the status of previously identified weaknesses.
 
-## Priority 1: Correctness and debuggability
+## Current state summary
 
-### 1a. Narrow the broad `Exception` catch in agent invocation
+The orchestrator is in a healthier state than when this plan was created:
 
-`orchestrator.py:456` catches bare `Exception` from `invoke_session`. `CliAgentProvider` already handles `FileNotFoundError`, `TimeoutExpired`, and `OSError` internally and returns structured `AgentResult` values. The bare `Exception` catch silently converts programming errors (`AttributeError`, `TypeError`, etc.) into "provider_error" diagnostic strings instead of letting them propagate as crashes with tracebacks.
+- Agent invocation now catches explicit `ProviderError` only; provider implementations convert expected operational failures into structured `AgentResult` values.
+- Per-session identity/log paths/prompt-log handling live in `SessionContext`.
+- Session start/finish log formatting lives in `src/devlab/session_logging.py` rather than inline in the workflow loop.
+- Reviewer outcome mismatch handling is intentionally lenient: contradictory reviewer signals no longer invalidate the handoff; they default the task to `changes_requested` and log a warning.
+- Handoff parsing is no longer duplicated for normal processing: `run_loop` parses and validates the handoff once, then passes the parsed `Handoff` to `process_handoff`.
+- Shared test helpers exist in `tests/helpers.py` for handoff text, task creation, acceptance completion, and review approval.
 
-**Change:** Narrow to `OSError` or, if custom providers need a catch-all escape hatch, introduce a `ProviderError` exception in `agents.py` that providers raise for anticipated operational failures. Let genuine programming errors crash with a traceback.
+Validation baseline at the time this plan was refreshed:
 
-**Files:** `src/devlab/orchestrator.py`, `src/devlab/agents.py` (if adding `ProviderError`).
+```text
+uv run ruff check      OK
+uv run ty check        OK
+uv run pytest -q       277 passed, 4 skipped
+uv run devlab doctor   OK
+```
 
-### 1b. Add tests for `_validate_reviewer_outcome`
+## Resolved items
 
-`_validate_reviewer_outcome` enforces strict alignment between handoff open-issues state and task review-approved state. It has no dedicated test coverage. The existing `ChangesRequestedWorkflow` e2e test exercises both outcomes on the happy path but does not test the three error cases: (1) no task awaiting review, (2) open issues but task is approved, (3) no open issues but task is not approved.
+### 1. Narrow broad exception handling around agent invocation
 
-**Change:** Add focused unit tests for all three error returns plus the two success returns.
+Previous concern: the workflow loop converted any exception from provider invocation into a provider error, which could hide programming mistakes.
 
-**Files:** `tests/test_orchestrator.py`.
+Current state: resolved. `run_loop` catches `ProviderError` around `invoke_session`; expected CLI failures are represented by `AgentResult` values from provider implementations. Unexpected exceptions from provider code are allowed to surface normally.
 
-## Priority 2: Dead code and redundancy (quick wins)
+### 2. Add focused reviewer outcome coverage
 
-### 2a. Remove or inline dead `close_task` function
+Previous concern: reviewer validation and safe-default behavior lacked focused coverage.
 
-`close_task()` at `orchestrator.py:168` is exported and has a direct test (`TestCloseTask`), but is never called from production code. The actual task-closing logic in `process_handoff` (lines 241-246) does the same work inline. Having two close-task code paths is confusing.
+Current state: resolved. `tests/test_orchestrator.py` now covers:
 
-**Change:** Delete `close_task` and its test. The inline logic in `process_handoff` is the canonical path.
+- no task awaiting review still rejects the reviewer handoff;
+- approval with no open issues is accepted;
+- rejection with open issues is accepted;
+- mismatch cases are accepted structurally and handled by `process_handoff` as `changes_requested`.
 
-**Files:** `src/devlab/orchestrator.py`, `tests/test_orchestrator.py`.
+### 3. Eliminate duplicate handoff parsing in normal processing
 
-### 2b. Eliminate double `parse_handoff` for valid handoffs
+Previous concern: validation parsed a handoff and processing parsed it again.
 
-`validate_handoff` (line 138) calls `parse_handoff`, validates the result, then discards the `Handoff` object. `process_handoff` (line 212) immediately calls `parse_handoff` again on the archived copy. The validated `Handoff` should flow from validation into processing.
+Current state: resolved. `run_loop` calls `parse_handoff(...)`, validates the resulting `Handoff`, and passes it directly to `process_handoff(...)`. `process_handoff` still archives the handoff artifact before applying state transitions, but it does not re-parse the archive.
 
-**Change:** Make `validate_handoff` return the parsed `Handoff` on success (changing the return type to `tuple[Handoff | None, str]` or similar). Have `run_loop` pass it into `process_handoff`. This also means `process_handoff` no longer needs to parse or archive independently — it receives a pre-validated `Handoff`.
+### 4. Extract per-session lifecycle data
 
-Note: the current code validates the original but processes the archive. The archive is a `shutil.copy2`, so the content is identical. After the change, validate and archive first, then parse once from the archive.
+Previous concern: per-session log paths, prompt retention paths, config logging, and invocation construction were threaded through `run_loop` as loose variables.
 
-**Files:** `src/devlab/orchestrator.py`.
+Current state: resolved. `SessionContext` owns per-session identity and log paths, constructs `AgentInvocation`, writes retained prompts, and logs resolved agent config metadata.
 
-## Priority 3: Structural improvements
+### 5. Move session context logging out of orchestrator
 
-### 3a. Extract session lifecycle from `run_loop`
+Previous concern: role-specific start/finish log formatting added reporting details to the workflow loop.
 
-`run_loop` is ~195 lines with 6 log-path local variables, conditional prompt logging, config logging, and error-message construction threaded through the loop body. Each new observability concern added inline plumbing.
+Current state: resolved. `src/devlab/session_logging.py` owns lightweight session start/finish context formatting. `orchestrator.py` still decides when to log session boundaries, but formatting is separated.
 
-**Change:** Extract a frozen dataclass (e.g. `SessionContext`) that holds `invocation_id`, `stdout_log`, `stderr_log`, `system_prompt_log`, `session_prompt_log`, `config_log`, and the `AgentInvocation`. Add a factory function that builds it from `root`, `session_number`, `role_name`, and `retain_prompts`. Move the config-logging and prompt-logging calls into methods or companion functions that operate on this dataclass. `run_loop` creates a `SessionContext` per iteration, then passes it to invocation/validation/processing steps.
+### 6. Share common test helpers
 
-This should reduce `run_loop` by ~40-50 lines and make the per-session setup testable independently.
+Previous concern: e2e workflow tests and evaluation support duplicated handoff/task helper code.
 
-**Files:** `src/devlab/orchestrator.py`, possibly `tests/test_orchestrator.py` for the new dataclass.
+Current state: mostly resolved. `tests/helpers.py` contains shared helpers. Continue using it when adding new e2e or evaluation scenarios instead of recreating handoff/task formatting locally.
 
-### 3b. Share helpers between e2e tests and evaluation harness
+## Remaining orchestrator-specific follow-ups
 
-`tests/evaluations/harness.py` (456 lines) and `tests/evaluations/scripted_agents.py` (337 lines) duplicate task-writing, approval, and handoff-building helpers that already exist in `tests/test_orchestrator_e2e.py`. Both `harness.handoff()` and `test_orchestrator_e2e._handoff()` produce valid handoff text with nearly identical signatures. The `write_task`, `complete_acceptance`, and `approve_review_task` functions in `scripted_agents.py` mirror `_write_task`, `_check_acceptance`, and `_approve_review_task` in `test_orchestrator_e2e.py`.
+### A. Decide whether to remove the dead `close_task` helper
 
-**Change:** Extract shared test utilities (handoff builder, task writer, acceptance checker, review approver) into a `tests/helpers.py` module. Update both `test_orchestrator_e2e.py` and `tests/evaluations/scripted_agents.py` to import from it.
+`close_task()` still exists in `orchestrator.py` and has a direct unit test, but production task closure happens inline in `process_handoff` for reviewer approval. This creates two task-closing paths to keep in mind.
 
-**Files:** `tests/helpers.py` (new), `tests/test_orchestrator_e2e.py`, `tests/evaluations/scripted_agents.py`, `tests/evaluations/harness.py`.
+Recommendation: remove `close_task()` and its dedicated test unless a near-term caller appears. If kept, add a short comment explaining why this helper exists despite not being used by production orchestration.
 
-## Priority 4: Monitor, do not change yet
+Priority: low.
 
-### 4. `_validate_reviewer_outcome` strictness with real agents
+### B. Consider a smaller `run_loop` after the next orchestration change
 
-The reviewer validation requires strict alignment between handoff open-issues and task review-approved state. This is correct as a contract, but it will likely be the first validation to break with real agents — an agent might write "no open issues" in the handoff but forget to add the `## Review / - [x] Approved` checkbox, or vice versa. Whether this should stay strict (force agents to comply) or become lenient (trust one signal over the other) depends on live-agent experience. No code change now; watch live evaluations and revisit if rejection rates are high.
+`run_loop` remains readable but still owns many responsibilities: role selection, prompt construction, environment lifecycle, provider invocation, handoff validation, handoff processing, Git commits/tags, progress callbacks, and interactive continuation.
 
-## Implementation sequence
+Recommendation: do not refactor solely for aesthetics. When the next substantial orchestration feature lands, consider extracting one cohesive slice, such as:
 
-| Step | Item | Risk | Estimated size |
-|------|------|------|----------------|
-| 1 | 1a. Narrow Exception catch | Low | ~15 lines changed |
-| 2 | 2a. Remove dead close_task | None | ~15 lines deleted |
-| 3 | 1b. Add reviewer validation tests | None | ~40 lines added |
-| 4 | 2b. Eliminate double parse_handoff | Low | ~20 lines changed |
-| 5 | 3a. Extract session lifecycle | Medium | ~80 lines refactored |
-| 6 | 3b. Share test helpers | Low | ~60 lines moved |
+- environment lifecycle around a session;
+- agent invocation/error handling around a `SessionContext`;
+- commit/tag policy after `process_handoff`.
 
-Steps 1-4 are independent and could be done in any order. Step 5 (session lifecycle extraction) should come after step 4 (double parse) since both modify `run_loop`. Step 6 is independent of the others.
+Keep workflow policy visible in `orchestrator.py`; extracted modules should not obscure state-transition decisions.
+
+Priority: medium-low.
+
+### C. Keep reviewer mismatch safe-default behavior under live-eval observation
+
+The current design intentionally accepts reviewer signal mismatches structurally and defaults to `changes_requested`. This is safer for real agents than failing the whole run on likely formatting drift, but it can spend extra bounded sessions.
+
+Recommendation: keep collecting live-evaluation evidence. If mismatch loops become common, improve diagnostics/prompts first; only add a structured reviewer outcome block if Markdown ambiguity remains a persistent real-world issue.
+
+Priority: monitor.
+
+### D. Post-reviewer structural validation belongs in a separate design slice
+
+Reviewer correctness is still partly prompt-dependent. Profile validation commands exist as durable project configuration, but the orchestrator does not yet automatically run them after reviewer approval and convert failures into `changes_requested`.
+
+Recommendation: handle this through the broader workflow-contract hardening item in `docs/todo.md`, not as incidental orchestrator cleanup. The design should specify command selection, stdout/stderr capture, failure reporting, task status transition, and interaction with reviewer approval.
+
+Priority: medium, but separate from this cleanup plan.
+
+## Guidance for future changes
+
+- Keep `orchestrator.py` focused on workflow selection, session lifecycle, handoff processing, and error recovery.
+- Put provider-specific behavior in `agents.py`.
+- Put reporting-only formatting in focused modules such as `session_logging.py` or `workflow_diagnostics.py`.
+- Keep durable task/finding/milestone mutations behind workspace/tracker abstractions.
+- Add focused tests for every state transition and safe-default behavior change.
