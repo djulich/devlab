@@ -684,7 +684,7 @@ def _assert_diagnostics(
     assert tuple(diagnostics.roles) == scenario.expected_roles
     assert diagnostics.review_rejections == scenario.expected_rejections
     assert diagnostics.findings_created == scenario.expected_findings
-    assert all(check["passed"] for check in diagnostics.checks), diagnostics.checks
+    assert all(check.passed for check in diagnostics.checks), diagnostics.checks
     assert diagnostics.max_prompt_chars > 0
     assert expected_artifact in diagnostics.artifacts
     assert diagnostics.agent_log_dir.endswith(".devlab/logs/agents")

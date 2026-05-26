@@ -122,7 +122,7 @@ class EvaluationDiagnostics:
     review_rejections: int
     duration_seconds: float
     max_prompt_chars: int
-    checks: list[dict[str, object]]
+    checks: list[CheckResult]
     artifacts: list[str]
     timestamp: str
     target_root: str
@@ -322,7 +322,7 @@ def diagnostics_for(
         review_rejections=review_rejections,
         duration_seconds=duration,
         max_prompt_chars=max(prompt_chars, default=0),
-        checks=[dataclasses.asdict(check) for check in checks],
+        checks=checks,
         artifacts=list_artifacts(root),
         timestamp=datetime.now(UTC).isoformat(),
         target_root=root.as_posix(),
