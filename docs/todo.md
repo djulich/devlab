@@ -13,6 +13,7 @@ Open work:
 - Watch live-agent runs for remaining Markdown contract ambiguity.
 - Keep planner addressed-findings validation strict until live evaluations show whether malformed mappings are common; see `docs/agent-output-validation-assessment.md`.
 - Consider an explicit structured outcome block for reviewer/integrator/architect handoffs only if Markdown parsing remains fragile. This is not merely deferred implementation work: a structured block can create two-source-of-truth conflicts with prose, make agent output more brittle, impose a schema-evolution burden on archived handoffs, and tempt agents/orchestrator contracts toward over-specified workflow control. If added, keep it minimal and authoritative, and reject contradictions with prose.
+- Consider post-reviewer structural validation: the orchestrator runs profile-driven validation commands after the reviewer session and treats failure as a rejection regardless of the reviewer's approval. This moves mechanical correctness checking (tests pass, linter clean, types check) from prompt-dependent reviewer behavior to structural enforcement. The reviewer still owns subjective code quality judgment. Tradeoff: the reviewer can no longer deliberately approve with a known failing test, which is sometimes valid during incremental development.
 
 ## 2. Agent Invocation Observability and Error Handling
 
@@ -180,7 +181,7 @@ Open work:
 
 ## Later / Non-goals for Now
 
-- Automatic execution of task validation commands by the orchestrator.
+- Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).
 - Sandboxing or approval policy for executable environment lifecycle changes.
 - Automatic generation of follow-up tasks directly by the orchestrator.
 - Developer/reviewer-created findings; use task-native blockers and requested changes first.
