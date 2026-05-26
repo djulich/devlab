@@ -100,25 +100,18 @@ def _task_domains(task: Task | None) -> tuple[str, ...]:
     return (task.domain,)
 
 
+DEPLOYMENT_PLACEHOLDER_SENTINEL = "<!-- devlab:placeholder -->"
+
+
 def _deployment_spec_has_requirements(root: Path) -> bool:
     spec_root = root / ".devlab/specs/deployment"
     if not spec_root.exists():
         return False
     for path in sorted(spec_root.rglob("*.md")):
-        text = read_file(path).strip()
-        if not text:
+        text = read_file(path)
+        if not text.strip():
             continue
-        normalized = text.removeprefix("# Deployment Specification").strip()
-        if not normalized:
-            continue
-        placeholder_marker = (
-            "This file is a placeholder until project-specific deployment requirements"
-        )
-        if placeholder_marker in normalized:
-            continue
-        if "Describe how this project should become deployment-ready" in normalized:
-            continue
-        if "Describe deployment targets" not in normalized:
+        if DEPLOYMENT_PLACEHOLDER_SENTINEL not in text:
             return True
     return False
 

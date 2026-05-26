@@ -1,6 +1,11 @@
+<!-- devlab:placeholder -->
+<!-- Remove the line above to activate deployment planning. While it is
+     present, DevLab treats this file as a template and does not include
+     deployment domain prompts in agent sessions. -->
+
 # Deployment Specification
 
-Describe how this project should become deployment-ready when deployment support is in scope. This file is a placeholder until project-specific deployment requirements are added. DevLab should generate and verify deployment artifacts, but it should not deploy to production by default.
+Describe how this project should become deployment-ready when deployment support is in scope. DevLab should generate and verify deployment artifacts, but it should not deploy to production by default.
 
 ## Deployment Targets
 

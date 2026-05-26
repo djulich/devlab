@@ -353,10 +353,9 @@ class TestBuildSystemPrompt:
         deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
         deployment_spec.parent.mkdir(parents=True)
         deployment_spec.write_text(
+            "<!-- devlab:placeholder -->\n"
             "# Deployment Specification\n\n"
-            "Describe how this project should become deployment-ready when deployment "
-            "support is in scope. This file is a placeholder until project-specific "
-            "deployment requirements are added.\n"
+            "Describe how this project should become deployment-ready.\n"
         )
         role = ROLES["planner"]
 
@@ -368,6 +367,53 @@ class TestBuildSystemPrompt:
         )
 
         assert "Domain: Deployment" not in prompt
+
+    def test_planner_system_prompt_activates_deployment_without_sentinel(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
+        deployment_spec.parent.mkdir(parents=True)
+        deployment_spec.write_text(
+            "# Deployment Specification\n\nSupport Kubernetes manifests with kind.\n"
+        )
+        role = ROLES["planner"]
+
+        prompt = build_system_prompt(
+            tmp_path,
+            role,
+            snapshot=Workspace(tmp_path).snapshot,
+            role_name="planner",
+        )
+
+        assert "Domain: Deployment / Planner" in prompt
+
+    def test_deployment_spec_with_sentinel_removed_activates_deployment(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
+        deployment_spec.parent.mkdir(parents=True)
+        from devlab.prompts import DEPLOYMENT_PLACEHOLDER_SENTINEL
+        init_template = (
+            Path(__file__).resolve().parent.parent
+            / "src/devlab/resources/init/specs/deployment/README.md"
+        ).read_text()
+        assert DEPLOYMENT_PLACEHOLDER_SENTINEL in init_template
+        without_sentinel = init_template.replace(
+            DEPLOYMENT_PLACEHOLDER_SENTINEL + "\n", ""
+        )
+        deployment_spec.write_text(without_sentinel)
+        role = ROLES["planner"]
+
+        prompt = build_system_prompt(
+            tmp_path,
+            role,
+            snapshot=Workspace(tmp_path).snapshot,
+            role_name="planner",
+        )
+
+        assert "Domain: Deployment / Planner" in prompt
 
 
 def _checked_task_body(task_id: str, title: str) -> str:
