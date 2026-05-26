@@ -103,6 +103,13 @@ class ProfileMetrics:
 
 
 @dataclasses.dataclass(frozen=True)
+class ArtifactContributor:
+    path: str
+    file_count: int
+    total_bytes: int
+
+
+@dataclasses.dataclass(frozen=True)
 class ArtifactHygiene:
     file_count: int
     total_bytes: int
@@ -115,6 +122,7 @@ class ArtifactHygiene:
     flagged_paths: list[str]
     source_files: list[str]
     test_files: list[str]
+    ignored_top_contributors: list[ArtifactContributor] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -216,6 +224,12 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
     if diagnostics.quality.warnings:
         lines.append("Warnings:")
         lines.extend(f"- {warning}" for warning in diagnostics.quality.warnings)
+        if _has_large_ignored_artifacts(diagnostics.artifact_hygiene):
+            lines.append("Top ignored artifact contributors:")
+            lines.extend(
+                _format_artifact_contributor(contributor)
+                for contributor in diagnostics.artifact_hygiene.ignored_top_contributors[:3]
+            )
     else:
         lines.append("Warnings: none")
 
@@ -468,6 +482,7 @@ def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
         flagged_paths=[],
         source_files=sorted(source_files),
         test_files=sorted(test_files),
+        ignored_top_contributors=_top_artifact_contributors(root, ignored_files),
     )
 
 
@@ -572,6 +587,17 @@ def _format_artifact_hygiene_summary(artifact_hygiene: ArtifactHygiene) -> str:
     )
 
 
+def _has_large_ignored_artifacts(artifact_hygiene: ArtifactHygiene) -> bool:
+    return (
+        artifact_hygiene.ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING
+        or artifact_hygiene.ignored_file_count > LARGE_IGNORED_FILES_WARNING
+    )
+
+
+def _format_artifact_contributor(contributor: ArtifactContributor) -> str:
+    return f"- {contributor.path}: {contributor.file_count} files, {contributor.total_bytes} bytes"
+
+
 def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     lines = ["Sessions:"]
     if diagnostics.sessions:
@@ -645,6 +671,46 @@ def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def _git_ls_files(root: Path, *args: str) -> list[str]:
     output = _run_git(root, *args).stdout
     return sorted(path for path in output.split("\0") if path)
+
+
+def _top_artifact_contributors(
+    root: Path, relative_paths: Sequence[str], *, limit: int = 5
+) -> list[ArtifactContributor]:
+    grouped: dict[str, list[int]] = {}
+    for relative_path in relative_paths:
+        path = root / relative_path
+        if not path.is_file():
+            continue
+        key = _ignored_artifact_contributor_key(root, relative_path)
+        entry = grouped.setdefault(key, [0, 0])
+        entry[0] += 1
+        entry[1] += path.stat().st_size
+    return [
+        ArtifactContributor(path=key, file_count=count, total_bytes=total_bytes)
+        for key, (count, total_bytes) in sorted(
+            grouped.items(), key=lambda item: (-item[1][1], item[0])
+        )[:limit]
+    ]
+
+
+def _ignored_artifact_contributor_key(root: Path, relative_path: str) -> str:
+    parts = Path(relative_path).parts
+    for index in range(1, len(parts) + 1):
+        candidate = Path(*parts[:index]).as_posix()
+        if _is_git_ignored(root, candidate):
+            path = root / candidate
+            return candidate + "/" if path.is_dir() else candidate
+    if len(parts) <= 1:
+        return relative_path
+    return f"{parts[0]}/"
+
+
+def _is_git_ignored(root: Path, relative_path: str) -> bool:
+    result = subprocess.run(
+        ["git", "-C", root.as_posix(), "check-ignore", "-q", "--", relative_path],
+        check=False,
+    )
+    return result.returncode == 0
 
 
 def _total_bytes(root: Path, relative_paths: Sequence[str]) -> int:

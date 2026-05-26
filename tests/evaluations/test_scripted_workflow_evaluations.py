@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.task_tracker import FileTaskTracker, TaskStatus
@@ -20,6 +22,7 @@ from devlab.workflow_diagnostics import (
     derive_session_records,
     derive_task_cycle_metrics,
     derive_task_rework_summary,
+    format_workflow_diagnostics,
     quality_summary,
 )
 from tests.evaluations.checks import (
@@ -586,6 +589,36 @@ def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
     assert hygiene.flagged_paths == []
     assert hygiene.source_files == ["src/app.py", "tests/test_app.py"]
     assert hygiene.test_files == ["tests/test_app.py"]
+    contributors = [
+        (item.path, item.file_count, item.total_bytes)
+        for item in hygiene.ignored_top_contributors
+    ]
+    assert contributors == [
+        (".pytest_cache/", 1, 8),
+        (".venv/", 1, 8),
+        ("__pycache__/", 1, 7),
+    ]
+
+
+def test_diagnostics_reports_top_ignored_artifact_contributors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git(tmp_path, "init")
+    (tmp_path / ".gitignore").write_text("build/\ncache/\n")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build/large.bin").write_bytes(b"x" * 10)
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache/small.bin").write_bytes(b"x" * 5)
+    monkeypatch.setattr(
+        "devlab.workflow_diagnostics.LARGE_IGNORED_BYTES_WARNING", 1,
+    )
+
+    output = format_workflow_diagnostics(tmp_path)
+
+    assert "large ignored artifact footprint: 15 bytes" in output
+    assert "Top ignored artifact contributors:" in output
+    assert "- build/: 1 files, 10 bytes" in output
+    assert "- cache/: 1 files, 5 bytes" in output
 
 
 def test_artifact_hygiene_counts_unignored_files_as_product(tmp_path: Path) -> None:
