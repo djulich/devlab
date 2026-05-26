@@ -6,28 +6,32 @@ from pathlib import Path
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.task_tracker import FileTaskTracker, TaskStatus
-from tests.evaluations.harness import (
+from devlab.workflow_diagnostics import (
     ArtifactHygiene,
-    CheckResult,
-    EvaluationDiagnostics,
-    EvaluationScenario,
     IntegratorReworkSummary,
     TaskCycleEntry,
     TaskMetrics,
     TaskReworkSummary,
     collect_artifact_hygiene,
     collect_profile_metrics,
-    command_check,
-    command_fails_check,
     derive_integrator_rework_summary,
     derive_review_rejections,
     derive_role_sequence,
     derive_session_records,
     derive_task_cycle_metrics,
     derive_task_rework_summary,
-    file_contains_check,
-    init_target_workspace,
     quality_summary,
+)
+from tests.evaluations.checks import (
+    CheckResult,
+    command_check,
+    command_fails_check,
+    file_contains_check,
+)
+from tests.evaluations.harness import (
+    EvaluationDiagnostics,
+    EvaluationScenario,
+    init_target_workspace,
     run_scripted_evaluation,
 )
 from tests.evaluations.scripted_agents import (

@@ -5,12 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from tests.evaluations.harness import (
-    EvaluationDiagnostics,
-    EvaluationScenario,
+from tests.evaluations.checks import (
     command_check,
     command_fails_check,
     file_contains_check,
+)
+from tests.evaluations.harness import (
+    EvaluationDiagnostics,
+    EvaluationScenario,
     run_live_evaluation,
 )
 from tests.evaluations.scripted_agents import (

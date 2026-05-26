@@ -13,7 +13,7 @@ from urllib.parse import quote
 from devlab.agents import AgentInvocation
 from devlab.findings import FileFindingTracker
 from devlab.task_tracker import FileTaskTracker
-from tests.evaluations.harness import CheckResult
+from tests.evaluations.checks import CheckResult
 from tests.helpers import (
     approve_review_task,
     complete_acceptance,
