@@ -1,6 +1,6 @@
 # DevLab Live Evaluation Quality Metrics Plan
 
-Status: implemented and refined with live stateful web API, deployable web API, and static frontend baselines. Diagnostics now include live role sequence, per-session task attribution, task cycle/rework metrics, integrator finding/rework metrics, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, live session progress lines, stronger calculator black-box checks, and stricter scenario contracts. Target-owned test-suite execution remains deferred.
+Status: implemented and refined with live stateful web API, deployable web API, and static frontend baselines. Diagnostics now include live role sequence, per-session task attribution, task cycle/rework metrics, integrator finding/rework metrics, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, DevLab session start/finish logs for live runs, stronger calculator black-box checks, and stricter scenario contracts. Target-owned test-suite execution remains deferred.
 
 ## Goal
 
@@ -37,7 +37,7 @@ The first stateful web API live runs completed the DevLab workflow but failed bl
 - **Scenario specs must state exact response shapes.** Agents produced plausible alternatives such as `{"todo": {"id": 1, "title": "write eval"}}`, but the evaluator needed a top-level `{"id": 1, "title": "write eval"}` object to drive follow-up requests. Live specs and the companion plan now require top-level `id` and `title` fields.
 - **Destructive-operation contracts should be exact when the product spec says so.** `DELETE /todos/{id}` briefly returned semantically rich variants such as `{"deleted": true, "id": 1}`. The scenario now requires exactly `{"deleted": <id>}`.
 - **Negative cases need explicit edge-case wording.** A live run accepted `{"title": ""}` and created an empty todo. The scenario now requires 4xx responses for invalid JSON, missing title, empty title, and blank title.
-- **Live failures should expose enough context without manual log spelunking.** Failure messages now include the target root, diagnostics path, agent log path, and diagnostics JSON. Live evaluation sessions also print start/finish role progress lines for long-running tests.
+- **Live failures should expose enough context without manual log spelunking.** Failure messages now include the target root, diagnostics path, agent log path, and diagnostics JSON. Live evaluations configure DevLab INFO logging so normal session start/finish context is visible during long-running tests.
 - **Correctness remains the hard gate.** The failed runs had closed tasks and reasonable hygiene diagnostics, but the product was wrong. This confirms that black-box scenario checks are the primary pass/fail signal; task closure, session count, and hygiene remain supporting diagnostics.
 
 Implication: each new live scenario should first define its externally observable contract in exact request/response terms, including negative cases. The evaluator should fail with a contract-specific message before falling back to broad diagnostic summaries.
@@ -219,11 +219,11 @@ Do not export prompt contents.
 
 ### 7. Live session progress output
 
-Long live evaluations can run for several minutes with no pytest output. Print one progress line when each session starts and one when it finishes:
+Long live evaluations can run for several minutes with no pytest output. Live evaluations configure the standard DevLab logger at INFO level and rely on the same workflow session logs as `devlab run`:
 
 ```text
-[12:34:56] live eval session 3 start: developer
-[12:36:10] live eval session 3 finish: developer
+Starting session 3: developer task=T0001 status=open profile=default domain=general milestone=M1
+Finished session 3: developer task=T0001 status=in_review next=reviewer
 ```
 
 This is operator feedback only; it is not part of the persisted quality schema. Use `pytest -s` when pytest output capture would otherwise hide the progress lines until the test ends.
@@ -273,7 +273,7 @@ The implementation now includes:
 - Git-based artifact hygiene summary for product, ignored, and `.devlab/` files
 - agent/prompt log counts and max prompt log sizes when prompt retention is enabled
 - quality summary/warnings for correctness, task closure, same-task rework, integrator findings, session intensity, flagged artifacts, and large ignored artifacts
-- session start/finish progress lines for live runs
+- session start/finish logs for live runs through the DevLab logging facility
 - expanded calculator black-box checks
 - stricter stateful web API response-shape and negative-case checks
 - static frontend scripted/live scenarios without browser automation

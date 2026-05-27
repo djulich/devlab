@@ -108,7 +108,7 @@ Useful environment variables:
 - `DEVLAB_EVAL_RESULTS_DIR`: optional directory for persistent diagnostics copies.
 - `DEVLAB_LIVE_RETAIN_PROMPTS=1`: retain split system/session prompt logs under `.devlab/logs/agents/` for live-run debugging.
 
-Live evaluations print a progress line when each agent session starts and when it finishes, for example `live eval session 3 start: developer`. Use `pytest -s` if your pytest invocation captures output and you want to watch those lines as they happen.
+Live evaluations configure the DevLab logger at INFO level so normal workflow session logs are visible, including contextual start/finish lines such as `Starting session 3: developer task=T0001 ...` and `Finished session 3: developer task=T0001 status=in_review next=reviewer`. Use `pytest -s` if your pytest invocation captures output and you want to watch those lines as they happen.
 
 Live evaluation failures report the temporary target root, diagnostics JSON path, and `.devlab/logs/agents/` path.
 
