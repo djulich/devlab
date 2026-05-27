@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Protocol
 
 from devlab._logging import configure_logging
-from devlab.agents import AgentInvocation, MockProvider
+from devlab.agents import AgentInvocation, AgentProvider, MockProvider
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
@@ -169,15 +169,11 @@ def run_scripted_evaluation(root: Path, scenario: EvaluationScenario) -> Evaluat
         on_invoke=scenario.scripted_agent.on_invoke,
         handoff_text=scenario.scripted_agent.handoff_for,
     )
-    started = time.monotonic()
-    result = run_loop(
+    result, duration = _run_evaluation_loop(
         root,
-        auto=True,
         max_sessions=scenario.max_sessions,
         agent_providers={"default": provider},
-        automatic_version_control=True,
     )
-    duration = time.monotonic() - started
     checks = [check(root) for check in scenario.checks]
     diagnostics = diagnostics_for(
         root,
@@ -211,18 +207,14 @@ def run_live_evaluation(
         _run_git(root, "add", ".devlab/config/agents.toml")
         _run_git(root, "commit", "-m", "Configure live evaluation agents")
     configure_logging(logging.INFO)
-    started = time.monotonic()
-    result = run_loop(
+    result, duration = _run_evaluation_loop(
         root,
-        auto=True,
         max_sessions=max_sessions,
         provider=provider,
         model=model,
         effort=effort,
         retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
-        automatic_version_control=True,
     )
-    duration = time.monotonic() - started
     checks = [check(root) for check in scenario.checks]
     diagnostics = diagnostics_for(
         root,
@@ -242,6 +234,30 @@ def run_live_evaluation(
     assert path.exists()
     return diagnostics
 
+
+def _run_evaluation_loop(
+    root: Path,
+    *,
+    max_sessions: int,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    retain_prompts: bool = False,
+    agent_providers: dict[str, AgentProvider] | None = None,
+) -> tuple[RunResult, float]:
+    started = time.monotonic()
+    result = run_loop(
+        root,
+        auto=True,
+        max_sessions=max_sessions,
+        provider=provider,
+        model=model,
+        effort=effort,
+        retain_prompts=retain_prompts,
+        agent_providers=agent_providers,
+        automatic_version_control=True,
+    )
+    return result, time.monotonic() - started
 
 
 def diagnostics_for(
