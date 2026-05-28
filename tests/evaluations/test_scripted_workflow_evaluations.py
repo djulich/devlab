@@ -5,16 +5,15 @@ from pathlib import Path
 
 import pytest
 
+from devlab.artifact_hygiene import ArtifactHygiene, collect_artifact_hygiene
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.task_tracker import FileTaskTracker, TaskStatus
 from devlab.workflow_diagnostics import (
-    ArtifactHygiene,
     IntegratorReworkSummary,
     TaskCycleEntry,
     TaskMetrics,
     TaskReworkSummary,
-    collect_artifact_hygiene,
     collect_profile_metrics,
     derive_integrator_rework_summary,
     derive_review_rejections,
@@ -609,9 +608,8 @@ def test_diagnostics_reports_top_ignored_artifact_contributors(
     (tmp_path / "build/large.bin").write_bytes(b"x" * 10)
     (tmp_path / "cache").mkdir()
     (tmp_path / "cache/small.bin").write_bytes(b"x" * 5)
-    monkeypatch.setattr(
-        "devlab.workflow_diagnostics.LARGE_IGNORED_BYTES_WARNING", 1,
-    )
+    monkeypatch.setattr("devlab.artifact_hygiene.LARGE_IGNORED_BYTES_WARNING", 1)
+    monkeypatch.setattr("devlab.workflow_diagnostics.LARGE_IGNORED_BYTES_WARNING", 1)
 
     output = format_workflow_diagnostics(tmp_path)
 

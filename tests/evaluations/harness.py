@@ -14,12 +14,12 @@ from typing import Protocol
 
 from devlab._logging import configure_logging
 from devlab.agents import AgentInvocation, AgentProvider, MockProvider
+from devlab.artifact_hygiene import ArtifactHygiene, collect_artifact_hygiene
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
 from devlab.workflow_diagnostics import (
     AgentLogMetrics,
-    ArtifactHygiene,
     IntegratorReworkSummary,
     ProfileMetrics,
     PromptLogMetrics,
@@ -29,7 +29,6 @@ from devlab.workflow_diagnostics import (
     TaskMetrics,
     TaskReworkSummary,
     collect_agent_log_metrics,
-    collect_artifact_hygiene,
     collect_profile_metrics,
     collect_prompt_log_metrics,
     collect_task_metrics,
