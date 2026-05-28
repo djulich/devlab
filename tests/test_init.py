@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from devlab.git import VersionControlError
 from devlab.init import format_init_result, init_workspace
-from devlab.version_control import VersionControlError
 
 
 def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:

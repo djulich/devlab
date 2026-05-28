@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from devlab.version_control import VersionControlError, assert_clean_worktree, commit_all, tag
+from devlab.git import VersionControlError
+from devlab.version_control import assert_clean_worktree, commit_all, tag
 
 
 def test_commit_all_commits_non_ignored_files(tmp_path: Path) -> None:

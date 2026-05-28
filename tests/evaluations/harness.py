@@ -7,7 +7,6 @@ import os
 import shutil
 import subprocess
 import time
-from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -16,6 +15,7 @@ from devlab._logging import configure_logging
 from devlab.agents import AgentInvocation, AgentProvider, MockProvider
 from devlab.artifact_hygiene import ArtifactHygiene, collect_artifact_hygiene
 from devlab.findings import FileFindingTracker, FindingStatus
+from devlab.git import run_git
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
 from devlab.workflow_diagnostics import (
@@ -205,8 +205,8 @@ def run_live_evaluation(
     init_target_workspace(root, scenario.system_spec, deployment_spec=scenario.deployment_spec)
     if agent_config is not None:
         shutil.copyfile(agent_config, root / ".devlab/config/agents.toml")
-        _run_git(root, "add", ".devlab/config/agents.toml")
-        _run_git(root, "commit", "-m", "Configure live evaluation agents")
+        run_git(root, "add", ".devlab/config/agents.toml")
+        run_git(root, "commit", "-m", "Configure live evaluation agents")
     configure_logging(logging.INFO)
     result, duration = _run_evaluation_loop(
         root,
@@ -329,45 +329,6 @@ def diagnostics_for(
     )
 
 
-def require_git() -> None:
-    result = subprocess.run(
-        ["git", "--version"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError("workflow evaluations require git on PATH")
-
-
-def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    require_git()
-    result = subprocess.run(
-        ["git", "-C", root.as_posix(), *args],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            "git command failed: "
-            f"git -C {root.as_posix()} {' '.join(args)}\n{result.stderr}"
-        )
-    return result
-
-
-def _git_ls_files(root: Path, *args: str) -> list[str]:
-    output = _run_git(root, *args).stdout
-    return sorted(path for path in output.split("\0") if path)
-
-
-def _total_bytes(root: Path, relative_paths: Sequence[str]) -> int:
-    total = 0
-    for relative_path in relative_paths:
-        path = root / relative_path
-        if path.is_file():
-            total += path.stat().st_size
-    return total
 
 
 def init_target_workspace(
@@ -394,9 +355,9 @@ def init_target_workspace(
         '\n[environment]\n'
         'managed_roles = []\n'
     )
-    if _run_git(root, "status", "--porcelain").stdout.strip():
-        _run_git(root, "add", ".")
-        _run_git(root, "commit", "-m", "Configure evaluation workspace")
+    if run_git(root, "status", "--porcelain").stdout.strip():
+        run_git(root, "add", ".")
+        run_git(root, "commit", "-m", "Configure evaluation workspace")
 
 
 

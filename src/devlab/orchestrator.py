@@ -20,13 +20,13 @@ from devlab.agents import (
     provider_for_role,
 )
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
+from devlab.git import VersionControlError
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompts import build_session_prompt, build_system_prompt
 from devlab.session_logging import session_finish_context, session_start_context
 from devlab.task_tracker import Task
 from devlab.version_control import (
-    VersionControlError,
     assert_clean_worktree,
     commit_all,
     ensure_git_repository,

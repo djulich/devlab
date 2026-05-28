@@ -7,6 +7,8 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+from devlab.git import git_ls_files
+
 
 @dataclasses.dataclass(frozen=True)
 class ArtifactContributor:
@@ -40,14 +42,14 @@ LARGE_IGNORED_FILES_WARNING = 5_000
 def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
     product_files = [
         path
-        for path in _git_ls_files(
+        for path in git_ls_files(
             root, "ls-files", "--cached", "--others", "--exclude-standard", "-z"
         )
         if not path.startswith(".devlab/")
     ]
     ignored_files = [
         path
-        for path in _git_ls_files(
+        for path in git_ls_files(
             root,
             "ls-files",
             "--others",
@@ -92,26 +94,6 @@ def has_large_ignored_artifacts(artifact_hygiene: ArtifactHygiene) -> bool:
         artifact_hygiene.ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING
         or artifact_hygiene.ignored_file_count > LARGE_IGNORED_FILES_WARNING
     )
-
-
-def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        ["git", "-C", root.as_posix(), *args],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            "git command failed: "
-            f"git -C {root.as_posix()} {' '.join(args)}\n{result.stderr}"
-        )
-    return result
-
-
-def _git_ls_files(root: Path, *args: str) -> list[str]:
-    output = _run_git(root, *args).stdout
-    return sorted(path for path in output.split("\0") if path)
 
 
 def _top_artifact_contributors(
