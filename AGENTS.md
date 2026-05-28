@@ -6,6 +6,8 @@ For agents changing DevLab itself. Packaged prompts in `src/devlab/resources/pro
 
 DevLab is a reusable CLI/package that turns repository-stored specs, plans, and tasks into reviewed software changes via bounded role-based agent sessions.
 
+DevLab is developed and maintained by AI agents. Code and project structure must be optimized for agent comprehension: minimize the files an agent must read to understand a domain, keep module boundaries obvious, and prefer one well-organized file over several cross-referencing files when the coupling is tight.
+
 ## Design constraints
 
 - Orchestrator decides what to do; providers decide how to invoke agents; trackers decide how to store state.
@@ -40,3 +42,4 @@ DevLab is a reusable CLI/package that turns repository-stored specs, plans, and 
 - Prefer domain names: task, milestone, finding, profile, handoff, provider, workspace.
 - Add concise docstrings only when they clarify purpose, contracts, invariants, or tradeoffs.
 - Add focused tests for behavior changes, especially state transitions, file formats, CLI output, and validation errors.
+- Only split a module when the extracted piece is a self-contained domain with minimal coupling back. If the extracted code needs types or functions from multiple other modules, it increases the import graph agents must navigate — keep it together instead.
