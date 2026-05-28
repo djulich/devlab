@@ -158,21 +158,19 @@ Record repo artifact summary without failing by default:
 "artifact_hygiene": {
   "file_count": 123,
   "total_bytes": 456789,
-  "flagged_paths": [".venv", ".pytest_cache", ".ruff_cache"],
-  "source_files": ["calculator.py", "src/calculator_cli/__init__.py"],
-  "test_files": ["tests/test_calculator_cli.py"]
+  "product_file_count": 37,
+  "product_total_bytes": 123456,
+  "ignored_file_count": 86,
+  "ignored_total_bytes": 333333,
+  "devlab_file_count": 12,
+  "devlab_total_bytes": 9876,
+  "ignored_top_contributors": [
+    {"path": ".venv/", "file_count": 645, "total_bytes": 154048934}
+  ]
 }
 ```
 
-Flag, but do not initially fail on:
-
-- `.venv/`
-- `.pytest_cache/`
-- `.ruff_cache/`
-- `__pycache__/`
-- build/dist/egg-info artifacts
-
-Rationale: these may indicate agents are doing environment setup inside the target repo, but making them hard failures immediately could obscure the first baseline runs.
+Artifact hygiene intentionally avoids language-specific source/test detection. Scenario correctness checks own exact product expectations, such as Python API files, static frontend files, or deployment artifacts.
 
 Quality warnings include unusually large ignored footprints only above high thresholds. The static frontend baseline's ignored `.venv`/cache footprint was useful context but not a failure.
 

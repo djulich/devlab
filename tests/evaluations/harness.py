@@ -108,7 +108,7 @@ class EvaluationDiagnostics:
         default_factory=lambda: ArtifactHygiene(
             file_count=0, total_bytes=0, product_file_count=0, product_total_bytes=0,
             ignored_file_count=0, ignored_total_bytes=0, devlab_file_count=0,
-            devlab_total_bytes=0, flagged_paths=[], source_files=[], test_files=[],
+            devlab_total_bytes=0, flagged_paths=[],
         )
     )
     agent_logs: AgentLogMetrics = dataclasses.field(

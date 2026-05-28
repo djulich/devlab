@@ -542,7 +542,7 @@ def test_quality_summary_warns_for_rework_and_large_ignored_artifacts() -> None:
             file_count=0, total_bytes=0, product_file_count=0, product_total_bytes=0,
             ignored_file_count=5_001, ignored_total_bytes=100_000_001,
             devlab_file_count=0, devlab_total_bytes=0,
-            flagged_paths=[], source_files=[], test_files=[],
+            flagged_paths=[],
         ),
         sessions_run=7,
         task_rework=TaskReworkSummary(
@@ -588,8 +588,6 @@ def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
     assert hygiene.ignored_file_count == 3
     assert hygiene.devlab_file_count == 1
     assert hygiene.flagged_paths == []
-    assert hygiene.source_files == ["src/app.py", "tests/test_app.py"]
-    assert hygiene.test_files == ["tests/test_app.py"]
     contributors = [
         (item.path, item.file_count, item.total_bytes)
         for item in hygiene.ignored_top_contributors
@@ -631,7 +629,6 @@ def test_artifact_hygiene_counts_unignored_files_as_product(tmp_path: Path) -> N
     assert hygiene.product_file_count == 1
     assert hygiene.ignored_file_count == 0
     assert hygiene.flagged_paths == []
-    assert hygiene.source_files == [".venv/lib/site.py"]
 
 
 def test_evaluation_init_creates_git_repo_when_absent(tmp_path: Path) -> None:

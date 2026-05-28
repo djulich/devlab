@@ -28,8 +28,6 @@ class ArtifactHygiene:
     devlab_file_count: int
     devlab_total_bytes: int
     flagged_paths: list[str]
-    source_files: list[str]
-    test_files: list[str]
     ignored_top_contributors: list[ArtifactContributor] = dataclasses.field(
         default_factory=list,
     )
@@ -67,12 +65,6 @@ def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
     product_total_bytes = _total_bytes(root, product_files)
     ignored_total_bytes = _total_bytes(root, ignored_files)
     devlab_total_bytes = _total_bytes(root, devlab_files)
-    source_files = [path for path in product_files if Path(path).suffix == ".py"]
-    test_files = [
-        path
-        for path in product_files
-        if Path(path).name.startswith("test_") or Path(path).name.endswith("_test.py")
-    ]
     return ArtifactHygiene(
         file_count=len(product_files),
         total_bytes=product_total_bytes,
@@ -83,8 +75,6 @@ def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
         devlab_file_count=len(devlab_files),
         devlab_total_bytes=devlab_total_bytes,
         flagged_paths=[],
-        source_files=sorted(source_files),
-        test_files=sorted(test_files),
         ignored_top_contributors=_top_artifact_contributors(root, ignored_files),
     )
 
