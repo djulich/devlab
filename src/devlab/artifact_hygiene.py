@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from devlab.git import git_ls_files
@@ -28,7 +28,13 @@ class ArtifactHygiene:
     devlab_file_count: int
     devlab_total_bytes: int
     flagged_paths: list[str]
+    product_top_contributors: list[ArtifactContributor] = dataclasses.field(
+        default_factory=list,
+    )
     ignored_top_contributors: list[ArtifactContributor] = dataclasses.field(
+        default_factory=list,
+    )
+    devlab_top_contributors: list[ArtifactContributor] = dataclasses.field(
         default_factory=list,
     )
 
@@ -75,7 +81,15 @@ def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
         devlab_file_count=len(devlab_files),
         devlab_total_bytes=devlab_total_bytes,
         flagged_paths=[],
-        ignored_top_contributors=_top_artifact_contributors(root, ignored_files),
+        product_top_contributors=_top_artifact_contributors(
+            root, product_files, _top_level_contributor_key,
+        ),
+        ignored_top_contributors=_top_artifact_contributors(
+            root, ignored_files, _ignored_artifact_contributor_key,
+        ),
+        devlab_top_contributors=_top_artifact_contributors(
+            root, devlab_files, _devlab_contributor_key,
+        ),
     )
 
 
@@ -87,14 +101,18 @@ def has_large_ignored_artifacts(artifact_hygiene: ArtifactHygiene) -> bool:
 
 
 def _top_artifact_contributors(
-    root: Path, relative_paths: Sequence[str], *, limit: int = 5
+    root: Path,
+    relative_paths: Sequence[str],
+    contributor_key: Callable[[Path, str], str],
+    *,
+    limit: int = 5,
 ) -> list[ArtifactContributor]:
     grouped: dict[str, list[int]] = {}
     for relative_path in relative_paths:
         path = root / relative_path
         if not path.is_file():
             continue
-        key = _ignored_artifact_contributor_key(root, relative_path)
+        key = contributor_key(root, relative_path)
         entry = grouped.setdefault(key, [0, 0])
         entry[0] += 1
         entry[1] += path.stat().st_size
@@ -104,6 +122,20 @@ def _top_artifact_contributors(
             grouped.items(), key=lambda item: (-item[1][1], item[0])
         )[:limit]
     ]
+
+
+def _top_level_contributor_key(_root: Path, relative_path: str) -> str:
+    parts = Path(relative_path).parts
+    if len(parts) <= 1:
+        return relative_path
+    return f"{parts[0]}/"
+
+
+def _devlab_contributor_key(_root: Path, relative_path: str) -> str:
+    parts = Path(relative_path).parts
+    if len(parts) >= 3:
+        return f"{parts[0]}/{parts[1]}/"
+    return relative_path
 
 
 def _ignored_artifact_contributor_key(root: Path, relative_path: str) -> str:

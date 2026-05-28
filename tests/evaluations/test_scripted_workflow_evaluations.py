@@ -588,6 +588,12 @@ def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
     assert hygiene.ignored_file_count == 3
     assert hygiene.devlab_file_count == 1
     assert hygiene.flagged_paths == []
+    assert {item.path for item in hygiene.product_top_contributors} == {
+        ".gitignore", "src/", "tests/",
+    }
+    assert [(item.path, item.file_count) for item in hygiene.devlab_top_contributors] == [
+        (".devlab/tasks/", 1),
+    ]
     contributors = [
         (item.path, item.file_count, item.total_bytes)
         for item in hygiene.ignored_top_contributors
@@ -597,6 +603,26 @@ def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
         (".venv/", 1, 8),
         ("__pycache__/", 1, 7),
     ]
+
+
+def test_diagnostics_verbose_reports_product_ignored_and_devlab_contributors(
+    tmp_path: Path,
+) -> None:
+    _git(tmp_path, "init")
+    (tmp_path / ".gitignore").write_text("cache/\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/app.txt").write_text("product\n")
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache/data.bin").write_text("ignored\n")
+    (tmp_path / ".devlab/logs").mkdir(parents=True)
+    (tmp_path / ".devlab/logs/session.log").write_text("devlab\n")
+
+    output = format_workflow_diagnostics(tmp_path, verbose=True)
+
+    assert "Artifact contributors:" in output
+    assert "- product: src/: 1 files, 8 bytes" in output
+    assert "- ignored: cache/: 1 files, 8 bytes" in output
+    assert "- devlab: .devlab/logs/: 1 files, 7 bytes" in output
 
 
 def test_diagnostics_reports_top_ignored_artifact_contributors(

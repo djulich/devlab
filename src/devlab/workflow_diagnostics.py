@@ -416,7 +416,37 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
         f"max_system_bytes={diagnostics.prompt_logs.max_system_prompt_bytes} "
         f"max_session_bytes={diagnostics.prompt_logs.max_session_prompt_bytes}"
     )
+
+    lines.append("")
+    lines.append("Artifact contributors:")
+    lines.extend(
+        _format_artifact_contributor_group(
+            "product", diagnostics.artifact_hygiene.product_top_contributors,
+        )
+    )
+    lines.extend(
+        _format_artifact_contributor_group(
+            "ignored", diagnostics.artifact_hygiene.ignored_top_contributors,
+        )
+    )
+    lines.extend(
+        _format_artifact_contributor_group(
+            "devlab", diagnostics.artifact_hygiene.devlab_top_contributors,
+        )
+    )
     return lines
+
+
+def _format_artifact_contributor_group(
+    label: str, contributors: list[ArtifactContributor]
+) -> list[str]:
+    if not contributors:
+        return [f"- {label}: none"]
+    return [
+        f"- {label}: {contributor.path}: "
+        f"{contributor.file_count} files, {contributor.total_bytes} bytes"
+        for contributor in contributors[:3]
+    ]
 
 
 def _bool_text(value: bool) -> str:

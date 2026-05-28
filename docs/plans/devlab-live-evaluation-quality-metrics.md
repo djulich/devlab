@@ -164,8 +164,14 @@ Record repo artifact summary without failing by default:
   "ignored_total_bytes": 333333,
   "devlab_file_count": 12,
   "devlab_total_bytes": 9876,
+  "product_top_contributors": [
+    {"path": "sessions/", "file_count": 19, "total_bytes": 157000000}
+  ],
   "ignored_top_contributors": [
     {"path": ".venv/", "file_count": 645, "total_bytes": 154048934}
+  ],
+  "devlab_top_contributors": [
+    {"path": ".devlab/logs/", "file_count": 40, "total_bytes": 123456}
   ]
 }
 ```
