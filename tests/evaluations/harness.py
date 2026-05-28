@@ -20,25 +20,27 @@ from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
 from devlab.workflow_diagnostics import (
     AgentLogMetrics,
-    IntegratorReworkSummary,
     ProfileMetrics,
     PromptLogMetrics,
     QualitySummary,
-    SessionRecord,
-    TaskCycleMetrics,
     TaskMetrics,
-    TaskReworkSummary,
     collect_agent_log_metrics,
     collect_profile_metrics,
     collect_prompt_log_metrics,
     collect_task_metrics,
+    quality_summary,
+)
+from devlab.workflow_history import (
+    IntegratorReworkSummary,
+    SessionRecord,
+    TaskCycleMetrics,
+    TaskReworkSummary,
     derive_integrator_rework_summary,
     derive_review_rejections,
     derive_role_sequence,
     derive_session_records,
     derive_task_cycle_metrics,
     derive_task_rework_summary,
-    quality_summary,
 )
 from tests.evaluations.checks import BlackBoxCheck, CheckResult
 

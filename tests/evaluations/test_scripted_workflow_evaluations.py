@@ -10,19 +10,21 @@ from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.task_tracker import FileTaskTracker, TaskStatus
 from devlab.workflow_diagnostics import (
+    TaskMetrics,
+    collect_profile_metrics,
+    format_workflow_diagnostics,
+    quality_summary,
+)
+from devlab.workflow_history import (
     IntegratorReworkSummary,
     TaskCycleEntry,
-    TaskMetrics,
     TaskReworkSummary,
-    collect_profile_metrics,
     derive_integrator_rework_summary,
     derive_review_rejections,
     derive_role_sequence,
     derive_session_records,
     derive_task_cycle_metrics,
     derive_task_rework_summary,
-    format_workflow_diagnostics,
-    quality_summary,
 )
 from tests.evaluations.checks import (
     CheckResult,
