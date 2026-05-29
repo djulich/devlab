@@ -16,6 +16,7 @@ from devlab.orchestrator import _timestamp, close_task, process_handoff, run_loo
 from devlab.prompts import build_session_prompt, build_system_prompt
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workspace import (
+    AGENT_LOG_DIR,
     ARTIFACTS_DIR,
     DESIGN_PLAN,
     HISTORY_DIR,
@@ -1603,6 +1604,89 @@ class TestProcessHandoffReviewerDefaults:
 
         task = FileTaskTracker(tmp_path).get("T0001")
         assert task.status == TaskStatus.CHANGES_REQUESTED
+
+
+def _find_metadata(root: Path) -> dict[str, Any]:
+    import json
+    files = list((root / AGENT_LOG_DIR).glob("*.metadata.json"))
+    assert len(files) == 1, f"expected 1 metadata file, found {len(files)}: {files}"
+    return json.loads(files[0].read_text())
+
+
+class TestSessionMetadata:
+    def test_metadata_written_for_successful_session(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path, "T0001", "First",
+            body=_checked_task_body("T0001", "First"),
+        )
+        provider = MockProvider()
+
+        run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        meta = _find_metadata(tmp_path)
+        assert meta["role_name"] == "developer"
+        assert meta["return_code"] == 0
+        assert meta["failure_kind"] == "none"
+        assert meta["task_id"] == "T0001"
+        assert meta["session_number"] == 1
+
+    def test_metadata_written_for_failed_session(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = FailingProvider(
+            AgentResult(return_code=3, failure_kind="nonzero_exit"),
+        )
+
+        run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        meta = _find_metadata(tmp_path)
+        assert meta["return_code"] == 3
+        assert meta["failure_kind"] == "nonzero_exit"
+        assert meta["task_id"] == "T0001"
+
+    def test_metadata_written_for_provider_error(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = RaisingProvider(ProviderError("connection refused"))
+
+        run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        meta = _find_metadata(tmp_path)
+        assert meta["return_code"] == 1
+        assert meta["failure_kind"] == "provider_error"
+
+    def test_metadata_written_for_handoff_validation_failure(
+        self, tmp_path: Path,
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path, "T0001", "First",
+            body=_checked_task_body("T0001", "First"),
+        )
+        provider = MockProvider(write_handoff=False)
+
+        run_loop(
+            tmp_path, auto=True, max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        meta = _find_metadata(tmp_path)
+        assert meta["return_code"] == 0
+        assert meta["failure_kind"] == "none"
 
 
 class TestTimestamp:

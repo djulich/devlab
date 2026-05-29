@@ -82,6 +82,7 @@ class AgentLogMetrics:
     stdout_count: int
     stderr_count: int
     config_count: int
+    metadata_count: int
 
 
 @dataclasses.dataclass(frozen=True)
@@ -236,6 +237,7 @@ def collect_agent_log_metrics(root: Path) -> AgentLogMetrics:
         stdout_count=len(list(log_dir.glob("*.stdout.log"))),
         stderr_count=len(list(log_dir.glob("*.stderr.log"))),
         config_count=len(list(log_dir.glob("*.config.toml"))),
+        metadata_count=len(list(log_dir.glob("*.metadata.json"))),
     )
 
 
@@ -407,7 +409,8 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
         "- agent: "
         f"stdout={diagnostics.agent_logs.stdout_count} "
         f"stderr={diagnostics.agent_logs.stderr_count} "
-        f"config={diagnostics.agent_logs.config_count}"
+        f"config={diagnostics.agent_logs.config_count} "
+        f"metadata={diagnostics.agent_logs.metadata_count}"
     )
     lines.append(
         "- prompts: "

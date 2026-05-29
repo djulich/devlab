@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import shutil
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -136,6 +137,25 @@ class SessionContext:
         self.system_prompt_log.write_text(system_prompt)
         self.session_prompt_log.parent.mkdir(parents=True, exist_ok=True)
         self.session_prompt_log.write_text(session_prompt)
+
+    def write_session_metadata(self, metadata: SessionMetadata) -> Path:
+        path = _agent_log_path(self.root, self.invocation_id, "metadata.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dataclasses.asdict(metadata), indent=2) + "\n")
+        return path
+
+
+@dataclasses.dataclass(frozen=True)
+class SessionMetadata:
+    invocation_id: str
+    session_number: int
+    role_name: str
+    provider: str
+    model: str
+    return_code: int
+    failure_kind: str
+    duration_seconds: float | None
+    task_id: str
 
 
 def _build_session_context(
@@ -433,6 +453,31 @@ def _log_path_details(
     return details
 
 
+def _build_session_metadata(
+    ctx: SessionContext,
+    agent_result: AgentResult,
+    resolved_agent_configs: dict[str, ResolvedAgentConfig] | None,
+    task_id: str | None,
+) -> SessionMetadata:
+    provider = ""
+    model = ""
+    if resolved_agent_configs is not None and ctx.role_name in resolved_agent_configs:
+        config = resolved_agent_configs[ctx.role_name]
+        provider = config.provider
+        model = config.model
+    return SessionMetadata(
+        invocation_id=ctx.invocation_id,
+        session_number=ctx.session_number,
+        role_name=ctx.role_name,
+        provider=provider,
+        model=model,
+        return_code=agent_result.return_code,
+        failure_kind=agent_result.failure_kind,
+        duration_seconds=agent_result.duration_seconds,
+        task_id=task_id or "",
+    )
+
+
 def _notify_session_progress(
     callback: SessionProgressCallback | None,
     event: str,
@@ -610,9 +655,17 @@ def run_loop(
 
         if agent_error is not None:
             logger.error("%s. Stopping.", agent_error.message)
+            metadata = _build_session_metadata(
+                ctx, agent_result, resolved_agent_configs, session_task_id,
+            )
+            ctx.write_session_metadata(metadata)
             errors = (agent_error,) + ((teardown_error,) if teardown_error else ())
             return RunResult(sessions_run, False, agent_error.exit_code, errors)
         if teardown_error is not None:
+            metadata = _build_session_metadata(
+                ctx, agent_result, resolved_agent_configs, session_task_id,
+            )
+            ctx.write_session_metadata(metadata)
             return RunResult(
                 sessions_run, False, agent_result.return_code or 1, (teardown_error,)
             )
@@ -626,12 +679,20 @@ def run_loop(
         except HandoffError as exc:
             message = _handoff_error_message(ctx, str(exc), config_log)
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
+            metadata = _build_session_metadata(
+                ctx, agent_result, resolved_agent_configs, session_task_id,
+            )
+            ctx.write_session_metadata(metadata)
             return RunResult(
                 sessions_run, False, 1, (SessionError("handoff_validation", message, 1),)
             )
 
         commit_message = _commit_message(workspace.snapshot, handoff)
         process_result = process_handoff(handoff, workspace)
+        metadata = _build_session_metadata(
+            ctx, agent_result, resolved_agent_configs, session_task_id,
+        )
+        ctx.write_session_metadata(metadata)
         if automatic_version_control:
             try:
                 committed = commit_all(root, commit_message)

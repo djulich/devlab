@@ -142,7 +142,7 @@ class EvaluationDiagnostics:
     )
     agent_logs: AgentLogMetrics = dataclasses.field(
         default_factory=lambda: AgentLogMetrics(
-            stdout_count=0, stderr_count=0, config_count=0,
+            stdout_count=0, stderr_count=0, config_count=0, metadata_count=0,
         )
     )
     prompt_logs: PromptLogMetrics = dataclasses.field(
