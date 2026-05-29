@@ -175,7 +175,12 @@ def invoke_session(
     """Invoke an agent session through the configured provider."""
     logger.info("Invoking %s session", invocation.role_name)
     result = agent_provider.invoke(invocation)
-    logger.info("%s session exited with code %s", invocation.role_name, result.return_code)
+    duration = result.duration_seconds
+    duration_info = f" duration={duration:.1f}s" if duration is not None else ""
+    logger.info(
+        "%s session exited with code %s%s",
+        invocation.role_name, result.return_code, duration_info,
+    )
     return result
 
 
@@ -399,6 +404,8 @@ def _agent_error_message(
         details.append(result.message)
     if result.command:
         details.append("command=" + " ".join(result.command))
+    if result.duration_seconds is not None:
+        details.append(f"duration={result.duration_seconds:.1f}s")
     if result.timeout_seconds is not None:
         details.append(f"timeout_seconds={result.timeout_seconds}")
     details.extend(_log_path_details(ctx.stdout_log, ctx.stderr_log, config_log))
@@ -650,16 +657,20 @@ def run_loop(
                     1,
                     (SessionError("version_control", str(exc), 1),),
                 )
+        finish_context = session_finish_context(
+            workspace.snapshot,
+            role_name,
+            task_id=session_task_id,
+            milestone_id=session_milestone_id,
+        )
+        duration = agent_result.duration_seconds
+        duration_info = f" duration={duration:.1f}s" if duration is not None else ""
         logger.info(
-            "Finished session %s: %s %s",
+            "Finished session %s: %s %s%s",
             ctx.session_number,
             role_name,
-            session_finish_context(
-                workspace.snapshot,
-                role_name,
-                task_id=session_task_id,
-                milestone_id=session_milestone_id,
-            ),
+            finish_context,
+            duration_info,
         )
         _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
