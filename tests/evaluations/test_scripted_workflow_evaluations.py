@@ -754,9 +754,13 @@ def _assert_diagnostics(
     assert diagnostics.artifact_hygiene.file_count >= 0
     assert diagnostics.agent_logs.stdout_count >= 0
     assert scenario.expected_sessions is not None
-    commit_count = int(_git(root, "rev-list", "--count", "HEAD").stdout.strip())
-    assert commit_count >= scenario.expected_sessions + 1
-    assert _git(root, "tag", "--list", "devlab/milestone/M1").stdout.strip()
+    assert diagnostics.git.repository is True
+    assert diagnostics.git.clean_worktree is True
+    assert diagnostics.git.commit_count > diagnostics.git.baseline_commit_count
+    assert diagnostics.git.session_commit_count >= scenario.expected_sessions
+    assert diagnostics.git.missing_milestone_tags == []
+    assert "devlab/milestone/M1" in diagnostics.git.milestone_tags
+    assert diagnostics.git.tag_targets["devlab/milestone/M1"]
     task = FileTaskTracker(root).get("T0001")
     assert task.status == TaskStatus.CLOSED
     milestone = FileMilestoneTracker(root).get("M1")

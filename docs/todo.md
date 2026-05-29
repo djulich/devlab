@@ -154,7 +154,6 @@ Status: **initial implementation complete**. `devlab init` initializes Git when 
 
 Open work:
 
-- Exercise session commits and milestone tags in live-agent evaluations.
 - Decide how to handle sensitive logs/prompts and other non-ignored data before broader use; the current implementation commits everything Git considers relevant.
 - Consider commit message bodies if one-line summaries prove insufficient.
 - Defer per-milestone feature branches; use milestone tags first.

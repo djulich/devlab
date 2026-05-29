@@ -62,6 +62,11 @@ def _assert_live_diagnostics(
     assert diagnostics.roles, failure_context
     assert diagnostics.tasks.total >= 1, failure_context
     assert diagnostics.quality.correctness_passed is True, failure_context
+    assert diagnostics.git.repository is True, failure_context
+    assert diagnostics.git.clean_worktree is True, failure_context
+    assert diagnostics.git.commit_count > diagnostics.git.baseline_commit_count, failure_context
+    assert diagnostics.git.session_commit_count >= diagnostics.sessions_run, failure_context
+    assert not diagnostics.git.missing_milestone_tags, failure_context
 
 
 @pytest.mark.skipif(

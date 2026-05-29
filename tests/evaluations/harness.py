@@ -15,7 +15,7 @@ from devlab._logging import configure_logging
 from devlab.agents import AgentInvocation, AgentProvider, MockProvider
 from devlab.artifact_hygiene import ArtifactHygiene, collect_artifact_hygiene
 from devlab.findings import FileFindingTracker, FindingStatus
-from devlab.git import run_git
+from devlab.git import VersionControlError, run_git
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, run_loop
 from devlab.workflow_diagnostics import (
@@ -77,6 +77,21 @@ class EvaluationScenario:
     expected_sessions: int | None = None
     expected_rejections: int = 0
     expected_findings: int = 0
+    expected_milestone_tags: tuple[str, ...] = ("devlab/milestone/M1",)
+
+
+@dataclasses.dataclass
+class GitMetrics:
+    repository: bool
+    clean_worktree: bool
+    baseline_commit_count: int
+    commit_count: int
+    session_commit_count: int
+    head_commit: str
+    milestone_tags: list[str]
+    expected_milestone_tags: list[str]
+    missing_milestone_tags: list[str]
+    tag_targets: dict[str, str]
 
 
 @dataclasses.dataclass
@@ -98,6 +113,20 @@ class EvaluationDiagnostics:
     target_root: str
     agent_log_dir: str
     git_commit: str = ""
+    git: GitMetrics = dataclasses.field(
+        default_factory=lambda: GitMetrics(
+            repository=False,
+            clean_worktree=False,
+            baseline_commit_count=0,
+            commit_count=0,
+            session_commit_count=0,
+            head_commit="",
+            milestone_tags=[],
+            expected_milestone_tags=[],
+            missing_milestone_tags=[],
+            tag_targets={},
+        )
+    )
     provider: str = ""
     model: str = ""
     effort: str = ""
@@ -170,6 +199,7 @@ def run_scripted_evaluation(root: Path, scenario: EvaluationScenario) -> Evaluat
         on_invoke=scenario.scripted_agent.on_invoke,
         handoff_text=scenario.scripted_agent.handoff_for,
     )
+    baseline_commit_count = _commit_count(root)
     result, duration = _run_evaluation_loop(
         root,
         max_sessions=scenario.max_sessions,
@@ -186,6 +216,7 @@ def run_scripted_evaluation(root: Path, scenario: EvaluationScenario) -> Evaluat
         roles=scenario.scripted_agent.roles,
         review_rejections=scenario.scripted_agent.review_rejections,
         prompt_chars=scenario.scripted_agent.prompt_chars,
+        baseline_commit_count=baseline_commit_count,
     )
     path = diagnostics.write(root)
     assert path.exists()
@@ -208,6 +239,7 @@ def run_live_evaluation(
         run_git(root, "add", ".devlab/config/agents.toml")
         run_git(root, "commit", "-m", "Configure live evaluation agents")
     configure_logging(logging.INFO)
+    baseline_commit_count = _commit_count(root)
     result, duration = _run_evaluation_loop(
         root,
         max_sessions=max_sessions,
@@ -230,6 +262,7 @@ def run_live_evaluation(
         provider=provider or "",
         model=model or "",
         effort=effort or "",
+        baseline_commit_count=baseline_commit_count,
     )
     path = diagnostics.write(root)
     assert path.exists()
@@ -275,6 +308,7 @@ def diagnostics_for(
     provider: str = "",
     model: str = "",
     effort: str = "",
+    baseline_commit_count: int = 0,
 ) -> EvaluationDiagnostics:
     findings = FileFindingTracker(root).list_findings()
     task_metrics = collect_task_metrics(root)
@@ -305,7 +339,12 @@ def diagnostics_for(
         timestamp=datetime.now(UTC).isoformat(),
         target_root=root.as_posix(),
         agent_log_dir=(root / ".devlab/logs/agents").as_posix(),
-        git_commit=_git_commit(),
+        git_commit=_git_commit(root),
+        git=collect_git_metrics(
+            root,
+            scenario.expected_milestone_tags,
+            baseline_commit_count=baseline_commit_count,
+        ),
         provider=provider,
         model=model,
         effort=effort,
@@ -328,6 +367,55 @@ def diagnostics_for(
         profiles=profile_metrics,
     )
 
+
+
+
+def collect_git_metrics(
+    root: Path,
+    expected_milestone_tags: tuple[str, ...],
+    *,
+    baseline_commit_count: int = 0,
+) -> GitMetrics:
+    try:
+        run_git(root, "rev-parse", "--git-dir")
+    except VersionControlError:
+        return GitMetrics(
+            repository=False,
+            clean_worktree=False,
+            baseline_commit_count=baseline_commit_count,
+            commit_count=0,
+            session_commit_count=0,
+            head_commit="",
+            milestone_tags=[],
+            expected_milestone_tags=list(expected_milestone_tags),
+            missing_milestone_tags=list(expected_milestone_tags),
+            tag_targets={},
+        )
+
+    status = run_git(root, "status", "--porcelain").stdout.strip()
+    commit_count = int(run_git(root, "rev-list", "--count", "HEAD").stdout.strip())
+    head_commit = run_git(root, "rev-parse", "--short", "HEAD").stdout.strip()
+    milestone_tags = run_git(root, "tag", "--list", "devlab/milestone/*").stdout.splitlines()
+    missing_milestone_tags = [
+        tag for tag in expected_milestone_tags if tag not in set(milestone_tags)
+    ]
+    tag_targets = {
+        tag: run_git(root, "rev-parse", f"{tag}^{{}}").stdout.strip()
+        for tag in sorted(set(milestone_tags).union(expected_milestone_tags))
+        if tag not in missing_milestone_tags
+    }
+    return GitMetrics(
+        repository=True,
+        clean_worktree=not status,
+        baseline_commit_count=baseline_commit_count,
+        commit_count=commit_count,
+        session_commit_count=max(commit_count - baseline_commit_count, 0),
+        head_commit=head_commit,
+        milestone_tags=sorted(milestone_tags),
+        expected_milestone_tags=list(expected_milestone_tags),
+        missing_milestone_tags=missing_milestone_tags,
+        tag_targets=tag_targets,
+    )
 
 
 
@@ -381,9 +469,16 @@ def _export_diagnostics(path: Path, scenario_id: str, provider_mode: str) -> Non
     shutil.copyfile(path, destination_dir / f"{timestamp}_{scenario_id}_{provider_mode}.json")
 
 
-def _git_commit() -> str:
+def _commit_count(root: Path) -> int:
+    try:
+        return int(run_git(root, "rev-list", "--count", "HEAD").stdout.strip())
+    except VersionControlError:
+        return 0
+
+
+def _git_commit(root: Path) -> str:
     result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
+        ["git", "-C", root.as_posix(), "rev-parse", "--short", "HEAD"],
         text=True,
         capture_output=True,
         timeout=2,
