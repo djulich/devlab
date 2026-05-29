@@ -6,7 +6,6 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [refactoring-opportunities.md](refactoring-opportunities.md) — module splits, test cleanup, and structural improvements (items 1-3, 8 done; 4-7 deferred until triggered by feature work; 9 moot)
 - [deployment-specification-and-verification.md](deployment-specification-and-verification.md) — deployment domain overlay and verification lifecycle (initial framework in place, full target support incomplete)
 
 ## Implemented
