@@ -29,12 +29,32 @@ DevLab is developed and maintained by AI agents. Code and project structure must
 
 ## Module boundaries
 
-- `workspace.py`: shared constants/utilities, `Workspace`, mutation handles, `WorkspaceSnapshot` queries.
+Workflow core:
 - `orchestrator.py`: workflow loop, session lifecycle, handoff processing, error recovery.
+- `workspace.py`: mutation boundary (`Workspace`/handles) and cached read-only view (`WorkspaceSnapshot`).
+- `handoffs.py`: handoff parsing and validation.
+- `agents.py`: provider-specific invocation, not orchestration logic.
+- `agent_config.py`: `agents.toml` loading and role/provider resolution.
+
+Domain state (file-backed trackers):
+- `task_tracker.py`, `milestones.py`, `findings.py`, `profiles.py`: one tracker per domain.
+- `environment.py`: profile lifecycle command execution, not profile loading.
+
+Prompts and knowledge:
 - `prompts.py`: system/session prompt assembly from read-only state.
-- `task_tracker.py`, `milestones.py`, `findings.py`, `profiles.py`: file-backed domain state.
-- `agents.py`: provider-specific agent invocation.
-- `prompt_context.py`: prompt size measurement/reporting, not prompt construction.
+- `prompt_context.py`: prompt size reporting, not prompt construction.
+- `knowledge.py`: target-workspace context and ADR discovery.
+
+Git:
+- `git.py`: low-level subprocess wrapper and read-only helpers.
+- `version_control.py`: mutation-oriented operations; uses `git.py`.
+
+Diagnostics:
+- `workflow_diagnostics.py`: quality metrics facade.
+- `workflow_history.py`: session/task-cycle derivation from handoff files.
+- `artifact_hygiene.py`: git-based artifact classification.
+- `doctor.py`: workspace validation checks.
+- `status.py`, `session_logging.py`, `cli.py`, `init.py`, `_logging.py`, `_toml.py`.
 
 ## Coding standards
 
