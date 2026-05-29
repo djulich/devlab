@@ -52,6 +52,7 @@ Git:
 Diagnostics:
 - `workflow_diagnostics.py`: quality metrics facade.
 - `workflow_history.py`: session/task-cycle derivation from handoff files.
+- `history.py`: session history reporting from metadata files.
 - `artifact_hygiene.py`: git-based artifact classification.
 - `doctor.py`: workspace validation checks.
 - `status.py`, `session_logging.py`, `cli.py`, `init.py`, `_logging.py`, `_toml.py`.

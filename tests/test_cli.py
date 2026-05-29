@@ -117,6 +117,17 @@ def test_cli_diagnostics_json_reports_structured_workflow_diagnostics(
     assert payload["quality"]["warnings"] == []
 
 
+def test_cli_history_shows_none_for_initialized_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(monkeypatch, "history", "--root", str(tmp_path))
+
+    assert capsys.readouterr().out.strip() == "Session history: none"
+
+
 def test_cli_doctor_reports_ok_for_initialized_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

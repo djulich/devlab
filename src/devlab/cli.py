@@ -6,6 +6,7 @@ from pathlib import Path
 
 from devlab._logging import configure_logging
 from devlab.doctor import check_workspace, format_doctor_report
+from devlab.history import format_history
 from devlab.init import format_init_result, init_workspace
 from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop
 from devlab.status import format_status
@@ -138,6 +139,21 @@ def main() -> None:
         help="Emit diagnostics as JSON for tools and agents.",
     )
 
+    history_parser = subparsers.add_parser(
+        "history", help="Show session history.",
+    )
+    history_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to inspect (default: current working directory).",
+    )
+    history_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit session history as JSON.",
+    )
+
     doctor_parser = subparsers.add_parser(
         "doctor", help="Validate DevLab workspace configuration."
     )
@@ -181,6 +197,8 @@ def main() -> None:
             print(build_workflow_diagnostics(root).to_json())
         else:
             print(format_workflow_diagnostics(root, verbose=args.verbose))
+    elif args.command == "history":
+        print(format_history(root, json_output=args.json))
     elif args.command == "doctor":
         problems = check_workspace(root)
         print(format_doctor_report(problems))
