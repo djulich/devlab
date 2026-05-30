@@ -151,6 +151,34 @@ def test_cli_run_emits_progress_logs_by_default(
     assert "Orchestrator finished after 0 session(s)." in captured.err
 
 
+def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+
+    _run_cli(
+        monkeypatch,
+        "plan",
+        "--revise",
+        "--retain-prompts",
+        "--root",
+        str(tmp_path),
+    )
+
+    assert seen["planning_only"] is True
+    assert seen["revise_plan"] is True
+    assert seen["retain_prompts"] is True
+    assert seen["max_sessions"] == 2
+
+
 def test_cli_run_passes_retain_prompts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 

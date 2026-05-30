@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -459,6 +460,133 @@ class RaisingProvider:
 
 
 class TestRunLoop:
+    def test_revise_plan_requires_planning_only(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="revise_plan requires planning_only"):
+            run_loop(tmp_path, auto=True, max_sessions=1, revise_plan=True)
+
+    def test_planning_only_runs_architect_and_planner_then_stops(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+
+        def on_invoke(call: AgentCall) -> None:
+            if call.role_name == "architect":
+                (call.root / DESIGN_PLAN).write_text("# Design\n")
+            elif call.role_name == "planner":
+                (call.root / PROJECT_PLAN).write_text("## M1: Initial\n- T0001: First\n")
+                _write_task(call.root, "T0001", "First", milestone="M1")
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=5,
+            planning_only=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.sessions_run == 2
+        assert [call.role_name for call in provider.calls] == ["architect", "planner"]
+        assert Workspace(tmp_path).snapshot.assess_state() == "developer"
+
+    def test_planning_only_with_version_control_commits_synced_milestones(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        subprocess.run(["git", "-C", tmp_path.as_posix(), "init"], check=True)
+        subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "config", "user.name", "DevLab Test"],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                tmp_path.as_posix(),
+                "config",
+                "user.email",
+                "devlab-test@example.invalid",
+            ],
+            check=True,
+        )
+        subprocess.run(["git", "-C", tmp_path.as_posix(), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", tmp_path.as_posix(), "commit", "-m", "init"], check=True)
+
+        def on_invoke(call: AgentCall) -> None:
+            if call.role_name == "architect":
+                (call.root / DESIGN_PLAN).write_text("# Design\n")
+            elif call.role_name == "planner":
+                (call.root / PROJECT_PLAN).write_text("## M1: Initial\n- T0001: First\n")
+                _write_task(call.root, "T0001", "First", milestone="M1")
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=5,
+            planning_only=True,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+        )
+
+        status = subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        tracked_milestone = subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "ls-files", ".devlab/milestones/M1.toml"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+
+        assert result.sessions_run == 2
+        assert status == ""
+        assert tracked_milestone == ".devlab/milestones/M1.toml"
+
+    def test_planning_only_noops_when_already_planned(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=5,
+            planning_only=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.sessions_run == 0
+        assert provider.calls == []
+
+    def test_revise_plan_runs_architect_and_planner_even_when_planned(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        (tmp_path / PROJECT_PLAN).write_text("## M1: Initial\n- T0001: First\n")
+        _write_task(tmp_path, "T0001", "First", milestone="M1")
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            auto=True,
+            max_sessions=5,
+            planning_only=True,
+            revise_plan=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.sessions_run == 2
+        assert [call.role_name for call in provider.calls] == ["architect", "planner"]
+        assert all("## Planning Revision Mode" in call.session_prompt for call in provider.calls)
+
     def test_developer_completed_task_is_marked_in_review(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")

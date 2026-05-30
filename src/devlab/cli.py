@@ -106,6 +106,76 @@ def main() -> None:
         help="Write full system/session prompts to .devlab/logs/agents/ for debugging.",
     )
 
+    plan_parser = subparsers.add_parser(
+        "plan", help="Run planning sessions and stop before implementation."
+    )
+    plan_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to operate on (default: current working directory).",
+    )
+    plan_parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="Run autonomously without pausing between sessions.",
+    )
+    plan_parser.add_argument(
+        "--max-sessions",
+        type=int,
+        default=2,
+        help="Maximum number of sessions to run (default: 2).",
+    )
+    plan_parser.add_argument(
+        "--revise",
+        action="store_true",
+        help="Review and possibly update existing design and project plans.",
+    )
+    plan_parser.add_argument(
+        "--provider",
+        default=None,
+        help="Override the configured provider for this plan run.",
+    )
+    plan_parser.add_argument(
+        "--model",
+        default=None,
+        help="Override the configured model for this plan run.",
+    )
+    plan_parser.add_argument(
+        "--effort",
+        default=None,
+        help="Override the configured effort for this plan run.",
+    )
+    plan_parser.add_argument(
+        "--dangerously-skip-permissions",
+        action="store_true",
+        help="Pass --dangerously-skip-permissions to the agent command.",
+    )
+    plan_verbosity = plan_parser.add_mutually_exclusive_group()
+    plan_verbosity.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Show only warnings and errors during the plan run.",
+    )
+    plan_verbosity.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show debug diagnostics during the plan run.",
+    )
+    plan_parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=None,
+        help="Write detailed DevLab plan logs to this file.",
+    )
+    plan_parser.add_argument(
+        "--retain-prompts",
+        action="store_true",
+        help="Write full system/session prompts to .devlab/logs/agents/ for debugging.",
+    )
+
     status_parser = subparsers.add_parser("status", help="Show workspace status.")
     status_parser.add_argument(
         "--root",
@@ -187,6 +257,23 @@ def main() -> None:
             dangerous_skip_permissions=args.dangerously_skip_permissions,
             retain_prompts=args.retain_prompts,
             automatic_version_control=True,
+        )
+        if result.exit_code != 0:
+            raise SystemExit(result.exit_code)
+    elif args.command == "plan":
+        configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+        result = run_loop(
+            root,
+            auto=args.auto,
+            max_sessions=args.max_sessions,
+            provider=args.provider,
+            model=args.model,
+            effort=args.effort,
+            dangerous_skip_permissions=args.dangerously_skip_permissions,
+            retain_prompts=args.retain_prompts,
+            automatic_version_control=True,
+            planning_only=True,
+            revise_plan=args.revise,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)

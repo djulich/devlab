@@ -44,7 +44,9 @@ def build_system_prompt(
     return "\n\n---\n\n".join(p for p in parts if p)
 
 
-def build_session_prompt(snapshot: WorkspaceSnapshot, role_name: str) -> str:
+def build_session_prompt(
+    snapshot: WorkspaceSnapshot, role_name: str, *, planning_revision: bool = False
+) -> str:
     builders = {
         "architect": _build_architect_prompt,
         "planner": _build_planner_prompt,
@@ -56,8 +58,28 @@ def build_session_prompt(snapshot: WorkspaceSnapshot, role_name: str) -> str:
     knowledge = _format_project_knowledge(discover_project_knowledge(snapshot.root))
     if knowledge:
         prompt = knowledge + "\n\n" + prompt
+    if planning_revision:
+        prompt += _planning_revision_section(role_name)
     return prompt + _handoff_reminder(role_name)
 
+
+def _planning_revision_section(role_name: str) -> str:
+    if role_name == "architect":
+        return (
+            "\n\n## Planning Revision Mode\n\n"
+            "Review the existing design plan against the current specifications and "
+            "workflow state. Edit the design plan only when it materially improves "
+            "accuracy, clarity, or implementation guidance."
+        )
+    if role_name == "planner":
+        return (
+            "\n\n## Planning Revision Mode\n\n"
+            "Review the existing project plan and task files against the current design "
+            "plan and specifications. Edit plans or tasks only when it materially improves "
+            "accuracy, sequencing, scope, or acceptance criteria. Do not recreate tasks "
+            "that already exist."
+        )
+    return ""
 
 
 def _domain_prompt_sections(snapshot: WorkspaceSnapshot, role_name: str) -> list[str]:

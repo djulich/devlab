@@ -8,7 +8,7 @@ DevLab may invoke target-owned deployment verification commands, but it must not
 
 ## Slice 1: Deployment `doctor` checks
 
-Goal: add non-mutating diagnostics for deployment readiness and tool prerequisites.
+Goal: add non-mutating diagnostics for deployment readiness and tool prerequisites. These checks are most useful after `devlab plan`, when architect/planner sessions have translated prose specs into design, project-plan, and task state.
 
 Likely files:
 
@@ -92,7 +92,15 @@ Do not require live containers in the normal test suite.
 
 Goal: run the existing opt-in live deployment evaluation and use outcomes to tune prompts, diagnostics, and thresholds.
 
-Command shape:
+Recommended preflight shape for manual runs:
+
+```bash
+devlab plan --auto
+devlab doctor
+devlab run --auto
+```
+
+Live evaluation command shape:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \

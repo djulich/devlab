@@ -509,9 +509,13 @@ def run_loop(
     agent_providers: dict[str, AgentProvider] | None = None,
     role_agent_providers: dict[str, str] | None = None,
     automatic_version_control: bool = False,
+    planning_only: bool = False,
+    revise_plan: bool = False,
     session_progress: SessionProgressCallback | None = None,
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
+    if revise_plan and not planning_only:
+        raise ValueError("revise_plan requires planning_only")
     sessions_run = 0
     if automatic_version_control:
         try:
@@ -535,6 +539,8 @@ def run_loop(
         role_agent_providers = agent_configuration.role_providers
         resolved_agent_configs = agent_configuration.resolved
 
+    forced_planning_roles = ("architect", "planner") if revise_plan else ()
+
     while sessions_run < max_sessions:
         if automatic_version_control:
             try:
@@ -547,8 +553,15 @@ def run_loop(
                     1,
                     (SessionError("version_control", str(exc), 1),),
                 )
-        workspace.sync()
-        role_name = workspace.snapshot.assess_state()
+        if planning_only and not revise_plan:
+            role_name = workspace.snapshot.assess_state()
+        else:
+            workspace.sync()
+            role_name = (
+                forced_planning_roles[sessions_run]
+                if sessions_run < len(forced_planning_roles)
+                else workspace.snapshot.assess_state()
+            )
         if role_name is None:
             if workspace.snapshot.blocked_tasks():
                 logger.info(
@@ -558,6 +571,20 @@ def run_loop(
             else:
                 logger.info("All milestones complete or no task can proceed.")
             logger.info("Stopping.")
+            break
+
+        if planning_only and not revise_plan and role_name not in {"architect", "planner"}:
+            if sessions_run == 0:
+                logger.info(
+                    "Planning state already exists; no planning session needed. "
+                    "Use devlab plan --revise to review and update plans."
+                )
+            else:
+                logger.info("Planning complete; stopping before implementation roles.")
+            logger.info("Stopping before %s session.", role_name)
+            break
+        if planning_only and revise_plan and sessions_run >= len(forced_planning_roles):
+            logger.info("Planning revision complete; stopping before implementation roles.")
             break
 
         if role_name == "integrator":
@@ -602,7 +629,11 @@ def run_loop(
         try:
             snapshot = workspace.snapshot
             system_prompt = build_system_prompt(root, role, snapshot=snapshot, role_name=role_name)
-            session_prompt = build_session_prompt(snapshot, role_name)
+            session_prompt = build_session_prompt(
+                snapshot,
+                role_name,
+                planning_revision=planning_only and revise_plan,
+            )
             ctx.write_prompt_logs(system_prompt, session_prompt)
             environment = _environment_for_session(root, workspace.snapshot, role_name)
         except ProfileNotFoundError as exc:
@@ -700,6 +731,7 @@ def run_loop(
         ctx.write_session_metadata(metadata)
         if automatic_version_control:
             try:
+                workspace.sync()
                 committed = commit_all(root, commit_message)
                 if committed:
                     logger.info("Committed session changes: %s", commit_message)
@@ -740,6 +772,10 @@ def run_loop(
         )
         _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
+
+        if planning_only and revise_plan and sessions_run >= len(forced_planning_roles):
+            logger.info("Planning revision complete; stopping before implementation roles.")
+            break
 
         if not auto:
             handoff_text = read_file(handoff_path)

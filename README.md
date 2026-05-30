@@ -65,7 +65,14 @@ uv run devlab status --root /path/to/target-project --verbose
 uv run devlab diagnostics --root /path/to/target-project
 ```
 
-Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session:
+Optionally generate design and project plans before implementation, then re-run diagnostics against the planned workflow state:
+
+```bash
+uv run devlab plan --root /path/to/target-project --auto
+uv run devlab doctor --root /path/to/target-project
+```
+
+Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session. It auto-detects whether to start with planning or continue implementation:
 
 ```bash
 uv run devlab run --root /path/to/target-project --auto --max-sessions 20
@@ -82,12 +89,13 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 ## CLI commands
 
 - `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
-- `devlab run [--root PATH] [--auto] [--max-sessions N] [...]` — run the workflow loop.
+- `devlab plan [--root PATH] [--auto] [--revise] [...]` — run planning sessions and stop before implementation.
+- `devlab run [--root PATH] [--auto] [--max-sessions N] [...]` — run the workflow loop from the current state.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
 
-Useful `run` options include `--provider`, `--model`, `--effort`, `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`.
+Useful `run` and `plan` options include `--provider`, `--model`, `--effort`, `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`.
 
 ## Target workspace layout
 

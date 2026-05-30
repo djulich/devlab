@@ -27,6 +27,7 @@ During early development, this repository can also be used as a target workspace
 cd /path/to/target-project
 devlab init
 devlab status
+devlab plan --auto
 devlab run --auto
 ```
 
@@ -139,7 +140,7 @@ For example, task files have statuses such as:
 
 The orchestrator changes these statuses after validating the relevant session output. Task files are not moved between folders to represent state.
 
-Reporting paths are intentionally non-mutating. `devlab status`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. Explicit mutation belongs to the workflow path, such as `devlab run`, or to future commands whose purpose is repair/sync.
+Reporting paths are intentionally non-mutating. `devlab status`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. Explicit mutation belongs to workflow commands such as `devlab plan` and `devlab run`, or to future commands whose purpose is repair/sync.
 
 ### Human review remains possible
 
