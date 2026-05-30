@@ -23,6 +23,8 @@ _DEPLOYMENT_TOOL_EXECUTABLES = {
     "podman": "podman",
     "docker": "docker",
     "docker compose": "docker",
+    "buildah": "buildah",
+    "nerdctl": "nerdctl",
     "kind": "kind",
     "kubectl": "kubectl",
     "kubeconform": "kubeconform",
@@ -30,6 +32,11 @@ _DEPLOYMENT_TOOL_EXECUTABLES = {
     "rpmlint": "rpmlint",
     "systemd-analyze": "systemd-analyze",
 }
+_CONTAINER_TOOL_EXECUTABLES = ("podman", "docker", "buildah", "nerdctl")
+_CONTAINER_FAMILY_RE = re.compile(
+    r"\b(?:container(?:ized|\s+(?:image|runtime|deployment|artifact)s?)?|"
+    r"oci(?:-compatible)?\s+image)\b"
+)
 _PRODUCTION_CLAIM_RE = re.compile(
     r"\b(?:deploy(?:ment|ing)?\s+to\s+production|production\s+deploy(?:ment|ing)?)\b"
 )
@@ -222,6 +229,7 @@ def _check_deployment_spec(root: Path) -> list[DoctorProblem]:
                 )
             )
         uses_container_alternative = _uses_container_runtime_alternative(lower_text)
+        mentioned_tools = _mentioned_deployment_tools(lower_text)
         if uses_container_alternative and all(
             shutil.which(executable) is None for executable in ("docker", "podman")
         ):
@@ -233,7 +241,21 @@ def _check_deployment_spec(root: Path) -> list[DoctorProblem]:
                     "environment before claiming verification",
                 )
             )
-        for label, executable in _mentioned_deployment_tools(lower_text):
+        if (
+            _CONTAINER_FAMILY_RE.search(lower_text)
+            and not any(label in _CONTAINER_TOOL_EXECUTABLES for label, _ in mentioned_tools)
+            and all(shutil.which(executable) is None for executable in _CONTAINER_TOOL_EXECUTABLES)
+        ):
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    "deployment spec describes container artifacts but no common container "
+                    "tool ('podman', 'docker', 'buildah', or 'nerdctl') is on PATH; "
+                    "install or configure one in the user/CI environment before claiming "
+                    "container verification",
+                )
+            )
+        for label, executable in mentioned_tools:
             if uses_container_alternative and label in {"docker", "podman"}:
                 continue
             if shutil.which(executable) is None:

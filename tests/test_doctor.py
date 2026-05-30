@@ -155,6 +155,43 @@ def test_doctor_does_not_match_deployment_tool_names_inside_words(
     assert not any("deployment spec mentions kind" in message for message in messages)
 
 
+def test_doctor_reports_generic_container_spec_without_common_tool(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Build an OCI-compatible container image for local verification.\n"
+        "Production deployment is out of scope.\n"
+    )
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+
+    messages = _messages(tmp_path)
+
+    assert any("describes container artifacts but no common container tool" in m for m in messages)
+
+
+def test_doctor_allows_generic_container_spec_when_common_tool_exists(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Build a containerized local runtime artifact.\n"
+        "Production deployment is out of scope.\n"
+    )
+    monkeypatch.setattr(
+        "devlab.doctor.shutil.which",
+        lambda name: "/usr/bin/buildah" if name == "buildah" else None,
+    )
+
+    messages = _messages(tmp_path)
+
+    assert not any("describes container artifacts" in m for m in messages)
+
+
 def test_doctor_reports_missing_deployment_tools(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / ".devlab/specs/deployment/README.md"
     path.parent.mkdir(parents=True)
