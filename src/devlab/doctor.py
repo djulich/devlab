@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 import shutil
 import string
 import tomllib
@@ -18,7 +19,7 @@ from devlab.workspace import Workspace, WorkspaceSnapshot
 KNOWN_TASK_DOMAINS = {DEFAULT_TASK_DOMAIN, "deployment"}
 DEPLOYMENT_SPEC_DIR = ".devlab/specs/deployment"
 DEPLOYMENT_PLACEHOLDER_SENTINEL = "<!-- devlab:placeholder -->"
-_DEPLOYMENT_TOOL_NAMES = {
+_DEPLOYMENT_TOOL_EXECUTABLES = {
     "podman": "podman",
     "docker": "docker",
     "docker compose": "docker",
@@ -29,17 +30,14 @@ _DEPLOYMENT_TOOL_NAMES = {
     "rpmlint": "rpmlint",
     "systemd-analyze": "systemd-analyze",
 }
-_PRODUCTION_BOUNDARY_PHRASES = (
-    "production deployment is out of scope",
-    "production is out of scope",
-    "production deployment: out of scope",
-    "production deployment is documentation-only",
-    "production deployment is documented-only",
-    "documentation-only",
-    "documented-only",
-    "future configuration",
-    "explicit future configuration",
-    "requires explicit",
+_PRODUCTION_CLAIM_RE = re.compile(
+    r"\b(?:deploy(?:ment|ing)?\s+to\s+production|production\s+deploy(?:ment|ing)?)\b"
+)
+_PRODUCTION_BOUNDARY_RE = re.compile(
+    r"\b(?:production(?:\s+deployment)?\s+(?:is\s+)?out\s+of\s+scope|"
+    r"production(?:\s+deployment)?\s+(?:is\s+)?(?:documentation|documented)-only|"
+    r"(?:documentation|documented)-only|"
+    r"future\s+(?:explicit\s+)?configuration|requires\s+explicit)\b"
 )
 
 _SUPPORTED_PLACEHOLDERS = {
@@ -213,8 +211,8 @@ def _check_deployment_spec(root: Path) -> list[DoctorProblem]:
     for path, text in active_specs:
         display_path = _display_path(path, root)
         lower_text = text.lower()
-        if "production" in lower_text and not any(
-            phrase in lower_text for phrase in _PRODUCTION_BOUNDARY_PHRASES
+        if _PRODUCTION_CLAIM_RE.search(lower_text) and not _PRODUCTION_BOUNDARY_RE.search(
+            lower_text
         ):
             problems.append(
                 DoctorProblem(
@@ -251,24 +249,24 @@ def _check_deployment_spec(root: Path) -> list[DoctorProblem]:
 
 
 def _uses_container_runtime_alternative(lower_text: str) -> bool:
-    alternatives = (
-        "docker or podman",
-        "podman or docker",
-        "docker/podman",
-        "podman/docker",
-    )
-    return any(alternative in lower_text for alternative in alternatives)
+    pattern = r"\b(?:docker\s*(?:/|or)\s*podman|podman\s*(?:/|or)\s*docker)\b"
+    return bool(re.search(pattern, lower_text))
 
 
 def _mentioned_deployment_tools(lower_text: str) -> list[tuple[str, str]]:
     mentioned: list[tuple[str, str]] = []
     seen: set[str] = set()
-    sorted_tools = sorted(_DEPLOYMENT_TOOL_NAMES.items(), key=lambda item: -len(item[0]))
+    sorted_tools = sorted(_DEPLOYMENT_TOOL_EXECUTABLES.items(), key=lambda item: -len(item[0]))
     for label, executable in sorted_tools:
-        if label in lower_text and executable not in seen:
+        if _tool_label_mentioned(lower_text, label) and executable not in seen:
             mentioned.append((label, executable))
             seen.add(executable)
     return mentioned
+
+
+def _tool_label_mentioned(lower_text: str, label: str) -> bool:
+    pattern = re.escape(label).replace(r"\ ", r"\s+")
+    return bool(re.search(rf"(?<![a-z0-9-]){pattern}(?![a-z0-9-])", lower_text))
 
 
 def _check_project_knowledge(root: Path) -> list[DoctorProblem]:

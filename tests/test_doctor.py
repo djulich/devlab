@@ -139,6 +139,22 @@ def test_doctor_reports_empty_active_deployment_spec(tmp_path: Path) -> None:
     )
 
 
+def test_doctor_does_not_match_deployment_tool_names_inside_words(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Kindly document local verification steps for future configuration.\n"
+    )
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+
+    messages = _messages(tmp_path)
+
+    assert not any("deployment spec mentions kind" in message for message in messages)
+
+
 def test_doctor_reports_missing_deployment_tools(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / ".devlab/specs/deployment/README.md"
     path.parent.mkdir(parents=True)
@@ -192,6 +208,22 @@ def test_doctor_reports_docker_or_podman_when_neither_is_available(
     messages = _messages(tmp_path)
 
     assert any("Docker or Podman but neither 'docker' nor 'podman'" in m for m in messages)
+
+
+def test_doctor_does_not_warn_for_non_deployment_production_mentions(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Use production-like sample configuration for local validation.\n"
+    )
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: "/usr/bin/tool")
+
+    messages = _messages(tmp_path)
+
+    assert not any("mentions production without explicit" in message for message in messages)
 
 
 def test_doctor_reports_production_claim_without_boundary(tmp_path: Path, monkeypatch) -> None:
