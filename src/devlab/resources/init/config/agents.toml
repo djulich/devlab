@@ -10,6 +10,10 @@
 # Provider command templates may use these placeholders:
 # {role_name}, {provider}, {model}, {effort}, {system_prompt}, {session_prompt}
 #
+# When running sessions, DevLab records provider version info in session metadata
+# by trying `<command executable> --version`; set provider `version_command` to override
+# or to "" to skip discovery.
+#
 # See docs/agent-configuration.md in the DevLab repository for full reference.
 
 [defaults]

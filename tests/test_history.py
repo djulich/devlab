@@ -15,6 +15,7 @@ def _write_metadata(
     role_name: str = "developer",
     provider: str = "default",
     model: str = "test-model",
+    provider_version: str = "test-provider 1.0",
     return_code: int = 0,
     failure_kind: str = "none",
     duration_seconds: float | None = 42.5,
@@ -29,6 +30,7 @@ def _write_metadata(
         "role_name": role_name,
         "provider": provider,
         "model": model,
+        "provider_version": provider_version,
         "return_code": return_code,
         "failure_kind": failure_kind,
         "duration_seconds": duration_seconds,
@@ -51,6 +53,7 @@ class TestLoadSessionMetadata:
         assert entries[0].role_name == "developer"
         assert entries[0].task_id == "T0001"
         assert entries[0].duration_seconds == 42.5
+        assert entries[0].provider_version == "test-provider 1.0"
 
     def test_sorted_by_session_number(self, tmp_path: Path) -> None:
         _write_metadata(
@@ -69,6 +72,17 @@ class TestLoadSessionMetadata:
         entries = load_session_metadata(tmp_path)
 
         assert [e.role_name for e in entries] == ["architect", "planner", "reviewer"]
+
+    def test_loads_metadata_without_provider_version(self, tmp_path: Path) -> None:
+        path = _write_metadata(tmp_path, "20260529T120000_001_developer")
+        data = json.loads(path.read_text())
+        del data["provider_version"]
+        path.write_text(json.dumps(data))
+
+        entries = load_session_metadata(tmp_path)
+
+        assert len(entries) == 1
+        assert entries[0].provider_version == ""
 
     def test_skips_malformed_json(self, tmp_path: Path) -> None:
         log_dir = tmp_path / AGENT_LOG_DIR
@@ -97,6 +111,7 @@ class TestFormatHistory:
         assert "Session history:" in output
         assert "developer" in output
         assert "ok" in output
+        assert "test-provider 1.0" in output
         assert "T0001" in output
         assert "98.7s" in output
 
@@ -123,6 +138,7 @@ class TestFormatHistory:
         assert len(data) == 1
         assert data[0]["role_name"] == "developer"
         assert data[0]["task_id"] == "T0001"
+        assert data[0]["provider_version"] == "test-provider 1.0"
         assert data[0]["duration_seconds"] == 42.5
 
     def test_no_duration(self, tmp_path: Path) -> None:

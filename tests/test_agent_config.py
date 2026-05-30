@@ -161,6 +161,90 @@ def test_unknown_provider_raises_clear_error(tmp_path: Path) -> None:
         load_agent_configuration(tmp_path)
 
 
+def test_records_provider_version_from_configured_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "mock-agent run"
+        version_command = "mock-agent version"
+        """,
+    )
+
+    def fake_run(*args: Any, **kwargs: Any) -> object:
+        assert args[0] == ["mock-agent", "version"]
+
+        class Result:
+            returncode = 0
+            stdout = "mock-agent 1.2.3\n"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agent_config.subprocess.run", fake_run)
+
+    config = load_agent_configuration(tmp_path, discover_provider_versions=True)
+
+    assert config.resolved["developer"].provider_version == "mock-agent 1.2.3"
+    assert 'provider_version = "mock-agent 1.2.3"' in format_resolved_agent_config(
+        config.resolved["developer"]
+    )
+
+
+def test_provider_version_discovery_is_opt_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "mock-agent run"
+        version_command = "mock-agent version"
+        """,
+    )
+
+    def fake_run(*args: Any, **kwargs: Any) -> object:
+        raise AssertionError("version command should not run")
+
+    monkeypatch.setattr("devlab.agent_config.subprocess.run", fake_run)
+
+    config = load_agent_configuration(tmp_path)
+
+    assert config.resolved["developer"].provider_version == ""
+
+
+def test_provider_version_is_empty_when_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "missing-agent run"
+        """,
+    )
+
+    def fake_run(*args: Any, **kwargs: Any) -> object:
+        raise FileNotFoundError(args[0][0])
+
+    monkeypatch.setattr("devlab.agent_config.subprocess.run", fake_run)
+
+    config = load_agent_configuration(tmp_path, discover_provider_versions=True)
+
+    assert config.resolved["developer"].provider_version == ""
+
+
 def test_format_resolved_agent_config_does_not_include_prompts(tmp_path: Path) -> None:
     config = load_agent_configuration(tmp_path)
 
@@ -186,6 +270,7 @@ def test_provider_renders_configured_template_values(
         [providers.pi]
         command = "pi"
         args = ["--model", "{model}", "--effort", "{effort}"]
+        version_command = ""
         """,
     )
     calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []

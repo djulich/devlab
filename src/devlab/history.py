@@ -38,6 +38,8 @@ def format_history(root: Path, *, json_output: bool = False) -> str:
 
 def _format_entry(entry: SessionMetadata) -> str:
     provider_model = f"{entry.provider}/{entry.model}" if entry.provider else ""
+    if provider_model and entry.provider_version:
+        provider_model = f"{provider_model} ({entry.provider_version})"
     if entry.failure_kind == "none" and entry.return_code == 0:
         outcome = "ok"
     else:

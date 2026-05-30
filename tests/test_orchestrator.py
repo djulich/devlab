@@ -1170,9 +1170,17 @@ class TestRunLoop:
             "\n[providers.mock-cli]\n"
             'command = "mock-agent"\n'
             'args = ["--role", "{role_name}", "--model", "{model}"]\n'
+            'version_command = "mock-agent version"\n'
         )
 
         def fake_run(*args: Any, **kwargs: Any) -> object:
+            if args[0] == ["mock-agent", "version"]:
+                class VersionResult:
+                    returncode = 0
+                    stdout = "mock-agent 9.8.7\n"
+                    stderr = ""
+
+                return VersionResult()
             handoff = (
                 Path(kwargs["cwd"])
                 / ".devlab/session-artifacts/developer/handoff.md"
@@ -1202,6 +1210,9 @@ class TestRunLoop:
         assert 'role = "developer"' in text
         assert 'provider = "mock-cli"' in text
         assert 'model = "test-model"' in text
+        assert 'provider_version = "mock-agent 9.8.7"' in text
+        meta = _find_metadata(tmp_path)
+        assert meta["provider_version"] == "mock-agent 9.8.7"
         assert "system_prompt =" not in text
         assert "session_prompt =" not in text
         assert "stdout_log" in text

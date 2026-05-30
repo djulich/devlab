@@ -156,6 +156,7 @@ class SessionMetadata:
     failure_kind: str
     duration_seconds: float | None
     task_id: str
+    provider_version: str = ""
 
 
 def _build_session_context(
@@ -461,10 +462,12 @@ def _build_session_metadata(
 ) -> SessionMetadata:
     provider = ""
     model = ""
+    provider_version = ""
     if resolved_agent_configs is not None and ctx.role_name in resolved_agent_configs:
         config = resolved_agent_configs[ctx.role_name]
         provider = config.provider
         model = config.model
+        provider_version = config.provider_version
     return SessionMetadata(
         invocation_id=ctx.invocation_id,
         session_number=ctx.session_number,
@@ -475,6 +478,7 @@ def _build_session_metadata(
         failure_kind=agent_result.failure_kind,
         duration_seconds=agent_result.duration_seconds,
         task_id=task_id or "",
+        provider_version=provider_version,
     )
 
 
@@ -525,6 +529,7 @@ def run_loop(
             model=model,
             effort=effort,
             dangerous_skip_permissions=dangerous_skip_permissions,
+            discover_provider_versions=True,
         )
         agent_providers = agent_configuration.providers
         role_agent_providers = agent_configuration.role_providers

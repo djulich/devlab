@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import shlex
+import subprocess
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -19,6 +20,7 @@ class ResolvedAgentConfig:
     provider: str
     model: str
     effort: str
+    provider_version: str
     timeout_seconds: int | None
     command: tuple[str, ...]
     uses_stdin: bool
@@ -38,6 +40,7 @@ def load_agent_configuration(
     model: str | None = None,
     effort: str | None = None,
     dangerous_skip_permissions: bool = False,
+    discover_provider_versions: bool = False,
 ) -> AgentConfiguration:
     data = _load_config(root)
     if data is None:
@@ -90,6 +93,10 @@ def load_agent_configuration(
             provider_table.get("stdin_template"), f"providers.{provider_name}.stdin_template"
         )
         command = _string(provider_table.get("command"), f"providers.{provider_name}.command")
+        provider_version = (
+            _provider_version(provider_table, command, template_values)
+            if discover_provider_versions else ""
+        )
         cli_provider = CliAgentProvider.from_command(
             command,
             extra_args=extra_args,
@@ -105,6 +112,7 @@ def load_agent_configuration(
             provider=provider_name,
             model=template_values["model"],
             effort=template_values["effort"],
+            provider_version=provider_version,
             timeout_seconds=timeout_seconds,
             command=tuple(_render_command(command, extra_args, template_values)),
             uses_stdin=stdin_template is not None,
@@ -121,6 +129,8 @@ def format_resolved_agent_config(config: ResolvedAgentConfig) -> str:
         f'effort = "{config.effort}"',
         f"uses_stdin = {_toml_bool(config.uses_stdin)}",
     ]
+    if config.provider_version:
+        lines.append(f'provider_version = {_toml_string(config.provider_version)}')
     if config.timeout_seconds is not None:
         lines.append(f"timeout_seconds = {config.timeout_seconds}")
     lines.append("command = [" + ", ".join(_toml_string(part) for part in config.command) + "]")
@@ -151,6 +161,37 @@ def _fallback_config() -> dict[str, Any]:
 
 def _render_command(command: str, args: list[str], values: Mapping[str, str]) -> list[str]:
     return [*shlex.split(command), *(arg.format_map(values) for arg in args)]
+
+
+def _provider_version(
+    provider_table: dict[str, Any], command: str, values: Mapping[str, str]
+) -> str:
+    configured = _optional_string(
+        provider_table.get("version_command"), "providers.<provider>.version_command"
+    )
+    if configured == "":
+        return ""
+    if configured is None:
+        command_parts = shlex.split(command)
+        if not command_parts:
+            return ""
+        version_command = [command_parts[0], "--version"]
+    else:
+        version_command = [part.format_map(values) for part in shlex.split(configured)]
+    try:
+        result = subprocess.run(
+            version_command,
+            text=True,
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    output = (result.stdout.strip() or result.stderr.strip()).splitlines()
+    return output[0][:500] if output else ""
 
 
 def _table(value: object, name: str) -> dict[str, Any]:

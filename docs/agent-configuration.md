@@ -65,6 +65,7 @@ Fields:
 - `args`: fixed or templated command arguments before prompt arguments.
 - `prompt_args`: arguments used to pass prompts on the command line.
 - `stdin_template`: optional template used to send prompts through standard input instead of command-line arguments.
+- `version_command`: optional provider version command used when recording session metadata during `devlab run`. If omitted, DevLab tries `<provider-executable> --version`; set it to `""` to skip version discovery.
 - `timeout_seconds`: optional role/session command timeout.
 
 Supported placeholders:

@@ -17,12 +17,11 @@ Open work:
 
 ## 2. Agent Invocation Observability and Error Handling
 
-Status: **initial implementation complete**. CLI providers now capture per-session stdout/stderr, convert timeout/missing executable/nonzero exit/provider errors into structured `AgentResult` values, and the orchestrator includes log paths and invocation diagnostics in `SessionError` / `RunResult` failures. Starter config and docs prefer stdin prompt transport where supported. DevLab persists per-session non-prompt invocation metadata such as role, provider, model, outcome, task id, and duration, and exposes it through `devlab history`.
+Status: **initial implementation complete**. CLI providers now capture per-session stdout/stderr, convert timeout/missing executable/nonzero exit/provider errors into structured `AgentResult` values, and the orchestrator includes log paths and invocation diagnostics in `SessionError` / `RunResult` failures. Starter config and docs prefer stdin prompt transport where supported. DevLab persists per-session non-prompt invocation metadata such as role, provider, model, provider version when cheaply available, outcome, task id, and duration, and exposes it through `devlab history`.
 
 Open work:
 
 - Exercise diagnostics in live-agent runs and refine message wording if users need faster failure triage.
-- Decide whether provider-specific version info is useful enough to persist with session metadata.
 
 ## 3. DevLab Workflow Evaluations
 
