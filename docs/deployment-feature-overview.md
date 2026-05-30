@@ -289,11 +289,14 @@ This verifies real platform behavior, permissions, networking, and image pulls. 
 
 DevLab should create deployment readiness and project-owned deployment entry points. For local and disposable/staging environments, DevLab may also execute verification commands during the workflow. It should not require the target system to remain deployed after the workflow finishes.
 
+DevLab may invoke target-owned verification commands that use deployment tools such as Podman, Docker, kind, kubectl, rpmbuild, or systemd-analyze. If required tools are missing, DevLab reports them as user/CI prerequisites and leaves the related deployment claim unverified; it does not install host tools automatically.
+
 DevLab should not, by default:
 
 - deploy to production
 - use production credentials
 - create cloud resources implicitly
+- install host deployment tools
 - mutate shared infrastructure
 - push images to production registries unless explicitly configured
 

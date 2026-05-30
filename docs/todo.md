@@ -137,6 +137,7 @@ Constraints:
 - `devlab run` does not need to leave the target system running, but claimed deployment artifacts must be generatable and testable during the workflow.
 - Finished projects should expose project-owned deployment commands, such as Make targets or scripts, for local and disposable/staging environments.
 - Test infrastructure use must be explicit, allowlisted, isolated, and aggressively cleaned up.
+- DevLab may invoke target-owned deployment verification commands, but must not install missing host tools; missing tools keep the related deployment claim unverified until the user/CI environment provides them.
 - Deployment implementation remains task-based through the normal role workflow.
 
 Open work:
@@ -144,8 +145,8 @@ Open work:
 - Add deterministic workflow evaluations proving deployment-domain tasks produce project-owned deployment artifacts, commands, docs, and verification evidence.
 - Add at least one opt-in live-agent deployment evaluation, likely starting with container runtime or Compose before Kubernetes/kind or RPM/systemd.
 - Decide whether profile validation commands need structured first-class modeling, or whether prompt-guided project-owned commands are sufficient initially.
-- Add non-mutating `doctor`/diagnostic checks for deployment specs, unknown task domains, and optionally deployment tool availability.
-- Expand verification from structural checks toward safe static/artifact validation where host tools are available.
+- Add non-mutating `doctor`/diagnostic checks for deployment specs, unknown task domains, and deployment tool availability.
+- Expand verification from structural checks toward safe static/artifact validation where host tools are available, reporting missing tools without installing them.
 
 ## 12. Automatic Version Control
 
