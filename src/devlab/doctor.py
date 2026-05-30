@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import shutil
 import string
 import tomllib
 from pathlib import Path
@@ -11,8 +12,35 @@ from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.knowledge import ADR_DIR, ADR_FILENAME_RE, CONTEXT_MAP, context_paths_from_map
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
 from devlab.prompt_context import RolePromptContext, build_prompt_context_report
-from devlab.task_tracker import FileTaskTracker
+from devlab.task_tracker import DEFAULT_TASK_DOMAIN, FileTaskTracker
 from devlab.workspace import Workspace, WorkspaceSnapshot
+
+KNOWN_TASK_DOMAINS = {DEFAULT_TASK_DOMAIN, "deployment"}
+DEPLOYMENT_SPEC_DIR = ".devlab/specs/deployment"
+DEPLOYMENT_PLACEHOLDER_SENTINEL = "<!-- devlab:placeholder -->"
+_DEPLOYMENT_TOOL_NAMES = {
+    "podman": "podman",
+    "docker": "docker",
+    "docker compose": "docker",
+    "kind": "kind",
+    "kubectl": "kubectl",
+    "kubeconform": "kubeconform",
+    "rpmbuild": "rpmbuild",
+    "rpmlint": "rpmlint",
+    "systemd-analyze": "systemd-analyze",
+}
+_PRODUCTION_BOUNDARY_PHRASES = (
+    "production deployment is out of scope",
+    "production is out of scope",
+    "production deployment: out of scope",
+    "production deployment is documentation-only",
+    "production deployment is documented-only",
+    "documentation-only",
+    "documented-only",
+    "future configuration",
+    "explicit future configuration",
+    "requires explicit",
+)
 
 _SUPPORTED_PLACEHOLDERS = {
     "role_name",
@@ -37,6 +65,8 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     if not agent_problems:
         problems.extend(_check_prompt_context_sizes(Workspace(root).snapshot))
     problems.extend(_check_milestones(root))
+    problems.extend(_check_task_domains(root))
+    problems.extend(_check_deployment_spec(root))
     problems.extend(_check_project_knowledge(root))
     return problems
 
@@ -129,6 +159,116 @@ def _prompt_context_problem(role: RolePromptContext) -> DoctorProblem:
         f"{role.role_name} prompt context warning: ~{total} tokens exceeds "
         f"warning threshold {threshold}",
     )
+
+
+def _check_task_domains(root: Path) -> list[DoctorProblem]:
+    problems: list[DoctorProblem] = []
+    for task in FileTaskTracker(root).list_tasks():
+        if task.domain not in KNOWN_TASK_DOMAINS:
+            problems.append(
+                DoctorProblem(
+                    _display_path(task.path, root),
+                    f"unknown task domain {task.domain!r}; no built-in domain prompt "
+                    "overlay will be used",
+                )
+            )
+    return problems
+
+
+def _check_deployment_spec(root: Path) -> list[DoctorProblem]:
+    spec_root = root / DEPLOYMENT_SPEC_DIR
+    if not spec_root.exists():
+        return []
+    spec_files = sorted(spec_root.rglob("*.md"))
+    if not spec_files:
+        return [
+            DoctorProblem(
+                DEPLOYMENT_SPEC_DIR,
+                "deployment spec directory has no Markdown files",
+            )
+        ]
+
+    active_specs: list[tuple[Path, str]] = []
+    empty_specs: list[Path] = []
+    for path in spec_files:
+        text = path.read_text()
+        if DEPLOYMENT_PLACEHOLDER_SENTINEL in text:
+            continue
+        if text.strip():
+            active_specs.append((path, text))
+        else:
+            empty_specs.append(path)
+
+    if not active_specs:
+        return [
+            DoctorProblem(
+                _display_path(path, root),
+                "deployment spec is empty; keep the placeholder template or describe "
+                "deployment requirements",
+            )
+            for path in empty_specs
+        ]
+
+    problems: list[DoctorProblem] = []
+    for path, text in active_specs:
+        display_path = _display_path(path, root)
+        lower_text = text.lower()
+        if "production" in lower_text and not any(
+            phrase in lower_text for phrase in _PRODUCTION_BOUNDARY_PHRASES
+        ):
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    "deployment spec mentions production without explicit out-of-scope, "
+                    "documentation-only, or future-configuration boundary",
+                )
+            )
+        uses_container_alternative = _uses_container_runtime_alternative(lower_text)
+        if uses_container_alternative and all(
+            shutil.which(executable) is None for executable in ("docker", "podman")
+        ):
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    "deployment spec mentions Docker or Podman but neither 'docker' nor "
+                    "'podman' is on PATH; install or configure one in the user/CI "
+                    "environment before claiming verification",
+                )
+            )
+        for label, executable in _mentioned_deployment_tools(lower_text):
+            if uses_container_alternative and label in {"docker", "podman"}:
+                continue
+            if shutil.which(executable) is None:
+                problems.append(
+                    DoctorProblem(
+                        display_path,
+                        f"deployment spec mentions {label} but {executable!r} is not on PATH; "
+                        "install or configure it in the user/CI environment before "
+                        "claiming verification",
+                    )
+                )
+    return problems
+
+
+def _uses_container_runtime_alternative(lower_text: str) -> bool:
+    alternatives = (
+        "docker or podman",
+        "podman or docker",
+        "docker/podman",
+        "podman/docker",
+    )
+    return any(alternative in lower_text for alternative in alternatives)
+
+
+def _mentioned_deployment_tools(lower_text: str) -> list[tuple[str, str]]:
+    mentioned: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    sorted_tools = sorted(_DEPLOYMENT_TOOL_NAMES.items(), key=lambda item: -len(item[0]))
+    for label, executable in sorted_tools:
+        if label in lower_text and executable not in seen:
+            mentioned.append((label, executable))
+            seen.add(executable)
+    return mentioned
 
 
 def _check_project_knowledge(root: Path) -> list[DoctorProblem]:

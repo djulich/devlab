@@ -98,6 +98,130 @@ def test_doctor_prompt_context_check_does_not_sync_milestone_files(tmp_path: Pat
     assert not (tmp_path / ".devlab/milestones/M1.toml").exists()
 
 
+def test_doctor_reports_unknown_task_domain(tmp_path: Path) -> None:
+    _write_task(tmp_path, "T0001", milestone="M1", domain="infra")
+
+    messages = _messages(tmp_path)
+
+    assert any("unknown task domain 'infra'" in message for message in messages)
+
+
+def test_doctor_allows_known_task_domains(tmp_path: Path) -> None:
+    _write_default_profile(tmp_path)
+    _write_task(tmp_path, "T0001", milestone="M1", domain="general")
+    _write_task(tmp_path, "T0002", milestone="M1", domain="deployment")
+    _write_milestone(tmp_path, "M1", task_ids=["T0001", "T0002"])
+
+    messages = _messages(tmp_path)
+
+    assert not any("unknown task domain" in message for message in messages)
+
+
+def test_doctor_ignores_placeholder_deployment_spec_tools(tmp_path: Path, monkeypatch) -> None:
+    init_workspace(tmp_path)
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+
+    messages = _messages(tmp_path)
+
+    assert not any("deployment spec mentions" in message for message in messages)
+
+
+def test_doctor_reports_empty_active_deployment_spec(tmp_path: Path) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("\n")
+
+    messages = _messages(tmp_path)
+
+    assert any(
+        message.startswith("deployment spec is empty; keep the placeholder template")
+        for message in messages
+    )
+
+
+def test_doctor_reports_missing_deployment_tools(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Build a container image with Podman and verify Kubernetes manifests with kind.\n"
+        "Production deployment is out of scope.\n"
+    )
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+
+    messages = _messages(tmp_path)
+
+    assert any(
+        "deployment spec mentions podman but 'podman' is not on PATH" in m
+        for m in messages
+    )
+    assert any("deployment spec mentions kind but 'kind' is not on PATH" in m for m in messages)
+
+
+def test_doctor_allows_docker_or_podman_when_one_is_available(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Build a local image with Docker or Podman.\n"
+        "Production deployment is out of scope.\n"
+    )
+    monkeypatch.setattr(
+        "devlab.doctor.shutil.which",
+        lambda name: "/usr/bin/podman" if name == "podman" else None,
+    )
+
+    messages = _messages(tmp_path)
+
+    assert not any("'docker' is not on PATH" in message for message in messages)
+    assert not any("Docker or Podman but neither" in message for message in messages)
+
+
+def test_doctor_reports_docker_or_podman_when_neither_is_available(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Build a local image with Docker or Podman.\n"
+        "Production deployment is out of scope.\n"
+    )
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+
+    messages = _messages(tmp_path)
+
+    assert any("Docker or Podman but neither 'docker' nor 'podman'" in m for m in messages)
+
+
+def test_doctor_reports_production_claim_without_boundary(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Deploy to production with existing automation.\n"
+    )
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: "/usr/bin/tool")
+
+    messages = _messages(tmp_path)
+
+    assert any("mentions production without explicit" in message for message in messages)
+
+
+def test_doctor_allows_production_boundary_language(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "Provide local Podman verification. Production deployment is out of scope.\n"
+    )
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: "/usr/bin/tool")
+
+    messages = _messages(tmp_path)
+
+    assert not any("mentions production without explicit" in message for message in messages)
+
+
 def test_doctor_reports_project_knowledge_problems(tmp_path: Path) -> None:
     (tmp_path / "CONTEXT-MAP.md").write_text(
         "# Context Map\n\n- [Missing](./src/missing/CONTEXT.md)\n"
@@ -269,10 +393,12 @@ def _write_task(
     *,
     milestone: str,
     status: str = "open",
+    domain: str | None = None,
     addresses_findings: list[str] | None = None,
 ) -> None:
     addresses_findings = addresses_findings or []
     findings_text = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
+    domain_text = f'domain = "{domain}"\n' if domain is not None else ""
     path = root / ".devlab/tasks" / f"{task_id}_task.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -281,6 +407,7 @@ def _write_task(
         f'title = "{task_id}"\n'
         f'status = "{status}"\n'
         f'milestone = "{milestone}"\n'
+        f"{domain_text}"
         "depends_on = []\n"
         f"addresses_findings = [{findings_text}]\n"
         "+++\n\n"
