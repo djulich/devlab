@@ -142,6 +142,8 @@ The orchestrator changes these statuses after validating the relevant session ou
 
 Reporting paths are intentionally non-mutating. `devlab status`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. Explicit mutation belongs to workflow commands such as `devlab plan` and `devlab run`, or to future commands whose purpose is repair/sync.
 
+`devlab plan` is an idempotent planning preflight: it creates missing design/project planning state, stops before implementation roles, and does nothing when the workspace is already planned unless the user explicitly passes `--revise`. This stop point lets the user inspect and edit generated plans before implementation begins; catching design drift early matters because later implementation sessions will optimize for the written plan, not unstated intent. `devlab run` is the full continuation command: it reads durable state from the workspace and continues from wherever previous `plan` or `run` invocations stopped.
+
 ### Human review remains possible
 
 Even though DevLab aims at autonomous development, it is designed to remain inspectable by humans. A human should be able to read the repo and understand:

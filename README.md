@@ -72,7 +72,9 @@ uv run devlab plan --root /path/to/target-project --auto
 uv run devlab doctor --root /path/to/target-project
 ```
 
-Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session. It auto-detects whether to start with planning or continue implementation:
+`devlab plan` is safe to repeat: if design and project planning state already exists, it stops without editing plans. This gives you a review point before implementation: read and edit the generated design and project plans, because implementation work will follow those plans and a design that drifts from your intended specification can waste later agent sessions. Use `devlab plan --revise` when you explicitly want architect and planner sessions to review and update existing plans.
+
+Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session. It catches up from the current durable workflow state, so re-running it continues where the last `devlab plan` or `devlab run` stopped:
 
 ```bash
 uv run devlab run --root /path/to/target-project --auto --max-sessions 20
@@ -89,8 +91,8 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 ## CLI commands
 
 - `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
-- `devlab plan [--root PATH] [--auto] [--revise] [...]` — run planning sessions and stop before implementation.
-- `devlab run [--root PATH] [--auto] [--max-sessions N] [...]` — run the workflow loop from the current state.
+- `devlab plan [--root PATH] [--auto] [--revise] [...]` — run missing planning sessions and stop before implementation; repeat runs are no-ops unless `--revise` is used.
+- `devlab run [--root PATH] [--auto] [--max-sessions N] [...]` — run the workflow loop from the current durable state, continuing where prior runs stopped.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
