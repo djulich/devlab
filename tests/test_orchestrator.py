@@ -348,6 +348,31 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment / Planner" in prompt
 
+    def test_planner_system_prompt_activates_from_additional_deployment_spec_file(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        deployment_dir = tmp_path / ".devlab/specs/deployment"
+        deployment_dir.mkdir(parents=True)
+        (deployment_dir / "README.md").write_text(
+            "<!-- devlab:placeholder -->\n"
+            "# Deployment Specification\n\n"
+            "Describe how this project should become deployment-ready.\n"
+        )
+        (deployment_dir / "compose.md").write_text(
+            "# Compose Deployment\n\nSupport local Compose verification.\n"
+        )
+        role = ROLES["planner"]
+
+        prompt = build_system_prompt(
+            tmp_path,
+            role,
+            snapshot=Workspace(tmp_path).snapshot,
+            role_name="planner",
+        )
+
+        assert "Domain: Deployment / Planner" in prompt
+
     def test_planner_system_prompt_ignores_placeholder_deployment_spec(
         self, tmp_path: Path
     ) -> None:

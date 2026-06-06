@@ -5,7 +5,7 @@
 
 # Deployment Specification
 
-Describe how this project should become deployment-ready when deployment support is in scope. DevLab should generate and verify deployment artifacts, but it should not deploy to production by default.
+Describe how this project should become deployment-ready when deployment support is in scope. DevLab should generate and verify deployment artifacts, but it should not deploy to production by default. For larger projects, keep this as an overview and add more Markdown files in this directory; DevLab reads all `*.md` files under `.devlab/specs/deployment/`.
 
 ## Deployment Targets
 

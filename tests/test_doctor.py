@@ -192,6 +192,25 @@ def test_doctor_allows_generic_container_spec_when_common_tool_exists(
     assert not any("describes container artifacts" in m for m in messages)
 
 
+def test_doctor_checks_additional_deployment_spec_files(tmp_path: Path, monkeypatch) -> None:
+    spec_dir = tmp_path / ".devlab/specs/deployment"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "README.md").write_text(
+        "<!-- devlab:placeholder -->\n"
+        "# Deployment Specification\n\n"
+        "Describe deployment requirements.\n"
+    )
+    (spec_dir / "compose.md").write_text(
+        "# Compose Deployment\n\nVerify Compose artifacts with docker compose.\n"
+        "Production deployment is out of scope.\n"
+    )
+    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+
+    messages = _messages(tmp_path)
+
+    assert any("deployment spec mentions docker compose" in m for m in messages)
+
+
 def test_doctor_reports_missing_deployment_tools(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / ".devlab/specs/deployment/README.md"
     path.parent.mkdir(parents=True)

@@ -45,11 +45,13 @@ uv run devlab init --root /path/to/target-project
 
 `devlab init` initializes Git when needed and creates an initial commit containing all non-ignored files. In existing directories, add secrets, local configuration, caches, and generated artifacts to `.gitignore` before running it.
 
-Edit the target project's system spec:
+Edit the target project's system spec. The starter file is:
 
 ```text
 /path/to/target-project/.devlab/specs/system/README.md
 ```
+
+For larger projects, split the system or deployment specification across additional Markdown files under `.devlab/specs/system/` or `.devlab/specs/deployment/`; DevLab reads all `*.md` files in those directories.
 
 Configure the target project's agent command:
 
