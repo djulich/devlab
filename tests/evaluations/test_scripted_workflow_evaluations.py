@@ -31,6 +31,7 @@ from tests.evaluations.checks import (
     command_check,
     command_fails_check,
     file_contains_check,
+    optional_make_target_check,
 )
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
@@ -244,6 +245,7 @@ def test_scripted_deployable_web_api_evaluation(tmp_path: Path) -> None:
         checks=(
             stateful_todo_api_check,
             deployment_artifacts_check,
+            optional_make_target_check("deployment artifact command", "deployment-check"),
             file_contains_check(
                 "deployment task domain",
                 ".devlab/tasks/T0002_add-container-deployment-artifacts.md",
@@ -265,6 +267,65 @@ def test_scripted_deployable_web_api_evaluation(tmp_path: Path) -> None:
         scenario,
         expected_artifact="Containerfile",
     )
+
+
+def test_optional_make_target_check_is_skipped_unless_enabled(tmp_path: Path) -> None:
+    check = optional_make_target_check("deployment artifact command", "deployment-check")
+
+    result = check(tmp_path)
+
+    assert result.passed is True
+    assert "skipped" in result.message
+    assert "DEVLAB_EVAL_DEPLOYMENT_TOOLS=1" in result.message
+
+
+def test_optional_make_target_check_reports_missing_make_as_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_EVAL_DEPLOYMENT_TOOLS", "1")
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda _name: None)
+    check = optional_make_target_check("deployment artifact command", "deployment-check")
+
+    result = check(tmp_path)
+
+    assert result.passed is True
+    assert "unverified" in result.message
+    assert "make" in result.message
+
+
+def test_optional_make_target_check_runs_enabled_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_EVAL_DEPLOYMENT_TOOLS", "1")
+    (tmp_path / "Makefile").write_text(
+        ".PHONY: deployment-check\n"
+        "deployment-check:\n"
+        "\ttest -f Containerfile\n"
+    )
+    (tmp_path / "Containerfile").write_text("FROM scratch\n")
+    check = optional_make_target_check("deployment artifact command", "deployment-check")
+
+    result = check(tmp_path)
+
+    assert result.passed is True
+    assert result.message == ""
+
+
+def test_optional_make_target_check_fails_enabled_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_EVAL_DEPLOYMENT_TOOLS", "1")
+    (tmp_path / "Makefile").write_text(
+        ".PHONY: deployment-check\n"
+        "deployment-check:\n"
+        "\ttest -f Missingfile\n"
+    )
+    check = optional_make_target_check("deployment artifact command", "deployment-check")
+
+    result = check(tmp_path)
+
+    assert result.passed is False
+    assert "make deployment-check exited" in result.message
 
 
 def test_static_frontend_check_accepts_served_static_frontend_docs(tmp_path: Path) -> None:

@@ -22,6 +22,14 @@ Current scenarios cover:
 - static frontend todo app happy path with vanilla HTML/CSS/JS
 - deployable web API happy path with local container artifacts
 
+The normal scripted suite uses structural checks as hard gates. Deployment scenarios may also include optional tool-backed checks, such as running a target-owned `make deployment-check`, but these are skipped unless explicitly enabled:
+
+```bash
+DEVLAB_EVAL_DEPLOYMENT_TOOLS=1 uv run pytest tests/evaluations
+```
+
+When enabled, missing host tools such as `make` are reported as skipped/unverified rather than installed. Target-owned commands that do run must pass, or the evaluation fails.
+
 The scripted provider writes realistic role artifacts without using LLM tokens. Each scenario records diagnostics in the temporary target repository:
 
 ```text
@@ -93,6 +101,7 @@ uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_dep
 
 Useful environment variables:
 
+- `DEVLAB_EVAL_DEPLOYMENT_TOOLS=1`: enable optional tool-backed deployment checks, such as target-owned Make targets. Missing host tools are skipped/unverified, not installed.
 - `DEVLAB_LIVE_EVALS=1`: enable live evaluations.
 - `DEVLAB_LIVE_AGENTS_TOML`: copy this agent config into the temporary target repo.
 - `DEVLAB_LIVE_PROVIDER`: optional provider override passed to `run_loop`.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
+import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -69,5 +71,46 @@ def file_contains_check(name: str, relative_path: str, expected_text: str) -> Bl
         text = path.read_text()
         passed = expected_text in text
         return CheckResult(name, passed, "" if passed else f"{expected_text!r} not found")
+
+    return check
+
+
+def optional_make_target_check(
+    name: str,
+    target: str,
+    *,
+    enable_env: str = "DEVLAB_EVAL_DEPLOYMENT_TOOLS",
+    timeout: int = 10,
+) -> BlackBoxCheck:
+    """Run a target-owned Make target only when explicitly enabled.
+
+    Missing host tools are reported as skipped/unverified successful checks so the
+    normal suite stays structural and never installs prerequisites.
+    """
+
+    def check(root: Path) -> CheckResult:
+        if os.environ.get(enable_env) != "1":
+            return CheckResult(name, True, f"skipped: set {enable_env}=1 to run make {target}")
+        if shutil.which("make") is None:
+            return CheckResult(name, True, "skipped: 'make' is not on PATH; unverified")
+        if not (root / "Makefile").exists():
+            return CheckResult(name, False, "missing Makefile")
+        result = subprocess.run(
+            ["make", target],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        passed = result.returncode == 0
+        return CheckResult(
+            name,
+            passed,
+            ""
+            if passed
+            else f"make {target} exited {result.returncode}; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
 
     return check

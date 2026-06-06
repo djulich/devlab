@@ -47,6 +47,8 @@ Test coverage:
 
 ## Slice 2: Safe static/artifact validation in evaluations
 
+Status: **complete**. Scripted deployment evaluations now include an optional `make deployment-check` check behind `DEVLAB_EVAL_DEPLOYMENT_TOOLS=1`. The normal suite remains structural-only; missing `make` is reported as skipped/unverified and DevLab does not install host tools. The exact `make deployment-check` name is an evaluation contract for this scenario, not a universal target-project command name.
+
 Goal: expand evaluation checks beyond file presence where safe host tools are available, without making those tools mandatory for the normal suite.
 
 Likely files:
