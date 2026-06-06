@@ -261,6 +261,62 @@ def write_static_frontend(root: Path) -> None:
     )
 
 
+def write_compose_deployment_artifacts(root: Path) -> None:
+    (root / "compose.yaml").write_text(
+        "services:\n"
+        "  todo-api:\n"
+        "    build:\n"
+        "      context: .\n"
+        "      dockerfile: Containerfile\n"
+        "    image: ${IMAGE:-todo-api:local}\n"
+        "    ports:\n"
+        "      - \"${PORT:-8000}:8000\"\n"
+        "    environment:\n"
+        "      TODO_ENV: local\n"
+    )
+    (root / ".env.example").write_text("IMAGE=todo-api:local\nPORT=8000\n")
+    scripts_dir = root / "scripts"
+    scripts_dir.mkdir(exist_ok=True)
+    (scripts_dir / "smoke-test.sh").write_text(
+        "#!/usr/bin/env sh\n"
+        "set -eu\n"
+        "BASE_URL=${BASE_URL:-http://127.0.0.1:${PORT:-8000}}\n"
+        "python - <<'PY'\n"
+        "import os, urllib.request\n"
+        "base = os.environ.get('BASE_URL', 'http://127.0.0.1:8000')\n"
+        "with urllib.request.urlopen(base + '/health', timeout=2) as response:\n"
+        "    body = response.read().decode()\n"
+        "assert 'ok' in body\n"
+        "PY\n"
+    )
+    makefile = root / "Makefile"
+    makefile.write_text(
+        makefile.read_text()
+        + "\n"
+        + ".PHONY: compose-check deploy-local undeploy-local\n"
+        + "COMPOSE ?= docker compose\n\n"
+        + "compose-check:\n"
+        + "\ttest -f compose.yaml\n"
+        + "\ttest -f .env.example\n"
+        + "\ttest -x scripts/smoke-test.sh || test -f scripts/smoke-test.sh\n\n"
+        + "deploy-local:\n"
+        + "\t$(COMPOSE) --env-file .env.example up --build -d\n\n"
+        + "undeploy-local:\n"
+        + "\t$(COMPOSE) --env-file .env.example down --remove-orphans\n"
+    )
+    readme = root / "README.md"
+    readme.write_text(
+        readme.read_text()
+        + "\n\n"
+        + "## Compose deployment\n\n"
+        + "Copy `.env.example` to `.env` if local overrides are needed. Validate "
+        + "Compose deployment artifacts with `make compose-check`. Start the local "
+        + "Compose deployment with `make deploy-local`, smoke-test it with "
+        + "`scripts/smoke-test.sh`, and tear it down with `make undeploy-local`. "
+        + "Production deployment is out of scope.\n"
+    )
+
+
 def write_container_deployment_artifacts(root: Path) -> None:
     (root / "Containerfile").write_text(
         "FROM python:3.12-slim\n"

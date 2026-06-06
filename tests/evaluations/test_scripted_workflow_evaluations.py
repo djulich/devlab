@@ -31,6 +31,7 @@ from tests.evaluations.checks import (
     command_check,
     command_fails_check,
     file_contains_check,
+    optional_docker_compose_config_check,
     optional_make_target_check,
 )
 from tests.evaluations.harness import (
@@ -41,10 +42,12 @@ from tests.evaluations.harness import (
 )
 from tests.evaluations.scripted_agents import (
     CalculatorScriptedAgent,
+    ComposeDeploymentScriptedAgent,
     DeploymentWebApiScriptedAgent,
     HttpApiScriptedAgent,
     StatefulWebApiScriptedAgent,
     StaticFrontendScriptedAgent,
+    compose_deployment_artifacts_check,
     deployment_artifacts_check,
     stateful_todo_api_check,
     static_frontend_check,
@@ -326,6 +329,100 @@ def test_optional_make_target_check_fails_enabled_target(
 
     assert result.passed is False
     assert "make deployment-check exited" in result.message
+
+
+def test_scripted_compose_deployment_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="compose-deployment-happy-path",
+        title="Compose deployment happy path",
+        system_spec=(
+            "Build a small Python JSON HTTP API for todo items and include "
+            "project-owned Docker Compose deployment artifacts."
+        ),
+        deployment_spec=(
+            "Deployment target: local Docker Compose deployment for the todo API. "
+            "Provide compose.yaml, .env.example, Makefile targets named exactly "
+            "compose-check, deploy-local, and undeploy-local, a scripts/smoke-test.sh "
+            "smoke test, and README deployment instructions. Do not deploy to production."
+        ),
+        max_sessions=12,
+        scripted_agent=ComposeDeploymentScriptedAgent(),
+        checks=(
+            stateful_todo_api_check,
+            compose_deployment_artifacts_check,
+            optional_make_target_check("compose artifact command", "compose-check"),
+            optional_docker_compose_config_check(),
+            file_contains_check(
+                "deployment task domain",
+                ".devlab/tasks/T0002_add-compose-deployment-artifacts.md",
+                "domain = \"deployment\"",
+            ),
+        ),
+        expected_roles=(
+            "architect", "planner", "developer", "reviewer", "developer", "reviewer",
+            "integrator", "architect",
+        ),
+        expected_sessions=8,
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(
+        tmp_path,
+        diagnostics,
+        scenario,
+        expected_artifact="compose.yaml",
+    )
+
+
+def test_compose_deployment_check_accepts_docs_deployment_markdown(tmp_path: Path) -> None:
+    (tmp_path / "compose.yaml").write_text(
+        "services:\n  todo-api:\n    build: .\n    ports:\n      - '8000:8000'\n"
+    )
+    (tmp_path / ".env.example").write_text("IMAGE=todo-api:local\nPORT=8000\n")
+    (tmp_path / "Makefile").write_text(
+        "compose-check:\n\ttest -f compose.yaml\n"
+        "deploy-local:\n\tdocker compose up -d\n"
+        "undeploy-local:\n\tdocker compose down\n"
+    )
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "smoke-test.sh").write_text("curl /health\n")
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "deployment.md").write_text(
+        "# Compose deployment\n\n"
+        "Run `make compose-check`, `make deploy-local`, and `make undeploy-local` "
+        "for teardown.\n"
+    )
+
+    result = compose_deployment_artifacts_check(tmp_path)
+
+    assert result.passed is True
+
+
+def test_optional_docker_compose_config_check_is_skipped_unless_enabled(tmp_path: Path) -> None:
+    check = optional_docker_compose_config_check()
+
+    result = check(tmp_path)
+
+    assert result.passed is True
+    assert "skipped" in result.message
+    assert "DEVLAB_EVAL_DEPLOYMENT_TOOLS=1" in result.message
+
+
+def test_optional_docker_compose_config_reports_missing_docker_as_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_EVAL_DEPLOYMENT_TOOLS", "1")
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda _name: None)
+    check = optional_docker_compose_config_check()
+
+    result = check(tmp_path)
+
+    assert result.passed is True
+    assert "unverified" in result.message
+    assert "docker" in result.message
 
 
 def test_static_frontend_check_accepts_served_static_frontend_docs(tmp_path: Path) -> None:

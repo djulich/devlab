@@ -16,6 +16,7 @@ from devlab.task_tracker import FileTaskTracker
 from tests.evaluations.checks import CheckResult
 from tests.evaluations.generated_products import (
     write_calculator,
+    write_compose_deployment_artifacts,
     write_container_deployment_artifacts,
     write_http_app,
     write_stateful_todo_api,
@@ -212,6 +213,57 @@ class DeploymentWebApiScriptedAgent:
         return handoff(invocation.role_name)
 
 
+class ComposeDeploymentScriptedAgent:
+    def __init__(self) -> None:
+        self.roles: list[str] = []
+        self.role_counts: dict[str, int] = {}
+        self.review_rejections = 0
+        self.prompt_chars: list[int] = []
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        self.roles.append(invocation.role_name)
+        self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
+        role = invocation.role_name
+        if role == "architect":
+            _design_plan(invocation.root).write_text(
+                "# Design Plan\n\n"
+                "Build a small Python JSON todo API with Docker Compose deployment "
+                "artifacts, project-owned local deploy/teardown commands, a smoke-test "
+                "script, and README deployment instructions.\n"
+            )
+        elif role == "planner":
+            _project_plan(invocation.root).write_text(
+                "# Project Plan\n\n"
+                "## M1: Compose deployable todo API\n"
+                "- T0001: Implement stateful todo API\n"
+                "- T0002: Add Compose deployment artifacts\n"
+            )
+            write_task(invocation.root, "T0001", "Implement stateful todo API", "M1")
+            write_task(
+                invocation.root,
+                "T0002",
+                "Add Compose deployment artifacts",
+                "M1",
+                depends_on=["T0001"],
+                domain="deployment",
+            )
+        elif role == "developer":
+            task = FileTaskTracker(invocation.root).select_next_development_task()
+            assert task is not None
+            complete_acceptance(invocation.root, task.id)
+            if task.id == "T0001":
+                write_stateful_todo_api(invocation.root)
+                write_container_deployment_artifacts(invocation.root)
+            elif task.id == "T0002":
+                write_compose_deployment_artifacts(invocation.root)
+        elif role == "reviewer":
+            approve_review_task(invocation.root)
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        return handoff(invocation.role_name)
+
+
 class StaticFrontendScriptedAgent:
     def __init__(self) -> None:
         self.roles: list[str] = []
@@ -382,11 +434,12 @@ def static_frontend_check(root: Path) -> CheckResult:
     return CheckResult("static frontend", not missing_snippets, message)
 
 
-def deployment_artifacts_check(root: Path) -> CheckResult:
+def compose_deployment_artifacts_check(root: Path) -> CheckResult:
     required = {
-        "Containerfile": ["FROM", "COPY src", "src.todo_api.server", "EXPOSE 8000"],
-        "Makefile": ["image:", "deployment-check:", "Containerfile"],
-        "README.md": ["make image", "make deployment-check"],
+        "compose.yaml": ["services:", "todo-api", "build:", "ports:"],
+        ".env.example": ["IMAGE=", "PORT="],
+        "Makefile": ["compose-check:", "deploy-local:", "undeploy-local:"],
+        "scripts/smoke-test.sh": ["/health"],
     }
     missing: list[str] = []
     for relative_path, snippets in required.items():
@@ -398,15 +451,61 @@ def deployment_artifacts_check(root: Path) -> CheckResult:
         for snippet in snippets:
             if snippet not in text:
                 missing.append(f"{relative_path} lacks {snippet!r}")
-        if relative_path == "README.md" and "deployment" not in text.lower():
-            missing.append("README.md lacks a deployment section")
+    documentation = _documentation_text(root)
+    for snippet in ("make compose-check", "make deploy-local", "make undeploy-local"):
+        if snippet not in documentation:
+            missing.append(f"deployment documentation lacks {snippet!r}")
+    lower_documentation = documentation.lower()
+    if "compose" not in lower_documentation or (
+        "teardown" not in lower_documentation and "tear it down" not in lower_documentation
+    ):
+        missing.append("deployment documentation lacks Compose and teardown instructions")
+    message = "; ".join(missing)
+    if missing:
+        message += (
+            "; expected Compose deployment contract: compose.yaml, .env.example, "
+            "Makefile targets `compose-check`, `deploy-local`, and `undeploy-local`, "
+            "scripts/smoke-test.sh, and build/verify/teardown documentation"
+        )
+    return CheckResult("compose deployment artifacts", not missing, message)
+
+
+def deployment_artifacts_check(root: Path) -> CheckResult:
+    required = {
+        "Containerfile": ["FROM", "COPY src", "src.todo_api.server", "EXPOSE 8000"],
+        "Makefile": ["image:", "deployment-check:", "Containerfile"],
+    }
+    missing: list[str] = []
+    for relative_path, snippets in required.items():
+        path = root / relative_path
+        if not path.exists():
+            missing.append(f"missing {relative_path}")
+            continue
+        text = path.read_text()
+        for snippet in snippets:
+            if snippet not in text:
+                missing.append(f"{relative_path} lacks {snippet!r}")
+    documentation = _documentation_text(root)
+    for snippet in ("make image", "make deployment-check"):
+        if snippet not in documentation:
+            missing.append(f"deployment documentation lacks {snippet!r}")
+    if "deployment" not in documentation.lower():
+        missing.append("deployment documentation lacks a deployment section")
     message = "; ".join(missing)
     if missing:
         message += (
             "; expected exact deployment contract: Containerfile, Makefile targets "
-            "`image` and `deployment-check`, and README references to both commands"
+            "`image` and `deployment-check`, and documentation references to both commands"
         )
     return CheckResult("deployment artifacts", not missing, message)
+
+
+def _documentation_text(root: Path) -> str:
+    paths = [root / "README.md"]
+    docs_dir = root / "docs"
+    if docs_dir.exists():
+        paths.extend(sorted(docs_dir.rglob("*.md")))
+    return "\n\n".join(path.read_text() for path in paths if path.exists())
 
 
 def stateful_todo_api_check(root: Path) -> CheckResult:

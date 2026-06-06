@@ -68,6 +68,8 @@ Implementation notes:
 
 ## Slice 3: Compose deterministic evaluation
 
+Status: **complete**. The scripted evaluation suite now includes `compose-deployment-happy-path`, covering `compose.yaml`, `.env.example`, `compose-check`, `deploy-local`, `undeploy-local`, `scripts/smoke-test.sh`, deployment documentation in `README.md` or `docs/**/*.md`, deployment-domain task attribution, and optional `docker compose config` behind `DEVLAB_EVAL_DEPLOYMENT_TOOLS=1`.
+
 Goal: cover a second deployment family beyond the existing local container artifact scenario.
 
 Scenario idea: `compose-deployment-happy-path`.

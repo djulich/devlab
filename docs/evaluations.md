@@ -21,8 +21,9 @@ Current scenarios cover:
 - stateful JSON web API happy path
 - static frontend todo app happy path with vanilla HTML/CSS/JS
 - deployable web API happy path with local container artifacts
+- Compose deployment happy path with local deploy/teardown commands
 
-The normal scripted suite uses structural checks as hard gates. Deployment scenarios may also include optional tool-backed checks, such as running a target-owned `make deployment-check`, but these are skipped unless explicitly enabled:
+The normal scripted suite uses structural checks as hard gates. Deployment scenarios may also include optional tool-backed checks, such as running a target-owned `make deployment-check`, `make compose-check`, or `docker compose config`, but these are skipped unless explicitly enabled:
 
 ```bash
 DEVLAB_EVAL_DEPLOYMENT_TOOLS=1 uv run pytest tests/evaluations

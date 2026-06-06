@@ -75,6 +75,44 @@ def file_contains_check(name: str, relative_path: str, expected_text: str) -> Bl
     return check
 
 
+def optional_docker_compose_config_check(
+    name: str = "docker compose config",
+    *,
+    enable_env: str = "DEVLAB_EVAL_DEPLOYMENT_TOOLS",
+    timeout: int = 10,
+) -> BlackBoxCheck:
+    def check(root: Path) -> CheckResult:
+        if os.environ.get(enable_env) != "1":
+            return CheckResult(
+                name,
+                True,
+                f"skipped: set {enable_env}=1 to run docker compose config",
+            )
+        if shutil.which("docker") is None:
+            return CheckResult(name, True, "skipped: 'docker' is not on PATH; unverified")
+        if not (root / "compose.yaml").exists():
+            return CheckResult(name, False, "missing compose.yaml")
+        result = subprocess.run(
+            ["docker", "compose", "config"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        passed = result.returncode == 0
+        return CheckResult(
+            name,
+            passed,
+            ""
+            if passed
+            else f"docker compose config exited {result.returncode}; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+
+    return check
+
+
 def optional_make_target_check(
     name: str,
     target: str,
