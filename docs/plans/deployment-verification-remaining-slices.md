@@ -94,6 +94,8 @@ Do not require live containers in the normal test suite.
 
 ## Slice 4: Live deployment baseline collection
 
+Status: **initial baseline complete**. A live `live-deployable-web-api-happy-path` run completed the DevLab workflow in 10 sessions with no reviewer rejections, no integrator findings, correct deployment-domain task attribution, project-owned deployment artifacts, and clean Git/milestone state. The only failure was an over-strict evaluation check that required HTTP `201` for `POST /todos` despite the scenario spec only requiring a successful JSON create response; `stateful_todo_api_check` now accepts any `2xx` create status. See `docs/plans/deployment-live-baseline-2026-06-06.md`.
+
 Goal: run the existing opt-in live deployment evaluation and use outcomes to tune prompts, diagnostics, and thresholds.
 
 Recommended preflight shape for manual runs:

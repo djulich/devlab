@@ -34,6 +34,7 @@ from tests.evaluations.checks import (
     optional_docker_compose_config_check,
     optional_make_target_check,
 )
+from tests.evaluations.generated_products import write_stateful_todo_api
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
     EvaluationScenario,
@@ -373,6 +374,18 @@ def test_scripted_compose_deployment_evaluation(tmp_path: Path) -> None:
         scenario,
         expected_artifact="compose.yaml",
     )
+
+
+def test_stateful_todo_api_check_accepts_any_successful_create_status(
+    tmp_path: Path,
+) -> None:
+    write_stateful_todo_api(tmp_path)
+    server = tmp_path / "src/todo_api/server.py"
+    server.write_text(server.read_text().replace("self._json(201,", "self._json(200,"))
+
+    result = stateful_todo_api_check(tmp_path)
+
+    assert result.passed is True
 
 
 def test_compose_deployment_check_accepts_docs_deployment_markdown(tmp_path: Path) -> None:

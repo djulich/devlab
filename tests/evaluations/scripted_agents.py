@@ -528,7 +528,7 @@ def stateful_todo_api_check(root: Path) -> CheckResult:
         created_item = cast(dict[str, object], created) if isinstance(created, dict) else {}
         todo_id = created_item.get("id")
         if not (
-            create_status == 201
+            200 <= create_status < 300
             and isinstance(todo_id, int)
             and created_item.get("title") == "write eval"
         ):

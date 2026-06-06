@@ -39,7 +39,7 @@ Recommended evaluation roadmap:
 Open work:
 
 - Run the opt-in `live-stateful-web-api-happy-path` evaluation across local provider environments and collect baseline outcomes.
-- Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect additional baseline outcomes, including `live-static-frontend-todo-app-happy-path` and `live-deployable-web-api-happy-path` across local provider environments.
+- Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect additional baseline outcomes, especially `live-static-frontend-todo-app-happy-path` and additional `live-deployable-web-api-happy-path` runs across provider environments. Initial deployment baseline: `docs/plans/deployment-live-baseline-2026-06-06.md`.
 - Calibrate quality-warning thresholds after more live baselines, especially high sessions per closed task, same-task rework warnings, integrator finding warnings, and large ignored artifact footprints.
 - Watch whether developer/reviewer task attribution from changed `.devlab/tasks/TXXXX_*.md` artifacts is sufficient in live runs; only add fallback parsing if real handoffs are frequently unattributed.
 - Refine diagnostics/message wording if live failures are hard to triage.
@@ -123,7 +123,7 @@ Open work:
 
 ## 11. Deployment Specification and Verification
 
-Status: **foundation implemented; verification/evaluation work remains**. DevLab now initializes a richer deployment spec template, supports primary task domains (`general` by default, `deployment` for deployment work), and adds role-specific deployment prompt overlays from `src/devlab/resources/prompts/domains/deployment/<role>.md` without changing the core workflow roles. Developer/reviewer prompts use the assigned task domain; architect/planner prompts use deployment overlays when deployment specs contain substantive requirements; integrator prompts use deployment overlays for deployment-domain milestone work. See `docs/deployment-feature-overview.md` and `docs/plans/deployment-specification-and-verification.md`.
+Status: **foundation implemented; verification/evaluation work ongoing**. DevLab now initializes a richer deployment spec template, supports primary task domains (`general` by default, `deployment` for deployment work), and adds role-specific deployment prompt overlays from `src/devlab/resources/prompts/domains/deployment/<role>.md` without changing the core workflow roles. Developer/reviewer prompts use the assigned task domain; architect/planner prompts use deployment overlays when deployment specs contain substantive requirements; integrator prompts use deployment overlays for deployment-domain milestone work. Deterministic deployment evaluations and one initial live deployment baseline are in place. See `docs/deployment-feature-overview.md`, `docs/plans/deployment-specification-and-verification.md`, and `docs/plans/deployment-live-baseline-2026-06-06.md`.
 
 Required verification layers remain:
 
@@ -142,8 +142,8 @@ Constraints:
 
 Open work:
 
-- Add deterministic workflow evaluations proving deployment-domain tasks produce project-owned deployment artifacts, commands, docs, and verification evidence.
-- Add at least one opt-in live-agent deployment evaluation, likely starting with container runtime or Compose before Kubernetes/kind or RPM/systemd.
+- Expand deterministic workflow evaluations beyond local container and Compose when adding kind/RPM/systemd-style deployment families.
+- Collect more opt-in live-agent deployment baselines across provider/model environments and with optional deployment tool checks enabled where host prerequisites are available.
 - Decide whether profile validation commands need structured first-class modeling, or whether prompt-guided project-owned commands are sufficient initially.
 - Add non-mutating `doctor`/diagnostic checks for deployment specs, unknown task domains, and deployment tool availability.
 - Expand verification from structural checks toward safe static/artifact validation where host tools are available, reporting missing tools without installing them.
