@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ def test_workspace_snapshot_caches_task_listing(
 
     assert [task.id for task in snapshot.list_tasks()] == ["T0001"]
     assert [task.id for task in snapshot.list_tasks()] == ["T0001"]
+    assert not hasattr(snapshot, "task_tracker")
     assert calls == 1
 
 
@@ -76,6 +78,30 @@ def test_workspace_milestone_handle_exposes_tasks_and_transitions(tmp_path: Path
     milestone.mark_architecture_reviewed(handoff)
     assert milestone.read().architecture_reviewed
     assert milestone.read().architecture_review_handoff == "handoff.md"
+
+
+def test_production_workflow_mutations_do_not_bypass_workspace_handles() -> None:
+    root = Path(__file__).resolve().parents[1] / "src/devlab"
+    allowed = {
+        "workspace.py",
+        "task_tracker.py",
+        "findings.py",
+        "milestones.py",
+    }
+    pattern = re.compile(
+        r"File(?:Task|Finding|Milestone)Tracker\([^\n]*\)\."
+        r"(?:create|create_from_handoff|mark_|close|upsert_from_tasks)"
+    )
+
+    violations = []
+    for path in root.rglob("*.py"):
+        if path.name in allowed:
+            continue
+        text = path.read_text()
+        if pattern.search(text):
+            violations.append(str(path.relative_to(root)))
+
+    assert violations == []
 
 
 def test_workspace_domain_handles_do_not_expose_raw_trackers(tmp_path: Path) -> None:

@@ -16,7 +16,7 @@ DevLab is developed and maintained by AI agents. Code and project structure must
 - DevLab operates on a target workspace; dogfooding must not assume the target is this repo.
 - Preserve bounded sessions: one role per session, one task per developer/reviewer session.
 - Keep task storage behind `task_tracker.py`; do not parse task files elsewhere.
-- Use workspace boundaries: `WorkspaceSnapshot` for cached reads; `Workspace`/handles for mutations.
+- Use workspace boundaries: `WorkspaceSnapshot` for cached reads; `Workspace` domain handles (`workspace.tasks()`, `workspace.findings()`, `workspace.milestones()`) for mutations. Direct tracker access is lower-level infrastructure for tracker modules/tests and read-only diagnostics when no snapshot helper exists.
 - Reporting/validation paths (`status`, `doctor`, prompt assembly, prompt context) must not mutate state.
 - DevLab may invoke deployment tools via target-owned verification commands, but must not install missing host tools; report them as unverified user/CI prerequisites.
 - Keep provider-specific invocation in `agents.py`, not orchestration.

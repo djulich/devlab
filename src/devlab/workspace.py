@@ -125,9 +125,9 @@ class Workspace:
         if self._snapshot is None:
             self._snapshot = WorkspaceSnapshot(
                 root=self.root,
-                task_tracker=self._task_tracker(),
-                finding_tracker=self._finding_tracker(),
-                milestone_tracker=self._milestone_tracker(),
+                _task_tracker=self._task_tracker(),
+                _finding_tracker=self._finding_tracker(),
+                _milestone_tracker=self._milestone_tracker(),
             )
         return self._snapshot
 
@@ -325,26 +325,26 @@ class WorkspaceSnapshot:
     """
 
     root: Path
-    task_tracker: FileTaskTracker
-    finding_tracker: FileFindingTracker
-    milestone_tracker: FileMilestoneTracker
+    _task_tracker: FileTaskTracker = dataclasses.field(repr=False)
+    _finding_tracker: FileFindingTracker = dataclasses.field(repr=False)
+    _milestone_tracker: FileMilestoneTracker = dataclasses.field(repr=False)
     _tasks: list[Task] | None = dataclasses.field(default=None, init=False, repr=False)
     _findings: list[Finding] | None = dataclasses.field(default=None, init=False, repr=False)
     _milestones: list[Milestone] | None = dataclasses.field(default=None, init=False, repr=False)
 
     def list_tasks(self) -> list[Task]:
         if self._tasks is None:
-            self._tasks = self.task_tracker.list_tasks()
+            self._tasks = self._task_tracker.list_tasks()
         return list(self._tasks)
 
     def list_findings(self) -> list[Finding]:
         if self._findings is None:
-            self._findings = self.finding_tracker.list_findings()
+            self._findings = self._finding_tracker.list_findings()
         return list(self._findings)
 
     def list_milestones(self) -> list[Milestone]:
         if self._milestones is None:
-            self._milestones = self.milestone_tracker.list_milestones()
+            self._milestones = self._milestone_tracker.list_milestones()
         return list(self._milestones)
 
     def active_tasks(self) -> list[Task]:
