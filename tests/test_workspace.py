@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from devlab.findings import FileFindingTracker
+from devlab.milestones import FileMilestoneTracker
 from devlab.task_tracker import FileTaskTracker
 from devlab.workspace import Workspace
 
@@ -47,10 +49,10 @@ def test_workspace_task_handle_invalidates_cached_snapshot(tmp_path: Path) -> No
     workspace = Workspace(tmp_path)
     assert workspace.snapshot.list_tasks()[0].status == "open"
 
-    workspace.task("T0001").mark_in_review()
+    workspace.tasks().get("T0001").mark_in_review()
     assert workspace.snapshot.list_tasks()[0].status == "in_review"
 
-    workspace.task_from_path(tmp_path / ".devlab/tasks/T0001_task.md").close()
+    workspace.tasks().from_path(tmp_path / ".devlab/tasks/T0001_task.md").close()
     assert workspace.snapshot.list_tasks()[0].status == "closed"
 
 
@@ -60,7 +62,7 @@ def test_workspace_milestone_handle_exposes_tasks_and_transitions(tmp_path: Path
     handoff = tmp_path / ".devlab/history/handoff.md"
     handoff.parent.mkdir(parents=True)
     handoff.write_text("handoff")
-    milestone = Workspace(tmp_path).milestone("M1")
+    milestone = Workspace(tmp_path).milestones().get("M1")
 
     assert [task.id for task in milestone.tasks()] == ["T0001"]
 
@@ -76,24 +78,32 @@ def test_workspace_milestone_handle_exposes_tasks_and_transitions(tmp_path: Path
     assert milestone.read().architecture_review_handoff == "handoff.md"
 
 
+def test_workspace_domain_handles_do_not_expose_raw_trackers(tmp_path: Path) -> None:
+    workspace = Workspace(tmp_path)
+
+    assert not isinstance(workspace.tasks(), FileTaskTracker)
+    assert not isinstance(workspace.findings(), FileFindingTracker)
+    assert not isinstance(workspace.milestones(), FileMilestoneTracker)
+
+
 def test_workspace_finding_handles_create_and_transition_findings(tmp_path: Path) -> None:
     handoff = tmp_path / ".devlab/history/handoff.md"
     handoff.parent.mkdir(parents=True)
     handoff.write_text("## Open Issues\nNeeds correction.\n")
     workspace = Workspace(tmp_path)
 
-    finding = workspace.create_finding_from_handoff(
+    finding = workspace.findings().create_from_handoff(
         source="integrator",
         milestone="M1",
         handoff_path=handoff,
     )
-    workspace.finding(finding.id).mark_planned()
+    workspace.findings().get(finding.id).mark_planned()
 
-    planned = workspace.milestone("M1").planned_findings()
+    planned = workspace.milestones().get("M1").planned_findings()
     assert [finding.id for finding in planned] == ["F0001"]
 
     planned[0].mark_resolved()
-    assert workspace.finding("F0001").read().status == "resolved"
+    assert workspace.findings().get("F0001").read().status == "resolved"
 
 
 def _write_task(root: Path, task_id: str, milestone: str | None = None) -> None:

@@ -273,9 +273,11 @@ def _validate_reviewer_outcome(snapshot: WorkspaceSnapshot, handoff: Handoff) ->
 
 
 def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> None:
+    findings = workspace.findings()
     for finding_id in handoff.addressed_finding_tasks():
-        workspace.finding(finding_id).mark_planned()
-        workspace.finding(finding_id).resolve_if_complete()
+        finding = findings.get(finding_id)
+        finding.mark_planned()
+        finding.resolve_if_complete()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -291,19 +293,19 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> ProcessResult:
         milestone = workspace.snapshot.select_architecture_review_milestone()
         if milestone is not None:
             if handoff.has_open_issues:
-                workspace.create_finding_from_handoff(
+                workspace.findings().create_from_handoff(
                     source="architect",
                     milestone=milestone,
                     handoff_path=archived,
                 )
                 logger.info("Architecture review reported open issues; finding created")
-            workspace.milestone(milestone).mark_architecture_reviewed(archived)
+            workspace.milestones().get(milestone).mark_architecture_reviewed(archived)
             logger.info("Milestone %s marked architecture-reviewed", milestone)
         return ProcessResult()
     elif handoff.role_name == "developer":
         task = workspace.snapshot.select_next_development_task()
         if task and task.acceptance_criteria_complete:
-            task_handle = workspace.task(task.id)
+            task_handle = workspace.tasks().get(task.id)
             task_handle.mark_in_review()
             logger.info(
                 "Task %s completed by developer; status set to in_review",
@@ -316,7 +318,7 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> ProcessResult:
     elif handoff.role_name == "reviewer":
         task = workspace.snapshot.select_next_review_task()
         if task and task.review_approved and not handoff.has_open_issues:
-            task_handle = workspace.task(task.id)
+            task_handle = workspace.tasks().get(task.id)
             task_handle.close()
             logger.info(
                 "Task %s closed by %s; status set to closed",
@@ -325,7 +327,7 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> ProcessResult:
             )
             task_handle.resolve_addressed_findings()
         elif task:
-            task_handle = workspace.task(task.id)
+            task_handle = workspace.tasks().get(task.id)
             task_handle.mark_changes_requested()
             if not handoff.has_open_issues and not task.review_approved:
                 logger.warning(
@@ -348,19 +350,19 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> ProcessResult:
     elif handoff.role_name == "integrator":
         milestone = workspace.snapshot.select_integration_milestone()
         if handoff.has_open_issues:
-            finding = workspace.create_finding_from_handoff(
+            finding = workspace.findings().create_from_handoff(
                 source="integrator",
                 milestone=milestone,
                 handoff_path=archived,
             )
             if milestone is not None:
-                workspace.milestone(milestone).mark_integration_failed(finding.id)
+                workspace.milestones().get(milestone).mark_integration_failed(finding.id)
             logger.info(
                 "Integration reported open issues; finding created for planner follow-up"
             )
             return ProcessResult()
         if milestone is not None:
-            workspace.milestone(milestone).mark_integrated(archived)
+            workspace.milestones().get(milestone).mark_integrated(archived)
             logger.info("Milestone %s marked integrated", milestone)
             return ProcessResult(integrated_milestone=milestone)
     return ProcessResult()
@@ -590,7 +592,7 @@ def run_loop(
         if role_name == "integrator":
             milestone = workspace.snapshot.select_integration_milestone()
             if milestone is not None:
-                workspace.milestone(milestone).mark_ready_for_integration()
+                workspace.milestones().get(milestone).mark_ready_for_integration()
 
         start_snapshot = workspace.snapshot
         session_task = _task_for_role(start_snapshot, role_name)

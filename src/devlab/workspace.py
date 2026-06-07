@@ -105,20 +105,17 @@ class Workspace:
         default=None, init=False, repr=False
     )
 
-    @property
-    def tasks(self) -> FileTaskTracker:
+    def _task_tracker(self) -> FileTaskTracker:
         if self._tasks is None:
             self._tasks = FileTaskTracker(self.root)
         return self._tasks
 
-    @property
-    def findings(self) -> FileFindingTracker:
+    def _finding_tracker(self) -> FileFindingTracker:
         if self._findings is None:
             self._findings = FileFindingTracker(self.root)
         return self._findings
 
-    @property
-    def milestones(self) -> FileMilestoneTracker:
+    def _milestone_tracker(self) -> FileMilestoneTracker:
         if self._milestones is None:
             self._milestones = FileMilestoneTracker(self.root)
         return self._milestones
@@ -128,49 +125,91 @@ class Workspace:
         if self._snapshot is None:
             self._snapshot = WorkspaceSnapshot(
                 root=self.root,
-                task_tracker=self.tasks,
-                finding_tracker=self.findings,
-                milestone_tracker=self.milestones,
+                task_tracker=self._task_tracker(),
+                finding_tracker=self._finding_tracker(),
+                milestone_tracker=self._milestone_tracker(),
             )
         return self._snapshot
 
     def sync(self) -> None:
         """Mutate milestone files so stored milestone state reflects task references."""
-        self.milestones.upsert_from_tasks(
-            self.tasks.list_tasks(),
+        self._milestone_tracker().upsert_from_tasks(
+            self._task_tracker().list_tasks(),
             project_plan_text=read_file(self.root / PROJECT_PLAN),
         )
         self.did_mutate()
 
+    def tasks(self) -> WorkspaceTasks:
+        return WorkspaceTasks(self)
+
+    def findings(self) -> WorkspaceFindings:
+        return WorkspaceFindings(self)
+
+    def milestones(self) -> WorkspaceMilestones:
+        return WorkspaceMilestones(self)
+
     def task(self, task_id: str) -> WorkspaceTask:
-        return WorkspaceTask(self, task_id)
+        return self.tasks().get(task_id)
 
     def task_from_path(self, path: Path) -> WorkspaceTask:
-        return self.task(path.stem.split("_")[0])
+        return self.tasks().from_path(path)
 
     def milestone(self, milestone_id: str) -> WorkspaceMilestone:
-        return WorkspaceMilestone(self, milestone_id)
+        return self.milestones().get(milestone_id)
 
     def finding(self, finding_id: str) -> WorkspaceFinding:
-        return WorkspaceFinding(self, finding_id)
+        return self.findings().get(finding_id)
 
-    def create_finding_from_handoff(
+    def did_mutate(self) -> None:
+        self._snapshot = None
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceTasks:
+    """Task domain handle bound to a target workspace."""
+
+    workspace: Workspace
+
+    def get(self, task_id: str) -> WorkspaceTask:
+        return WorkspaceTask(self.workspace, task_id)
+
+    def from_path(self, path: Path) -> WorkspaceTask:
+        return self.get(path.stem.split("_")[0])
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceFindings:
+    """Finding domain handle bound to a target workspace."""
+
+    workspace: Workspace
+
+    def get(self, finding_id: str) -> WorkspaceFinding:
+        return WorkspaceFinding(self.workspace, finding_id)
+
+    def create_from_handoff(
         self,
         *,
         source: str,
         milestone: str | None,
         handoff_path: Path,
     ) -> Finding:
-        finding = self.findings.create_from_handoff(
+        finding = self.workspace._finding_tracker().create_from_handoff(
             source=source,
             milestone=milestone,
             handoff_path=handoff_path,
         )
-        self.did_mutate()
+        self.workspace.did_mutate()
         return finding
 
-    def did_mutate(self) -> None:
-        self._snapshot = None
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceMilestones:
+    """Milestone domain handle bound to a target workspace."""
+
+    workspace: Workspace
+
+    def get(self, milestone_id: str) -> WorkspaceMilestone:
+        return WorkspaceMilestone(self.workspace, milestone_id)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -181,28 +220,29 @@ class WorkspaceTask:
     id: str
 
     def read(self) -> Task:
-        return self.workspace.tasks.get(self.id)
+        return self.workspace._task_tracker().get(self.id)
 
     @property
     def path(self) -> Path:
         return self.read().path
 
     def mark_in_review(self) -> None:
-        self.workspace.tasks.mark_in_review(self.id)
+        self.workspace._task_tracker().mark_in_review(self.id)
         self.workspace.did_mutate()
 
     def mark_changes_requested(self) -> None:
-        self.workspace.tasks.mark_changes_requested(self.id)
+        self.workspace._task_tracker().mark_changes_requested(self.id)
         self.workspace.did_mutate()
 
     def close(self) -> None:
-        self.workspace.tasks.close(self.id)
+        self.workspace._task_tracker().close(self.id)
         self.workspace.did_mutate()
 
     def resolve_addressed_findings(self) -> None:
         task = self.read()
+        findings = self.workspace.findings()
         for finding_id in task.addresses_findings:
-            self.workspace.finding(finding_id).resolve_if_complete()
+            findings.get(finding_id).resolve_if_complete()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -213,30 +253,32 @@ class WorkspaceMilestone:
     id: str
 
     def read(self) -> Milestone:
-        return self.workspace.milestones.get(self.id)
+        return self.workspace._milestone_tracker().get(self.id)
 
     def tasks(self) -> list[WorkspaceTask]:
         task_ids = [task.id for task in self.workspace.snapshot.tasks_for_milestone(self.id)]
-        return [self.workspace.task(task_id) for task_id in task_ids]
+        tasks = self.workspace.tasks()
+        return [tasks.get(task_id) for task_id in task_ids]
 
     def planned_findings(self) -> list[WorkspaceFinding]:
-        findings = self.workspace.findings.planned_findings_for_milestone(self.id)
-        return [self.workspace.finding(finding.id) for finding in findings]
+        findings = self.workspace._finding_tracker().planned_findings_for_milestone(self.id)
+        finding_handles = self.workspace.findings()
+        return [finding_handles.get(finding.id) for finding in findings]
 
     def mark_ready_for_integration(self) -> None:
-        self.workspace.milestones.mark_tasks_complete(self.id)
+        self.workspace._milestone_tracker().mark_tasks_complete(self.id)
         self.workspace.did_mutate()
 
     def mark_integrated(self, handoff_path: Path) -> None:
-        self.workspace.milestones.mark_integrated(self.id, handoff_path)
+        self.workspace._milestone_tracker().mark_integrated(self.id, handoff_path)
         self.workspace.did_mutate()
 
     def mark_integration_failed(self, finding_id: str) -> None:
-        self.workspace.milestones.mark_integration_failed(self.id, finding_id)
+        self.workspace._milestone_tracker().mark_integration_failed(self.id, finding_id)
         self.workspace.did_mutate()
 
     def mark_architecture_reviewed(self, handoff_path: Path) -> None:
-        self.workspace.milestones.mark_architecture_reviewed(self.id, handoff_path)
+        self.workspace._milestone_tracker().mark_architecture_reviewed(self.id, handoff_path)
         self.workspace.did_mutate()
 
 
@@ -248,14 +290,14 @@ class WorkspaceFinding:
     id: str
 
     def read(self) -> Finding:
-        return self.workspace.findings.get(self.id)
+        return self.workspace._finding_tracker().get(self.id)
 
     def mark_planned(self) -> None:
-        self.workspace.findings.mark_planned(self.id)
+        self.workspace._finding_tracker().mark_planned(self.id)
         self.workspace.did_mutate()
 
     def mark_resolved(self) -> None:
-        self.workspace.findings.mark_resolved(self.id)
+        self.workspace._finding_tracker().mark_resolved(self.id)
         self.workspace.did_mutate()
 
     def resolve_if_complete(self) -> None:

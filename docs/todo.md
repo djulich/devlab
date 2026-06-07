@@ -101,14 +101,13 @@ Open work:
 
 ## 9. Workspace API Consistency
 
-Priority: medium. The workspace boundary is useful, but some APIs still expose raw trackers or broad convenience methods that could drift from the intended handle-based mutation model.
+Status: **initial consistency pass complete**. Workspace mutation now prefers domain handles such as `workspace.findings().create_from_handoff(...)`; raw tracker construction is internal to `Workspace`/`WorkspaceSnapshot`, and tests assert domain handles do not expose raw trackers. Multi-step workflow policy remains in `orchestrator.py`; handles expose atomic task, finding, and milestone transitions.
 
 Open work:
 
-- Prefer first-class domain handles for mutations, e.g. `workspace.findings().create_from_handoff(...)` rather than broad `Workspace.create_finding_from_handoff(...)`.
-- Consider making raw tracker access internal or clearly documented as lower-level infrastructure.
-- Keep multi-step workflow policy visible in `orchestrator.py`; handles should expose atomic domain transitions only.
-- Add tests that discourage direct parsing/mutation outside tracker/workspace boundaries.
+- Continue routing new workflow mutations through `Workspace` domain handles rather than direct tracker access.
+- Consider adding narrower task/milestone collection helpers only when a new mutation needs them.
+- Keep reporting/diagnostic modules read-only; if they need richer state access, prefer `WorkspaceSnapshot` helpers over direct file parsing.
 
 ## 10. Codebase Maintainability for Agent Work
 
