@@ -32,6 +32,48 @@ def test_doctor_reports_multiple_agents_config_problems(tmp_path: Path) -> None:
     assert any("references missing provider 'missing'" in message for message in messages)
 
 
+def test_doctor_reports_missing_configured_agent_executable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / ".devlab/config/agents.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "[defaults]\n"
+        'provider = "default"\n'
+        "\n[providers.default]\n"
+        'command = "missing-agent-cli -p"\n'
+        'args = []\n'
+    )
+    monkeypatch.setattr("devlab.doctor_agent_config.shutil.which", lambda _name: None)
+
+    messages = _messages(tmp_path)
+
+    assert (
+        "provider 'default' executable 'missing-agent-cli' was not found on PATH "
+        "(used by roles: architect, developer, integrator, planner, reviewer)"
+    ) in messages
+
+
+def test_doctor_accepts_configured_agent_executable_on_path(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / ".devlab/config/agents.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "[defaults]\n"
+        'provider = "default"\n'
+        "\n[providers.default]\n"
+        'command = "agent-cli -p"\n'
+        'args = []\n'
+    )
+    monkeypatch.setattr(
+        "devlab.doctor_agent_config.shutil.which",
+        lambda name: "/usr/bin/agent-cli" if name == "agent-cli" else None,
+    )
+
+    messages = _messages(tmp_path)
+
+    assert not any("was not found on PATH" in message for message in messages)
+
+
 def test_doctor_reports_prompt_context_configuration_problems(tmp_path: Path) -> None:
     path = tmp_path / ".devlab/config/agents.toml"
     path.parent.mkdir(parents=True)
@@ -70,7 +112,7 @@ def test_doctor_report_formats_success_and_failure(tmp_path: Path) -> None:
     assert "invalid TOML" in report
 
 
-def test_doctor_reports_oversized_prompt_context(tmp_path: Path) -> None:
+def test_doctor_reports_oversized_prompt_context(tmp_path: Path, monkeypatch) -> None:
     init_workspace(tmp_path)
     path = tmp_path / ".devlab/config/agents.toml"
     path.write_text(
@@ -81,6 +123,10 @@ def test_doctor_reports_oversized_prompt_context(tmp_path: Path) -> None:
         + "\n[prompt_context.roles.planner]\n"
         + "warning_tokens = 1\n"
         + "critical_tokens = 2\n"
+    )
+    monkeypatch.setattr(
+        "devlab.doctor_agent_config.shutil.which",
+        lambda name: "/usr/bin/claude" if name == "claude" else None,
     )
 
     messages = _messages(tmp_path)

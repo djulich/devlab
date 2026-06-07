@@ -136,6 +136,10 @@ def test_cli_doctor_reports_ok_for_initialized_workspace(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
+    monkeypatch.setattr(
+        "devlab.doctor_agent_config.shutil.which",
+        lambda name: "/usr/bin/claude" if name == "claude" else None,
+    )
 
     _run_cli(monkeypatch, "doctor", "--root", str(tmp_path))
 
