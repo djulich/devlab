@@ -77,16 +77,7 @@ Open work:
 - Consider splitting `conventions.md` into role-relevant sections.
 - Consider model-specific tokenizers or provider-specific context windows if approximate sizing proves insufficient.
 
-## 7. Durable Project Knowledge: CONTEXT.md and ADRs
-
-Status: **initial implementation complete**. DevLab discovers target-owned `CONTEXT.md`, `CONTEXT-MAP.md`, linked context files, and `docs/adr/*.md` without mutating the workspace. Discovered knowledge is included in role prompts, prompt size reporting accounts for it, role prompts define ownership guidance, and `doctor` reports missing context-map targets plus malformed or duplicate ADR filenames.
-
-Open work:
-
-- Consider richer `doctor` checks for `CONTEXT.md` structure if agents start producing glossary/spec hybrids.
-- Evaluate whether multi-context `CONTEXT-MAP.md` discovery needs role/task relevance filtering as projects grow.
-
-## 8. Starting Workflow on an Existing Project
+## 7. Starting Workflow on an Existing Project
 
 Priority: medium. DevLab should support operation on a project developed outside DevLab.
 
@@ -99,7 +90,7 @@ Open work:
 - Include repository inspection guidance for existing source, tests, packaging, deployment, and tooling.
 - Add evaluations using a pre-existing tiny repo plus a feature spec.
 
-## 9. Automatic Version Control
+## 8. Automatic Version Control
 
 Status: **initial implementation complete**. `devlab init` initializes Git when needed, configures a usable identity from CLI flags, existing Git config, or DevLab defaults, and creates an initial commit. Existing Git repositories must be clean before init so DevLab does not mix user changes with bootstrap state. `devlab run` requires a Git repository with a clean working tree, commits all non-ignored changes after every valid session, and creates `devlab/milestone/<milestone-id>` tags when milestones are integrated. Failed integration findings are committed like any other valid session. Agents may provide an optional `## Commit Message` handoff section with a one-line description; the orchestrator adds the task/role prefix and falls back to task/role-derived messages when the section is absent.
 
@@ -109,7 +100,7 @@ Open work:
 - Consider commit message bodies if one-line summaries prove insufficient.
 - Defer per-milestone feature branches; use milestone tags first.
 
-## 10. Multi-session Architecture Planning for Large Specs
+## 9. Multi-session Architecture Planning for Large Specs
 
 Priority: medium-low. Useful for substantial target systems where one architect session cannot produce a reliable design plan, but lower priority until workflow evaluations show concrete context or quality failures on large specs.
 
@@ -120,7 +111,7 @@ Open work:
 - Avoid overloading implementation tasks for pre-planning work; if design slices are needed, store them as architecture-planning artifacts rather than normal developer tasks.
 - Add tests/evaluations with an intentionally large spec that requires multiple architecture passes.
 
-## 11. DevLab CLI and Library Logging Facility
+## 10. DevLab CLI and Library Logging Facility
 
 Status: **initial implementation complete**. DevLab now uses Python's standard `logging` module with a single `devlab` logger for workflow progress/errors, while `init`, `status`, `doctor`, and interactive handoff previews remain direct user output. `devlab run` supports `--quiet`, `--verbose`, and `--log-file`; file logs capture DEBUG diagnostics. This complements, but does not replace, agent stdout/stderr capture in Agent Invocation Observability.
 
