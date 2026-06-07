@@ -1,6 +1,6 @@
 # Deployment Feature Overview
 
-This document is a reference for designing DevLab deployment support.
+This document is the durable reference for DevLab deployment support. The initial deployment verification work is complete: DevLab has deployment specs, deployment task domains, role-specific deployment prompts, non-mutating doctor checks, deterministic deployment evaluations for container and Compose artifacts, optional host-tool-backed checks, an initial live deployment baseline, and an ADR deferring structured deployment validation metadata.
 
 ## Product Promise
 

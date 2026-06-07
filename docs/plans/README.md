@@ -6,11 +6,12 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [deployment-specification-and-verification.md](deployment-specification-and-verification.md) — deployment domain overlay and verification lifecycle (initial framework in place, full target support incomplete)
+None.
 
 ## Implemented
 
 - [agent-invocation-observability-and-error-handling.md](agent-invocation-observability-and-error-handling.md) — AgentResult, per-session logs, SessionContext, structured error handling
+- [deployment-live-baseline-2026-06-06.md](deployment-live-baseline-2026-06-06.md) — initial live deployment evaluation baseline
 - [devlab-cli-library-logging-facility.md](devlab-cli-library-logging-facility.md) — `_logging.py`, `configure_logging()`, `--log-file` flag
 - [devlab-live-evaluation-quality-metrics.md](devlab-live-evaluation-quality-metrics.md) — role sequence, task cycles, artifact hygiene, quality summary diagnostics
 - [devlab-workflow-evaluations.md](devlab-workflow-evaluations.md) — scripted and live evaluation infrastructure
