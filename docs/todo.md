@@ -144,7 +144,7 @@ Open work:
 
 - Expand deterministic workflow evaluations beyond local container and Compose when adding kind/RPM/systemd-style deployment families.
 - Collect more opt-in live-agent deployment baselines across provider/model environments and with optional deployment tool checks enabled where host prerequisites are available.
-- Decide whether profile validation commands need structured first-class modeling, or whether prompt-guided project-owned commands are sufficient initially.
+- Revisit structured deployment validation metadata only if additional live baselines show project-owned commands plus task/profile validation guidance are insufficient; initial decision is to defer first-class modeling in `docs/adr/0009-defer-structured-deployment-validation-metadata.md`.
 - Add non-mutating `doctor`/diagnostic checks for deployment specs, unknown task domains, and deployment tool availability.
 - Expand verification from structural checks toward safe static/artifact validation where host tools are available, reporting missing tools without installing them.
 

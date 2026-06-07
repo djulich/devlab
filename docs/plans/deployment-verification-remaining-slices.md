@@ -128,6 +128,8 @@ Update `docs/todo.md`, `docs/evaluations.md`, or deployment prompt overlays only
 
 ## Slice 5: Profile validation modeling decision
 
+Status: **decision complete: defer structured deployment validation metadata**. Current evidence supports project-owned commands plus task/profile validation guidance for now. Deterministic deployment evaluations and the initial live deployment baseline produced discoverable Make targets/scripts, deployment-domain task attribution, profile usage diagnostics, and clear workflow history without deployment-specific orchestrator branches. See `docs/adr/0009-defer-structured-deployment-validation-metadata.md`.
+
 Goal: decide from evidence whether project-owned commands plus prompt guidance are enough.
 
 Questions:
@@ -136,7 +138,7 @@ Questions:
 - Do reviewers and integrators treat missing tools as unverified?
 - Are profile validation commands too unstructured for deployment work?
 
-If current behavior is sufficient, defer structured modeling. If not, design first-class validation command metadata in profiles without adding deployment-specific branches to `orchestrator.py`.
+Decision: do not add first-class deployment validation command metadata yet. Keep verification commands target-owned and referenced from task `validation`, profile defaults, task acceptance criteria, and project docs. Revisit only if more live baselines show agents failing to create discoverable commands, reviewers approving unverified deployment claims, or profile validation becoming too ambiguous for users/CI.
 
 ## Suggested order
 

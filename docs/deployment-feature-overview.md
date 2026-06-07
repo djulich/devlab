@@ -205,7 +205,7 @@ make undeploy-local
 make undeploy-kind
 ```
 
-Exact names may vary by target project, but generated documentation should identify the supported commands and their required tools.
+Exact names may vary by target project, but generated documentation should identify the supported commands and their required tools. DevLab intentionally does not add separate structured deployment validation metadata yet; deployment verification is expressed through project-owned commands, task `validation`, profile default validation commands, acceptance criteria, and docs. See `docs/adr/0009-defer-structured-deployment-validation-metadata.md`.
 
 Example finished project layout:
 

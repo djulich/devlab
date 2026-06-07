@@ -288,6 +288,8 @@ Task files may specify concrete validation commands in the `validation` metadata
 
 If `validation` is omitted, agents use default validation commands from the task's resolved profile. If `validation = []`, no validation commands are required; the developer states in the handoff whether any validation was run and why. Broader tooling policy remains documented in `.devlab/config/tooling.md`. The orchestrator does not execute arbitrary task validation commands itself.
 
+Deployment work uses the same task/profile validation model as other domains. DevLab does not currently define separate structured deployment validation metadata; target projects own deployment verification commands and document host prerequisites. See `docs/adr/0009-defer-structured-deployment-validation-metadata.md`.
+
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
 
 ## Environment lifecycle

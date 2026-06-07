@@ -310,7 +310,26 @@ class TestBuildSystemPrompt:
         )
 
         assert "Domain: Deployment / Developer" in prompt
+        assert "do not install it" in prompt
         assert "Domain: Deployment / Reviewer" not in prompt
+
+    def test_reviewer_deployment_overlay_treats_missing_tools_as_unverified(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "Deploy", status="in_review", domain="deployment")
+        role = ROLES["reviewer"]
+
+        prompt = build_system_prompt(
+            tmp_path,
+            role,
+            snapshot=Workspace(tmp_path).snapshot,
+            role_name="reviewer",
+        )
+
+        assert "Domain: Deployment / Reviewer" in prompt
+        assert "do not install it" in prompt
+        assert "unverified" in prompt
 
     def test_developer_system_prompt_omits_domain_overlay_for_general_task(
         self, tmp_path: Path
