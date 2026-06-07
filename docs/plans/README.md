@@ -6,7 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-None.
+- [codebase-maintainability-for-agent-work.md](codebase-maintainability-for-agent-work.md) — close todo item 9 by sharpening module boundaries without hiding workflow policy
 
 ## Implemented
 
