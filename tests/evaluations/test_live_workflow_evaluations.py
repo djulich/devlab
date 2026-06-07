@@ -8,17 +8,15 @@ import pytest
 from tests.evaluations.checks import (
     command_check,
     command_fails_check,
+    deployment_artifacts_check,
     file_contains_check,
+    stateful_todo_api_check,
+    static_frontend_check,
 )
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
     EvaluationScenario,
     run_live_evaluation,
-)
-from tests.evaluations.scripted_agents import (
-    deployment_artifacts_check,
-    stateful_todo_api_check,
-    static_frontend_check,
 )
 
 pytestmark = pytest.mark.skipif(

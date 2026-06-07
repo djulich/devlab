@@ -4,6 +4,10 @@
 
 Close todo item 9 by reducing the amount of unrelated code an agent must load when working on orchestration, doctor checks, prompt assembly, or scripted evaluations.
 
+## Outcome
+
+Implemented. Doctor checks were split by validation domain behind the `doctor.py` facade, and reusable scripted-evaluation black-box checks moved to `tests/evaluations/checks.py`. Orchestrator and prompt assembly extraction were explicitly deferred because those modules remain cohesive and splitting them now would hide workflow/prompt policy rather than reduce agent context.
+
 ## Non-goals
 
 - Do not split modules only to reduce line count.

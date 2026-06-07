@@ -6,11 +6,12 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [codebase-maintainability-for-agent-work.md](codebase-maintainability-for-agent-work.md) — close todo item 9 by sharpening module boundaries without hiding workflow policy
+None.
 
 ## Implemented
 
 - [agent-invocation-observability-and-error-handling.md](agent-invocation-observability-and-error-handling.md) — AgentResult, per-session logs, SessionContext, structured error handling
+- [codebase-maintainability-for-agent-work.md](codebase-maintainability-for-agent-work.md) — doctor domain split and evaluation check extraction while keeping orchestrator/prompt policy cohesive
 - [deployment-live-baseline-2026-06-06.md](deployment-live-baseline-2026-06-06.md) — initial live deployment evaluation baseline
 - [devlab-cli-library-logging-facility.md](devlab-cli-library-logging-facility.md) — `_logging.py`, `configure_logging()`, `--log-file` flag
 - [devlab-live-evaluation-quality-metrics.md](devlab-live-evaluation-quality-metrics.md) — role sequence, task cycles, artifact hygiene, quality summary diagnostics

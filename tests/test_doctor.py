@@ -119,7 +119,7 @@ def test_doctor_allows_known_task_domains(tmp_path: Path) -> None:
 
 def test_doctor_ignores_placeholder_deployment_spec_tools(tmp_path: Path, monkeypatch) -> None:
     init_workspace(tmp_path)
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: None)
 
     messages = _messages(tmp_path)
 
@@ -148,7 +148,7 @@ def test_doctor_does_not_match_deployment_tool_names_inside_words(
         "# Deployment Specification\n\n"
         "Kindly document local verification steps for future configuration.\n"
     )
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: None)
 
     messages = _messages(tmp_path)
 
@@ -165,7 +165,7 @@ def test_doctor_reports_generic_container_spec_without_common_tool(
         "Build an OCI-compatible container image for local verification.\n"
         "Production deployment is out of scope.\n"
     )
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: None)
 
     messages = _messages(tmp_path)
 
@@ -183,7 +183,7 @@ def test_doctor_allows_generic_container_spec_when_common_tool_exists(
         "Production deployment is out of scope.\n"
     )
     monkeypatch.setattr(
-        "devlab.doctor.shutil.which",
+        "devlab.doctor_deployment.shutil.which",
         lambda name: "/usr/bin/buildah" if name == "buildah" else None,
     )
 
@@ -204,7 +204,7 @@ def test_doctor_checks_additional_deployment_spec_files(tmp_path: Path, monkeypa
         "# Compose Deployment\n\nVerify Compose artifacts with docker compose.\n"
         "Production deployment is out of scope.\n"
     )
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: None)
 
     messages = _messages(tmp_path)
 
@@ -219,7 +219,7 @@ def test_doctor_reports_missing_deployment_tools(tmp_path: Path, monkeypatch) ->
         "Build a container image with Podman and verify Kubernetes manifests with kind.\n"
         "Production deployment is out of scope.\n"
     )
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: None)
 
     messages = _messages(tmp_path)
 
@@ -239,7 +239,7 @@ def test_doctor_allows_docker_or_podman_when_one_is_available(tmp_path: Path, mo
         "Production deployment is out of scope.\n"
     )
     monkeypatch.setattr(
-        "devlab.doctor.shutil.which",
+        "devlab.doctor_deployment.shutil.which",
         lambda name: "/usr/bin/podman" if name == "podman" else None,
     )
 
@@ -259,7 +259,7 @@ def test_doctor_reports_docker_or_podman_when_neither_is_available(
         "Build a local image with Docker or Podman.\n"
         "Production deployment is out of scope.\n"
     )
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: None)
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: None)
 
     messages = _messages(tmp_path)
 
@@ -275,7 +275,7 @@ def test_doctor_does_not_warn_for_non_deployment_production_mentions(
         "# Deployment Specification\n\n"
         "Use production-like sample configuration for local validation.\n"
     )
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: "/usr/bin/tool")
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: "/usr/bin/tool")
 
     messages = _messages(tmp_path)
 
@@ -289,7 +289,7 @@ def test_doctor_reports_production_claim_without_boundary(tmp_path: Path, monkey
         "# Deployment Specification\n\n"
         "Deploy to production with existing automation.\n"
     )
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: "/usr/bin/tool")
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: "/usr/bin/tool")
 
     messages = _messages(tmp_path)
 
@@ -303,7 +303,7 @@ def test_doctor_allows_production_boundary_language(tmp_path: Path, monkeypatch)
         "# Deployment Specification\n\n"
         "Provide local Podman verification. Production deployment is out of scope.\n"
     )
-    monkeypatch.setattr("devlab.doctor.shutil.which", lambda _name: "/usr/bin/tool")
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: "/usr/bin/tool")
 
     messages = _messages(tmp_path)
 

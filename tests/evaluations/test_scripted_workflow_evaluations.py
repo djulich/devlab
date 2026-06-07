@@ -30,9 +30,14 @@ from tests.evaluations.checks import (
     CheckResult,
     command_check,
     command_fails_check,
+    compose_deployment_artifacts_check,
+    deployment_artifacts_check,
     file_contains_check,
     optional_docker_compose_config_check,
     optional_make_target_check,
+    stateful_todo_api_check,
+    static_frontend_check,
+    stdlib_http_api_check,
 )
 from tests.evaluations.generated_products import write_stateful_todo_api
 from tests.evaluations.harness import (
@@ -48,11 +53,6 @@ from tests.evaluations.scripted_agents import (
     HttpApiScriptedAgent,
     StatefulWebApiScriptedAgent,
     StaticFrontendScriptedAgent,
-    compose_deployment_artifacts_check,
-    deployment_artifacts_check,
-    stateful_todo_api_check,
-    static_frontend_check,
-    stdlib_http_api_check,
 )
 
 
