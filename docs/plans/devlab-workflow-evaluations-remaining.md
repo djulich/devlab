@@ -149,7 +149,7 @@ Configuration approach:
 
 Live test behavior:
 
-- call `run_loop(root, auto=True, max_sessions=..., provider=..., model=..., effort=...)`
+- call `run_loop(root, max_sessions=..., provider=..., model=..., effort=...)`
 - run the same black-box checks after completion
 - always write diagnostics JSON with `provider_mode = "live"`
 - include target root, `.devlab/logs/agents/`, and diagnostics path in assertion messages

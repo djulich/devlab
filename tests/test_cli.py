@@ -173,6 +173,7 @@ def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path
         str(tmp_path),
     )
 
+    assert "auto" not in seen
     assert seen["planning_only"] is True
     assert seen["revise_plan"] is True
     assert seen["retain_prompts"] is True
@@ -202,6 +203,7 @@ def test_cli_run_passes_retain_prompts(monkeypatch: pytest.MonkeyPatch, tmp_path
         "1",
     )
 
+    assert "auto" not in seen
     assert seen["retain_prompts"] is True
 
 

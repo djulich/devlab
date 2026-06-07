@@ -100,11 +100,7 @@ Current orchestrator output mapping:
 - handoff archived, task transitions, milestone transitions, finding creation: `INFO`.
 - resolved agent config log path and generated agent log paths: `DEBUG`.
 
-Keep these as direct output:
-
-- interactive handoff preview block in `auto=False`
-- `input("Continue? [Y/n]: ")`
-- `Stopped by user.` can remain direct output because it is part of the interactive prompt flow, or become `INFO`; prefer direct output for consistency with the prompt.
+No direct workflow-loop output is needed beyond logging; user-facing reporting commands remain separate.
 
 ## Implementation phases
 

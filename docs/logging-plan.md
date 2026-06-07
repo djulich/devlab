@@ -77,7 +77,7 @@ Finish context reports the same task/milestone identity where known plus the nex
 
 ### Non-interactive run output
 
-The interactive handoff preview in the `auto=False` path (the `print(handoff_text[:2000])` block) stays as `print()` — it is user-facing interactive output, not a log message.
+Workflow progress is reported through logging; reporting commands that present direct user output remain separate.
 
 ## Implementation steps
 

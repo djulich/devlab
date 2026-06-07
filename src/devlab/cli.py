@@ -51,11 +51,6 @@ def main() -> None:
         help="Project root to operate on (default: current working directory).",
     )
     run_parser.add_argument(
-        "--auto",
-        action="store_true",
-        help="Run autonomously without pausing between sessions.",
-    )
-    run_parser.add_argument(
         "--max-sessions",
         type=int,
         default=20,
@@ -114,11 +109,6 @@ def main() -> None:
         type=Path,
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to operate on (default: current working directory).",
-    )
-    plan_parser.add_argument(
-        "--auto",
-        action="store_true",
-        help="Run autonomously without pausing between sessions.",
     )
     plan_parser.add_argument(
         "--max-sessions",
@@ -249,7 +239,6 @@ def main() -> None:
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         result = run_loop(
             root,
-            auto=args.auto,
             max_sessions=args.max_sessions,
             provider=args.provider,
             model=args.model,
@@ -264,7 +253,6 @@ def main() -> None:
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         result = run_loop(
             root,
-            auto=args.auto,
             max_sessions=args.max_sessions,
             provider=args.provider,
             model=args.model,

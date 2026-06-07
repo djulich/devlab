@@ -282,7 +282,6 @@ def _run_evaluation_loop(
     started = time.monotonic()
     result = run_loop(
         root,
-        auto=True,
         max_sessions=max_sessions,
         provider=provider,
         model=model,

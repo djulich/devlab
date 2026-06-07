@@ -27,8 +27,8 @@ During early development, this repository can also be used as a target workspace
 cd /path/to/target-project
 devlab init
 devlab status
-devlab plan --auto
-devlab run --auto
+devlab plan
+devlab run
 ```
 
 ### Why separate the responsibilities?

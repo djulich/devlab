@@ -191,7 +191,7 @@ Add helper functions in test support code, not production code initially:
 - create temp target repo
 - call `init_workspace(root)`
 - write specs/config/profile files
-- run `run_loop(root, auto=True, max_sessions=scenario.max_sessions, agent_providers={...})`
+- run `run_loop(root, max_sessions=scenario.max_sessions, agent_providers={...})`
 - collect diagnostics
 - run black-box checks
 - assert expected workflow outcome

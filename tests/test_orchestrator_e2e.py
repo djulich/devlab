@@ -184,7 +184,6 @@ def test_run_loop_completes_full_happy_path_workflow(tmp_path: Path) -> None:
 
     result = run_loop(
         tmp_path,
-        auto=True,
         max_sessions=10,
         agent_providers={"default": provider},
     )
@@ -218,7 +217,6 @@ def test_run_loop_replans_after_integration_finding(tmp_path: Path) -> None:
 
     result = run_loop(
         tmp_path,
-        auto=True,
         max_sessions=12,
         agent_providers={"default": provider},
     )
@@ -258,7 +256,6 @@ def test_run_loop_handles_reviewer_rejection_and_rework(tmp_path: Path) -> None:
 
     result = run_loop(
         tmp_path,
-        auto=True,
         max_sessions=10,
         agent_providers={"default": provider},
     )

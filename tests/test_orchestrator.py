@@ -506,7 +506,7 @@ class RaisingProvider:
 class TestRunLoop:
     def test_revise_plan_requires_planning_only(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="revise_plan requires planning_only"):
-            run_loop(tmp_path, auto=True, max_sessions=1, revise_plan=True)
+            run_loop(tmp_path, max_sessions=1, revise_plan=True)
 
     def test_planning_only_runs_architect_and_planner_then_stops(
         self, tmp_path: Path
@@ -524,7 +524,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=5,
             planning_only=True,
             agent_providers={"default": provider},
@@ -568,7 +567,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=5,
             planning_only=True,
             automatic_version_control=True,
@@ -600,7 +598,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=5,
             planning_only=True,
             agent_providers={"default": provider},
@@ -620,7 +617,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=5,
             planning_only=True,
             revise_plan=True,
@@ -637,7 +633,7 @@ class TestRunLoop:
         task = _write_task(tmp_path, "T0001", "First", body=_checked_task_body("T0001", "First"))
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert len(provider.calls) == 1
         assert provider.calls[0].role_name == "developer"
@@ -654,7 +650,6 @@ class TestRunLoop:
 
         run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             agent_providers={"default": provider},
             session_progress=lambda event, number, role: events.append((event, number, role)),
@@ -682,7 +677,7 @@ class TestRunLoop:
         monkeypatch.setattr(logger, "propagate", True)
         caplog.set_level(logging.INFO, logger="devlab")
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         messages = [record.getMessage() for record in caplog.records]
         assert any(
@@ -702,7 +697,7 @@ class TestRunLoop:
         task = _write_task(tmp_path, "T0001", "First")
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert provider.calls[0].role_name == "developer"
         assert 'status = "open"' in task.read_text()
@@ -731,7 +726,7 @@ class TestRunLoop:
 
         provider = MockProvider(on_invoke=on_invoke)
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert (tmp_path / "env-order.log").read_text().splitlines() == [
             "pre",
@@ -756,7 +751,7 @@ class TestRunLoop:
         )
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert (tmp_path / "env-order.log").read_text().splitlines() == ["profile"]
 
@@ -776,7 +771,7 @@ class TestRunLoop:
         )
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert provider.calls[0].role_name == "planner"
         assert not (tmp_path / "env-order.log").exists()
@@ -797,7 +792,7 @@ class TestRunLoop:
         provider = MockProvider()
 
         result = run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -823,7 +818,7 @@ class TestRunLoop:
         provider = MockProvider(return_code=3)
 
         result = run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -844,7 +839,7 @@ class TestRunLoop:
         )
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert provider.calls[0].role_name == "reviewer"
         assert 'status = "closed"' in task.read_text()
@@ -870,7 +865,7 @@ class TestRunLoop:
             )
         )
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert provider.calls[0].role_name == "reviewer"
         assert 'status = "changes_requested"' in task.read_text()
@@ -899,7 +894,7 @@ class TestRunLoop:
         )
 
         result = run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -922,7 +917,7 @@ class TestRunLoop:
         provider = MockProvider()
 
         result = run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -937,7 +932,7 @@ class TestRunLoop:
         provider = MockProvider(write_handoff=False)
 
         result = run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -961,7 +956,7 @@ class TestRunLoop:
         provider = MockProvider(on_invoke=on_invoke)
 
         result = run_loop(
-            tmp_path, auto=True, max_sessions=2,
+            tmp_path, max_sessions=2,
             agent_providers={"default": provider},
         )
 
@@ -977,7 +972,7 @@ class TestRunLoop:
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["integrator"]
 
@@ -996,7 +991,7 @@ class TestRunLoop:
         )
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert provider.calls == []
 
@@ -1010,7 +1005,7 @@ class TestRunLoop:
         _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["architect"]
 
@@ -1023,7 +1018,7 @@ class TestRunLoop:
         _write_task(tmp_path, "T0002", "M2 Open", status="open", milestone="M2")
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["integrator"]
 
@@ -1035,7 +1030,7 @@ class TestRunLoop:
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         milestone = FileMilestoneTracker(tmp_path).get("M1")
         assert milestone.status == MilestoneStatus.INTEGRATED
@@ -1059,7 +1054,7 @@ class TestRunLoop:
             )
         )
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         findings = FileFindingTracker(tmp_path).open_findings()
         assert len(findings) == 1
@@ -1086,7 +1081,7 @@ class TestRunLoop:
             )
         )
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         findings = FileFindingTracker(tmp_path).open_findings()
         assert len(findings) == 1
@@ -1100,7 +1095,7 @@ class TestRunLoop:
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=2, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=2, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["integrator", "architect"]
         milestone = FileMilestoneTracker(tmp_path).get("M1")
@@ -1123,7 +1118,7 @@ class TestRunLoop:
         _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["architect"]
         milestone = FileMilestoneTracker(tmp_path).get("M1")
@@ -1147,7 +1142,7 @@ class TestRunLoop:
             )
         )
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         findings = FileFindingTracker(tmp_path).open_findings()
         assert len(findings) == 1
@@ -1209,7 +1204,7 @@ class TestRunLoop:
         )
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["planner"]
 
@@ -1245,7 +1240,7 @@ class TestRunLoop:
             on_invoke=on_invoke,
         )
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.PLANNED
 
@@ -1272,7 +1267,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             agent_providers={"default": provider},
         )
@@ -1303,7 +1297,7 @@ class TestRunLoop:
         )
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert 'status = "closed"' in task.read_text()
         assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.RESOLVED
@@ -1374,7 +1368,7 @@ class TestRunLoop:
 
         monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
 
-        run_loop(tmp_path, auto=True, max_sessions=1, retain_prompts=True)
+        run_loop(tmp_path, max_sessions=1, retain_prompts=True)
 
         logs = list((tmp_path / ".devlab/logs/agents").glob("*_developer.config.toml"))
         assert len(logs) == 1
@@ -1400,7 +1394,6 @@ class TestRunLoop:
 
         run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             retain_prompts=True,
             agent_providers={"default": provider},
@@ -1423,7 +1416,6 @@ class TestRunLoop:
 
         run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             agent_providers={"default": default_provider, "reviewer": reviewer_provider},
             role_agent_providers={"reviewer": "reviewer"},
@@ -1441,7 +1433,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             agent_providers={"default": provider},
         )
@@ -1467,7 +1458,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             agent_providers={"default": provider},
         )
@@ -1496,7 +1486,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             agent_providers={"default": provider},
         )
@@ -1512,7 +1501,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             agent_providers={"default": provider},
         )
@@ -1531,7 +1519,6 @@ class TestRunLoop:
         with pytest.raises(RuntimeError, match="bug in provider"):
             run_loop(
                 tmp_path,
-                auto=True,
                 max_sessions=1,
                 agent_providers={"default": provider},
             )
@@ -1544,7 +1531,6 @@ class TestRunLoop:
 
         result = run_loop(
             tmp_path,
-            auto=True,
             max_sessions=1,
             agent_providers={"default": provider},
         )
@@ -1572,7 +1558,7 @@ class TestRunLoop:
         )
 
         result = run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -1588,7 +1574,7 @@ class TestRunLoop:
         _write_task(tmp_path, "T0001", "Blocked", depends_on=["T9999"])
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert provider.calls == []
 
@@ -1610,7 +1596,7 @@ class TestRunLoop:
 
         provider = MockProvider(on_invoke=on_invoke)
 
-        run_loop(tmp_path, auto=True, max_sessions=2, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=2, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["reviewer", "developer"]
         assert 'status = "closed"' in dependency.read_text()
@@ -1621,7 +1607,7 @@ class TestRunLoop:
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["planner"]
 
@@ -1629,7 +1615,7 @@ class TestRunLoop:
         _setup_tree(tmp_path)
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["architect"]
 
@@ -1639,26 +1625,11 @@ class TestRunLoop:
         _write_task(tmp_path, "T0001", "First")
         provider = MockProvider()
 
-        run_loop(tmp_path, auto=True, max_sessions=1, agent_providers={"default": provider})
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         archived = list((tmp_path / HISTORY_DIR).glob("*_developer_handoff.md"))
         assert len(archived) == 1
         assert "Mock session completed" in archived[0].read_text()
-
-    def test_non_auto_mode_stops_when_user_declines(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        _setup_tree(tmp_path)
-        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        task = _write_task(tmp_path, "T0001", "First")
-        provider = MockProvider(on_invoke=_complete_developer_task)
-        monkeypatch.setattr("builtins.input", lambda _prompt: "n")
-
-        run_loop(tmp_path, auto=False, max_sessions=5, agent_providers={"default": provider})
-
-        assert [call.role_name for call in provider.calls] == ["developer"]
-        assert 'status = "in_review"' in task.read_text()
-
 
 class TestValidateHandoff:
     def test_valid_handoff(self, tmp_path: Path) -> None:
@@ -1807,7 +1778,7 @@ class TestSessionMetadata:
         provider = MockProvider()
 
         run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -1827,7 +1798,7 @@ class TestSessionMetadata:
         )
 
         run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -1843,7 +1814,7 @@ class TestSessionMetadata:
         provider = RaisingProvider(ProviderError("connection refused"))
 
         run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -1863,7 +1834,7 @@ class TestSessionMetadata:
         provider = MockProvider(write_handoff=False)
 
         run_loop(
-            tmp_path, auto=True, max_sessions=1,
+            tmp_path, max_sessions=1,
             agent_providers={"default": provider},
         )
 

@@ -42,7 +42,6 @@ from devlab.workspace import (
     ROLES,
     Workspace,
     WorkspaceSnapshot,
-    read_file,
 )
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
@@ -501,7 +500,6 @@ def _notify_session_progress(
 def run_loop(
     root: Path,
     *,
-    auto: bool,
     max_sessions: int,
     provider: str | None = None,
     model: str | None = None,
@@ -778,16 +776,6 @@ def run_loop(
         if planning_only and revise_plan and sessions_run >= len(forced_planning_roles):
             logger.info("Planning revision complete; stopping before implementation roles.")
             break
-
-        if not auto:
-            handoff_text = read_file(handoff_path)
-            print(f"\n{'- ' * 30}")
-            print(handoff_text[:2000])
-            print(f"{'- ' * 30}")
-            answer = input("Continue? [Y/n]: ").strip().lower()
-            if answer in ("n", "q"):
-                print("Stopped by user.")
-                break
 
     logger.info("Orchestrator finished after %s session(s).", sessions_run)
     return RunResult(sessions_run, True, 0, ())

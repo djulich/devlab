@@ -70,7 +70,7 @@ uv run devlab diagnostics --root /path/to/target-project
 Optionally generate design and project plans before implementation, then re-run diagnostics against the planned workflow state:
 
 ```bash
-uv run devlab plan --root /path/to/target-project --auto
+uv run devlab plan --root /path/to/target-project
 uv run devlab doctor --root /path/to/target-project
 ```
 
@@ -79,13 +79,13 @@ uv run devlab doctor --root /path/to/target-project
 Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session. It catches up from the current durable workflow state, so re-running it continues where the last `devlab plan` or `devlab run` stopped:
 
 ```bash
-uv run devlab run --root /path/to/target-project --auto --max-sessions 20
+uv run devlab run --root /path/to/target-project --max-sessions 20
 ```
 
 For prompt-debugging only, retain full system/session prompts alongside agent logs:
 
 ```bash
-uv run devlab run --root /path/to/target-project --auto --retain-prompts
+uv run devlab run --root /path/to/target-project --retain-prompts
 ```
 
 Prompt logs and agent output can contain target-project details. Treat `.devlab/logs/agents/` as sensitive.
@@ -93,8 +93,8 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 ## CLI commands
 
 - `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
-- `devlab plan [--root PATH] [--auto] [--revise] [...]` — run missing planning sessions and stop before implementation; repeat runs are no-ops unless `--revise` is used.
-- `devlab run [--root PATH] [--auto] [--max-sessions N] [...]` — run the workflow loop from the current durable state, continuing where prior runs stopped.
+- `devlab plan [--root PATH] [--revise] [--max-sessions N] [...]` — run missing planning sessions and stop before implementation; repeat runs are no-ops unless `--revise` is used.
+- `devlab run [--root PATH] [--max-sessions N] [...]` — run the workflow loop from the current durable state, continuing where prior runs stopped.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
