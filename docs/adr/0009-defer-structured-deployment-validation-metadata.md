@@ -1,9 +1,7 @@
 # Defer structured deployment validation metadata
 
-DevLab will continue to model deployment verification through task/profile validation commands and target-owned project commands rather than adding deployment-specific structured validation metadata now.
+DevLab will not add deployment-specific validation metadata yet. Deployment verification remains expressed through target-owned commands, task `validation`, profile defaults, acceptance criteria, and docs.
 
-The current evidence is sufficient for the initial deployment scope: deterministic deployment evaluations and the first live deployment baseline produced discoverable project-owned verification commands, deployment-domain task attribution, profile usage diagnostics, and clean workflow history without deployment-specific orchestrator branches. Missing host tools remain user/CI prerequisites under ADR 0008.
+Current scripted and live deployment baselines produced discoverable verification commands, deployment-domain task attribution, profile diagnostics, and clean workflow history without deployment-specific orchestrator branches. Missing host tools remain user/CI prerequisites under ADR 0008.
 
-Adding first-class deployment validation metadata too early would duplicate task `validation`, profile default validation, Make/script entry points, and documentation. It would also risk pushing deployment-specific policy into the orchestrator, contrary to the role/domain boundary: orchestrator decides workflow, providers invoke agents, trackers store state, and target projects own verification commands.
-
-Revisit this decision only if additional live baselines show repeated failures that cannot be fixed with prompt guidance and diagnostics, such as agents failing to create discoverable project-owned commands, reviewers approving unverified deployment claims without clear missing-tool evidence, or profile validation commands becoming too ambiguous for users/CI to operate.
+First-class metadata would currently duplicate existing command sources and risk moving deployment policy into the orchestrator. Revisit only if live baselines show repeated failures: missing discoverable commands, reviewers approving unverified deployment claims, unclear missing-tool evidence, or profile validation becoming too ambiguous for users/CI.
