@@ -241,7 +241,7 @@ def archive_handoff(root: Path, role_name: str) -> Path:
 
 
 def close_task(workspace: Workspace, task_path: Path, role_name: str = "reviewer") -> None:
-    task = workspace.task_from_path(task_path)
+    task = workspace.tasks().from_path(task_path)
     task.close()
     logger.info("Task %s closed by %s; status set to closed", task.path.name, role_name)
     task.resolve_addressed_findings()

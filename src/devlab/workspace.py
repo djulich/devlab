@@ -148,18 +148,6 @@ class Workspace:
     def milestones(self) -> WorkspaceMilestones:
         return WorkspaceMilestones(self)
 
-    def task(self, task_id: str) -> WorkspaceTask:
-        return self.tasks().get(task_id)
-
-    def task_from_path(self, path: Path) -> WorkspaceTask:
-        return self.tasks().from_path(path)
-
-    def milestone(self, milestone_id: str) -> WorkspaceMilestone:
-        return self.milestones().get(milestone_id)
-
-    def finding(self, finding_id: str) -> WorkspaceFinding:
-        return self.findings().get(finding_id)
-
     def did_mutate(self) -> None:
         self._snapshot = None
 

@@ -110,6 +110,10 @@ def test_workspace_domain_handles_do_not_expose_raw_trackers(tmp_path: Path) -> 
     assert not isinstance(workspace.tasks(), FileTaskTracker)
     assert not isinstance(workspace.findings(), FileFindingTracker)
     assert not isinstance(workspace.milestones(), FileMilestoneTracker)
+    assert not hasattr(workspace, "task")
+    assert not hasattr(workspace, "task_from_path")
+    assert not hasattr(workspace, "finding")
+    assert not hasattr(workspace, "milestone")
 
 
 def test_workspace_finding_handles_create_and_transition_findings(tmp_path: Path) -> None:

@@ -101,7 +101,7 @@ Open work:
 
 ## 9. Workspace API Consistency
 
-Status: **consistency guardrails in place**. Workspace mutation now prefers domain handles such as `workspace.findings().create_from_handoff(...)`; raw tracker construction is internal to `Workspace`/`WorkspaceSnapshot`, snapshot tracker fields are private, and tests assert domain handles do not expose raw trackers or bypass handles for production workflow mutations. Multi-step workflow policy remains in `orchestrator.py`; handles expose atomic task, finding, and milestone transitions.
+Status: **consistency guardrails in place**. Workspace mutation now uses domain handles such as `workspace.tasks().get(...)`, `workspace.findings().create_from_handoff(...)`, and `workspace.milestones().get(...)`; older shortcut methods were removed. Raw tracker construction is internal to `Workspace`/`WorkspaceSnapshot`, snapshot tracker fields are private, and tests assert domain handles do not expose raw trackers or bypass handles for production workflow mutations. Multi-step workflow policy remains in `orchestrator.py`; handles expose atomic task, finding, and milestone transitions. Reporting/diagnostic code now prefers `WorkspaceSnapshot` for task/finding reads where practical.
 
 Open work:
 

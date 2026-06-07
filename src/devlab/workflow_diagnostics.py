@@ -20,9 +20,9 @@ from devlab.artifact_hygiene import (
     collect_artifact_hygiene,
     has_large_ignored_artifacts,
 )
-from devlab.findings import FileFindingTracker, FindingStatus
+from devlab.findings import FindingStatus
 from devlab.profiles import DEFAULT_PROFILE, PROFILES_DIR, load_profile
-from devlab.task_tracker import FileTaskTracker, TaskStatus
+from devlab.task_tracker import TaskStatus
 from devlab.workflow_history import (
     IntegratorReworkSummary,
     SessionRecord,
@@ -34,6 +34,7 @@ from devlab.workflow_history import (
     derive_task_cycle_metrics,
     derive_task_rework_summary,
 )
+from devlab.workspace import Workspace, WorkspaceSnapshot
 
 HIGH_SESSIONS_PER_CLOSED_TASK_WARNING = 6
 
@@ -128,11 +129,12 @@ class WorkflowDiagnostics:
 
 
 def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
-    findings = FileFindingTracker(root).list_findings()
+    snapshot = Workspace(root).snapshot
+    findings = snapshot.list_findings()
     sessions = derive_session_records(root)
-    task_metrics = collect_task_metrics(root)
+    task_metrics = collect_task_metrics(root, snapshot=snapshot)
     artifact_hygiene = collect_artifact_hygiene(root)
-    task_cycles = derive_task_cycle_metrics(root, sessions)
+    task_cycles = derive_task_cycle_metrics(root, sessions, snapshot=snapshot)
     task_rework = derive_task_rework_summary(task_cycles)
     integrator_rework = derive_integrator_rework_summary(findings)
     return WorkflowDiagnostics(
@@ -147,7 +149,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
         ),
         review_rejections=derive_review_rejections(root),
         integrator_rework=integrator_rework,
-        profiles=collect_profile_metrics(root),
+        profiles=collect_profile_metrics(root, snapshot=snapshot),
         artifact_hygiene=artifact_hygiene,
         agent_logs=collect_agent_log_metrics(root),
         prompt_logs=collect_prompt_log_metrics(root),
@@ -162,8 +164,10 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
     )
 
 
-def collect_task_metrics(root: Path) -> TaskMetrics:
-    tasks = FileTaskTracker(root).list_tasks()
+def collect_task_metrics(
+    root: Path, *, snapshot: WorkspaceSnapshot | None = None
+) -> TaskMetrics:
+    tasks = (snapshot or Workspace(root).snapshot).list_tasks()
     by_status: dict[str, int] = {}
     for task in tasks:
         by_status[task.status.value] = by_status.get(task.status.value, 0) + 1
@@ -183,7 +187,9 @@ def collect_task_metrics(root: Path) -> TaskMetrics:
     )
 
 
-def collect_profile_metrics(root: Path) -> ProfileMetrics:
+def collect_profile_metrics(
+    root: Path, *, snapshot: WorkspaceSnapshot | None = None
+) -> ProfileMetrics:
     profiles: list[ProfileItem] = []
     profiles_path = root / PROFILES_DIR
     for path in sorted(profiles_path.glob("*.toml")):
@@ -213,7 +219,7 @@ def collect_profile_metrics(root: Path) -> ProfileMetrics:
             )
         )
 
-    tasks = FileTaskTracker(root).list_tasks()
+    tasks = (snapshot or Workspace(root).snapshot).list_tasks()
     tasks_by_profile: dict[str, list[str]] = {}
     for task in tasks:
         profile_id = task.profile or DEFAULT_PROFILE

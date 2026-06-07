@@ -13,7 +13,7 @@ from pathlib import Path
 
 from devlab.findings import Finding, FindingStatus
 from devlab.handoffs import HandoffError, parse_handoff
-from devlab.task_tracker import FileTaskTracker
+from devlab.workspace import Workspace, WorkspaceSnapshot
 
 _HANDOFF_FILENAME_RE = re.compile(r"^(\d{8}T\d{6})(?:_(\d+))?_([a-z_]+)_handoff\.md$")
 _TASK_ARTIFACT_RE = re.compile(r"\.devlab/tasks/(T\d{3,5})[^\s`)]*\.md")
@@ -110,12 +110,12 @@ def _task_id_for_session(path: Path, role: str) -> tuple[str, str]:
 def derive_task_cycle_metrics(
     root: Path,
     sessions: list[SessionRecord] | None = None,
+    *,
+    snapshot: WorkspaceSnapshot | None = None,
 ) -> TaskCycleMetrics:
     session_records = sessions if sessions is not None else derive_session_records(root)
-    counts: dict[str, list[int]] = {
-        task.id: [0, 0]
-        for task in FileTaskTracker(root).list_tasks()
-    }
+    tasks = (snapshot or Workspace(root).snapshot).list_tasks()
+    counts: dict[str, list[int]] = {task.id: [0, 0] for task in tasks}
     unattributed = 0
     for session in session_records:
         if session.role not in {"developer", "reviewer"}:

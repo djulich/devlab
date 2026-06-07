@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any, cast
 
 from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES, load_agent_configuration
-from devlab.findings import FileFindingTracker, FindingStatus
+from devlab.findings import FindingStatus
 from devlab.knowledge import ADR_DIR, ADR_FILENAME_RE, CONTEXT_MAP, context_paths_from_map
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
 from devlab.prompt_context import RolePromptContext, build_prompt_context_report
-from devlab.task_tracker import DEFAULT_TASK_DOMAIN, FileTaskTracker
+from devlab.task_tracker import DEFAULT_TASK_DOMAIN
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
 KNOWN_TASK_DOMAINS = {DEFAULT_TASK_DOMAIN, "deployment"}
@@ -67,10 +67,11 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     problems: list[DoctorProblem] = []
     agent_problems = _check_agents_config(root)
     problems.extend(agent_problems)
+    snapshot = Workspace(root).snapshot
     if not agent_problems:
-        problems.extend(_check_prompt_context_sizes(Workspace(root).snapshot))
-    problems.extend(_check_milestones(root))
-    problems.extend(_check_task_domains(root))
+        problems.extend(_check_prompt_context_sizes(snapshot))
+    problems.extend(_check_milestones(root, snapshot))
+    problems.extend(_check_task_domains(snapshot))
     problems.extend(_check_deployment_spec(root))
     problems.extend(_check_project_knowledge(root))
     return problems
@@ -166,9 +167,10 @@ def _prompt_context_problem(role: RolePromptContext) -> DoctorProblem:
     )
 
 
-def _check_task_domains(root: Path) -> list[DoctorProblem]:
+def _check_task_domains(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
     problems: list[DoctorProblem] = []
-    for task in FileTaskTracker(root).list_tasks():
+    root = snapshot.root
+    for task in snapshot.list_tasks():
         if task.domain not in KNOWN_TASK_DOMAINS:
             problems.append(
                 DoctorProblem(
@@ -343,9 +345,9 @@ def _check_adrs(root: Path) -> list[DoctorProblem]:
     return problems
 
 
-def _check_milestones(root: Path) -> list[DoctorProblem]:
+def _check_milestones(root: Path, snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
     problems: list[DoctorProblem] = []
-    tasks = FileTaskTracker(root).list_tasks()
+    tasks = snapshot.list_tasks()
     task_by_id = {task.id: task for task in tasks}
     milestone_dir = root / MILESTONES_DIR
     milestone_files = sorted(milestone_dir.glob("M*.toml")) if milestone_dir.exists() else []
@@ -398,7 +400,7 @@ def _check_milestones(root: Path) -> list[DoctorProblem]:
                 )
             )
 
-    findings = FileFindingTracker(root).list_findings()
+    findings = snapshot.list_findings()
     finding_ids = {finding.id: finding for finding in findings}
     addressing_tasks: dict[str, list[str]] = {finding.id: [] for finding in findings}
     for task in tasks:
