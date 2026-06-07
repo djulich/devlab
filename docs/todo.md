@@ -50,6 +50,7 @@ Priority: high. DevLab is intended to be a reusable CLI/package, but the reposit
 
 Open work:
 
+- Add a focused DevLab repository `Makefile` for source-checkout convenience: `help`, `sync`, `check`, `test`, `install`, `install-editable`, and `uninstall`; keep direct `uv tool install ...` commands as the canonical installation path. See `docs/plans/devlab-project-makefile.md`.
 - Expand user-level documentation for profiles, findings, milestones, and handoffs beyond the top-level README.
 - Keep maturity guidance current as live-agent evaluation baselines accumulate.
 - Add or decide on license and release/versioning expectations.

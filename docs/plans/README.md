@@ -6,7 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-None.
+- [devlab-project-makefile.md](devlab-project-makefile.md) — add a focused repository Makefile for validation and uv tool installation from source checkouts
 
 ## Implemented
 
