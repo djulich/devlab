@@ -55,12 +55,14 @@ For DevLab development, install the checkout in editable mode so code changes ar
 ```bash
 cd /path/to/devlab-checkout
 uv tool install --editable .
+# or: make install-editable
 ```
 
 For a normal (non-development) installation from a checkout, install a regular tool copy:
 
 ```bash
 uv tool install /path/to/devlab-checkout
+# or, from inside the checkout: make install
 ```
 
 If the repository is available over Git, install directly from a branch, tag, or commit:
@@ -183,10 +185,15 @@ Keep environment-specific live-agent configs under `.local/live-eval/` and out o
 ## Development validation
 
 ```bash
+make check
+```
+
+Equivalent direct commands:
+
+```bash
 uv run ruff check
 uv run ty check
-uv run pytest
-uv run devlab doctor
+uv run pytest -q
 ```
 
 ## More documentation
