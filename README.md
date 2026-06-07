@@ -35,12 +35,48 @@ In particular:
 
 DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab run`, especially in cloned or agent-modified workspaces.
 
-## Quickstart from this repository
+## Prerequisites
+
+To install and run DevLab, you need:
+
+- Python 3.12 or newer.
+- [`uv`](https://docs.astral.sh/uv/) for installing and running the DevLab tool.
+- Git on `PATH`; DevLab initializes target repositories when needed and commits workflow changes after valid sessions.
+- At least one configured agent CLI/provider, such as a local coding-agent command, declared in the target project's `.devlab/config/agents.toml` before running `devlab plan` or `devlab run`.
+
+Target projects may define their own validation, build, environment lifecycle, or deployment commands. DevLab may invoke those target-owned commands when configured, but it does not install missing project tools for you.
+
+## Installation from a source checkout
+
+DevLab is not published to PyPI yet. Install it as a `uv` tool from a local checkout or a Git URL.
+
+For DevLab development, install the checkout in editable mode so code changes are reflected immediately:
 
 ```bash
-uv sync
+cd /path/to/devlab-checkout
+uv tool install --editable .
+```
+
+For a normal (non-development) installation from a checkout, install a regular tool copy:
+
+```bash
+uv tool install /path/to/devlab-checkout
+```
+
+If the repository is available over Git, install directly from a branch, tag, or commit:
+
+```bash
+uv tool install "git+https://example.com/org/devlab.git@main"
+```
+
+After installation, the `devlab` command can be run from inside any target project repository.
+
+## Quickstart inside a target project
+
+```bash
 mkdir -p /path/to/target-project
-uv run devlab init --root /path/to/target-project
+cd /path/to/target-project
+devlab init
 ```
 
 `devlab init` initializes Git when needed and creates an initial commit containing all non-ignored files. In existing directories, add secrets, local configuration, caches, and generated artifacts to `.gitignore` before running it.
@@ -48,7 +84,7 @@ uv run devlab init --root /path/to/target-project
 Edit the target project's system spec. The starter file is:
 
 ```text
-/path/to/target-project/.devlab/specs/system/README.md
+.devlab/specs/system/README.md
 ```
 
 For larger projects, split the system or deployment specification across additional Markdown files under `.devlab/specs/system/` or `.devlab/specs/deployment/`; DevLab reads all `*.md` files in those directories.
@@ -56,22 +92,22 @@ For larger projects, split the system or deployment specification across additio
 Configure the target project's agent command:
 
 ```text
-/path/to/target-project/.devlab/config/agents.toml
+.devlab/config/agents.toml
 ```
 
 Inspect the workspace:
 
 ```bash
-uv run devlab doctor --root /path/to/target-project
-uv run devlab status --root /path/to/target-project --verbose
-uv run devlab diagnostics --root /path/to/target-project
+devlab doctor
+devlab status --verbose
+devlab diagnostics
 ```
 
 Optionally generate design and project plans before implementation, then re-run diagnostics against the planned workflow state:
 
 ```bash
-uv run devlab plan --root /path/to/target-project
-uv run devlab doctor --root /path/to/target-project
+devlab plan
+devlab doctor
 ```
 
 `devlab plan` is safe to repeat: if design and project planning state already exists, it stops without editing plans. This gives you a review point before implementation: read and edit the generated design and project plans, because implementation work will follow those plans and a design that drifts from your intended specification can waste later agent sessions. Use `devlab plan --revise` when you explicitly want architect and planner sessions to review and update existing plans.
@@ -79,13 +115,13 @@ uv run devlab doctor --root /path/to/target-project
 Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session. It catches up from the current durable workflow state, so re-running it continues where the last `devlab plan` or `devlab run` stopped:
 
 ```bash
-uv run devlab run --root /path/to/target-project --max-sessions 20
+devlab run --max-sessions 20
 ```
 
 For prompt-debugging only, retain full system/session prompts alongside agent logs:
 
 ```bash
-uv run devlab run --root /path/to/target-project --retain-prompts
+devlab run --retain-prompts
 ```
 
 Prompt logs and agent output can contain target-project details. Treat `.devlab/logs/agents/` as sensitive.
