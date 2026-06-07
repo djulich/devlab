@@ -91,10 +91,17 @@ Edit the target project's system spec. The starter file is:
 
 For larger projects, split the system or deployment specification across additional Markdown files under `.devlab/specs/system/` or `.devlab/specs/deployment/`; DevLab reads all `*.md` files in those directories.
 
-Configure the target project's agent command:
+Configure the target project's agent command. The configured executable must be installed and available on `PATH` before running agent sessions:
 
 ```text
 .devlab/config/agents.toml
+```
+
+Commit your user-authored setup changes before planning. `devlab plan` and `devlab run` require a clean Git working tree so agent-authored changes can be isolated and committed safely:
+
+```bash
+git add .devlab/specs .devlab/config
+git commit -m "Configure DevLab project"
 ```
 
 Inspect the workspace:

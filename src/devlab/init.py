@@ -140,6 +140,31 @@ def format_init_result(result: InitResult, root: Path) -> str:
     return "\n".join(lines)
 
 
+def format_init_next_steps() -> str:
+    return """Next steps:
+  1. Edit the system spec:
+       .devlab/specs/system/README.md
+
+  2. Optionally add deployment specs under:
+       .devlab/specs/deployment/
+
+  3. Configure an installed agent command:
+       .devlab/config/agents.toml
+
+  4. Commit your user-authored setup changes:
+       git add .devlab/specs .devlab/config
+       git commit -m "Configure DevLab project"
+
+  5. Validate configuration:
+       devlab doctor
+
+  6. Generate plans:
+       devlab plan
+
+DevLab plan/run require a clean Git working tree. Commit spec and config edits before
+starting agent sessions."""
+
+
 def _ensure_dir(path: Path, created: list[Path]) -> None:
     if not path.exists():
         path.mkdir(parents=True)

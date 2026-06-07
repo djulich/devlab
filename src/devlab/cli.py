@@ -7,7 +7,7 @@ from pathlib import Path
 from devlab._logging import configure_logging
 from devlab.doctor import check_workspace, format_doctor_report
 from devlab.history import format_history
-from devlab.init import format_init_result, init_workspace
+from devlab.init import format_init_next_steps, format_init_result, init_workspace
 from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
@@ -235,6 +235,8 @@ def main() -> None:
             git_user_email=args.git_user_email,
         )
         print(format_init_result(result, root))
+        print()
+        print(format_init_next_steps())
     elif args.command == "run":
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         result = run_loop(

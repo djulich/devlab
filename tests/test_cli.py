@@ -35,6 +35,9 @@ def test_cli_init_creates_devlab_tree_and_git_baseline(
 
     output = capsys.readouterr().out
     assert "created: .devlab/manifest.toml" in output
+    assert "Next steps:" in output
+    assert ".devlab/config/agents.toml" in output
+    assert "DevLab plan/run require a clean Git working tree" in output
     assert (tmp_path / ".devlab/manifest.toml").exists()
     assert (tmp_path / ".devlab/config/profiles/default.toml").exists()
     assert (tmp_path / ".devlab/config/agents.toml").exists()

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from devlab.git import VersionControlError
-from devlab.init import format_init_result, init_workspace
+from devlab.init import format_init_next_steps, format_init_result, init_workspace
 
 
 def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
@@ -71,6 +71,18 @@ def test_format_init_result_uses_relative_paths(tmp_path: Path) -> None:
 
     assert "created: .devlab/manifest.toml" in text
     assert str(tmp_path) not in text
+
+
+def test_format_init_next_steps_mentions_specs_config_commit_and_plan() -> None:
+    text = format_init_next_steps()
+
+    assert ".devlab/specs/system/README.md" in text
+    assert ".devlab/specs/deployment/" in text
+    assert ".devlab/config/agents.toml" in text
+    assert "git add .devlab/specs .devlab/config" in text
+    assert "devlab doctor" in text
+    assert "devlab plan" in text
+    assert "clean Git working tree" in text
 
 
 def test_init_workspace_can_initialize_git_and_commit_baseline(tmp_path: Path) -> None:
