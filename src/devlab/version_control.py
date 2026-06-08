@@ -65,4 +65,4 @@ def commit_all(root: Path, message: str) -> bool:
 
 
 def tag(root: Path, name: str, message: str) -> None:
-    run_git(root, "tag", "-a", name, "-m", message)
+    run_git(root, "tag", "-f", "-a", name, "-m", message)

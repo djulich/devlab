@@ -50,6 +50,22 @@ def test_tag_creates_annotated_tag(tmp_path: Path) -> None:
     assert _git(tmp_path, "tag", "--list", "devlab/milestone/M1").stdout.strip()
 
 
+def test_tag_moves_existing_tag_to_new_commit(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "file.txt").write_text("first\n")
+    commit_all(tmp_path, "First commit")
+    tag(tmp_path, "devlab/milestone/M1", "First integration")
+    first_sha = _git(tmp_path, "rev-parse", "devlab/milestone/M1^{}").stdout.strip()
+
+    (tmp_path / "file.txt").write_text("second\n")
+    commit_all(tmp_path, "Second commit")
+    tag(tmp_path, "devlab/milestone/M1", "Re-integration")
+    second_sha = _git(tmp_path, "rev-parse", "devlab/milestone/M1^{}").stdout.strip()
+
+    assert first_sha != second_sha
+    assert second_sha == _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+
+
 def _init_repo(root: Path) -> None:
     _git(root, "init")
     _git(root, "config", "user.email", "devlab-test@example.invalid")
