@@ -33,6 +33,8 @@ _PRODUCTION_BOUNDARY_RE = re.compile(
     r"\b(?:production(?:\s+deployment)?\s+(?:is\s+)?out\s+of\s+scope|"
     r"production(?:\s+deployment)?\s+(?:is\s+)?(?:documentation|documented)-only|"
     r"(?:documentation|documented)-only|"
+    r"no\s+production\s+deploy(?:ment|ing)?|"
+    r"(?:is\s+)?not\s+(?:a\s+)?production\s+deploy(?:ment|ing)?|"
     r"future\s+(?:explicit\s+)?configuration|requires\s+explicit)\b"
 )
 

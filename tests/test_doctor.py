@@ -430,6 +430,20 @@ def test_doctor_allows_production_boundary_language(tmp_path: Path, monkeypatch)
     assert not any("mentions production without explicit" in message for message in messages)
 
 
+def test_doctor_allows_no_production_deployment_boundary(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / ".devlab/specs/deployment/README.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Deployment Specification\n\n"
+        "There is no production deployment. The app is a desktop application.\n"
+    )
+    monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: "/usr/bin/tool")
+
+    messages = _messages(tmp_path)
+
+    assert not any("mentions production without explicit" in message for message in messages)
+
+
 def test_doctor_reports_project_knowledge_problems(tmp_path: Path) -> None:
     (tmp_path / "CONTEXT-MAP.md").write_text(
         "# Context Map\n\n- [Missing](./src/missing/CONTEXT.md)\n"
