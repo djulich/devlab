@@ -131,6 +131,23 @@ def test_doctor_accepts_configured_agent_executable_on_path(tmp_path: Path, monk
     assert not any("was not found on PATH" in message for message in messages)
 
 
+def test_doctor_reports_dirty_git_worktree(tmp_path: Path) -> None:
+    init_workspace(
+        tmp_path,
+        automatic_git=True,
+        git_user_name="DevLab Test",
+        git_user_email="devlab-test@example.invalid",
+    )
+    (tmp_path / ".devlab/specs/system/README.md").write_text("# Changed spec\n")
+    (tmp_path / ".devlab/specs/deployment/deployment.md").write_text("# Deployment\n")
+
+    messages = _messages(tmp_path)
+
+    assert any("working tree is dirty" in message for message in messages)
+    assert any(".devlab/specs/system/README.md" in message for message in messages)
+    assert any(".devlab/specs/deployment/deployment.md" in message for message in messages)
+
+
 def test_doctor_reports_prompt_context_configuration_problems(tmp_path: Path) -> None:
     path = tmp_path / ".devlab/config/agents.toml"
     path.parent.mkdir(parents=True)

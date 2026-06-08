@@ -5,11 +5,33 @@ from pathlib import Path
 
 from devlab.doctor_common import DoctorProblem, display_path
 from devlab.findings import FindingStatus
+from devlab.git import VersionControlError, run_git
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
 from devlab.task_tracker import DEFAULT_TASK_DOMAIN
 from devlab.workspace import WorkspaceSnapshot
 
 KNOWN_TASK_DOMAINS = {DEFAULT_TASK_DOMAIN, "deployment"}
+
+
+def check_git_worktree(root: Path) -> list[DoctorProblem]:
+    """Report dirty Git state when the target is already inside a Git repository."""
+    try:
+        run_git(root, "rev-parse", "--is-inside-work-tree")
+        status = run_git(root, "status", "--porcelain").stdout.splitlines()
+    except VersionControlError:
+        return []
+    if not status:
+        return []
+    preview = ", ".join(line.strip() for line in status[:5])
+    if len(status) > 5:
+        preview += f", ... and {len(status) - 5} more"
+    return [
+        DoctorProblem(
+            ".",
+            "working tree is dirty; commit, stash, or ignore changes before running "
+            f"DevLab plan/run ({preview})",
+        )
+    ]
 
 
 def check_task_domains(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:

@@ -285,4 +285,7 @@ def test_cli_doctor_exits_nonzero_for_invalid_config(
         _run_cli(monkeypatch, "doctor", "--root", str(tmp_path))
 
     assert exc.value.code == 1
-    assert "DevLab doctor: 1 problem(s)" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "DevLab doctor: 2 problem(s)" in output
+    assert "working tree is dirty" in output
+    assert "invalid TOML" in output
