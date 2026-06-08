@@ -24,6 +24,7 @@ devlab clean-failed-session [--root PATH]
 The command removes untracked files/directories under:
 
 - `.devlab/logs/agents/`
+- `.devlab/logs/environment/`
 - `.devlab/session-artifacts/`
 
 It should use Git's own ignore/tracking knowledge, e.g. `git clean -fd -- <paths>`, so tracked files such as committed history logs or `.gitkeep` files are preserved.
