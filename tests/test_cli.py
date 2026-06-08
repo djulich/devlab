@@ -281,6 +281,9 @@ def test_cli_clean_failed_session_removes_untracked_diagnostics_only(
     capsys.readouterr()
     agent_log = tmp_path / ".devlab/logs/agents/failed.stdout.log"
     agent_log.write_text("failure\n")
+    env_log = tmp_path / ".devlab/logs/environment/setup.log"
+    env_log.parent.mkdir(parents=True, exist_ok=True)
+    env_log.write_text("setup failed\n")
     artifact = tmp_path / ".devlab/session-artifacts/developer/handoff.md"
     artifact.parent.mkdir(parents=True)
     artifact.write_text("bad handoff\n")
@@ -290,8 +293,9 @@ def test_cli_clean_failed_session_removes_untracked_diagnostics_only(
     _run_cli(monkeypatch, "clean-failed-session", "--root", str(tmp_path))
 
     output = capsys.readouterr().out
-    assert "Removed 2 failed-session artifact" in output
+    assert "Removed 3 failed-session artifact" in output
     assert not agent_log.exists()
+    assert not env_log.exists()
     assert not artifact.exists()
     assert (tmp_path / ".devlab/session-artifacts/.gitkeep").exists()
     assert source_change.exists()

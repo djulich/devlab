@@ -7,6 +7,7 @@ from devlab.git import run_git
 
 FAILED_SESSION_CLEAN_PATHS = (
     ".devlab/logs/agents",
+    ".devlab/logs/environment",
     ".devlab/session-artifacts",
 )
 
