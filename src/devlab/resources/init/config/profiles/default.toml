@@ -13,8 +13,9 @@ default_validation = [
 [environment]
 managed_roles = ["developer", "reviewer", "integrator"]
 pre_session = []
+# Conditional so greenfield projects work before the first pyproject.toml exists.
 setup = [
-  "uv sync",
+  "test -f pyproject.toml && uv sync || true",
 ]
 post_session = []
 
