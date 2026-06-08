@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import shlex
 import shutil
 import string
 import tomllib
@@ -14,14 +16,10 @@ from devlab.agent_config import (
 )
 from devlab.doctor_common import DoctorProblem
 
-_SUPPORTED_PLACEHOLDERS = {
-    "role_name",
-    "provider",
-    "model",
-    "effort",
-    "system_prompt",
-    "session_prompt",
-}
+_COMMAND_PLACEHOLDERS = {"role_name", "provider", "model", "effort"}
+_PROMPT_PLACEHOLDERS = _COMMAND_PLACEHOLDERS | {"system_prompt", "session_prompt"}
+_SHELL_OPERATORS = ("&&", "||", "|", ";", "<", ">", "$(", "`")
+_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
 def check_agents_config(root: Path) -> list[DoctorProblem]:
@@ -238,8 +236,15 @@ def _check_role_values(
         if value is not None and not isinstance(value, str):
             problems.append(DoctorProblem(display_path, f"{name}.{key} must be a string"))
     timeout = values.get("timeout_seconds")
-    if timeout is not None and not isinstance(timeout, int):
-        problems.append(DoctorProblem(display_path, f"{name}.timeout_seconds must be an integer"))
+    if timeout is not None:
+        if not isinstance(timeout, int):
+            problems.append(
+                DoctorProblem(display_path, f"{name}.timeout_seconds must be an integer")
+            )
+        elif timeout <= 0:
+            problems.append(
+                DoctorProblem(display_path, f"{name}.timeout_seconds must be greater than zero")
+            )
 
 
 def _check_provider(
@@ -254,22 +259,42 @@ def _check_provider(
             DoctorProblem(display_path, f"providers.{provider_name}.command must be a string")
         )
     else:
-        _check_placeholders(command, f"providers.{provider_name}.command", display_path, problems)
-    for key in ("args", "prompt_args"):
-        value = provider.get(key, [])
-        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-            problems.append(
-                DoctorProblem(
-                    display_path,
-                    f"providers.{provider_name}.{key} must be a list of strings",
-                )
-            )
-            continue
-        string_values = cast("list[str]", value)
-        for index, item in enumerate(string_values):
+        _check_command_string(
+            command, f"providers.{provider_name}.command", display_path, problems
+        )
+        _check_placeholders(
+            command,
+            f"providers.{provider_name}.command",
+            _COMMAND_PLACEHOLDERS,
+            display_path,
+            problems,
+        )
+
+    args = _check_string_list(provider, "args", provider_name, display_path, problems)
+    if args is not None:
+        for index, item in enumerate(args):
             _check_placeholders(
-                item, f"providers.{provider_name}.{key}[{index}]", display_path, problems
+                item,
+                f"providers.{provider_name}.args[{index}]",
+                _COMMAND_PLACEHOLDERS,
+                display_path,
+                problems,
             )
+
+    prompt_args = _check_string_list(
+        provider, "prompt_args", provider_name, display_path, problems
+    )
+    if prompt_args is None:
+        prompt_args = []
+    for index, item in enumerate(prompt_args):
+        _check_placeholders(
+            item,
+            f"providers.{provider_name}.prompt_args[{index}]",
+            _PROMPT_PLACEHOLDERS,
+            display_path,
+            problems,
+        )
+
     stdin_template = provider.get("stdin_template")
     if stdin_template is not None:
         if not isinstance(stdin_template, str):
@@ -279,10 +304,169 @@ def _check_provider(
                     f"providers.{provider_name}.stdin_template must be a string",
                 )
             )
+            stdin_template = None
+        elif not stdin_template.strip():
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    f"providers.{provider_name}.stdin_template must not be empty",
+                )
+            )
         else:
             _check_placeholders(
-                stdin_template, f"providers.{provider_name}.stdin_template", display_path, problems
+                stdin_template,
+                f"providers.{provider_name}.stdin_template",
+                _PROMPT_PLACEHOLDERS,
+                display_path,
+                problems,
             )
+
+    version_command = provider.get("version_command")
+    if version_command is not None:
+        if not isinstance(version_command, str):
+            problems.append(
+                DoctorProblem(
+                    display_path,
+                    f"providers.{provider_name}.version_command must be a string",
+                )
+            )
+        elif version_command:
+            _check_command_string(
+                version_command,
+                f"providers.{provider_name}.version_command",
+                display_path,
+                problems,
+            )
+            _check_placeholders(
+                version_command,
+                f"providers.{provider_name}.version_command",
+                _COMMAND_PLACEHOLDERS,
+                display_path,
+                problems,
+            )
+            _check_version_command_executable(
+                provider_name, version_command, display_path, problems
+            )
+
+    effective_prompt_args = provider.get(
+        "prompt_args", ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+    )
+    if isinstance(effective_prompt_args, list) and all(
+        isinstance(item, str) for item in effective_prompt_args
+    ):
+        _check_prompt_delivery(
+            provider_name,
+            cast("list[str]", effective_prompt_args),
+            stdin_template if isinstance(stdin_template, str) else None,
+            display_path,
+            problems,
+        )
+
+
+def _check_string_list(
+    provider: dict[str, Any],
+    key: str,
+    provider_name: str,
+    display_path: str,
+    problems: list[DoctorProblem],
+) -> list[str] | None:
+    value = provider.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        problems.append(
+            DoctorProblem(
+                display_path,
+                f"providers.{provider_name}.{key} must be a list of strings",
+            )
+        )
+        return None
+    return cast("list[str]", value)
+
+
+def _check_command_string(
+    value: str, name: str, display_path: str, problems: list[DoctorProblem]
+) -> None:
+    if not value.strip():
+        problems.append(DoctorProblem(display_path, f"{name} must not be empty"))
+        return
+    try:
+        parts = shlex.split(value)
+    except ValueError as exc:
+        problems.append(
+            DoctorProblem(display_path, f"{name} has invalid shell-style quoting: {exc}")
+        )
+        return
+    if not parts:
+        problems.append(DoctorProblem(display_path, f"{name} must not be empty"))
+        return
+    if any(_is_shell_operator(part) for part in parts):
+        problems.append(
+            DoctorProblem(
+                display_path,
+                f"{name} appears to use shell syntax; DevLab runs commands directly, "
+                "not through a shell; use a wrapper script for shell setup",
+            )
+        )
+    if parts[0] == "source" or _ENV_ASSIGNMENT.match(parts[0]):
+        problems.append(
+            DoctorProblem(
+                display_path,
+                f"{name} appears to require shell evaluation; DevLab runs commands directly, "
+                "not through a shell; use a wrapper script or direct executable",
+            )
+        )
+
+
+def _is_shell_operator(part: str) -> bool:
+    return part in _SHELL_OPERATORS or part.startswith("$(") or "`" in part
+
+
+def _check_prompt_delivery(
+    provider_name: str,
+    prompt_args: list[str],
+    stdin_template: str | None,
+    display_path: str,
+    problems: list[DoctorProblem],
+) -> None:
+    delivered = set()
+    for value in [*prompt_args, stdin_template or ""]:
+        delivered.update(_placeholder_roots(value))
+    missing = [
+        placeholder
+        for placeholder in ("system_prompt", "session_prompt")
+        if placeholder not in delivered
+    ]
+    if missing:
+        names = ", ".join(f"{{{name}}}" for name in missing)
+        problems.append(
+            DoctorProblem(
+                display_path,
+                f"providers.{provider_name} does not deliver required prompt "
+                f"placeholder(s): {names}",
+            )
+        )
+
+
+def _check_version_command_executable(
+    provider_name: str,
+    version_command: str,
+    display_path: str,
+    problems: list[DoctorProblem],
+) -> None:
+    try:
+        parts = shlex.split(version_command)
+    except ValueError:
+        return
+    if not parts or "{" in parts[0]:
+        return
+    executable = parts[0]
+    if shutil.which(executable) is None:
+        problems.append(
+            DoctorProblem(
+                display_path,
+                f"providers.{provider_name}.version_command executable {executable!r} "
+                "was not found on PATH",
+            )
+        )
 
 
 def _check_provider_references(
@@ -311,8 +495,24 @@ def _check_provider_references(
             )
 
 
+def _placeholder_roots(value: str) -> set[str]:
+    roots: set[str] = set()
+    try:
+        for _, field_name, _, _ in string.Formatter().parse(value):
+            if field_name is None:
+                continue
+            roots.add(field_name.split(".", 1)[0].split("[", 1)[0].split("!", 1)[0])
+    except ValueError:
+        return set()
+    return roots
+
+
 def _check_placeholders(
-    value: str, name: str, display_path: str, problems: list[DoctorProblem]
+    value: str,
+    name: str,
+    supported_placeholders: set[str],
+    display_path: str,
+    problems: list[DoctorProblem],
 ) -> None:
     try:
         parsed = string.Formatter().parse(value)
@@ -320,7 +520,7 @@ def _check_placeholders(
             if field_name is None:
                 continue
             root_name = field_name.split(".", 1)[0].split("[", 1)[0]
-            if root_name not in _SUPPORTED_PLACEHOLDERS:
+            if root_name not in supported_placeholders:
                 problems.append(
                     DoctorProblem(
                         display_path,

@@ -32,6 +32,63 @@ def test_doctor_reports_multiple_agents_config_problems(tmp_path: Path) -> None:
     assert any("references missing provider 'missing'" in message for message in messages)
 
 
+def test_doctor_reports_additional_agents_config_misconfigurations(tmp_path: Path) -> None:
+    path = tmp_path / ".devlab/config/agents.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "[defaults]\n"
+        "timeout_seconds = 0\n"
+        "\n[providers.default]\n"
+        'command = "VAR=value claude -p && echo done"\n'
+        'args = ["{system_prompt}"]\n'
+        'prompt_args = ["--no-prompts"]\n'
+        'stdin_template = "   "\n'
+        'version_command = 123\n'
+    )
+
+    messages = _messages(tmp_path)
+
+    assert "defaults.timeout_seconds must be greater than zero" in messages
+    assert any("providers.default.command appears to use shell syntax" in m for m in messages)
+    assert any(
+        "providers.default.command appears to require shell evaluation" in m for m in messages
+    )
+    assert any(
+        "providers.default.args[0] references unsupported placeholder {system_prompt}" in m
+        for m in messages
+    )
+    assert "providers.default.stdin_template must not be empty" in messages
+    assert "providers.default.version_command must be a string" in messages
+    assert any(
+        "providers.default does not deliver required prompt placeholder" in m for m in messages
+    )
+
+
+def test_doctor_reports_missing_version_command_executable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / ".devlab/config/agents.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "[defaults]\n"
+        'provider = "default"\n'
+        "\n[providers.default]\n"
+        'command = "agent-cli"\n'
+        'version_command = "missing-version-cli --version"\n'
+    )
+    monkeypatch.setattr(
+        "devlab.doctor_agent_config.shutil.which",
+        lambda name: "/usr/bin/agent-cli" if name == "agent-cli" else None,
+    )
+
+    messages = _messages(tmp_path)
+
+    assert (
+        "providers.default.version_command executable 'missing-version-cli' "
+        "was not found on PATH"
+    ) in messages
+
+
 def test_doctor_reports_missing_configured_agent_executable(
     tmp_path: Path, monkeypatch
 ) -> None:
