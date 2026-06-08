@@ -48,5 +48,5 @@ def configure_logging(
 
 def _console_formatter(level: int) -> logging.Formatter:
     if level <= logging.DEBUG:
-        return logging.Formatter("%(levelname)s: %(message)s")
-    return logging.Formatter("%(message)s")
+        return logging.Formatter("%(asctime)s %(levelname)s: %(message)s", datefmt="%H:%M")
+    return logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M")
