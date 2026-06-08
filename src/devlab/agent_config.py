@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import shlex
+import shutil
 import subprocess
 import tomllib
 from collections.abc import Mapping
@@ -31,6 +32,60 @@ class AgentConfiguration:
     providers: dict[str, AgentProvider]
     role_providers: dict[str, str]
     resolved: dict[str, ResolvedAgentConfig]
+
+
+@dataclasses.dataclass(frozen=True)
+class AgentExecutableProblem:
+    provider: str
+    executable: str
+    role_names: tuple[str, ...]
+    empty_command: bool = False
+
+    def format_message(self) -> str:
+        roles = ", ".join(self.role_names)
+        if self.empty_command:
+            return f"provider {self.provider!r} command resolves to an empty command"
+        return (
+            f"provider {self.provider!r} executable {self.executable!r} was not found on PATH "
+            f"(used by roles: {roles})"
+        )
+
+
+def find_agent_executable_problems(
+    resolved_configs: Mapping[str, ResolvedAgentConfig],
+    *,
+    role_names: tuple[str, ...] | None = None,
+) -> list[AgentExecutableProblem]:
+    """Find resolved agent commands that cannot be invoked from PATH."""
+    selected_roles = role_names or tuple(resolved_configs)
+    roles_by_executable: dict[tuple[str, str], list[str]] = {}
+    problems: list[AgentExecutableProblem] = []
+    for role_name in selected_roles:
+        config = resolved_configs[role_name]
+        if not config.command:
+            problems.append(
+                AgentExecutableProblem(
+                    provider=config.provider,
+                    executable="",
+                    role_names=(role_name,),
+                    empty_command=True,
+                )
+            )
+            continue
+        executable = config.command[0]
+        roles_by_executable.setdefault((config.provider, executable), []).append(role_name)
+
+    for (provider_name, executable), roles in roles_by_executable.items():
+        if shutil.which(executable) is not None:
+            continue
+        problems.append(
+            AgentExecutableProblem(
+                provider=provider_name,
+                executable=executable,
+                role_names=tuple(sorted(roles)),
+            )
+        )
+    return problems
 
 
 def load_agent_configuration(

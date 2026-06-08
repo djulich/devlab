@@ -12,6 +12,7 @@ from devlab.agent_config import (
     AGENTS_CONFIG,
     ROLE_NAMES,
     ResolvedAgentConfig,
+    find_agent_executable_problems,
     load_agent_configuration,
 )
 from devlab.doctor_common import DoctorProblem
@@ -82,30 +83,8 @@ def _check_provider_executables(
     display_path: str,
     problems: list[DoctorProblem],
 ) -> None:
-    roles_by_executable: dict[tuple[str, str], list[str]] = {}
-    for role_name, config in resolved_configs.items():
-        if not config.command:
-            problems.append(
-                DoctorProblem(
-                    display_path,
-                    f"provider {config.provider!r} command resolves to an empty command",
-                )
-            )
-            continue
-        executable = config.command[0]
-        roles_by_executable.setdefault((config.provider, executable), []).append(role_name)
-
-    for (provider_name, executable), role_names in roles_by_executable.items():
-        if shutil.which(executable) is not None:
-            continue
-        roles = ", ".join(sorted(role_names))
-        problems.append(
-            DoctorProblem(
-                display_path,
-                f"provider {provider_name!r} executable {executable!r} was not found on PATH "
-                f"(used by roles: {roles})",
-            )
-        )
+    for executable_problem in find_agent_executable_problems(resolved_configs):
+        problems.append(DoctorProblem(display_path, executable_problem.format_message()))
 
 
 def _check_prompt_context(

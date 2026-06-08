@@ -10,6 +10,7 @@ from pathlib import Path
 from devlab._logging import logger
 from devlab.agent_config import (
     ResolvedAgentConfig,
+    find_agent_executable_problems,
     format_resolved_agent_config,
     load_agent_configuration,
 )
@@ -415,6 +416,31 @@ def _environment_for_session(
 
 
 
+def _failed_session_cleanup_hint() -> str:
+    return (
+        "Inspect logs/artifacts, then run 'devlab clean-failed-session' to remove "
+        "untracked failed-session diagnostics before retrying."
+    )
+
+
+
+def _preflight_agent_executable(
+    role_name: str, config: ResolvedAgentConfig
+) -> SessionError | None:
+    problems = find_agent_executable_problems({role_name: config}, role_names=(role_name,))
+    if not problems:
+        return None
+    problem = problems[0]
+    exit_code = 1 if problem.empty_command else 127
+    return SessionError(
+        "agent_configuration",
+        f"{role_name} {problem.format_message()}; edit .devlab/config/agents.toml "
+        "or install the configured agent CLI",
+        exit_code,
+    )
+
+
+
 def _agent_error_message(
     ctx: SessionContext, result: AgentResult, config_log: Path | None
 ) -> str:
@@ -587,6 +613,19 @@ def run_loop(
             logger.info("Planning revision complete; stopping before implementation roles.")
             break
 
+        if automatic_version_control and resolved_agent_configs is not None:
+            agent_config_error = _preflight_agent_executable(
+                role_name, resolved_agent_configs[role_name]
+            )
+            if agent_config_error is not None:
+                logger.error("%s. Stopping.", agent_config_error.message)
+                return RunResult(
+                    sessions_run,
+                    False,
+                    agent_config_error.exit_code,
+                    (agent_config_error,),
+                )
+
         if role_name == "integrator":
             milestone = workspace.snapshot.select_integration_milestone()
             if milestone is not None:
@@ -691,6 +730,7 @@ def run_loop(
 
         if agent_error is not None:
             logger.error("%s. Stopping.", agent_error.message)
+            logger.info(_failed_session_cleanup_hint())
             metadata = _build_session_metadata(
                 ctx, agent_result, resolved_agent_configs, session_task_id,
             )
@@ -698,6 +738,7 @@ def run_loop(
             errors = (agent_error,) + ((teardown_error,) if teardown_error else ())
             return RunResult(sessions_run, False, agent_error.exit_code, errors)
         if teardown_error is not None:
+            logger.info(_failed_session_cleanup_hint())
             metadata = _build_session_metadata(
                 ctx, agent_result, resolved_agent_configs, session_task_id,
             )
@@ -715,6 +756,7 @@ def run_loop(
         except HandoffError as exc:
             message = _handoff_error_message(ctx, str(exc), config_log)
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
+            logger.info(_failed_session_cleanup_hint())
             metadata = _build_session_metadata(
                 ctx, agent_result, resolved_agent_configs, session_task_id,
             )

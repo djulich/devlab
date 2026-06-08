@@ -1322,6 +1322,52 @@ class TestRunLoop:
         assert "previously implemented system" in prompt
         assert "Important integration behavior" in prompt
 
+    def test_missing_configured_agent_executable_fails_before_writing_logs(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        (tmp_path / ".devlab/config/agents.toml").write_text(
+            "[defaults]\n"
+            'provider = "missing"\n'
+            "\n[providers.missing]\n"
+            'command = "definitely-missing-devlab-agent"\n'
+            'prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]\n'
+        )
+        subprocess.run(["git", "-C", tmp_path.as_posix(), "init"], check=True)
+        subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "config", "user.name", "DevLab Test"],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                tmp_path.as_posix(),
+                "config",
+                "user.email",
+                "devlab-test@example.invalid",
+            ],
+            check=True,
+        )
+        subprocess.run(["git", "-C", tmp_path.as_posix(), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", tmp_path.as_posix(), "commit", "-m", "init"], check=True)
+
+        result = run_loop(tmp_path, max_sessions=1, automatic_version_control=True)
+
+        status = subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        assert result.exit_code == 127
+        assert result.errors[0].phase == "agent_configuration"
+        assert "definitely-missing-devlab-agent" in result.errors[0].message
+        assert status == ""
+        assert not list((tmp_path / ".devlab/logs/agents").glob("*"))
+
     def test_logs_resolved_agent_config_for_configured_session(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

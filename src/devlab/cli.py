@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from devlab._logging import configure_logging
+from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
 from devlab.doctor import check_workspace, format_doctor_report
 from devlab.history import format_history
 from devlab.init import format_init_next_steps, format_init_result, init_workspace
@@ -224,6 +225,17 @@ def main() -> None:
         help="Project root to inspect (default: current working directory).",
     )
 
+    clean_parser = subparsers.add_parser(
+        "clean-failed-session",
+        help="Remove untracked logs/artifacts from failed sessions.",
+    )
+    clean_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to clean (default: current working directory).",
+    )
+
     args = parser.parse_args()
     root = args.root.resolve()
     if args.command == "init":
@@ -281,6 +293,9 @@ def main() -> None:
         print(format_doctor_report(problems))
         if problems:
             raise SystemExit(1)
+    elif args.command == "clean-failed-session":
+        result = clean_failed_session_artifacts(root)
+        print(format_cleanup_result(result))
 
 
 def _run_log_level(*, quiet: bool, verbose: bool) -> int:

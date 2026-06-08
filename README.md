@@ -143,6 +143,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
+- `devlab clean-failed-session [--root PATH]` — remove untracked logs/artifacts from failed sessions while leaving target source changes untouched.
 
 Useful `run` and `plan` options include `--provider`, `--model`, `--effort`, `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`.
 

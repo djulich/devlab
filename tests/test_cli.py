@@ -274,6 +274,30 @@ def test_cli_run_log_file_captures_debug_logs_when_console_is_quiet(
     assert "file debug detail" in log_file.read_text()
 
 
+def test_cli_clean_failed_session_removes_untracked_diagnostics_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    agent_log = tmp_path / ".devlab/logs/agents/failed.stdout.log"
+    agent_log.write_text("failure\n")
+    artifact = tmp_path / ".devlab/session-artifacts/developer/handoff.md"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("bad handoff\n")
+    source_change = tmp_path / "app.py"
+    source_change.write_text("print('keep me')\n")
+
+    _run_cli(monkeypatch, "clean-failed-session", "--root", str(tmp_path))
+
+    output = capsys.readouterr().out
+    assert "Removed 2 failed-session artifact" in output
+    assert not agent_log.exists()
+    assert not artifact.exists()
+    assert (tmp_path / ".devlab/session-artifacts/.gitkeep").exists()
+    assert source_change.exists()
+    assert "?? app.py" in _git_output(tmp_path, "status", "--porcelain")
+
+
 def test_cli_doctor_exits_nonzero_for_invalid_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
