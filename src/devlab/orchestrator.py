@@ -688,6 +688,7 @@ def run_loop(
                 environment.setup(role_name)
             except EnvironmentCommandError as exc:
                 logger.error("%s. Stopping.", exc)
+                logger.info(_failed_session_cleanup_hint())
                 return RunResult(sessions_run, False, 1,
                                  (SessionError("environment_setup", str(exc), 1),))
 
