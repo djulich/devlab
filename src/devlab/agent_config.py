@@ -206,8 +206,8 @@ def _fallback_config() -> dict[str, Any]:
         "defaults": {"provider": "default"},
         "providers": {
             "default": {
-                "command": "claude -p",
-                "args": [],
+                "command": "claude",
+                "args": ["-p", "--dangerously-skip-permissions"],
                 "prompt_args": ["--system-prompt", "{system_prompt}", "{session_prompt}"],
             }
         },

@@ -15,7 +15,8 @@ def test_missing_config_uses_fallback_cli_command(tmp_path: Path) -> None:
     provider = config.providers[config.role_providers["developer"]]
 
     assert isinstance(provider, CliAgentProvider)
-    assert provider.argv == ("claude", "-p")
+    assert provider.argv == ("claude",)
+    assert provider.extra_args == ("-p", "--dangerously-skip-permissions")
     assert config.resolved["developer"].provider == "default"
 
 

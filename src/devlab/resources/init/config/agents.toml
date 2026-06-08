@@ -24,7 +24,7 @@ timeout_seconds = 3600
 
 [providers.default]
 command = "claude"
-args = ["-p"]
+args = ["-p", "--dangerously-skip-permissions"]
 prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 
 # Prefer stdin prompt transport when supported; it avoids argv length limits and
