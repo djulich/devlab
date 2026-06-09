@@ -131,6 +131,17 @@ def test_doctor_accepts_configured_agent_executable_on_path(tmp_path: Path, monk
     assert not any("was not found on PATH" in message for message in messages)
 
 
+def test_doctor_reports_invalid_workflow_state(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    (tmp_path / ".devlab/workflow.toml").write_text(
+        "version = 1\n\n[planning]\ncomplete = \"no\"\n"
+    )
+
+    messages = _messages(tmp_path)
+
+    assert ".devlab/workflow.toml.planning.complete must be a boolean" in messages
+
+
 def test_doctor_reports_dirty_git_worktree(tmp_path: Path) -> None:
     init_workspace(
         tmp_path,

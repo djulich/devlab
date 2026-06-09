@@ -153,6 +153,7 @@ A DevLab target repository contains workflow state under `.devlab/`:
 
 ```text
 .devlab/
+├── workflow.toml        # workflow control state, including planning completeness
 ├── config/              # agents, profiles, tooling policy
 ├── specs/               # system and deployment specs
 ├── plans/               # design and project plans

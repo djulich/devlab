@@ -8,9 +8,30 @@ from devlab.findings import FindingStatus
 from devlab.git import VersionControlError, run_git
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
 from devlab.task_tracker import DEFAULT_TASK_DOMAIN
+from devlab.workflow_state import WORKFLOW_STATE, load_workflow_state
 from devlab.workspace import WorkspaceSnapshot
 
 KNOWN_TASK_DOMAINS = {DEFAULT_TASK_DOMAIN, "deployment"}
+
+
+def check_workflow_state(root: Path) -> list[DoctorProblem]:
+    path = root / WORKFLOW_STATE
+    if not (root / ".devlab").exists():
+        return []
+    if not path.exists() and not (root / ".devlab/manifest.toml").exists():
+        return []
+    if not path.exists():
+        return [
+            DoctorProblem(
+                WORKFLOW_STATE,
+                "missing workflow state; run devlab init or create version/planning.complete",
+            )
+        ]
+    try:
+        load_workflow_state(root)
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        return [DoctorProblem(WORKFLOW_STATE, str(exc))]
+    return []
 
 
 def check_git_worktree(root: Path) -> list[DoctorProblem]:

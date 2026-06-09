@@ -14,6 +14,7 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
 
     expected_files = [
         ".devlab/manifest.toml",
+        ".devlab/workflow.toml",
         ".devlab/config/README.md",
         ".devlab/config/tooling.md",
         ".devlab/config/agents.toml",
@@ -35,6 +36,7 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
         assert (tmp_path / relative).exists(), relative
 
     assert 'layout_version = 1' in (tmp_path / ".devlab/manifest.toml").read_text()
+    assert "complete = false" in (tmp_path / ".devlab/workflow.toml").read_text()
     assert 'id = "default"' in (tmp_path / ".devlab/config/profiles/default.toml").read_text()
     assert '[providers.default]' in (tmp_path / ".devlab/config/agents.toml").read_text()
     assert result.created

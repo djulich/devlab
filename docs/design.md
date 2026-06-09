@@ -94,6 +94,7 @@ The repository is the system of record. Agents should not depend on conversation
 
 Important workflow state is stored in files, for example:
 
+- `.devlab/workflow.toml` — small workflow-control state, currently planning completeness.
 - `.devlab/specs/` — target-workspace system and deployment specifications.
 - `.devlab/config/` — target-workspace tooling, agent, profile, and environment lifecycle configuration.
 - `.devlab/plans/` — design and project plans.
@@ -316,6 +317,21 @@ When all tasks for a milestone are closed, the integrator validates the current 
 If integration passes, the orchestrator marks the milestone integrated in `.devlab/milestones/` and records the archived integration handoff. The architect then reviews the integrated milestone to sync actual project state against the design plan, system/deployment specs, and future direction. Architecture review is not an approval gate: if review reports Open Issues, the orchestrator creates a file-backed finding and still marks the milestone architecture-reviewed.
 
 Findings are active workflow issues stored in `.devlab/findings/`. The planner converts open findings into corrective task files with `addresses_findings` metadata and lists the complete follow-up task set in its handoff. The orchestrator marks those findings as planned only after validating that relation. A planned finding is resolved when all tasks addressing it are closed; those tasks may belong to later milestones.
+
+## Incremental planning state
+
+DevLab supports incremental milestone planning through `.devlab/workflow.toml`:
+
+```toml
+version = 1
+
+[planning]
+complete = false
+```
+
+`planning.complete = false` means backlog exhaustion is not workflow completion. When all known tasks/milestones are closed and planning is still incomplete, the orchestrator routes back to the planner so the next milestone can be planned. `planning.complete = true` means the planner asserts all required in-scope specification work is represented by durable tasks/milestones or explicitly out of scope; once all known work is closed, the workflow may stop.
+
+This avoids treating prose such as "future milestone candidates" as hidden workflow state. The planner may plan only the next milestone, but a follow-up planner session invoked on an exhausted backlog must either create new durable work or set `planning.complete = true`.
 
 ## Agent providers
 

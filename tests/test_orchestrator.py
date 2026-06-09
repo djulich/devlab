@@ -178,6 +178,26 @@ class TestAssessState:
         _write_task(tmp_path, "T0001", "Done", status="closed")
         assert Workspace(tmp_path).snapshot.assess_state() is None
 
+    def test_all_tasks_closed_routes_to_planner_when_planning_incomplete(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = false\n"
+        )
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed")
+        assert Workspace(tmp_path).snapshot.assess_state() == "planner"
+
+    def test_all_tasks_closed_stops_when_planning_complete(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = true\n"
+        )
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed")
+        assert Workspace(tmp_path).snapshot.assess_state() is None
+
 
 class TestAllMilestonesComplete:
     def test_empty_plan_is_not_complete(self, tmp_path: Path) -> None:
@@ -1656,6 +1676,46 @@ class TestRunLoop:
         run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert [call.role_name for call in provider.calls] == ["planner"]
+
+    def test_incremental_planner_must_create_work_or_mark_planning_complete(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = false\n"
+        )
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed")
+        provider = MockProvider()
+
+        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "handoff_validation"
+        assert "neither created new durable work nor set planning.complete = true" in (
+            result.errors[0].message
+        )
+
+    def test_incremental_planner_can_mark_planning_complete(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = false\n"
+        )
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed")
+
+        def complete_planning(call: AgentCall) -> None:
+            (call.root / ".devlab/workflow.toml").write_text(
+                "version = 1\n\n[planning]\ncomplete = true\n"
+            )
+
+        provider = MockProvider(on_invoke=complete_planning)
+
+        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+
+        assert result.exit_code == 0
+        assert result.sessions_run == 1
+        assert Workspace(tmp_path).snapshot.assess_state() is None
 
     def test_architect_invoked_when_design_plan_missing(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

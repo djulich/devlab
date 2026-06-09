@@ -27,7 +27,7 @@ from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompts import build_session_prompt, build_system_prompt
 from devlab.session_logging import session_finish_context, session_start_context
-from devlab.task_tracker import Task
+from devlab.task_tracker import Task, TaskStatus
 from devlab.version_control import (
     assert_clean_worktree,
     commit_all,
@@ -36,6 +36,7 @@ from devlab.version_control import (
 from devlab.version_control import (
     tag as create_git_tag,
 )
+from devlab.workflow_state import load_workflow_state
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -416,6 +417,33 @@ def _environment_for_session(
 
 
 
+def _validate_exhausted_backlog_planner_progress(
+    before: WorkspaceSnapshot,
+    after: WorkspaceSnapshot,
+    role_name: str,
+) -> str | None:
+    if role_name != "planner" or not _needs_incremental_planning(before):
+        return None
+    if after.workflow_state().planning.complete:
+        return None
+    if _has_actionable_or_planned_work(after):
+        return None
+    return (
+        "planner was invoked because the backlog was exhausted while "
+        ".devlab/workflow.toml has planning.complete = false, but it neither created "
+        "new durable work nor set planning.complete = true"
+    )
+
+
+def _needs_incremental_planning(snapshot: WorkspaceSnapshot) -> bool:
+    return snapshot.all_milestones_complete() and not snapshot.workflow_state().planning.complete
+
+
+def _has_actionable_or_planned_work(snapshot: WorkspaceSnapshot) -> bool:
+    return any(task.status != TaskStatus.CLOSED for task in snapshot.list_tasks())
+
+
+
 def _failed_session_cleanup_hint() -> str:
     return (
         "Inspect logs/artifacts, then run 'devlab clean-failed-session' to remove "
@@ -550,6 +578,12 @@ def run_loop(
         except VersionControlError as exc:
             logger.error("%s. Stopping.", exc)
             return RunResult(0, False, 1, (SessionError("version_control", str(exc), 1),))
+    try:
+        load_workflow_state(root)
+    except (OSError, ValueError) as exc:
+        logger.error("%s. Stopping.", exc)
+        return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
+
     workspace = Workspace(root)
     resolved_agent_configs = None
     if agent_providers is None:
@@ -754,6 +788,13 @@ def run_loop(
         try:
             handoff = parse_handoff(handoff_path, role_name)
             validate_handoff(handoff, workspace.snapshot)
+            planner_noop_error = _validate_exhausted_backlog_planner_progress(
+                start_snapshot,
+                workspace.snapshot,
+                role_name,
+            )
+            if planner_noop_error is not None:
+                raise HandoffError(planner_noop_error)
         except HandoffError as exc:
             message = _handoff_error_message(ctx, str(exc), config_log)
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)

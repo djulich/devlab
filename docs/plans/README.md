@@ -20,6 +20,7 @@ None.
 - [devlab-workflow-evaluations.md](devlab-workflow-evaluations.md) — scripted and live evaluation infrastructure
 - [devlab-workflow-evaluations-remaining.md](devlab-workflow-evaluations-remaining.md) — evaluation infrastructure refinements, diagnostics export
 - [git-based-evaluation-hygiene.md](git-based-evaluation-hygiene.md) — artifact classification via git ls-files and check-ignore
+- [incremental-milestone-planning.md](incremental-milestone-planning.md) — workflow.toml planning completeness state for follow-up planner sessions
 - [orchestrator-quality-improvements.md](orchestrator-quality-improvements.md) — narrowed exception handling, session context extraction, session logging separation
 - [stateful-web-api-evaluation.md](stateful-web-api-evaluation.md) — stateful web API scripted and live evaluation scenarios
 - [workflow-contract-hardening.md](workflow-contract-hardening.md) — handoff parsing, validation, and contract enforcement

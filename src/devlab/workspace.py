@@ -13,6 +13,7 @@ from pathlib import Path
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.milestones import FileMilestoneTracker, Milestone
 from devlab.task_tracker import DEVELOPABLE_STATUSES, FileTaskTracker, Task, TaskStatus
+from devlab.workflow_state import WorkflowState, load_workflow_state
 
 DESIGN_PLAN = ".devlab/plans/design-plan.md"
 PROJECT_PLAN = ".devlab/plans/project-plan.md"
@@ -319,6 +320,9 @@ class WorkspaceSnapshot:
     _tasks: list[Task] | None = dataclasses.field(default=None, init=False, repr=False)
     _findings: list[Finding] | None = dataclasses.field(default=None, init=False, repr=False)
     _milestones: list[Milestone] | None = dataclasses.field(default=None, init=False, repr=False)
+    _workflow_state: WorkflowState | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
 
     def list_tasks(self) -> list[Task]:
         if self._tasks is None:
@@ -334,6 +338,11 @@ class WorkspaceSnapshot:
         if self._milestones is None:
             self._milestones = self._milestone_tracker.list_milestones()
         return list(self._milestones)
+
+    def workflow_state(self) -> WorkflowState:
+        if self._workflow_state is None:
+            self._workflow_state = load_workflow_state(self.root)
+        return self._workflow_state
 
     def active_tasks(self) -> list[Task]:
         return [task for task in self.list_tasks() if task.is_active]
@@ -431,6 +440,8 @@ class WorkspaceSnapshot:
             return None
 
         if self.all_milestones_complete():
+            if not self.workflow_state().planning.complete:
+                return "planner"
             return None
 
         return "planner"

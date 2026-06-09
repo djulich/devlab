@@ -323,6 +323,15 @@ def _build_planner_prompt(snapshot: WorkspaceSnapshot) -> str:
     project = read_file(root / PROJECT_PLAN)
     if project.strip():
         parts.append(f"## Current Project Plan\n\n{project}")
+    workflow_state = snapshot.workflow_state()
+    parts.append(
+        "## Workflow Planning State\n\n"
+        f"`.devlab/workflow.toml` has `[planning].complete = "
+        f"{str(workflow_state.planning.complete).lower()}`.\n\n"
+        "If future planner sessions are still needed, keep this value `false`. "
+        "Set it to `true` only when all required in-scope specification work is "
+        "represented by durable tasks/milestones or explicitly out of scope."
+    )
     tasks = snapshot.list_tasks()
     if tasks:
         parts.append(f"## Current Tasks\n\n{_format_task_listing(tasks)}")

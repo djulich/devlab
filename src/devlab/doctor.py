@@ -7,7 +7,12 @@ from devlab.doctor_agent_config import check_agents_config
 from devlab.doctor_common import DoctorProblem
 from devlab.doctor_deployment import check_deployment_spec
 from devlab.doctor_project_knowledge import check_project_knowledge
-from devlab.doctor_workflow_state import check_git_worktree, check_milestones, check_task_domains
+from devlab.doctor_workflow_state import (
+    check_git_worktree,
+    check_milestones,
+    check_task_domains,
+    check_workflow_state,
+)
 from devlab.prompt_context import RolePromptContext, build_prompt_context_report
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
@@ -15,10 +20,12 @@ from devlab.workspace import Workspace, WorkspaceSnapshot
 def check_workspace(root: Path) -> list[DoctorProblem]:
     problems: list[DoctorProblem] = []
     problems.extend(check_git_worktree(root))
+    workflow_problems = check_workflow_state(root)
+    problems.extend(workflow_problems)
     agent_problems = check_agents_config(root)
     problems.extend(agent_problems)
     snapshot = Workspace(root).snapshot
-    if not agent_problems:
+    if not agent_problems and not workflow_problems:
         problems.extend(_check_prompt_context_sizes(snapshot))
     problems.extend(check_milestones(root, snapshot))
     problems.extend(check_task_domains(snapshot))

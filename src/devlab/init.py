@@ -11,6 +11,7 @@ from devlab.version_control import (
     has_git_repository,
     init_repository,
 )
+from devlab.workflow_state import WORKFLOW_STATE, initial_workflow_state_text
 
 LAYOUT_VERSION = 1
 _TEMPLATE_PACKAGE = "devlab.resources.init"
@@ -80,6 +81,14 @@ def init_workspace(
     _write_file(
         manifest,
         f"layout_version = {LAYOUT_VERSION}\ncreated_by = \"devlab\"\n",
+        force=force,
+        created=created,
+        skipped=skipped,
+        overwritten=overwritten,
+    )
+    _write_file(
+        root / WORKFLOW_STATE,
+        initial_workflow_state_text(),
         force=force,
         created=created,
         skipped=skipped,

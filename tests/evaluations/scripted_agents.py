@@ -21,6 +21,10 @@ from tests.helpers import (
 )
 
 
+def _mark_planning_complete(root: Path) -> None:
+    (root / ".devlab/workflow.toml").write_text("version = 1\n\n[planning]\ncomplete = true\n")
+
+
 class CalculatorScriptedAgent:
     def __init__(self, *, reject_first_review: bool = False, require_smoke_finding: bool = False):
         self.reject_first_review = reject_first_review
@@ -80,6 +84,7 @@ class CalculatorScriptedAgent:
                 depends_on=["T0001"],
                 addresses_findings=["F0001"],
             )
+            _mark_planning_complete(root)
             return
         _project_plan(root).write_text(
             "# Project Plan\n\n"
@@ -87,6 +92,7 @@ class CalculatorScriptedAgent:
             "- T0001: Implement calculator CLI\n"
         )
         write_task(root, "T0001", "Implement calculator CLI", "M1")
+        _mark_planning_complete(root)
 
     def _developer(self, root: Path) -> None:
         task = FileTaskTracker(root).select_next_development_task()
@@ -142,6 +148,7 @@ class HttpApiScriptedAgent:
                 "- T0001: Implement stdlib HTTP API\n"
             )
             write_task(invocation.root, "T0001", "Implement stdlib HTTP API", "M1")
+            _mark_planning_complete(invocation.root)
         elif role == "developer":
             task = FileTaskTracker(invocation.root).select_next_development_task()
             assert task is not None
@@ -189,6 +196,7 @@ class DeploymentWebApiScriptedAgent:
                 depends_on=["T0001"],
                 domain="deployment",
             )
+            _mark_planning_complete(invocation.root)
         elif role == "developer":
             task = FileTaskTracker(invocation.root).select_next_development_task()
             assert task is not None
@@ -239,6 +247,7 @@ class ComposeDeploymentScriptedAgent:
                 depends_on=["T0001"],
                 domain="deployment",
             )
+            _mark_planning_complete(invocation.root)
         elif role == "developer":
             task = FileTaskTracker(invocation.root).select_next_development_task()
             assert task is not None
@@ -281,6 +290,7 @@ class StaticFrontendScriptedAgent:
                 "- T0001: Implement todo API and static frontend\n"
             )
             write_task(invocation.root, "T0001", "Implement todo API and static frontend", "M1")
+            _mark_planning_complete(invocation.root)
         elif role == "developer":
             task = FileTaskTracker(invocation.root).select_next_development_task()
             assert task is not None
@@ -320,6 +330,7 @@ class StatefulWebApiScriptedAgent:
                 "- T0001: Implement stateful todo API\n"
             )
             write_task(invocation.root, "T0001", "Implement stateful todo API", "M1")
+            _mark_planning_complete(invocation.root)
         elif role == "developer":
             task = FileTaskTracker(invocation.root).select_next_development_task()
             assert task is not None
