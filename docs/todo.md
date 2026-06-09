@@ -102,6 +102,79 @@ Open work:
 - Avoid overloading implementation tasks for pre-planning work; if design slices are needed, store them as architecture-planning artifacts rather than normal developer tasks.
 - Add tests/evaluations with an intentionally large spec that requires multiple architecture passes.
 
+## 9. Reconcile Spec Changes with Workflow State
+
+Priority: medium-high. DevLab should support target workspaces where the system spec or deployment spec changes after architecture, planning, or implementation work already exists.
+
+Usefulness: high. This is a normal real-world workflow: requirements drift after plans and code exist. Without explicit support, DevLab may either keep executing stale tasks or require users to manually reset workflow state.
+
+Expected behavior:
+
+- Detect that source specs changed after the current design/project plan was produced.
+- Route to an architecture/planning revision path instead of blindly continuing stale implementation tasks.
+- Preserve completed work where it still matches the revised specs.
+- Mark, revise, supersede, or close tasks that no longer apply.
+- Add new tasks for newly in-scope work.
+- Represent the revision decision durably in repository state, not conversational memory.
+
+Open design questions:
+
+- How should DevLab identify the spec version a design plan, project plan, task, milestone, or finding was based on: file hash, timestamp, explicit revision id, or embedded metadata?
+- Should spec changes always force architect review first, or can small deployment-spec-only changes route directly to planner?
+- How should superseded tasks be represented: a new task status, metadata field, archived task, or planner-authored closure rationale?
+- What CLI should users run: `devlab plan --revise`, automatic detection during `devlab run`, or a dedicated `devlab reconcile-specs` command?
+
+## 10. Add Durable Operator Clarifications
+
+Priority: medium. DevLab should support bounded user clarification when a role session encounters an ambiguity, contradiction, missing prerequisite, or scope decision that cannot be resolved safely from repository state.
+
+Usefulness: high, but only if tightly constrained. Clarification prevents agents from inventing requirements, but unconstrained back-and-forth would weaken bounded sessions and durable workflow state.
+
+Expected behavior:
+
+- A role session may request operator clarification instead of making an unsafe assumption.
+- DevLab stops the workflow in a durable "needs clarification" state.
+- The clarification request is stored in repository state with the asking role, session id, question, relevant context, and expected answer shape.
+- The operator can answer through a CLI command or by editing a documented file.
+- Once answered, DevLab resumes with the answer included in the next relevant role prompt.
+- Clarifications become durable project knowledge when they affect requirements, scope, architecture, task definitions, or deployment expectations.
+
+Open design questions:
+
+- Should only architect/planner sessions be allowed to ask scope questions, while developer/reviewer/integrator surface blockers through task or finding state?
+- What is the storage model: `.devlab/questions/`, findings, workflow state, or a new tracker?
+- How should DevLab prevent vague or excessive questions: max question count per session, required answer options, severity, or validation rules?
+- Should unanswered questions block all workflow progress or only the affected task/milestone?
+
+## 11. Add Workflow Attention Notifications
+
+Priority: medium-low. DevLab should optionally notify operators about workflow events that require attention or indicate completion, especially for long-running unattended `devlab plan` / `devlab run` workflows.
+
+Usefulness: medium. Notifications are valuable once workflows run unattended for multiple sessions, but they should remain optional plumbing and not become part of workflow correctness.
+
+Important events:
+
+- Workflow stopped successfully.
+- Workflow stopped with an error.
+- Workflow stopped because no eligible task can proceed.
+- Workflow stopped because operator clarification is required.
+- Optional later events: session started, session completed, task closed, finding opened, milestone integrated.
+
+Expected behavior:
+
+- Notification configuration lives in target-owned DevLab config.
+- Notification sending happens outside role prompts and agent providers.
+- Failed notification delivery does not change workflow state or make a successful run fail by default.
+- Messages include target workspace, command, final status, session count, next required action, and relevant log/artifact paths.
+- Initial implementation should support a simple local notification mechanism or webhook before provider-specific email/Slack integrations.
+
+Open design questions:
+
+- Which channels should be first-class: stdout summary only, local command hook, webhook, email SMTP, Slack webhook?
+- Should notification secrets live outside the target workspace while non-secret routing config lives inside it?
+- Should notifications be sent synchronously at the end of the command or queued/best-effort?
+- How should notification failures be reported without obscuring the primary workflow result?
+
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).
