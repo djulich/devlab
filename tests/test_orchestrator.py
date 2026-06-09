@@ -160,6 +160,17 @@ class TestAssessState:
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         assert Workspace(tmp_path).snapshot.assess_state() == "planner"
 
+    def test_empty_plan_stops_when_explicit_planning_complete(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = true\n"
+        )
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        (tmp_path / PROJECT_PLAN).write_text("")
+        assert Workspace(tmp_path).snapshot.assess_state() is None
+
     def test_open_tasks_returns_developer(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")

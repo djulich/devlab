@@ -13,7 +13,7 @@ from pathlib import Path
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.milestones import FileMilestoneTracker, Milestone
 from devlab.task_tracker import DEVELOPABLE_STATUSES, FileTaskTracker, Task, TaskStatus
-from devlab.workflow_state import WorkflowState, load_workflow_state
+from devlab.workflow_state import WORKFLOW_STATE, WorkflowState, load_workflow_state
 
 DESIGN_PLAN = ".devlab/plans/design-plan.md"
 PROJECT_PLAN = ".devlab/plans/project-plan.md"
@@ -416,6 +416,16 @@ class WorkspaceSnapshot:
             return False
         return unchecked == 0
 
+    def explicit_complete_planning_with_no_durable_work(self) -> bool:
+        if not (self.root / WORKFLOW_STATE).exists():
+            return False
+        if not self.workflow_state().planning.complete:
+            return False
+        if self.list_tasks():
+            return False
+        text = read_file(self.root / PROJECT_PLAN)
+        return "- [x]" not in text and "- [ ]" not in text
+
     def assess_state(self) -> str | None:
         design_plan = self.root / DESIGN_PLAN
         if not design_plan.exists() or design_plan.stat().st_size == 0:
@@ -439,10 +449,12 @@ class WorkspaceSnapshot:
         if self.blocked_tasks():
             return None
 
+        if self.explicit_complete_planning_with_no_durable_work():
+            return None
+
         if self.all_milestones_complete():
             if not self.workflow_state().planning.complete:
                 return "planner"
             return None
 
         return "planner"
-
