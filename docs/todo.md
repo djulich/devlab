@@ -175,6 +175,10 @@ Open design questions:
 - Should notifications be sent synchronously at the end of the command or queued/best-effort?
 - How should notification failures be reported without obscuring the primary workflow result?
 
+## 12. Agent config smoke test
+
+I want to have the ability to quickly check if an agent config (e.g. one from agents.toml, or all of them) works, i.e. if the provider can be started, if the prompt can be passed, if the provider arguments are passed, etc.
+
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).
