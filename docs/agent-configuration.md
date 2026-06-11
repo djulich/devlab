@@ -86,7 +86,7 @@ Prefer stdin prompt transport when your agent CLI supports it. Stdin avoids comm
 ```toml
 [providers.codex]
 command = "codex"
-args = ["exec", "-", "--model", "{model}"]
+args = ["--model", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "exec", "-"]
 stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
 prompt_args = []
 ```
@@ -165,6 +165,16 @@ Role-specific thresholds inherit the global values when omitted. If the section 
 Use `devlab status --verbose` to inspect the resolved provider, model, effort, timeout, command shape, stdin mode, and approximate prompt context size for each role. Prompt contents are not printed.
 
 Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
+
+Use `devlab agent-smoke-test` to start the configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. It tests all roles by default and writes stdout/stderr logs under `.devlab/logs/agents/`.
+
+```bash
+devlab agent-smoke-test
+devlab agent-smoke-test --role developer
+devlab agent-smoke-test --config .local/live-eval/agents.toml
+```
+
+`--root` defaults to the current directory and controls the provider working directory and log location. `--config` only selects the agent TOML file; it does not change the workspace root.
 
 ## Logging and Failure Diagnostics
 

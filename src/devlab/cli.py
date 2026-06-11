@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from devlab._logging import configure_logging
+from devlab.agent_smoke import format_agent_smoke_report, run_agent_smoke_test
 from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
 from devlab.doctor import check_workspace, format_doctor_report
 from devlab.history import format_history
@@ -225,6 +226,46 @@ def main() -> None:
         help="Project root to inspect (default: current working directory).",
     )
 
+    smoke_parser = subparsers.add_parser(
+        "agent-smoke-test", help="Start configured agent providers with a tiny prompt."
+    )
+    smoke_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help=(
+            "Workspace root for provider execution and logs "
+            "(default: current working directory)."
+        ),
+    )
+    smoke_parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Agent config TOML path. Defaults to .devlab/config/agents.toml under --root.",
+    )
+    smoke_parser.add_argument(
+        "--role",
+        action="append",
+        default=None,
+        help="Role to test. May be passed more than once; defaults to all roles.",
+    )
+    smoke_parser.add_argument(
+        "--provider",
+        default=None,
+        help="Override the configured provider for this smoke test.",
+    )
+    smoke_parser.add_argument(
+        "--model",
+        default=None,
+        help="Override the configured model for this smoke test.",
+    )
+    smoke_parser.add_argument(
+        "--effort",
+        default=None,
+        help="Override the configured effort for this smoke test.",
+    )
+
     clean_parser = subparsers.add_parser(
         "clean-failed-session",
         help="Remove untracked logs/artifacts from failed sessions.",
@@ -292,6 +333,18 @@ def main() -> None:
         problems = check_workspace(root)
         print(format_doctor_report(problems))
         if problems:
+            raise SystemExit(1)
+    elif args.command == "agent-smoke-test":
+        result = run_agent_smoke_test(
+            root,
+            config_path=args.config.resolve() if args.config is not None else None,
+            role_names=tuple(args.role) if args.role is not None else None,
+            provider=args.provider,
+            model=args.model,
+            effort=args.effort,
+        )
+        print(format_agent_smoke_report(result))
+        if not result.passed:
             raise SystemExit(1)
     elif args.command == "clean-failed-session":
         result = clean_failed_session_artifacts(root)

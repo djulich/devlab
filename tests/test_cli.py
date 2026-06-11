@@ -317,3 +317,66 @@ def test_cli_doctor_exits_nonzero_for_invalid_config(
     assert "DevLab doctor: 2 problem(s)" in output
     assert "working tree is dirty" in output
     assert "invalid TOML" in output
+
+
+def test_cli_agent_smoke_test_prints_report_and_exits_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_smoke(*args: object, **kwargs: object) -> object:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+
+        class Result:
+            passed = True
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+
+    _run_cli(
+        monkeypatch,
+        "agent-smoke-test",
+        "--root",
+        str(tmp_path),
+        "--config",
+        str(tmp_path / ".local/live-eval/agents.toml"),
+        "--role",
+        "developer",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5.5",
+        "--effort",
+        "medium",
+    )
+
+    assert capsys.readouterr().out.strip() == "smoke report"
+    assert seen["args"] == (tmp_path.resolve(),)
+    kwargs = seen["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["config_path"] == (tmp_path / ".local/live-eval/agents.toml").resolve()
+    assert kwargs["role_names"] == ("developer",)
+    assert kwargs["provider"] == "codex"
+    assert kwargs["model"] == "gpt-5.5"
+    assert kwargs["effort"] == "medium"
+
+
+def test_cli_agent_smoke_test_exits_nonzero_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_smoke(*_args: object, **_kwargs: object) -> object:
+        class Result:
+            passed = False
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "agent-smoke-test", "--root", str(tmp_path))
+
+    assert exc.value.code == 1

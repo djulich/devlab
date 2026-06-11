@@ -15,7 +15,7 @@ def test_status_verbose_includes_agent_configuration_without_prompts(tmp_path: P
         "timeout_seconds = 3600\n"
         "\n[providers.codex]\n"
         'command = "codex"\n'
-        'args = ["exec", "-", "--model", "{model}"]\n'
+        'args = ["--model", "{model}", "exec", "-"]\n'
         "prompt_args = []\n"
         'stdin_template = "{system_prompt}\\n\\n---\\n\\n{session_prompt}"\n'
     )

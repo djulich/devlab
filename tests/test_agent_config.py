@@ -135,7 +135,7 @@ def test_stdin_provider_is_configured(tmp_path: Path) -> None:
 
         [providers.codex]
         command = "codex"
-        args = ["exec", "-", "--model", "{model}"]
+        args = ["--model", "{model}", "exec", "-"]
         prompt_args = []
         stdin_template = "{system_prompt}\\n---\\n{session_prompt}"
         """,
@@ -147,6 +147,35 @@ def test_stdin_provider_is_configured(tmp_path: Path) -> None:
     assert isinstance(provider, CliAgentProvider)
     assert provider.stdin_template == "{system_prompt}\n---\n{session_prompt}"
     assert config.resolved["developer"].uses_stdin is True
+
+
+def test_config_path_loads_explicit_agents_toml(tmp_path: Path) -> None:
+    config_path = tmp_path / ".local/live-eval/agents.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        """
+        [defaults]
+        provider = "pi"
+        model = "custom"
+
+        [providers.pi]
+        command = "pi"
+        args = ["--model", "{model}"]
+        """
+    )
+
+    config = load_agent_configuration(tmp_path, config_path=config_path)
+
+    assert config.resolved["developer"].provider == "pi"
+    assert config.resolved["developer"].command == ("pi", "--model", "custom")
+    assert not (tmp_path / ".devlab/config/agents.toml").exists()
+
+
+def test_missing_explicit_config_path_raises_clear_error(tmp_path: Path) -> None:
+    missing = tmp_path / ".local/live-eval/missing.toml"
+
+    with pytest.raises(FileNotFoundError, match="agent config not found"):
+        load_agent_configuration(tmp_path, config_path=missing)
 
 
 def test_unknown_provider_raises_clear_error(tmp_path: Path) -> None:

@@ -109,6 +109,7 @@ Inspect the workspace:
 ```bash
 devlab doctor
 devlab status --verbose
+devlab agent-smoke-test
 devlab diagnostics
 ```
 
@@ -141,6 +142,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab plan [--root PATH] [--revise] [--max-sessions N] [...]` — run missing planning sessions and stop before implementation; repeat runs are no-ops unless `--revise` is used.
 - `devlab run [--root PATH] [--max-sessions N] [...]` — run the workflow loop from the current durable state, continuing where prior runs stopped.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
+- `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
 - `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.

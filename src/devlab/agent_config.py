@@ -91,13 +91,14 @@ def find_agent_executable_problems(
 def load_agent_configuration(
     root: Path,
     *,
+    config_path: Path | None = None,
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
     dangerous_skip_permissions: bool = False,
     discover_provider_versions: bool = False,
 ) -> AgentConfiguration:
-    data = _load_config(root)
+    data = _load_config(root, config_path=config_path)
     if data is None:
         data = _fallback_config()
 
@@ -192,13 +193,15 @@ def format_resolved_agent_config(config: ResolvedAgentConfig) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _load_config(root: Path) -> dict[str, Any] | None:
-    path = root / AGENTS_CONFIG
+def _load_config(root: Path, *, config_path: Path | None = None) -> dict[str, Any] | None:
+    path = config_path if config_path is not None else root / AGENTS_CONFIG
     if not path.exists():
+        if config_path is not None:
+            raise FileNotFoundError(f"agent config not found: {path}")
         return None
     with path.open("rb") as handle:
         data = tomllib.load(handle)
-    return _table(data, AGENTS_CONFIG)
+    return _table(data, str(path))
 
 
 def _fallback_config() -> dict[str, Any]:
