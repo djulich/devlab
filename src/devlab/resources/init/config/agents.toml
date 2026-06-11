@@ -33,7 +33,7 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 # Example: Codex-style stdin invocation.
 # [providers.codex]
 # command = "codex"
-# args = ["exec", "-", "--model", "{model}"]
+# args = ["--model", "{model}", "--search", "--dangerously-bypass-approvals-and-sandbox", "exec", "-"]
 # prompt_args = []
 # stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
 
@@ -64,3 +64,39 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 # provider = "claude"
 # model = "claude-sonnet-4.5"
 # effort = "high"
+
+# ---- Example live eval agent config file
+
+# DevLab live-evaluation agent configuration.
+# Use with:
+# DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/agents.toml DEVLAB_LIVE_MAX_SESSIONS=30 \
+#   DEVLAB_LIVE_EVALS=1 uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
+#
+# [defaults]
+# provider = "codex"
+# model = "gpt-5.5"
+# effort = "medium"
+# timeout_seconds = 1200
+#
+# [providers.pi]
+# command = "pi"
+# args = [
+#     "--provider", "openai-codex",
+#     "--model", "{model}",
+#     "--thinking", "{effort}",
+#     "-p",
+# ]
+# prompt_args = []
+# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+#
+# [providers.codex]
+# command = "codex"
+# args = [
+#     "--model", "{model}",
+#     "-c", "model_reasoning_effort=\"{effort}\"",
+#     "--search",
+#     "--dangerously-bypass-approvals-and-sandbox",
+#     "exec", "-",
+# ]
+# prompt_args = []
+# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
