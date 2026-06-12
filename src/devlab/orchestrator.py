@@ -25,7 +25,7 @@ from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.git import VersionControlError
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
-from devlab.prompts import build_session_prompt, build_system_prompt
+from devlab.prompts import build_base_prompt, build_session_prompt
 from devlab.session_logging import session_finish_context, session_start_context
 from devlab.task_tracker import Task, TaskStatus
 from devlab.version_control import (
@@ -102,16 +102,16 @@ class SessionContext:
     invocation_id: str
     stdout_log: Path
     stderr_log: Path
-    system_prompt_log: Path | None
+    base_prompt_log: Path | None
     session_prompt_log: Path | None
 
     def build_invocation(
-        self, system_prompt: str, session_prompt: str
+        self, base_prompt: str, session_prompt: str
     ) -> AgentInvocation:
         return AgentInvocation(
             root=self.root,
             role_name=self.role_name,
-            system_prompt=system_prompt,
+            base_prompt=base_prompt,
             session_prompt=session_prompt,
             invocation_id=self.invocation_id,
             stdout_log=self.stdout_log,
@@ -124,18 +124,18 @@ class SessionContext:
         text = format_resolved_agent_config(config)
         text += f'stdout_log = "{self.stdout_log.as_posix()}"\n'
         text += f'stderr_log = "{self.stderr_log.as_posix()}"\n'
-        if self.system_prompt_log is not None:
-            text += f'system_prompt_log = "{self.system_prompt_log.as_posix()}"\n'
+        if self.base_prompt_log is not None:
+            text += f'base_prompt_log = "{self.base_prompt_log.as_posix()}"\n'
         if self.session_prompt_log is not None:
             text += f'session_prompt_log = "{self.session_prompt_log.as_posix()}"\n'
         path.write_text(text)
         return path
 
-    def write_prompt_logs(self, system_prompt: str, session_prompt: str) -> None:
-        if self.system_prompt_log is None or self.session_prompt_log is None:
+    def write_prompt_logs(self, base_prompt: str, session_prompt: str) -> None:
+        if self.base_prompt_log is None or self.session_prompt_log is None:
             return
-        self.system_prompt_log.parent.mkdir(parents=True, exist_ok=True)
-        self.system_prompt_log.write_text(system_prompt)
+        self.base_prompt_log.parent.mkdir(parents=True, exist_ok=True)
+        self.base_prompt_log.write_text(base_prompt)
         self.session_prompt_log.parent.mkdir(parents=True, exist_ok=True)
         self.session_prompt_log.write_text(session_prompt)
 
@@ -175,8 +175,10 @@ def _build_session_context(
         invocation_id=invocation_id,
         stdout_log=_agent_log_path(root, invocation_id, "stdout.log"),
         stderr_log=_agent_log_path(root, invocation_id, "stderr.log"),
-        system_prompt_log=(
-            _agent_log_path(root, invocation_id, "system-prompt.md") if retain_prompts else None
+        base_prompt_log=(
+            _agent_log_path(root, invocation_id, "base-prompt.md")
+            if retain_prompts
+            else None
         ),
         session_prompt_log=(
             _agent_log_path(root, invocation_id, "session-prompt.md") if retain_prompts else None
@@ -701,13 +703,15 @@ def run_loop(
 
         try:
             snapshot = workspace.snapshot
-            system_prompt = build_system_prompt(root, role, snapshot=snapshot, role_name=role_name)
+            base_prompt = build_base_prompt(
+                root, role, snapshot=snapshot, role_name=role_name
+            )
             session_prompt = build_session_prompt(
                 snapshot,
                 role_name,
                 planning_revision=planning_only and revise_plan,
             )
-            ctx.write_prompt_logs(system_prompt, session_prompt)
+            ctx.write_prompt_logs(base_prompt, session_prompt)
             environment = _environment_for_session(root, workspace.snapshot, role_name)
         except ProfileNotFoundError as exc:
             logger.error("%s. Stopping.", exc)
@@ -728,7 +732,7 @@ def run_loop(
 
         agent_result = AgentResult(return_code=1, failure_kind="provider_error")
         agent_error: SessionError | None = None
-        invocation = ctx.build_invocation(system_prompt, session_prompt)
+        invocation = ctx.build_invocation(base_prompt, session_prompt)
         agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
         try:
             agent_result = invoke_session(invocation, agent_provider=agent_provider)
@@ -863,5 +867,4 @@ def run_loop(
 
     logger.info("Orchestrator finished after %s session(s).", sessions_run)
     return RunResult(sessions_run, True, 0, ())
-
 

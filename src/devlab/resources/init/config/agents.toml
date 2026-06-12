@@ -8,7 +8,7 @@
 # architect, planner, developer, reviewer, integrator.
 #
 # Provider command templates may use these placeholders:
-# {role_name}, {provider}, {model}, {effort}, {system_prompt}, {session_prompt}
+# {role_name}, {provider}, {model}, {effort}, {base_prompt}, {session_prompt}
 #
 # When running sessions, DevLab records provider version info in session metadata
 # by trying `<command executable> --version`; set provider `version_command` to override
@@ -25,7 +25,7 @@ timeout_seconds = 3600
 [providers.default]
 command = "claude"
 args = ["-p", "--dangerously-skip-permissions"]
-prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
 
 # Prefer stdin prompt transport when supported; it avoids argv length limits and
 # keeps prompt text out of process listings.
@@ -35,7 +35,7 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 # command = "codex"
 # args = ["--model", "{model}", "--search", "--dangerously-bypass-approvals-and-sandbox", "exec", "-"]
 # prompt_args = []
-# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+# stdin_template = "{base_prompt}\n\n---\n\n{session_prompt}"
 
 # Example: Pi-style CLI invocation.
 # [defaults]
@@ -46,13 +46,13 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 # [providers.pi]
 # command = "pi"
 # args = ["-p", "--model", "{model}", "--effort", "{effort}"]
-# prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+# prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
 
 # Example: Claude-style CLI invocation.
 # [providers.claude]
 # command = "claude"
 # args = ["-p", "--model", "{model}"]
-# prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+# prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
 
 # Example: use a different provider/model for review to reduce shared blind spots.
 # [roles.developer]
@@ -87,7 +87,7 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 #     "-p",
 # ]
 # prompt_args = []
-# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+# stdin_template = "{base_prompt}\n\n---\n\n{session_prompt}"
 #
 # [providers.codex]
 # command = "codex"
@@ -99,4 +99,4 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 #     "exec", "-",
 # ]
 # prompt_args = []
-# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+# stdin_template = "{base_prompt}\n\n---\n\n{session_prompt}"

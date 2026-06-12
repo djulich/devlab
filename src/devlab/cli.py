@@ -100,7 +100,7 @@ def main() -> None:
     run_parser.add_argument(
         "--retain-prompts",
         action="store_true",
-        help="Write full system/session prompts to .devlab/logs/agents/ for debugging.",
+        help="Write full base/session prompts to .devlab/logs/agents/ for debugging.",
     )
 
     plan_parser = subparsers.add_parser(
@@ -165,7 +165,7 @@ def main() -> None:
     plan_parser.add_argument(
         "--retain-prompts",
         action="store_true",
-        help="Write full system/session prompts to .devlab/logs/agents/ for debugging.",
+        help="Write full base/session prompts to .devlab/logs/agents/ for debugging.",
     )
 
     status_parser = subparsers.add_parser("status", help="Show workspace status.")

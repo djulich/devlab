@@ -6,7 +6,7 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 
 ## Context to Read
 
-- The conventions included in this system prompt
+- The conventions included in this base prompt
 - `.devlab/config/tooling.md`
 - These role instructions
 - The assigned completed milestone and its task files

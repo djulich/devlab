@@ -39,7 +39,7 @@ def test_prompt_context_report_includes_all_roles(tmp_path: Path) -> None:
         "reviewer",
         "integrator",
     }
-    assert all(role.system.estimated_tokens > 0 for role in report.roles)
+    assert all(role.base.estimated_tokens > 0 for role in report.roles)
     assert all(role.session.estimated_tokens > 0 for role in report.roles)
 
 

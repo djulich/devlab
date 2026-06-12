@@ -38,7 +38,7 @@ class AgentResult:
 class AgentInvocation:
     root: Path
     role_name: str
-    system_prompt: str
+    base_prompt: str
     session_prompt: str
     invocation_id: str
     stdout_log: Path
@@ -59,7 +59,7 @@ class CliAgentProvider:
     """Template-based CLI agent provider.
 
     ``argv`` identifies the agent executable and fixed arguments. ``prompt_args``
-    are appended after optional extra args and may contain ``{system_prompt}``,
+    are appended after optional extra args and may contain ``{base_prompt}``,
     ``{session_prompt}``, and ``{role_name}`` placeholders. If ``stdin_template``
     is set, rendered text is sent to stdin instead of being added as an arg.
 
@@ -70,7 +70,11 @@ class CliAgentProvider:
     """
 
     argv: tuple[str, ...]
-    prompt_args: tuple[str, ...] = ("--system-prompt", "{system_prompt}", "{session_prompt}")
+    prompt_args: tuple[str, ...] = (
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
+    )
     extra_args: tuple[str, ...] = ()
     stdin_template: str | None = None
     template_values: Mapping[str, str] = dataclasses.field(default_factory=dict)
@@ -82,7 +86,11 @@ class CliAgentProvider:
         command: str,
         *,
         extra_args: Sequence[str] = (),
-        prompt_args: Sequence[str] = ("--system-prompt", "{system_prompt}", "{session_prompt}"),
+        prompt_args: Sequence[str] = (
+            "--system-prompt",
+            "{base_prompt}",
+            "{session_prompt}",
+        ),
         stdin_template: str | None = None,
         template_values: Mapping[str, str] | None = None,
         timeout_seconds: int | None = None,
@@ -100,7 +108,7 @@ class CliAgentProvider:
         values = {
             **self.template_values,
             "role_name": invocation.role_name,
-            "system_prompt": invocation.system_prompt,
+            "base_prompt": invocation.base_prompt,
             "session_prompt": invocation.session_prompt,
         }
         command = [*self.argv, *_render_args(self.extra_args, values)]
@@ -206,7 +214,7 @@ def codex_cli_provider(command: str = "codex exec -") -> CliAgentProvider:
     return CliAgentProvider.from_command(
         command,
         prompt_args=(),
-        stdin_template="{system_prompt}\n\n---\n\n{session_prompt}",
+        stdin_template="{base_prompt}\n\n---\n\n{session_prompt}",
     )
 
 

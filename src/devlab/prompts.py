@@ -1,6 +1,6 @@
 """Prompt assembly for DevLab agent sessions.
 
-Builds system and session prompts from workspace state (plans, tasks,
+Builds base and session prompts from workspace state (plans, tasks,
 findings, profiles, specifications) and packaged prompt resources.
 """
 
@@ -26,7 +26,7 @@ CONVENTIONS_RESOURCE = "conventions.md"
 TOOLING_FILE = ".devlab/config/tooling.md"
 
 
-def build_system_prompt(
+def build_base_prompt(
     root: Path,
     role: RoleConfig,
     *,

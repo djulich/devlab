@@ -21,13 +21,13 @@ from devlab.agents import (
 def _invocation(
     root: Path,
     role_name: str = "developer",
-    system_prompt: str = "system",
+    base_prompt: str = "system",
     session_prompt: str = "session",
 ) -> AgentInvocation:
     return AgentInvocation(
         root=root,
         role_name=role_name,
-        system_prompt=system_prompt,
+        base_prompt=base_prompt,
         session_prompt=session_prompt,
         invocation_id="test-invocation",
         stdout_log=root / ".devlab/logs/agents/test.stdout.log",
@@ -77,7 +77,7 @@ def test_mock_provider_records_calls_and_writes_valid_handoff(tmp_path: Path) ->
 
     assert result.return_code == 0
     assert provider.calls[0].role_name == "developer"
-    assert provider.calls[0].system_prompt == "system"
+    assert provider.calls[0].base_prompt == "system"
     handoff = tmp_path / ".devlab/session-artifacts" / "developer" / "handoff.md"
     assert "## Open Issues" in handoff.read_text()
 
@@ -131,7 +131,7 @@ def test_pi_cli_provider_uses_pi_print_command(monkeypatch: pytest.MonkeyPatch) 
 
     assert provider.argv == ("pi", "-p")
     assert provider.extra_args == ("--no-context-files",)
-    assert provider.prompt_args == ("--system-prompt", "{system_prompt}", "{session_prompt}")
+    assert provider.prompt_args == ("--system-prompt", "{base_prompt}", "{session_prompt}")
 
 
 def test_claude_cli_provider_adds_dangerous_skip_permissions() -> None:
@@ -158,7 +158,7 @@ def test_cli_agent_provider_supports_stdin_prompt_mode(
     provider = CliAgentProvider.from_command(
         "agent run",
         prompt_args=["--role", "{role_name}"],
-        stdin_template="{system_prompt}\n---\n{session_prompt}",
+        stdin_template="{base_prompt}\n---\n{session_prompt}",
     )
 
     provider.invoke(_invocation(tmp_path, "reviewer", "system", "session"))

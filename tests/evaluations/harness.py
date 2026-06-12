@@ -147,8 +147,8 @@ class EvaluationDiagnostics:
     )
     prompt_logs: PromptLogMetrics = dataclasses.field(
         default_factory=lambda: PromptLogMetrics(
-            system_count=0, session_count=0,
-            max_system_prompt_bytes=0, max_session_prompt_bytes=0,
+            base_count=0, session_count=0,
+            max_base_prompt_bytes=0, max_session_prompt_bytes=0,
         )
     )
     quality: QualitySummary = dataclasses.field(

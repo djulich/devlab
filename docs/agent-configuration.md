@@ -14,7 +14,7 @@ timeout_seconds = 3600
 [providers.default]
 command = "claude"
 args = ["-p"]
-prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
 ```
 
 ## Role Overrides
@@ -56,7 +56,7 @@ Provider sections describe how DevLab invokes a CLI agent.
 [providers.pi]
 command = "pi"
 args = ["-p", "--model", "{model}", "--thinking", "{effort}"]
-prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
 ```
 
 Fields:
@@ -74,8 +74,13 @@ Supported placeholders:
 - `{provider}`
 - `{model}`
 - `{effort}`
-- `{system_prompt}`
+- `{base_prompt}`
 - `{session_prompt}`
+
+`{base_prompt}` is DevLab's generated standing prompt for the role: packaged
+conventions, role instructions, applicable domain overlays, and tooling policy.
+Provider flags such as Claude's `--system-prompt` are provider-specific transport
+options; they are not DevLab placeholder names.
 
 ## Provider Examples
 
@@ -87,7 +92,7 @@ Prefer stdin prompt transport when your agent CLI supports it. Stdin avoids comm
 [providers.codex]
 command = "codex"
 args = ["--model", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "exec", "-"]
-stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+stdin_template = "{base_prompt}\n\n---\n\n{session_prompt}"
 prompt_args = []
 ```
 
@@ -100,7 +105,7 @@ command = "pi"
 # models, pass the provider explicitly so Pi does not resolve the model through
 # an unauthenticated provider.
 args = ["-p", "--provider", "openai-codex", "--model", "{model}", "--thinking", "{effort}"]
-prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
 ```
 
 ### Claude-style command-line prompts
@@ -109,7 +114,7 @@ prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
 [providers.claude]
 command = "claude"
 args = ["-p", "--model", "{model}"]
-prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
 ```
 
 ## Suggested Split-Brain Review Setup
@@ -188,7 +193,7 @@ Failure reports include the role, failure kind, exit code, timeout when present,
 
 By default, DevLab does not retain full prompts. For debugging, run with `devlab run --retain-prompts` to write split prompt logs next to the agent invocation logs:
 
-- `<timestamp>_<session>_<role>.system-prompt.md`
+- `<timestamp>_<session>_<role>.base-prompt.md`
 - `<timestamp>_<session>_<role>.session-prompt.md`
 
-The matching `.config.toml` includes `system_prompt_log` and `session_prompt_log` paths when prompt retention is enabled. Treat `.devlab/logs/agents/` as sensitive: agent output and retained prompts may contain target project details.
+The matching `.config.toml` includes `base_prompt_log` and `session_prompt_log` paths when prompt retention is enabled. Treat `.devlab/logs/agents/` as sensitive: agent output and retained prompts may contain target project details.

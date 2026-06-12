@@ -81,7 +81,7 @@ def test_smoke_test_supports_custom_config_without_changing_workspace(
         command = "agent"
         args = ["--model", "{model}"]
         prompt_args = []
-        stdin_template = "{system_prompt}\\n---\\n{session_prompt}"
+        stdin_template = "{base_prompt}\\n---\\n{session_prompt}"
         version_command = ""
         """
     )

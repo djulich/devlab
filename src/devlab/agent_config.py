@@ -141,7 +141,7 @@ def load_agent_configuration(
             extra_args = [*extra_args, "--dangerously-skip-permissions"]
         prompt_args = _string_list(
             provider_table.get(
-                "prompt_args", ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+                "prompt_args", ["--system-prompt", "{base_prompt}", "{session_prompt}"]
             ),
             f"providers.{provider_name}.prompt_args",
         )
@@ -211,7 +211,7 @@ def _fallback_config() -> dict[str, Any]:
             "default": {
                 "command": "claude",
                 "args": ["-p", "--dangerously-skip-permissions"],
-                "prompt_args": ["--system-prompt", "{system_prompt}", "{session_prompt}"],
+                "prompt_args": ["--system-prompt", "{base_prompt}", "{session_prompt}"],
             }
         },
     }

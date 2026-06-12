@@ -82,7 +82,7 @@ def run_agent_smoke_test(
         invocation = AgentInvocation(
             root=root,
             role_name=role_name,
-            system_prompt=(
+            base_prompt=(
                 "DevLab agent configuration smoke test. "
                 f"Reply with exactly: {SMOKE_MARKER}"
             ),

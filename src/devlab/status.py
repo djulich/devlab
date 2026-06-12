@@ -56,7 +56,7 @@ def _format_prompt_context_report(report: PromptContextReport) -> list[str]:
             status_text = f"CRITICAL over {_format_count(role.thresholds.critical_tokens)}"
         lines.append(
             f"- {role.role_name}: total ~{_format_count(role.total.estimated_tokens)} tokens "
-            f"(system ~{_format_count(role.system.estimated_tokens)}, "
+            f"(base ~{_format_count(role.base.estimated_tokens)}, "
             f"session ~{_format_count(role.session.estimated_tokens)}) {status_text}"
         )
     return lines

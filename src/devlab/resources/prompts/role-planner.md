@@ -12,7 +12,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 ## Context to Read
 
-- The conventions included in this system prompt
+- The conventions included in this base prompt
 - `.devlab/config/tooling.md`
 - These role instructions
 - The design plan

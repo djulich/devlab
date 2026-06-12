@@ -4,6 +4,7 @@ import json
 import logging
 import subprocess
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -355,8 +356,7 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
 
     assert capsys.readouterr().out.strip() == "smoke report"
     assert seen["args"] == (tmp_path.resolve(),)
-    kwargs = seen["kwargs"]
-    assert isinstance(kwargs, dict)
+    kwargs = cast("dict[str, object]", seen["kwargs"])
     assert kwargs["config_path"] == (tmp_path / ".local/live-eval/agents.toml").resolve()
     assert kwargs["role_names"] == ("developer",)
     assert kwargs["provider"] == "codex"

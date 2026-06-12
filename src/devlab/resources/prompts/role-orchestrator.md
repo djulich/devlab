@@ -4,7 +4,7 @@ The orchestrator controls the development loop by invoking agent sessions in the
 
 ## Context to Read
 
-- The conventions included in this system prompt
+- The conventions included in this base prompt
 - These role instructions
 - Scan task files for task state
 - Scan archived handoffs

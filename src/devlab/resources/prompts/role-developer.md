@@ -4,7 +4,7 @@ The developer implements exactly one eligible task per session.
 
 ## Context to Read
 
-- The conventions included in this system prompt
+- The conventions included in this base prompt
 - `.devlab/config/tooling.md`
 - The assigned task's resolved profile in `.devlab/config/profiles/`
 - Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present

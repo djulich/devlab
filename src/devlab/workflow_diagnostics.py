@@ -88,9 +88,9 @@ class AgentLogMetrics:
 
 @dataclasses.dataclass(frozen=True)
 class PromptLogMetrics:
-    system_count: int
+    base_count: int
     session_count: int
-    max_system_prompt_bytes: int
+    max_base_prompt_bytes: int
     max_session_prompt_bytes: int
 
 
@@ -249,12 +249,14 @@ def collect_agent_log_metrics(root: Path) -> AgentLogMetrics:
 
 def collect_prompt_log_metrics(root: Path) -> PromptLogMetrics:
     log_dir = root / ".devlab/logs/agents"
-    system_logs = list(log_dir.glob("*.system-prompt.md"))
+    base_logs = list(log_dir.glob("*.base-prompt.md"))
     session_logs = list(log_dir.glob("*.session-prompt.md"))
     return PromptLogMetrics(
-        system_count=len(system_logs),
+        base_count=len(base_logs),
         session_count=len(session_logs),
-        max_system_prompt_bytes=max((path.stat().st_size for path in system_logs), default=0),
+        max_base_prompt_bytes=max(
+            (path.stat().st_size for path in base_logs), default=0
+        ),
         max_session_prompt_bytes=max((path.stat().st_size for path in session_logs), default=0),
     )
 
@@ -420,9 +422,9 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     )
     lines.append(
         "- prompts: "
-        f"system={diagnostics.prompt_logs.system_count} "
+        f"base={diagnostics.prompt_logs.base_count} "
         f"session={diagnostics.prompt_logs.session_count} "
-        f"max_system_bytes={diagnostics.prompt_logs.max_system_prompt_bytes} "
+        f"max_base_bytes={diagnostics.prompt_logs.max_base_prompt_bytes} "
         f"max_session_bytes={diagnostics.prompt_logs.max_session_prompt_bytes}"
     )
 

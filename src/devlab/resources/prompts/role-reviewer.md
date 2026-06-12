@@ -4,7 +4,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 
 ## Context to Read
 
-- The conventions included in this system prompt
+- The conventions included in this base prompt
 - `.devlab/config/tooling.md`
 - The assigned task's resolved profile in `.devlab/config/profiles/`
 - Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present

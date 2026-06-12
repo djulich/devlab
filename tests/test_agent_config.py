@@ -137,7 +137,7 @@ def test_stdin_provider_is_configured(tmp_path: Path) -> None:
         command = "codex"
         args = ["--model", "{model}", "exec", "-"]
         prompt_args = []
-        stdin_template = "{system_prompt}\\n---\\n{session_prompt}"
+        stdin_template = "{base_prompt}\\n---\\n{session_prompt}"
         """,
     )
 
@@ -145,7 +145,7 @@ def test_stdin_provider_is_configured(tmp_path: Path) -> None:
     provider = config.providers[config.role_providers["developer"]]
 
     assert isinstance(provider, CliAgentProvider)
-    assert provider.stdin_template == "{system_prompt}\n---\n{session_prompt}"
+    assert provider.stdin_template == "{base_prompt}\n---\n{session_prompt}"
     assert config.resolved["developer"].uses_stdin is True
 
 
@@ -282,7 +282,7 @@ def test_format_resolved_agent_config_does_not_include_prompts(tmp_path: Path) -
 
     assert 'role = "developer"' in text
     assert "command = " in text
-    assert "system_prompt" not in text
+    assert "base_prompt" not in text
     assert "session_prompt" not in text
 
 
@@ -321,7 +321,7 @@ def test_provider_renders_configured_template_values(
         AgentInvocation(
             root=tmp_path,
             role_name="developer",
-            system_prompt="system",
+            base_prompt="system",
             session_prompt="session",
             invocation_id="test",
             stdout_log=tmp_path / ".devlab/logs/agents/test.stdout.log",

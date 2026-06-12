@@ -202,9 +202,9 @@ When prompt retention is enabled, record:
 
 ```json
 "prompt_logs": {
-  "system_count": 10,
+  "base_count": 10,
   "session_count": 10,
-  "max_system_prompt_bytes": 12345,
+  "max_base_prompt_bytes": 12345,
   "max_session_prompt_bytes": 23456
 }
 ```

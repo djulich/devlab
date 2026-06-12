@@ -14,7 +14,7 @@ from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import _timestamp, close_task, process_handoff, run_loop, validate_handoff
-from devlab.prompts import build_session_prompt, build_system_prompt
+from devlab.prompts import build_base_prompt, build_session_prompt
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workspace import (
     AGENT_LOG_DIR,
@@ -315,7 +315,7 @@ class TestBuildSystemPrompt:
     def test_planner_includes_tooling(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         role = ROLES["planner"]
-        prompt = build_system_prompt(tmp_path, role)
+        prompt = build_base_prompt(tmp_path, role)
         assert "Conventions" in prompt
         assert "Role: Planner" in prompt
         assert "Tooling" in prompt
@@ -323,17 +323,17 @@ class TestBuildSystemPrompt:
     def test_developer_includes_tooling(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         role = ROLES["developer"]
-        prompt = build_system_prompt(tmp_path, role)
+        prompt = build_base_prompt(tmp_path, role)
         assert "Tooling" in prompt
 
-    def test_developer_system_prompt_includes_task_domain_overlay(
+    def test_developer_base_prompt_includes_task_domain_overlay(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "Deploy", domain="deployment")
         role = ROLES["developer"]
 
-        prompt = build_system_prompt(
+        prompt = build_base_prompt(
             tmp_path,
             role,
             snapshot=Workspace(tmp_path).snapshot,
@@ -351,7 +351,7 @@ class TestBuildSystemPrompt:
         _write_task(tmp_path, "T0001", "Deploy", status="in_review", domain="deployment")
         role = ROLES["reviewer"]
 
-        prompt = build_system_prompt(
+        prompt = build_base_prompt(
             tmp_path,
             role,
             snapshot=Workspace(tmp_path).snapshot,
@@ -362,14 +362,14 @@ class TestBuildSystemPrompt:
         assert "do not install it" in prompt
         assert "unverified" in prompt
 
-    def test_developer_system_prompt_omits_domain_overlay_for_general_task(
+    def test_developer_base_prompt_omits_domain_overlay_for_general_task(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "General")
         role = ROLES["developer"]
 
-        prompt = build_system_prompt(
+        prompt = build_base_prompt(
             tmp_path,
             role,
             snapshot=Workspace(tmp_path).snapshot,
@@ -378,7 +378,7 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment" not in prompt
 
-    def test_planner_system_prompt_includes_deployment_overlay_for_deployment_spec(
+    def test_planner_base_prompt_includes_deployment_overlay_for_deployment_spec(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
@@ -389,7 +389,7 @@ class TestBuildSystemPrompt:
         )
         role = ROLES["planner"]
 
-        prompt = build_system_prompt(
+        prompt = build_base_prompt(
             tmp_path,
             role,
             snapshot=Workspace(tmp_path).snapshot,
@@ -398,7 +398,7 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment / Planner" in prompt
 
-    def test_planner_system_prompt_activates_from_additional_deployment_spec_file(
+    def test_planner_base_prompt_activates_from_additional_deployment_spec_file(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
@@ -414,7 +414,7 @@ class TestBuildSystemPrompt:
         )
         role = ROLES["planner"]
 
-        prompt = build_system_prompt(
+        prompt = build_base_prompt(
             tmp_path,
             role,
             snapshot=Workspace(tmp_path).snapshot,
@@ -423,7 +423,7 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment / Planner" in prompt
 
-    def test_planner_system_prompt_ignores_placeholder_deployment_spec(
+    def test_planner_base_prompt_ignores_placeholder_deployment_spec(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
@@ -436,7 +436,7 @@ class TestBuildSystemPrompt:
         )
         role = ROLES["planner"]
 
-        prompt = build_system_prompt(
+        prompt = build_base_prompt(
             tmp_path,
             role,
             snapshot=Workspace(tmp_path).snapshot,
@@ -445,7 +445,7 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment" not in prompt
 
-    def test_planner_system_prompt_activates_deployment_without_sentinel(
+    def test_planner_base_prompt_activates_deployment_without_sentinel(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
@@ -456,7 +456,7 @@ class TestBuildSystemPrompt:
         )
         role = ROLES["planner"]
 
-        prompt = build_system_prompt(
+        prompt = build_base_prompt(
             tmp_path,
             role,
             snapshot=Workspace(tmp_path).snapshot,
@@ -483,7 +483,7 @@ class TestBuildSystemPrompt:
         deployment_spec.write_text(without_sentinel)
         role = ROLES["planner"]
 
-        prompt = build_system_prompt(
+        prompt = build_base_prompt(
             tmp_path,
             role,
             snapshot=Workspace(tmp_path).snapshot,
@@ -1364,7 +1364,7 @@ class TestRunLoop:
             'provider = "missing"\n'
             "\n[providers.missing]\n"
             'command = "definitely-missing-devlab-agent"\n'
-            'prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]\n'
+            'prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]\n'
         )
         subprocess.run(["git", "-C", tmp_path.as_posix(), "init"], check=True)
         subprocess.run(
@@ -1456,11 +1456,11 @@ class TestRunLoop:
         assert 'provider_version = "mock-agent 9.8.7"' in text
         meta = _find_metadata(tmp_path)
         assert meta["provider_version"] == "mock-agent 9.8.7"
-        assert "system_prompt =" not in text
+        assert "base_prompt =" not in text
         assert "session_prompt =" not in text
         assert "stdout_log" in text
         assert "stderr_log" in text
-        assert "system_prompt_log" in text
+        assert "base_prompt_log" in text
         assert "session_prompt_log" in text
 
     def test_retains_split_prompt_logs_when_enabled(self, tmp_path: Path) -> None:
@@ -1477,11 +1477,11 @@ class TestRunLoop:
         )
 
         agent_logs = tmp_path / ".devlab/logs/agents"
-        system_logs = list(agent_logs.glob("*_developer.system-prompt.md"))
+        base_logs = list(agent_logs.glob("*_developer.base-prompt.md"))
         session_logs = list(agent_logs.glob("*_developer.session-prompt.md"))
-        assert len(system_logs) == 1
+        assert len(base_logs) == 1
         assert len(session_logs) == 1
-        assert "Role: Developer" in system_logs[0].read_text()
+        assert "Role: Developer" in base_logs[0].read_text()
         assert "## Assigned Task" in session_logs[0].read_text()
 
     def test_uses_role_specific_agent_provider(self, tmp_path: Path) -> None:

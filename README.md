@@ -128,7 +128,7 @@ Run the workflow. `devlab run` requires a Git repository with a clean working tr
 devlab run --max-sessions 20
 ```
 
-For prompt-debugging only, retain full system/session prompts alongside agent logs:
+For prompt-debugging only, retain full base/session prompts alongside agent logs:
 
 ```bash
 devlab run --retain-prompts

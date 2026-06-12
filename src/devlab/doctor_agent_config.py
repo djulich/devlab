@@ -18,7 +18,7 @@ from devlab.agent_config import (
 from devlab.doctor_common import DoctorProblem
 
 _COMMAND_PLACEHOLDERS = {"role_name", "provider", "model", "effort"}
-_PROMPT_PLACEHOLDERS = _COMMAND_PLACEHOLDERS | {"system_prompt", "session_prompt"}
+_PROMPT_PLACEHOLDERS = _COMMAND_PLACEHOLDERS | {"base_prompt", "session_prompt"}
 _SHELL_OPERATORS = ("&&", "||", "|", ";", "<", ">", "$(", "`")
 _ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
@@ -328,7 +328,7 @@ def _check_provider(
             )
 
     effective_prompt_args = provider.get(
-        "prompt_args", ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+        "prompt_args", ["--system-prompt", "{base_prompt}", "{session_prompt}"]
     )
     if isinstance(effective_prompt_args, list) and all(
         isinstance(item, str) for item in effective_prompt_args
@@ -411,7 +411,7 @@ def _check_prompt_delivery(
         delivered.update(_placeholder_roots(value))
     missing = [
         placeholder
-        for placeholder in ("system_prompt", "session_prompt")
+        for placeholder in ("base_prompt", "session_prompt")
         if placeholder not in delivered
     ]
     if missing:

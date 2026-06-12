@@ -4,7 +4,7 @@ The architect translates the system specification into a design plan and reviews
 
 ## Context to Read
 
-- The conventions included in this system prompt
+- The conventions included in this base prompt
 - `.devlab/config/tooling.md`
 - These role instructions
 - The system specification
