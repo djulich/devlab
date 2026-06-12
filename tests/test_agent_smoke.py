@@ -30,7 +30,7 @@ def test_smoke_test_invokes_all_roles_by_default(
             "--role", "{role_name}",
             "--model", "{model}",
             "--effort", "{effort}",
-            "--system-prompt", "{base_prompt}",
+            "--system-prompt", "{system_prompt}",
             "{session_prompt}",
         ]
         version_command = ""
@@ -86,7 +86,7 @@ def test_smoke_test_supports_custom_config_without_changing_workspace(
         [providers.stdin]
         command = "agent"
         args = ["--model", "{model}"]
-        stdin_template = "{base_prompt}\\n---\\n{session_prompt}"
+        stdin_template = "{system_prompt}\\n---\\n{session_prompt}"
         version_command = ""
         """
     )
@@ -130,7 +130,7 @@ def test_smoke_report_includes_config_command_and_logs(
 
         [providers.test]
         command = "agent"
-        args = ["--model", "{model}", "--system-prompt", "{base_prompt}", "{session_prompt}"]
+        args = ["--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
         version_command = ""
         """,
     )
@@ -175,7 +175,7 @@ def test_smoke_test_fails_when_marker_is_missing(
 
         [providers.test]
         command = "agent"
-        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
         version_command = ""
         """,
     )
@@ -209,7 +209,7 @@ def test_smoke_test_does_not_accept_marker_echoed_to_stderr(
 
         [providers.test]
         command = "agent"
-        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
         version_command = ""
         """,
     )

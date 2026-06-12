@@ -209,7 +209,7 @@ def _fallback_config() -> dict[str, Any]:
                 "args": [
                     "-p",
                     "--system-prompt",
-                    "{base_prompt}",
+                    "{system_prompt}",
                     "{session_prompt}",
                 ],
             }
@@ -220,7 +220,7 @@ def _fallback_config() -> dict[str, Any]:
 def _render_command(command: str, args: list[str], values: Mapping[str, str]) -> list[str]:
     render_values = {
         **values,
-        "base_prompt": "{base_prompt}",
+        "system_prompt": "{system_prompt}",
         "session_prompt": "{session_prompt}",
     }
     return [*shlex.split(command), *(arg.format_map(render_values) for arg in args)]
@@ -247,7 +247,7 @@ def agent_prompt_transport_problems(
         delivered.update(_placeholder_roots(value))
     missing = [
         placeholder
-        for placeholder in ("base_prompt", "session_prompt")
+        for placeholder in ("system_prompt", "session_prompt")
         if placeholder not in delivered
     ]
     if missing:

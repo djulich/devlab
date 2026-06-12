@@ -40,7 +40,7 @@ def test_doctor_reports_additional_agents_config_misconfigurations(tmp_path: Pat
         "timeout_seconds = 0\n"
         "\n[providers.default]\n"
         'command = "VAR=value claude -p && echo done"\n'
-        'args = ["{system_prompt}"]\n'
+        'args = ["{unknown_prompt}"]\n'
         'prompt_args = ["--no-prompts"]\n'
         'stdin_template = "   "\n'
         'version_command = 123\n'
@@ -54,7 +54,7 @@ def test_doctor_reports_additional_agents_config_misconfigurations(tmp_path: Pat
         "providers.default.command appears to require shell evaluation" in m for m in messages
     )
     assert any(
-        "providers.default.args[0] references unsupported placeholder {system_prompt}" in m
+        "providers.default.args[0] references unsupported placeholder {unknown_prompt}" in m
         for m in messages
     )
     assert "providers.default.stdin_template must not be empty" in messages
@@ -102,7 +102,7 @@ def test_doctor_reports_missing_configured_agent_executable(
         'provider = "default"\n'
         "\n[providers.default]\n"
         'command = "missing-agent-cli -p"\n'
-        'args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]\n'
+        'args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]\n'
     )
     monkeypatch.setattr("devlab.doctor_agent_config.shutil.which", lambda _name: None)
 
@@ -122,7 +122,7 @@ def test_doctor_accepts_configured_agent_executable_on_path(tmp_path: Path, monk
         'provider = "default"\n'
         "\n[providers.default]\n"
         'command = "agent-cli -p"\n'
-        'args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]\n'
+        'args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]\n'
     )
     monkeypatch.setattr(
         "devlab.doctor_agent_config.shutil.which",

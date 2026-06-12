@@ -21,13 +21,13 @@ from devlab.agents import (
 def _invocation(
     root: Path,
     role_name: str = "developer",
-    base_prompt: str = "system",
+    system_prompt: str = "system",
     session_prompt: str = "session",
 ) -> AgentInvocation:
     return AgentInvocation(
         root=root,
         role_name=role_name,
-        base_prompt=base_prompt,
+        system_prompt=system_prompt,
         session_prompt=session_prompt,
         invocation_id="test-invocation",
         stdout_log=root / ".devlab/logs/agents/test.stdout.log",
@@ -77,7 +77,7 @@ def test_mock_provider_records_calls_and_writes_valid_handoff(tmp_path: Path) ->
 
     assert result.return_code == 0
     assert provider.calls[0].role_name == "developer"
-    assert provider.calls[0].base_prompt == "system"
+    assert provider.calls[0].system_prompt == "system"
     handoff = tmp_path / ".devlab/session-artifacts" / "developer" / "handoff.md"
     assert "## Open Issues" in handoff.read_text()
 
@@ -110,7 +110,7 @@ def test_cli_agent_provider_renders_prompt_arguments(
         args=[
             "--no-context-files",
             "--system-prompt",
-            "{base_prompt}",
+            "{system_prompt}",
             "{session_prompt}",
         ],
     )
@@ -124,7 +124,7 @@ def test_cli_agent_provider_renders_prompt_arguments(
         "-p",
         "--no-context-files",
         "--system-prompt",
-        "{base_prompt}",
+        "{system_prompt}",
         "{session_prompt}",
     )
     args, kwargs = calls[0]
@@ -148,7 +148,7 @@ def test_pi_cli_provider_uses_pi_print_command(monkeypatch: pytest.MonkeyPatch) 
     assert provider.args == (
         "--no-context-files",
         "--system-prompt",
-        "{base_prompt}",
+        "{system_prompt}",
         "{session_prompt}",
     )
 
@@ -159,7 +159,7 @@ def test_claude_cli_provider_uses_prompt_args() -> None:
     assert provider.argv == ("claude", "-p")
     assert provider.args == (
         "--system-prompt",
-        "{base_prompt}",
+        "{system_prompt}",
         "{session_prompt}",
     )
 
@@ -181,7 +181,7 @@ def test_cli_agent_provider_supports_stdin_prompt_mode(
     provider = CliAgentProvider.from_command(
         "agent run",
         args=["--role", "{role_name}"],
-        stdin_template="{base_prompt}\n---\n{session_prompt}",
+        stdin_template="{system_prompt}\n---\n{session_prompt}",
     )
 
     provider.invoke(_invocation(tmp_path, "reviewer", "system", "session"))

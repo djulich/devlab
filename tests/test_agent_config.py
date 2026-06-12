@@ -19,7 +19,7 @@ def test_missing_config_uses_fallback_cli_command(tmp_path: Path) -> None:
     assert provider.args == (
         "-p",
         "--system-prompt",
-        "{base_prompt}",
+        "{system_prompt}",
         "{session_prompt}",
     )
     assert config.resolved["developer"].provider == "default"
@@ -41,7 +41,7 @@ def test_defaults_apply_to_all_roles(tmp_path: Path) -> None:
             "-p",
             "--model", "{model}",
             "--effort", "{effort}",
-            "--system-prompt", "{base_prompt}",
+            "--system-prompt", "{system_prompt}",
             "{session_prompt}",
         ]
         """,
@@ -61,7 +61,7 @@ def test_defaults_apply_to_all_roles(tmp_path: Path) -> None:
         "--effort",
         "medium",
         "--system-prompt",
-        "{base_prompt}",
+        "{system_prompt}",
         "{session_prompt}",
     )
 
@@ -84,7 +84,7 @@ def test_role_override_changes_one_role(tmp_path: Path) -> None:
         args = [
             "-p",
             "--model", "{model}",
-            "--system-prompt", "{base_prompt}",
+            "--system-prompt", "{system_prompt}",
             "{session_prompt}",
         ]
 
@@ -94,7 +94,7 @@ def test_role_override_changes_one_role(tmp_path: Path) -> None:
             "-p",
             "--model", "{model}",
             "--effort", "{effort}",
-            "--system-prompt", "{base_prompt}",
+            "--system-prompt", "{system_prompt}",
             "{session_prompt}",
         ]
         """,
@@ -112,7 +112,7 @@ def test_role_override_changes_one_role(tmp_path: Path) -> None:
         "--effort",
         "high",
         "--system-prompt",
-        "{base_prompt}",
+        "{system_prompt}",
         "{session_prompt}",
     )
 
@@ -131,7 +131,7 @@ def test_cli_overrides_model_effort_and_provider(tmp_path: Path) -> None:
         args = [
             "--model", "{model}",
             "--effort", "{effort}",
-            "--system-prompt", "{base_prompt}",
+            "--system-prompt", "{system_prompt}",
             "{session_prompt}",
         ]
 
@@ -140,7 +140,7 @@ def test_cli_overrides_model_effort_and_provider(tmp_path: Path) -> None:
         args = [
             "--model", "{model}",
             "--effort", "{effort}",
-            "--system-prompt", "{base_prompt}",
+            "--system-prompt", "{system_prompt}",
             "{session_prompt}",
         ]
         """,
@@ -161,7 +161,7 @@ def test_cli_overrides_model_effort_and_provider(tmp_path: Path) -> None:
         "--effort",
         "high",
         "--system-prompt",
-        "{base_prompt}",
+        "{system_prompt}",
         "{session_prompt}",
     )
 
@@ -177,7 +177,7 @@ def test_stdin_provider_is_configured(tmp_path: Path) -> None:
         [providers.codex]
         command = "codex"
         args = ["--model", "{model}", "exec", "-"]
-        stdin_template = "{base_prompt}\\n---\\n{session_prompt}"
+        stdin_template = "{system_prompt}\\n---\\n{session_prompt}"
         """,
     )
 
@@ -185,7 +185,7 @@ def test_stdin_provider_is_configured(tmp_path: Path) -> None:
     provider = config.providers[config.role_providers["developer"]]
 
     assert isinstance(provider, CliAgentProvider)
-    assert provider.stdin_template == "{base_prompt}\n---\n{session_prompt}"
+    assert provider.stdin_template == "{system_prompt}\n---\n{session_prompt}"
     assert config.resolved["developer"].uses_stdin is True
 
 
@@ -200,7 +200,7 @@ def test_config_path_loads_explicit_agents_toml(tmp_path: Path) -> None:
 
         [providers.pi]
         command = "pi"
-        args = ["--model", "{model}", "--system-prompt", "{base_prompt}", "{session_prompt}"]
+        args = ["--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
         """
     )
 
@@ -212,7 +212,7 @@ def test_config_path_loads_explicit_agents_toml(tmp_path: Path) -> None:
         "--model",
         "custom",
         "--system-prompt",
-        "{base_prompt}",
+        "{system_prompt}",
         "{session_prompt}",
     )
     assert not (tmp_path / ".devlab/config/agents.toml").exists()
@@ -248,7 +248,7 @@ def test_prompt_args_are_rejected_by_loader(tmp_path: Path) -> None:
         [providers.test]
         command = "agent"
         args = ["--model", "{model}"]
-        prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+        prompt_args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
         """,
     )
 
@@ -287,7 +287,7 @@ def test_records_provider_version_from_configured_command(
 
         [providers.test]
         command = "mock-agent run"
-        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
         version_command = "mock-agent version"
         """,
     )
@@ -323,7 +323,7 @@ def test_provider_version_discovery_is_opt_in(
 
         [providers.test]
         command = "mock-agent run"
-        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
         version_command = "mock-agent version"
         """,
     )
@@ -349,7 +349,7 @@ def test_provider_version_is_empty_when_unavailable(
 
         [providers.test]
         command = "missing-agent run"
-        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
         """,
     )
 
@@ -370,7 +370,7 @@ def test_format_resolved_agent_config_does_not_include_prompts(tmp_path: Path) -
 
     assert 'role = "developer"' in text
     assert "command = " in text
-    assert '"{base_prompt}"' in text
+    assert '"{system_prompt}"' in text
     assert '"{session_prompt}"' in text
 
 
@@ -390,7 +390,7 @@ def test_provider_renders_configured_template_values(
         args = [
             "--model", "{model}",
             "--effort", "{effort}",
-            "--system-prompt", "{base_prompt}",
+            "--system-prompt", "{system_prompt}",
             "{session_prompt}",
         ]
         version_command = ""
@@ -414,7 +414,7 @@ def test_provider_renders_configured_template_values(
         AgentInvocation(
             root=tmp_path,
             role_name="developer",
-            base_prompt="system",
+            system_prompt="system",
             session_prompt="session",
             invocation_id="test",
             stdout_log=tmp_path / ".devlab/logs/agents/test.stdout.log",

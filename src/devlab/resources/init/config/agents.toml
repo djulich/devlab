@@ -8,7 +8,7 @@
 # architect, planner, developer, reviewer, integrator.
 #
 # Provider command templates may use these placeholders:
-# {role_name}, {provider}, {model}, {effort}, {base_prompt}, {session_prompt}
+# {role_name}, {provider}, {model}, {effort}, {system_prompt}, {session_prompt}
 #
 # When running sessions, DevLab records provider version info in session metadata
 # by trying `<command executable> --version`; set provider `version_command` to override
@@ -27,7 +27,7 @@ command = "claude"
 args = [
     "-p",
     "--dangerously-skip-permissions",
-    "--system-prompt", "{base_prompt}",
+    "--system-prompt", "{system_prompt}",
     "{session_prompt}",
 ]
 
@@ -38,7 +38,7 @@ args = [
 # [providers.codex]
 # command = "codex"
 # args = ["--model", "{model}", "--search", "--dangerously-bypass-approvals-and-sandbox", "exec", "-"]
-# stdin_template = "{base_prompt}\n\n---\n\n{session_prompt}"
+# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
 
 # Example: Pi-style CLI invocation.
 # [defaults]
@@ -52,7 +52,7 @@ args = [
 #     "-p",
 #     "--model", "{model}",
 #     "--effort", "{effort}",
-#     "--system-prompt", "{base_prompt}",
+#     "--system-prompt", "{system_prompt}",
 #     "{session_prompt}",
 # ]
 
@@ -62,7 +62,7 @@ args = [
 # args = [
 #     "-p",
 #     "--model", "{model}",
-#     "--system-prompt", "{base_prompt}",
+#     "--system-prompt", "{system_prompt}",
 #     "{session_prompt}",
 # ]
 
@@ -97,7 +97,7 @@ args = [
 #     "--model", "{model}",
 #     "--thinking", "{effort}",
 #     "-p",
-#     "--system-prompt", "{base_prompt}",
+#     "--system-prompt", "{system_prompt}",
 #     "{session_prompt}",
 # ]
 #
@@ -110,4 +110,4 @@ args = [
 #     "--dangerously-bypass-approvals-and-sandbox",
 #     "exec", "-",
 # ]
-# stdin_template = "{base_prompt}\n\n---\n\n{session_prompt}"
+# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"

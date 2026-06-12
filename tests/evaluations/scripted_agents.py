@@ -66,7 +66,7 @@ class CalculatorScriptedAgent:
     def _record(self, invocation: AgentInvocation) -> None:
         self.roles.append(invocation.role_name)
         self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
-        self.prompt_chars.append(len(invocation.base_prompt) + len(invocation.session_prompt))
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
 
     def _planner(self, root: Path) -> None:
         if finding_exists(root, "F0001"):
@@ -135,7 +135,7 @@ class HttpApiScriptedAgent:
     def on_invoke(self, invocation: AgentInvocation) -> None:
         self.roles.append(invocation.role_name)
         self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
-        self.prompt_chars.append(len(invocation.base_prompt) + len(invocation.session_prompt))
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
         role = invocation.role_name
         if role == "architect":
             _design_plan(invocation.root).write_text(
@@ -171,7 +171,7 @@ class DeploymentWebApiScriptedAgent:
     def on_invoke(self, invocation: AgentInvocation) -> None:
         self.roles.append(invocation.role_name)
         self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
-        self.prompt_chars.append(len(invocation.base_prompt) + len(invocation.session_prompt))
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
         role = invocation.role_name
         if role == "architect":
             _design_plan(invocation.root).write_text(
@@ -222,7 +222,7 @@ class ComposeDeploymentScriptedAgent:
     def on_invoke(self, invocation: AgentInvocation) -> None:
         self.roles.append(invocation.role_name)
         self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
-        self.prompt_chars.append(len(invocation.base_prompt) + len(invocation.session_prompt))
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
         role = invocation.role_name
         if role == "architect":
             _design_plan(invocation.root).write_text(
@@ -274,7 +274,7 @@ class StaticFrontendScriptedAgent:
     def on_invoke(self, invocation: AgentInvocation) -> None:
         self.roles.append(invocation.role_name)
         self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
-        self.prompt_chars.append(len(invocation.base_prompt) + len(invocation.session_prompt))
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
         role = invocation.role_name
         if role == "architect":
             _design_plan(invocation.root).write_text(
@@ -314,7 +314,7 @@ class StatefulWebApiScriptedAgent:
     def on_invoke(self, invocation: AgentInvocation) -> None:
         self.roles.append(invocation.role_name)
         self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
-        self.prompt_chars.append(len(invocation.base_prompt) + len(invocation.session_prompt))
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
         role = invocation.role_name
         if role == "architect":
             _design_plan(invocation.root).write_text(

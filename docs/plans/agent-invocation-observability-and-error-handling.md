@@ -85,7 +85,7 @@ Add a small request/context object in `agents.py`, for example:
 class AgentInvocation:
     root: Path
     role_name: str
-    base_prompt: str
+    system_prompt: str
     session_prompt: str
     invocation_id: str
     stdout_log: Path

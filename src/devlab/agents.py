@@ -38,7 +38,7 @@ class AgentResult:
 class AgentInvocation:
     root: Path
     role_name: str
-    base_prompt: str
+    system_prompt: str
     session_prompt: str
     invocation_id: str
     stdout_log: Path
@@ -59,7 +59,7 @@ class CliAgentProvider:
     """Template-based CLI agent provider.
 
     ``argv`` identifies the agent executable and command prefix. ``args`` are
-    appended after the command prefix and may contain ``{base_prompt}``,
+    appended after the command prefix and may contain ``{system_prompt}``,
     ``{session_prompt}``, ``{role_name}``, and provider configuration
     placeholders. The provider does not add prompt arguments by default; callers
     must put prompt placeholders in ``args`` or provide ``stdin_template``. If
@@ -99,7 +99,7 @@ class CliAgentProvider:
         values = {
             **self.template_values,
             "role_name": invocation.role_name,
-            "base_prompt": invocation.base_prompt,
+            "system_prompt": invocation.system_prompt,
             "session_prompt": invocation.session_prompt,
         }
         command = [*self.argv, *_render_args(self.args, values, redact_prompts=True)]
@@ -190,14 +190,14 @@ class CliAgentProvider:
 def claude_cli_provider(command: str = "claude -p") -> CliAgentProvider:
     return CliAgentProvider.from_command(
         command,
-        args=["--system-prompt", "{base_prompt}", "{session_prompt}"],
+        args=["--system-prompt", "{system_prompt}", "{session_prompt}"],
     )
 
 
 def pi_cli_provider(command: str = "pi -p", *, args: Sequence[str] = ()) -> CliAgentProvider:
     return CliAgentProvider.from_command(
         command,
-        args=[*args, "--system-prompt", "{base_prompt}", "{session_prompt}"],
+        args=[*args, "--system-prompt", "{system_prompt}", "{session_prompt}"],
     )
 
 
@@ -205,7 +205,7 @@ def codex_cli_provider(command: str = "codex exec -") -> CliAgentProvider:
     return CliAgentProvider.from_command(
         command,
         args=(),
-        stdin_template="{base_prompt}\n\n---\n\n{session_prompt}",
+        stdin_template="{system_prompt}\n\n---\n\n{session_prompt}",
     )
 
 
@@ -278,7 +278,7 @@ def _render_args(
 ) -> list[str]:
     render_values = dict(values)
     if redact_prompts:
-        render_values["base_prompt"] = "{base_prompt}"
+        render_values["system_prompt"] = "{system_prompt}"
         render_values["session_prompt"] = "{session_prompt}"
     return [arg.format_map(render_values) for arg in args]
 

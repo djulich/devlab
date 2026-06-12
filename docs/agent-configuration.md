@@ -13,7 +13,7 @@ timeout_seconds = 3600
 
 [providers.default]
 command = "claude"
-args = ["-p", "--system-prompt", "{base_prompt}", "{session_prompt}"]
+args = ["-p", "--system-prompt", "{system_prompt}", "{session_prompt}"]
 ```
 
 ## Role Overrides
@@ -58,7 +58,7 @@ args = [
   "-p",
   "--model", "{model}",
   "--thinking", "{effort}",
-  "--system-prompt", "{base_prompt}",
+  "--system-prompt", "{system_prompt}",
   "{session_prompt}",
 ]
 ```
@@ -77,10 +77,10 @@ Supported placeholders:
 - `{provider}`
 - `{model}`
 - `{effort}`
-- `{base_prompt}`
+- `{system_prompt}`
 - `{session_prompt}`
 
-`{base_prompt}` is DevLab's generated standing prompt for the role: packaged
+`{system_prompt}` is DevLab's generated standing prompt for the role: packaged
 conventions, role instructions, applicable domain overlays, and tooling policy.
 Provider flags such as Claude's `--system-prompt` are provider-specific transport
 options; they are not DevLab placeholder names.
@@ -95,7 +95,7 @@ Prefer stdin prompt transport when your agent CLI supports it. Stdin avoids comm
 [providers.codex]
 command = "codex"
 args = ["--model", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "exec", "-"]
-stdin_template = "{base_prompt}\n\n---\n\n{session_prompt}"
+stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
 ```
 
 ### Pi-style command-line prompts
@@ -111,7 +111,7 @@ args = [
   "--provider", "openai-codex",
   "--model", "{model}",
   "--thinking", "{effort}",
-  "--system-prompt", "{base_prompt}",
+  "--system-prompt", "{system_prompt}",
   "{session_prompt}",
 ]
 ```
@@ -121,7 +121,7 @@ args = [
 ```toml
 [providers.claude]
 command = "claude"
-args = ["-p", "--model", "{model}", "--system-prompt", "{base_prompt}", "{session_prompt}"]
+args = ["-p", "--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
 ```
 
 ## Suggested Split-Brain Review Setup
@@ -196,7 +196,7 @@ DevLab writes per-session agent diagnostics under `.devlab/logs/agents/`:
 - `<timestamp>_<session>_<role>.stdout.log`: agent stdout.
 - `<timestamp>_<session>_<role>.stderr.log`: agent stderr plus DevLab diagnostics for failures that happen before the child process can write output.
 
-Failure reports include the role, failure kind, exit code, timeout when present, command shape, and log paths. The config log resolves operational placeholders such as `{model}` and `{effort}`, but leaves `{base_prompt}` and `{session_prompt}` unexpanded so prompt contents are not written there.
+Failure reports include the role, failure kind, exit code, timeout when present, command shape, and log paths. The config log resolves operational placeholders such as `{model}` and `{effort}`, but leaves `{system_prompt}` and `{session_prompt}` unexpanded so prompt contents are not written there.
 
 By default, DevLab does not retain full prompts. For debugging, run with `devlab run --retain-prompts` to write split prompt logs next to the agent invocation logs:
 

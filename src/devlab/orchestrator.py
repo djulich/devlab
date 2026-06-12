@@ -112,7 +112,7 @@ class SessionContext:
         return AgentInvocation(
             root=self.root,
             role_name=self.role_name,
-            base_prompt=base_prompt,
+            system_prompt=base_prompt,
             session_prompt=session_prompt,
             invocation_id=self.invocation_id,
             stdout_log=self.stdout_log,

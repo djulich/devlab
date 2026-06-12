@@ -19,7 +19,7 @@ from devlab.agent_config import (
 from devlab.doctor_common import DoctorProblem
 
 _COMMAND_PLACEHOLDERS = {"role_name", "provider", "model", "effort"}
-_PROMPT_PLACEHOLDERS = _COMMAND_PLACEHOLDERS | {"base_prompt", "session_prompt"}
+_PROMPT_PLACEHOLDERS = _COMMAND_PLACEHOLDERS | {"system_prompt", "session_prompt"}
 _SHELL_OPERATORS = ("&&", "||", "|", ";", "<", ">", "$(", "`")
 _ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
