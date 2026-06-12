@@ -58,10 +58,12 @@ class AgentProvider(Protocol):
 class CliAgentProvider:
     """Template-based CLI agent provider.
 
-    ``argv`` identifies the agent executable and fixed arguments. ``prompt_args``
-    are appended after optional extra args and may contain ``{base_prompt}``,
-    ``{session_prompt}``, and ``{role_name}`` placeholders. If ``stdin_template``
-    is set, rendered text is sent to stdin instead of being added as an arg.
+    ``argv`` identifies the agent executable and command prefix. ``args`` are
+    appended after the command prefix and may contain ``{base_prompt}``,
+    ``{session_prompt}``, ``{role_name}``, and provider configuration
+    placeholders. The provider does not add prompt arguments by default; callers
+    must put prompt placeholders in ``args`` or provide ``stdin_template``. If
+    ``stdin_template`` is set, rendered text is sent to stdin.
 
     This supports Claude- and Pi-style invocations, both of which can use
     ``--system-prompt`` plus a positional session prompt. It also supports
@@ -70,12 +72,7 @@ class CliAgentProvider:
     """
 
     argv: tuple[str, ...]
-    prompt_args: tuple[str, ...] = (
-        "--system-prompt",
-        "{base_prompt}",
-        "{session_prompt}",
-    )
-    extra_args: tuple[str, ...] = ()
+    args: tuple[str, ...] = ()
     stdin_template: str | None = None
     template_values: Mapping[str, str] = dataclasses.field(default_factory=dict)
     timeout_seconds: int | None = None
@@ -85,20 +82,14 @@ class CliAgentProvider:
         cls,
         command: str,
         *,
-        extra_args: Sequence[str] = (),
-        prompt_args: Sequence[str] = (
-            "--system-prompt",
-            "{base_prompt}",
-            "{session_prompt}",
-        ),
+        args: Sequence[str] = (),
         stdin_template: str | None = None,
         template_values: Mapping[str, str] | None = None,
         timeout_seconds: int | None = None,
     ) -> CliAgentProvider:
         return cls(
             argv=tuple(shlex.split(command)),
-            prompt_args=tuple(prompt_args),
-            extra_args=tuple(extra_args),
+            args=tuple(args),
             stdin_template=stdin_template,
             template_values=dict(template_values or {}),
             timeout_seconds=timeout_seconds,
@@ -111,13 +102,10 @@ class CliAgentProvider:
             "base_prompt": invocation.base_prompt,
             "session_prompt": invocation.session_prompt,
         }
-        command = [*self.argv, *_render_args(self.extra_args, values)]
-        cmd = [*command]
+        command = [*self.argv, *_render_args(self.args, values, redact_prompts=True)]
+        cmd = [*self.argv, *_render_args(self.args, values)]
         stdin: str | None = None
-        if self.stdin_template is None:
-            cmd.extend(_render_args(self.prompt_args, values))
-        else:
-            cmd.extend(_render_args(self.prompt_args, values))
+        if self.stdin_template is not None:
             stdin = self.stdin_template.format_map(values)
 
         invocation.stdout_log.parent.mkdir(parents=True, exist_ok=True)
@@ -202,18 +190,23 @@ class CliAgentProvider:
 def claude_cli_provider(
     command: str = "claude -p", *, dangerous_skip_permissions: bool = False
 ) -> CliAgentProvider:
-    extra_args = ("--dangerously-skip-permissions",) if dangerous_skip_permissions else ()
-    return CliAgentProvider.from_command(command, extra_args=extra_args)
+    args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+    if dangerous_skip_permissions:
+        args.insert(0, "--dangerously-skip-permissions")
+    return CliAgentProvider.from_command(command, args=args)
 
 
-def pi_cli_provider(command: str = "pi -p", *, extra_args: Sequence[str] = ()) -> CliAgentProvider:
-    return CliAgentProvider.from_command(command, extra_args=extra_args)
+def pi_cli_provider(command: str = "pi -p", *, args: Sequence[str] = ()) -> CliAgentProvider:
+    return CliAgentProvider.from_command(
+        command,
+        args=[*args, "--system-prompt", "{base_prompt}", "{session_prompt}"],
+    )
 
 
 def codex_cli_provider(command: str = "codex exec -") -> CliAgentProvider:
     return CliAgentProvider.from_command(
         command,
-        prompt_args=(),
+        args=(),
         stdin_template="{base_prompt}\n\n---\n\n{session_prompt}",
     )
 
@@ -282,8 +275,14 @@ def provider_for_role(
         raise KeyError(f"unknown agent provider {provider_name!r} for role {role_name!r}") from exc
 
 
-def _render_args(args: Sequence[str], values: Mapping[str, str]) -> list[str]:
-    return [arg.format_map(values) for arg in args]
+def _render_args(
+    args: Sequence[str], values: Mapping[str, str], *, redact_prompts: bool = False
+) -> list[str]:
+    render_values = dict(values)
+    if redact_prompts:
+        render_values["base_prompt"] = "{base_prompt}"
+        render_values["session_prompt"] = "{session_prompt}"
+    return [arg.format_map(render_values) for arg in args]
 
 
 def _append_diagnostic(path: Path, message: str) -> None:

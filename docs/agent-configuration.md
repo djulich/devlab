@@ -13,8 +13,7 @@ timeout_seconds = 3600
 
 [providers.default]
 command = "claude"
-args = ["-p"]
-prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+args = ["-p", "--system-prompt", "{base_prompt}", "{session_prompt}"]
 ```
 
 ## Role Overrides
@@ -55,16 +54,20 @@ Provider sections describe how DevLab invokes a CLI agent.
 ```toml
 [providers.pi]
 command = "pi"
-args = ["-p", "--model", "{model}", "--thinking", "{effort}"]
-prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+args = [
+  "-p",
+  "--model", "{model}",
+  "--thinking", "{effort}",
+  "--system-prompt", "{base_prompt}",
+  "{session_prompt}",
+]
 ```
 
 Fields:
 
 - `command`: executable name or command prefix.
-- `args`: fixed or templated command arguments before prompt arguments.
-- `prompt_args`: arguments used to pass prompts on the command line.
-- `stdin_template`: optional template used to send prompts through standard input instead of command-line arguments.
+- `args`: ordered command arguments. These may include provider options and prompt placeholders.
+- `stdin_template`: optional template used to send prompts through standard input. When set, DevLab treats stdin as the prompt transport; otherwise prompt placeholders should appear in `args`.
 - `version_command`: optional provider version command used when recording session metadata during `devlab run`. If omitted, DevLab tries `<provider-executable> --version`; set it to `""` to skip version discovery.
 - `timeout_seconds`: optional role/session command timeout.
 
@@ -93,7 +96,6 @@ Prefer stdin prompt transport when your agent CLI supports it. Stdin avoids comm
 command = "codex"
 args = ["--model", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "exec", "-"]
 stdin_template = "{base_prompt}\n\n---\n\n{session_prompt}"
-prompt_args = []
 ```
 
 ### Pi-style command-line prompts
@@ -104,8 +106,14 @@ command = "pi"
 # Pi uses --thinking for the effort level. When using OpenAI subscription/Codex
 # models, pass the provider explicitly so Pi does not resolve the model through
 # an unauthenticated provider.
-args = ["-p", "--provider", "openai-codex", "--model", "{model}", "--thinking", "{effort}"]
-prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+args = [
+  "-p",
+  "--provider", "openai-codex",
+  "--model", "{model}",
+  "--thinking", "{effort}",
+  "--system-prompt", "{base_prompt}",
+  "{session_prompt}",
+]
 ```
 
 ### Claude-style command-line prompts
@@ -113,8 +121,7 @@ prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
 ```toml
 [providers.claude]
 command = "claude"
-args = ["-p", "--model", "{model}"]
-prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+args = ["-p", "--model", "{model}", "--system-prompt", "{base_prompt}", "{session_prompt}"]
 ```
 
 ## Suggested Split-Brain Review Setup
@@ -189,7 +196,7 @@ DevLab writes per-session agent diagnostics under `.devlab/logs/agents/`:
 - `<timestamp>_<session>_<role>.stdout.log`: agent stdout.
 - `<timestamp>_<session>_<role>.stderr.log`: agent stderr plus DevLab diagnostics for failures that happen before the child process can write output.
 
-Failure reports include the role, failure kind, exit code, timeout when present, command shape, and log paths. Prompt contents are intentionally not written to the config log.
+Failure reports include the role, failure kind, exit code, timeout when present, command shape, and log paths. The config log resolves operational placeholders such as `{model}` and `{effort}`, but leaves `{base_prompt}` and `{session_prompt}` unexpanded so prompt contents are not written there.
 
 By default, DevLab does not retain full prompts. For debugging, run with `devlab run --retain-prompts` to write split prompt logs next to the agent invocation logs:
 

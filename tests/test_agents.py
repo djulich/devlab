@@ -105,13 +105,28 @@ def test_cli_agent_provider_renders_prompt_arguments(
         return Result()
 
     monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
-    provider = CliAgentProvider.from_command("pi -p", extra_args=["--no-context-files"])
+    provider = CliAgentProvider.from_command(
+        "pi -p",
+        args=[
+            "--no-context-files",
+            "--system-prompt",
+            "{base_prompt}",
+            "{session_prompt}",
+        ],
+    )
 
     result = provider.invoke(_invocation(tmp_path, "developer", "system", "session"))
 
     assert result.return_code == 7
     assert result.failure_kind == "nonzero_exit"
-    assert result.command == ("pi", "-p", "--no-context-files")
+    assert result.command == (
+        "pi",
+        "-p",
+        "--no-context-files",
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
+    )
     args, kwargs = calls[0]
     assert args[0] == [
         "pi",
@@ -127,18 +142,27 @@ def test_cli_agent_provider_renders_prompt_arguments(
 
 
 def test_pi_cli_provider_uses_pi_print_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    provider = pi_cli_provider(extra_args=["--no-context-files"])
+    provider = pi_cli_provider(args=["--no-context-files"])
 
     assert provider.argv == ("pi", "-p")
-    assert provider.extra_args == ("--no-context-files",)
-    assert provider.prompt_args == ("--system-prompt", "{base_prompt}", "{session_prompt}")
+    assert provider.args == (
+        "--no-context-files",
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
+    )
 
 
 def test_claude_cli_provider_adds_dangerous_skip_permissions() -> None:
     provider = claude_cli_provider(dangerous_skip_permissions=True)
 
     assert provider.argv == ("claude", "-p")
-    assert provider.extra_args == ("--dangerously-skip-permissions",)
+    assert provider.args == (
+        "--dangerously-skip-permissions",
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
+    )
 
 
 def test_cli_agent_provider_supports_stdin_prompt_mode(
@@ -157,7 +181,7 @@ def test_cli_agent_provider_supports_stdin_prompt_mode(
     monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
     provider = CliAgentProvider.from_command(
         "agent run",
-        prompt_args=["--role", "{role_name}"],
+        args=["--role", "{role_name}"],
         stdin_template="{base_prompt}\n---\n{session_prompt}",
     )
 

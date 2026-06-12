@@ -16,7 +16,13 @@ def test_missing_config_uses_fallback_cli_command(tmp_path: Path) -> None:
 
     assert isinstance(provider, CliAgentProvider)
     assert provider.argv == ("claude",)
-    assert provider.extra_args == ("-p", "--dangerously-skip-permissions")
+    assert provider.args == (
+        "-p",
+        "--dangerously-skip-permissions",
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
+    )
     assert config.resolved["developer"].provider == "default"
 
 
@@ -32,7 +38,13 @@ def test_defaults_apply_to_all_roles(tmp_path: Path) -> None:
 
         [providers.pi]
         command = "pi"
-        args = ["-p", "--model", "{model}", "--effort", "{effort}"]
+        args = [
+            "-p",
+            "--model", "{model}",
+            "--effort", "{effort}",
+            "--system-prompt", "{base_prompt}",
+            "{session_prompt}",
+        ]
         """,
     )
 
@@ -49,6 +61,9 @@ def test_defaults_apply_to_all_roles(tmp_path: Path) -> None:
         "gpt-5-codex",
         "--effort",
         "medium",
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
     )
 
 
@@ -67,11 +82,22 @@ def test_role_override_changes_one_role(tmp_path: Path) -> None:
 
         [providers.pi]
         command = "pi"
-        args = ["-p", "--model", "{model}"]
+        args = [
+            "-p",
+            "--model", "{model}",
+            "--system-prompt", "{base_prompt}",
+            "{session_prompt}",
+        ]
 
         [providers.claude]
         command = "claude"
-        args = ["-p", "--model", "{model}", "--effort", "{effort}"]
+        args = [
+            "-p",
+            "--model", "{model}",
+            "--effort", "{effort}",
+            "--system-prompt", "{base_prompt}",
+            "{session_prompt}",
+        ]
         """,
     )
 
@@ -86,6 +112,9 @@ def test_role_override_changes_one_role(tmp_path: Path) -> None:
         "claude-sonnet",
         "--effort",
         "high",
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
     )
 
 
@@ -100,11 +129,21 @@ def test_cli_overrides_model_effort_and_provider(tmp_path: Path) -> None:
 
         [providers.pi]
         command = "pi"
-        args = ["--model", "{model}", "--effort", "{effort}"]
+        args = [
+            "--model", "{model}",
+            "--effort", "{effort}",
+            "--system-prompt", "{base_prompt}",
+            "{session_prompt}",
+        ]
 
         [providers.claude]
         command = "claude"
-        args = ["--model", "{model}", "--effort", "{effort}"]
+        args = [
+            "--model", "{model}",
+            "--effort", "{effort}",
+            "--system-prompt", "{base_prompt}",
+            "{session_prompt}",
+        ]
         """,
     )
 
@@ -122,6 +161,9 @@ def test_cli_overrides_model_effort_and_provider(tmp_path: Path) -> None:
         "new-model",
         "--effort",
         "high",
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
     )
 
 
@@ -136,7 +178,6 @@ def test_stdin_provider_is_configured(tmp_path: Path) -> None:
         [providers.codex]
         command = "codex"
         args = ["--model", "{model}", "exec", "-"]
-        prompt_args = []
         stdin_template = "{base_prompt}\\n---\\n{session_prompt}"
         """,
     )
@@ -160,14 +201,21 @@ def test_config_path_loads_explicit_agents_toml(tmp_path: Path) -> None:
 
         [providers.pi]
         command = "pi"
-        args = ["--model", "{model}"]
+        args = ["--model", "{model}", "--system-prompt", "{base_prompt}", "{session_prompt}"]
         """
     )
 
     config = load_agent_configuration(tmp_path, config_path=config_path)
 
     assert config.resolved["developer"].provider == "pi"
-    assert config.resolved["developer"].command == ("pi", "--model", "custom")
+    assert config.resolved["developer"].command == (
+        "pi",
+        "--model",
+        "custom",
+        "--system-prompt",
+        "{base_prompt}",
+        "{session_prompt}",
+    )
     assert not (tmp_path / ".devlab/config/agents.toml").exists()
 
 
@@ -282,8 +330,8 @@ def test_format_resolved_agent_config_does_not_include_prompts(tmp_path: Path) -
 
     assert 'role = "developer"' in text
     assert "command = " in text
-    assert "base_prompt" not in text
-    assert "session_prompt" not in text
+    assert '"{base_prompt}"' in text
+    assert '"{session_prompt}"' in text
 
 
 def test_provider_renders_configured_template_values(
@@ -299,7 +347,12 @@ def test_provider_renders_configured_template_values(
 
         [providers.pi]
         command = "pi"
-        args = ["--model", "{model}", "--effort", "{effort}"]
+        args = [
+            "--model", "{model}",
+            "--effort", "{effort}",
+            "--system-prompt", "{base_prompt}",
+            "{session_prompt}",
+        ]
         version_command = ""
         """,
     )

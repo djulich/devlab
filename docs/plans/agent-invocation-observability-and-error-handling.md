@@ -159,7 +159,7 @@ Current config already supports `stdin_template`. Update starter config and docs
 
 Implementation guidance:
 
-- Keep `prompt_args` support for providers that require prompt arguments.
+- Use `args` for CLI prompt placeholders and `stdin_template` for stdin prompt transport.
 - Keep command/config logs prompt-free regardless of transport.
 - Update `.devlab/config/agents.toml` starter comments to put stdin examples first where appropriate.
 - Only change the default provider to stdin if the default command is known to support stdin reliably; otherwise keep the default working and document the recommended stdin pattern.

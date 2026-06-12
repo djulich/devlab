@@ -60,6 +60,9 @@ def test_doctor_reports_additional_agents_config_misconfigurations(tmp_path: Pat
     assert "providers.default.stdin_template must not be empty" in messages
     assert "providers.default.version_command must be a string" in messages
     assert any(
+        "providers.default.prompt_args is no longer supported" in m for m in messages
+    )
+    assert any(
         "providers.default does not deliver required prompt placeholder" in m for m in messages
     )
 
@@ -99,7 +102,7 @@ def test_doctor_reports_missing_configured_agent_executable(
         'provider = "default"\n'
         "\n[providers.default]\n"
         'command = "missing-agent-cli -p"\n'
-        'args = []\n'
+        'args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]\n'
     )
     monkeypatch.setattr("devlab.doctor_agent_config.shutil.which", lambda _name: None)
 
@@ -119,7 +122,7 @@ def test_doctor_accepts_configured_agent_executable_on_path(tmp_path: Path, monk
         'provider = "default"\n'
         "\n[providers.default]\n"
         'command = "agent-cli -p"\n'
-        'args = []\n'
+        'args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]\n'
     )
     monkeypatch.setattr(
         "devlab.doctor_agent_config.shutil.which",

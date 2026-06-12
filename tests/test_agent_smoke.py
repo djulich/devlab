@@ -26,7 +26,13 @@ def test_smoke_test_invokes_all_roles_by_default(
 
         [providers.test]
         command = "agent"
-        args = ["--role", "{role_name}", "--model", "{model}", "--effort", "{effort}"]
+        args = [
+            "--role", "{role_name}",
+            "--model", "{model}",
+            "--effort", "{effort}",
+            "--system-prompt", "{base_prompt}",
+            "{session_prompt}",
+        ]
         version_command = ""
         """,
     )
@@ -80,7 +86,6 @@ def test_smoke_test_supports_custom_config_without_changing_workspace(
         [providers.stdin]
         command = "agent"
         args = ["--model", "{model}"]
-        prompt_args = []
         stdin_template = "{base_prompt}\\n---\\n{session_prompt}"
         version_command = ""
         """
@@ -125,7 +130,7 @@ def test_smoke_report_includes_config_command_and_logs(
 
         [providers.test]
         command = "agent"
-        args = ["--model", "{model}"]
+        args = ["--model", "{model}", "--system-prompt", "{base_prompt}", "{session_prompt}"]
         version_command = ""
         """,
     )

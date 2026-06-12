@@ -255,23 +255,19 @@ def _check_provider(
             _check_placeholders(
                 item,
                 f"providers.{provider_name}.args[{index}]",
-                _COMMAND_PLACEHOLDERS,
+                _PROMPT_PLACEHOLDERS,
                 display_path,
                 problems,
             )
 
-    prompt_args = _check_string_list(
-        provider, "prompt_args", provider_name, display_path, problems
-    )
-    if prompt_args is None:
-        prompt_args = []
-    for index, item in enumerate(prompt_args):
-        _check_placeholders(
-            item,
-            f"providers.{provider_name}.prompt_args[{index}]",
-            _PROMPT_PLACEHOLDERS,
-            display_path,
-            problems,
+    if "prompt_args" in provider:
+        problems.append(
+            DoctorProblem(
+                display_path,
+                f"providers.{provider_name}.prompt_args is no longer supported; "
+                "put prompt placeholders in providers."
+                f"{provider_name}.args or use stdin_template",
+            )
         )
 
     stdin_template = provider.get("stdin_template")
@@ -327,15 +323,10 @@ def _check_provider(
                 provider_name, version_command, display_path, problems
             )
 
-    effective_prompt_args = provider.get(
-        "prompt_args", ["--system-prompt", "{base_prompt}", "{session_prompt}"]
-    )
-    if isinstance(effective_prompt_args, list) and all(
-        isinstance(item, str) for item in effective_prompt_args
-    ):
+    if args is not None:
         _check_prompt_delivery(
             provider_name,
-            cast("list[str]", effective_prompt_args),
+            args,
             stdin_template if isinstance(stdin_template, str) else None,
             display_path,
             problems,
@@ -401,13 +392,14 @@ def _is_shell_operator(part: str) -> bool:
 
 def _check_prompt_delivery(
     provider_name: str,
-    prompt_args: list[str],
+    args: list[str],
     stdin_template: str | None,
     display_path: str,
     problems: list[DoctorProblem],
 ) -> None:
     delivered = set()
-    for value in [*prompt_args, stdin_template or ""]:
+    values = [stdin_template] if stdin_template is not None else args
+    for value in values:
         delivered.update(_placeholder_roots(value))
     missing = [
         placeholder

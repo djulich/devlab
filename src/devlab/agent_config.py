@@ -134,17 +134,11 @@ def load_agent_configuration(
             "model": _string(values.get("model", ""), f"roles.{role_name}.model"),
             "effort": _string(values.get("effort", ""), f"roles.{role_name}.effort"),
         }
-        extra_args = _string_list(
+        args = _string_list(
             provider_table.get("args", []), f"providers.{provider_name}.args"
         )
         if dangerous_skip_permissions:
-            extra_args = [*extra_args, "--dangerously-skip-permissions"]
-        prompt_args = _string_list(
-            provider_table.get(
-                "prompt_args", ["--system-prompt", "{base_prompt}", "{session_prompt}"]
-            ),
-            f"providers.{provider_name}.prompt_args",
-        )
+            args = [*args, "--dangerously-skip-permissions"]
         stdin_template = _optional_string(
             provider_table.get("stdin_template"), f"providers.{provider_name}.stdin_template"
         )
@@ -155,8 +149,7 @@ def load_agent_configuration(
         )
         cli_provider = CliAgentProvider.from_command(
             command,
-            extra_args=extra_args,
-            prompt_args=prompt_args,
+            args=args,
             stdin_template=stdin_template,
             template_values=template_values,
             timeout_seconds=timeout_seconds,
@@ -170,7 +163,7 @@ def load_agent_configuration(
             effort=template_values["effort"],
             provider_version=provider_version,
             timeout_seconds=timeout_seconds,
-            command=tuple(_render_command(command, extra_args, template_values)),
+            command=tuple(_render_command(command, args, template_values)),
             uses_stdin=stdin_template is not None,
         )
 
@@ -210,15 +203,25 @@ def _fallback_config() -> dict[str, Any]:
         "providers": {
             "default": {
                 "command": "claude",
-                "args": ["-p", "--dangerously-skip-permissions"],
-                "prompt_args": ["--system-prompt", "{base_prompt}", "{session_prompt}"],
+                "args": [
+                    "-p",
+                    "--dangerously-skip-permissions",
+                    "--system-prompt",
+                    "{base_prompt}",
+                    "{session_prompt}",
+                ],
             }
         },
     }
 
 
 def _render_command(command: str, args: list[str], values: Mapping[str, str]) -> list[str]:
-    return [*shlex.split(command), *(arg.format_map(values) for arg in args)]
+    render_values = {
+        **values,
+        "base_prompt": "{base_prompt}",
+        "session_prompt": "{session_prompt}",
+    }
+    return [*shlex.split(command), *(arg.format_map(render_values) for arg in args)]
 
 
 def _provider_version(

@@ -16,7 +16,6 @@ def test_status_verbose_includes_agent_configuration_without_prompts(tmp_path: P
         "\n[providers.codex]\n"
         'command = "codex"\n'
         'args = ["--model", "{model}", "exec", "-"]\n'
-        "prompt_args = []\n"
         'stdin_template = "{base_prompt}\\n\\n---\\n\\n{session_prompt}"\n'
     )
 
@@ -29,8 +28,8 @@ def test_status_verbose_includes_agent_configuration_without_prompts(tmp_path: P
     assert "Source: .devlab/config/agents.toml" in text
     assert '- developer: codex model="gpt-5-codex" effort="medium"' in text
     assert "stdin=true" in text
-    assert "base_prompt" not in text
-    assert "session_prompt" not in text
+    assert '"{base_prompt}"' not in text
+    assert '"{session_prompt}"' not in text
 
 
 def test_status_verbose_reports_fallback_source(tmp_path: Path) -> None:

@@ -1364,7 +1364,6 @@ class TestRunLoop:
             'provider = "missing"\n'
             "\n[providers.missing]\n"
             'command = "definitely-missing-devlab-agent"\n'
-            'prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]\n'
         )
         subprocess.run(["git", "-C", tmp_path.as_posix(), "init"], check=True)
         subprocess.run(
@@ -1412,7 +1411,8 @@ class TestRunLoop:
             'effort = "medium"\n'
             "\n[providers.mock-cli]\n"
             'command = "mock-agent"\n'
-            'args = ["--role", "{role_name}", "--model", "{model}"]\n'
+            'args = ["--role", "{role_name}", "--model", "{model}", '
+            '"--system-prompt", "{base_prompt}", "{session_prompt}"]\n'
             'version_command = "mock-agent version"\n'
         )
 
@@ -1458,6 +1458,8 @@ class TestRunLoop:
         assert meta["provider_version"] == "mock-agent 9.8.7"
         assert "base_prompt =" not in text
         assert "session_prompt =" not in text
+        assert '"{base_prompt}"' in text
+        assert '"{session_prompt}"' in text
         assert "stdout_log" in text
         assert "stderr_log" in text
         assert "base_prompt_log" in text
