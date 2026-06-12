@@ -153,12 +153,11 @@ def test_pi_cli_provider_uses_pi_print_command(monkeypatch: pytest.MonkeyPatch) 
     )
 
 
-def test_claude_cli_provider_adds_dangerous_skip_permissions() -> None:
-    provider = claude_cli_provider(dangerous_skip_permissions=True)
+def test_claude_cli_provider_uses_prompt_args() -> None:
+    provider = claude_cli_provider()
 
     assert provider.argv == ("claude", "-p")
     assert provider.args == (
-        "--dangerously-skip-permissions",
         "--system-prompt",
         "{base_prompt}",
         "{session_prompt}",

@@ -73,11 +73,6 @@ def main() -> None:
         default=None,
         help="Override the configured effort for this run.",
     )
-    run_parser.add_argument(
-        "--dangerously-skip-permissions",
-        action="store_true",
-        help="Pass --dangerously-skip-permissions to the agent command.",
-    )
     verbosity = run_parser.add_mutually_exclusive_group()
     verbosity.add_argument(
         "-q",
@@ -137,11 +132,6 @@ def main() -> None:
         "--effort",
         default=None,
         help="Override the configured effort for this plan run.",
-    )
-    plan_parser.add_argument(
-        "--dangerously-skip-permissions",
-        action="store_true",
-        help="Pass --dangerously-skip-permissions to the agent command.",
     )
     plan_verbosity = plan_parser.add_mutually_exclusive_group()
     plan_verbosity.add_argument(
@@ -298,7 +288,6 @@ def main() -> None:
             provider=args.provider,
             model=args.model,
             effort=args.effort,
-            dangerous_skip_permissions=args.dangerously_skip_permissions,
             retain_prompts=args.retain_prompts,
             automatic_version_control=True,
         )
@@ -312,7 +301,6 @@ def main() -> None:
             provider=args.provider,
             model=args.model,
             effort=args.effort,
-            dangerous_skip_permissions=args.dangerously_skip_permissions,
             retain_prompts=args.retain_prompts,
             automatic_version_control=True,
             planning_only=True,

@@ -187,13 +187,11 @@ class CliAgentProvider:
         )
 
 
-def claude_cli_provider(
-    command: str = "claude -p", *, dangerous_skip_permissions: bool = False
-) -> CliAgentProvider:
-    args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
-    if dangerous_skip_permissions:
-        args.insert(0, "--dangerously-skip-permissions")
-    return CliAgentProvider.from_command(command, args=args)
+def claude_cli_provider(command: str = "claude -p") -> CliAgentProvider:
+    return CliAgentProvider.from_command(
+        command,
+        args=["--system-prompt", "{base_prompt}", "{session_prompt}"],
+    )
 
 
 def pi_cli_provider(command: str = "pi -p", *, args: Sequence[str] = ()) -> CliAgentProvider:

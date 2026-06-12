@@ -1364,6 +1364,7 @@ class TestRunLoop:
             'provider = "missing"\n'
             "\n[providers.missing]\n"
             'command = "definitely-missing-devlab-agent"\n'
+            'args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]\n'
         )
         subprocess.run(["git", "-C", tmp_path.as_posix(), "init"], check=True)
         subprocess.run(

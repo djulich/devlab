@@ -12,6 +12,7 @@ from devlab.agent_config import (
     AGENTS_CONFIG,
     ROLE_NAMES,
     ResolvedAgentConfig,
+    agent_prompt_transport_problems,
     find_agent_executable_problems,
     load_agent_configuration,
 )
@@ -260,16 +261,6 @@ def _check_provider(
                 problems,
             )
 
-    if "prompt_args" in provider:
-        problems.append(
-            DoctorProblem(
-                display_path,
-                f"providers.{provider_name}.prompt_args is no longer supported; "
-                "put prompt placeholders in providers."
-                f"{provider_name}.args or use stdin_template",
-            )
-        )
-
     stdin_template = provider.get("stdin_template")
     if stdin_template is not None:
         if not isinstance(stdin_template, str):
@@ -280,13 +271,6 @@ def _check_provider(
                 )
             )
             stdin_template = None
-        elif not stdin_template.strip():
-            problems.append(
-                DoctorProblem(
-                    display_path,
-                    f"providers.{provider_name}.stdin_template must not be empty",
-                )
-            )
         else:
             _check_placeholders(
                 stdin_template,
@@ -324,12 +308,14 @@ def _check_provider(
             )
 
     if args is not None:
-        _check_prompt_delivery(
+        prompt_transport_problems = agent_prompt_transport_problems(
             provider_name,
+            provider,
             args,
             stdin_template if isinstance(stdin_template, str) else None,
-            display_path,
-            problems,
+        )
+        problems.extend(
+            DoctorProblem(display_path, problem) for problem in prompt_transport_problems
         )
 
 
@@ -390,33 +376,6 @@ def _is_shell_operator(part: str) -> bool:
     return part in _SHELL_OPERATORS or part.startswith("$(") or "`" in part
 
 
-def _check_prompt_delivery(
-    provider_name: str,
-    args: list[str],
-    stdin_template: str | None,
-    display_path: str,
-    problems: list[DoctorProblem],
-) -> None:
-    delivered = set()
-    values = [stdin_template] if stdin_template is not None else args
-    for value in values:
-        delivered.update(_placeholder_roots(value))
-    missing = [
-        placeholder
-        for placeholder in ("base_prompt", "session_prompt")
-        if placeholder not in delivered
-    ]
-    if missing:
-        names = ", ".join(f"{{{name}}}" for name in missing)
-        problems.append(
-            DoctorProblem(
-                display_path,
-                f"providers.{provider_name} does not deliver required prompt "
-                f"placeholder(s): {names}",
-            )
-        )
-
-
 def _check_version_command_executable(
     provider_name: str,
     version_command: str,
@@ -464,18 +423,6 @@ def _check_provider_references(
                     f"roles.{role_name}.provider references missing provider {role_provider!r}",
                 )
             )
-
-
-def _placeholder_roots(value: str) -> set[str]:
-    roots: set[str] = set()
-    try:
-        for _, field_name, _, _ in string.Formatter().parse(value):
-            if field_name is None:
-                continue
-            roots.add(field_name.split(".", 1)[0].split("[", 1)[0].split("!", 1)[0])
-    except ValueError:
-        return set()
-    return roots
 
 
 def _check_placeholders(

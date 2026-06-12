@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import shutil
+import tomllib
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -560,7 +561,6 @@ def run_loop(
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
-    dangerous_skip_permissions: bool = False,
     retain_prompts: bool = False,
     agent_providers: dict[str, AgentProvider] | None = None,
     role_agent_providers: dict[str, str] | None = None,
@@ -589,14 +589,22 @@ def run_loop(
     workspace = Workspace(root)
     resolved_agent_configs = None
     if agent_providers is None:
-        agent_configuration = load_agent_configuration(
-            root,
-            provider=provider,
-            model=model,
-            effort=effort,
-            dangerous_skip_permissions=dangerous_skip_permissions,
-            discover_provider_versions=True,
-        )
+        try:
+            agent_configuration = load_agent_configuration(
+                root,
+                provider=provider,
+                model=model,
+                effort=effort,
+                discover_provider_versions=True,
+            )
+        except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
+            logger.error("%s. Stopping.", exc)
+            return RunResult(
+                0,
+                False,
+                1,
+                (SessionError("agent_configuration", str(exc), 1),),
+            )
         agent_providers = agent_configuration.providers
         role_agent_providers = agent_configuration.role_providers
         resolved_agent_configs = agent_configuration.resolved
@@ -867,4 +875,3 @@ def run_loop(
 
     logger.info("Orchestrator finished after %s session(s).", sessions_run)
     return RunResult(sessions_run, True, 0, ())
-

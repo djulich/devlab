@@ -18,7 +18,6 @@ def test_missing_config_uses_fallback_cli_command(tmp_path: Path) -> None:
     assert provider.argv == ("claude",)
     assert provider.args == (
         "-p",
-        "--dangerously-skip-permissions",
         "--system-prompt",
         "{base_prompt}",
         "{session_prompt}",
@@ -239,6 +238,44 @@ def test_unknown_provider_raises_clear_error(tmp_path: Path) -> None:
         load_agent_configuration(tmp_path)
 
 
+def test_prompt_args_are_rejected_by_loader(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "agent"
+        args = ["--model", "{model}"]
+        prompt_args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
+        """,
+    )
+
+    with pytest.raises(ValueError, match=r"providers\.test\.prompt_args is no longer supported"):
+        load_agent_configuration(tmp_path)
+
+
+def test_non_stdin_provider_must_deliver_prompts(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "agent"
+        args = ["--model", "{model}"]
+        """,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"providers\.test does not deliver required prompt placeholder",
+    ):
+        load_agent_configuration(tmp_path)
+
+
 def test_records_provider_version_from_configured_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -250,6 +287,7 @@ def test_records_provider_version_from_configured_command(
 
         [providers.test]
         command = "mock-agent run"
+        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
         version_command = "mock-agent version"
         """,
     )
@@ -285,6 +323,7 @@ def test_provider_version_discovery_is_opt_in(
 
         [providers.test]
         command = "mock-agent run"
+        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
         version_command = "mock-agent version"
         """,
     )
@@ -310,6 +349,7 @@ def test_provider_version_is_empty_when_unavailable(
 
         [providers.test]
         command = "missing-agent run"
+        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
         """,
     )
 

@@ -31,7 +31,7 @@ In particular:
 
 - `.devlab/config/agents.toml` defines the agent CLI commands DevLab runs;
 - `.devlab/config/profiles/*.toml` may define setup/teardown/environment lifecycle commands;
-- `devlab run --dangerously-skip-permissions` may pass reduced-permission-check flags to configured agents.
+- agent permission and approval behavior is provider-specific and controlled through `.devlab/config/agents.toml`.
 
 DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab run`, especially in cloned or agent-modified workspaces.
 

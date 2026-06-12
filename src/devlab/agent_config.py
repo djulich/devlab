@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import shlex
 import shutil
+import string
 import subprocess
 import tomllib
 from collections.abc import Mapping
@@ -95,7 +96,6 @@ def load_agent_configuration(
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
-    dangerous_skip_permissions: bool = False,
     discover_provider_versions: bool = False,
 ) -> AgentConfiguration:
     data = _load_config(root, config_path=config_path)
@@ -137,11 +137,14 @@ def load_agent_configuration(
         args = _string_list(
             provider_table.get("args", []), f"providers.{provider_name}.args"
         )
-        if dangerous_skip_permissions:
-            args = [*args, "--dangerously-skip-permissions"]
         stdin_template = _optional_string(
             provider_table.get("stdin_template"), f"providers.{provider_name}.stdin_template"
         )
+        prompt_transport_problems = agent_prompt_transport_problems(
+            provider_name, provider_table, args, stdin_template
+        )
+        if prompt_transport_problems:
+            raise ValueError(prompt_transport_problems[0])
         command = _string(provider_table.get("command"), f"providers.{provider_name}.command")
         provider_version = (
             _provider_version(provider_table, command, template_values)
@@ -205,7 +208,6 @@ def _fallback_config() -> dict[str, Any]:
                 "command": "claude",
                 "args": [
                     "-p",
-                    "--dangerously-skip-permissions",
                     "--system-prompt",
                     "{base_prompt}",
                     "{session_prompt}",
@@ -222,6 +224,51 @@ def _render_command(command: str, args: list[str], values: Mapping[str, str]) ->
         "session_prompt": "{session_prompt}",
     }
     return [*shlex.split(command), *(arg.format_map(render_values) for arg in args)]
+
+
+def agent_prompt_transport_problems(
+    provider_name: str,
+    provider_table: dict[str, Any],
+    args: list[str],
+    stdin_template: str | None,
+) -> list[str]:
+    problems: list[str] = []
+    if "prompt_args" in provider_table:
+        problems.append(
+            f"providers.{provider_name}.prompt_args is no longer supported; "
+            f"put prompt placeholders in providers.{provider_name}.args or use stdin_template"
+        )
+    if stdin_template is not None and not stdin_template.strip():
+        problems.append(f"providers.{provider_name}.stdin_template must not be empty")
+
+    delivered = set()
+    values = [stdin_template] if stdin_template is not None else args
+    for value in values:
+        delivered.update(_placeholder_roots(value))
+    missing = [
+        placeholder
+        for placeholder in ("base_prompt", "session_prompt")
+        if placeholder not in delivered
+    ]
+    if missing:
+        names = ", ".join(f"{{{name}}}" for name in missing)
+        problems.append(
+            f"providers.{provider_name} does not deliver required prompt "
+            f"placeholder(s): {names}"
+        )
+    return problems
+
+
+def _placeholder_roots(value: str) -> set[str]:
+    roots: set[str] = set()
+    try:
+        for _, field_name, _, _ in string.Formatter().parse(value):
+            if field_name is None:
+                continue
+            roots.add(field_name.split(".", 1)[0].split("[", 1)[0].split("!", 1)[0])
+    except ValueError:
+        return set()
+    return roots
 
 
 def _provider_version(

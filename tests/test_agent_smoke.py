@@ -175,6 +175,7 @@ def test_smoke_test_fails_when_marker_is_missing(
 
         [providers.test]
         command = "agent"
+        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
         version_command = ""
         """,
     )
@@ -208,6 +209,7 @@ def test_smoke_test_does_not_accept_marker_echoed_to_stderr(
 
         [providers.test]
         command = "agent"
+        args = ["--system-prompt", "{base_prompt}", "{session_prompt}"]
         version_command = ""
         """,
     )
