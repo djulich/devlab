@@ -5,7 +5,11 @@ import logging
 from pathlib import Path
 
 from devlab._logging import configure_logging
-from devlab.agent_smoke import format_agent_smoke_report, run_agent_smoke_test
+from devlab.agent_smoke import (
+    AgentSmokeProgressEvent,
+    format_agent_smoke_report,
+    run_agent_smoke_test,
+)
 from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
 from devlab.doctor import check_workspace, format_doctor_report
 from devlab.history import format_history
@@ -238,7 +242,10 @@ def main() -> None:
         "--role",
         action="append",
         default=None,
-        help="Role to test. May be passed more than once; defaults to all roles.",
+        help=(
+            "Role resolution to test. May be passed more than once; "
+            "defaults to all configured providers."
+        ),
     )
     smoke_parser.add_argument(
         "--provider",
@@ -330,6 +337,7 @@ def main() -> None:
             provider=args.provider,
             model=args.model,
             effort=args.effort,
+            on_progress=_print_agent_smoke_progress,
         )
         print(format_agent_smoke_report(result))
         if not result.passed:
@@ -345,6 +353,22 @@ def _run_log_level(*, quiet: bool, verbose: bool) -> int:
     if verbose:
         return logging.DEBUG
     return logging.INFO
+
+
+def _print_agent_smoke_progress(event: AgentSmokeProgressEvent) -> None:
+    if event.event == "start":
+        print(
+            f"Starting [{event.check_name}] "
+            f"provider={event.config.provider} model={event.config.model}...",
+            flush=True,
+        )
+        return
+    if event.result is None:
+        return
+    status = "OK" if event.result.passed else "FAILED"
+    duration = event.result.result.duration_seconds
+    duration_text = "" if duration is None else f" in {duration:.1f}s"
+    print(f"Finished [{event.check_name}] {status}{duration_text}", flush=True)
 
 
 if __name__ == "__main__":

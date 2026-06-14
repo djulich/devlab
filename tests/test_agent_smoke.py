@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 
-from devlab.agent_config import ROLE_NAMES
 from devlab.agent_smoke import (
     SMOKE_MARKER,
     format_agent_smoke_report,
@@ -13,7 +12,7 @@ from devlab.agent_smoke import (
 )
 
 
-def test_smoke_test_invokes_all_roles_by_default(
+def test_smoke_test_invokes_all_configured_providers_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_agents_config(
@@ -24,6 +23,9 @@ def test_smoke_test_invokes_all_roles_by_default(
         model = "model-a"
         effort = "medium"
 
+        [roles.developer]
+        provider = "other"
+
         [providers.test]
         command = "agent"
         args = [
@@ -33,6 +35,11 @@ def test_smoke_test_invokes_all_roles_by_default(
             "--system-prompt", "{system_prompt}",
             "{session_prompt}",
         ]
+        version_command = ""
+
+        [providers.other]
+        command = "other-agent"
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
         version_command = ""
         """,
     )
@@ -52,11 +59,11 @@ def test_smoke_test_invokes_all_roles_by_default(
     result = run_agent_smoke_test(tmp_path)
 
     assert result.passed
-    assert [role.role_name for role in result.role_results] == list(ROLE_NAMES)
+    assert [provider.check_name for provider in result.provider_results] == ["test", "other"]
     assert calls[0][:7] == [
         "agent",
         "--role",
-        "architect",
+        "test",
         "--model",
         "model-a",
         "--effort",
@@ -67,7 +74,7 @@ def test_smoke_test_invokes_all_roles_by_default(
     assert calls[0][9] == (
         "This is a DevLab provider wiring check. "
         "Do not inspect files, edit files, run commands, or create artifacts. "
-        "Role: architect. Provider: test. Model: model-a. Effort: medium."
+        "Check: test. Provider: test. Model: model-a. Effort: medium."
     )
 
 
@@ -114,6 +121,43 @@ def test_smoke_test_supports_custom_config_without_changing_workspace(
     assert SMOKE_MARKER in seen["input"]
     assert (tmp_path / ".devlab/logs/agents").exists()
     assert not (tmp_path / ".devlab/config/agents.toml").exists()
+
+
+def test_smoke_test_supports_role_specific_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+        model = "model-a"
+        effort = "medium"
+
+        [providers.test]
+        command = "agent"
+        args = ["--role", "{role_name}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+        """,
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(*args: Any, **kwargs: Any) -> object:
+        calls.append(args[0])
+        kwargs["stdout"].write(SMOKE_MARKER)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+
+    result = run_agent_smoke_test(tmp_path, role_names=("developer",))
+
+    assert result.passed
+    assert [role.check_name for role in result.role_results] == ["developer"]
+    assert calls[0][2] == "developer"
 
 
 def test_smoke_report_includes_config_command_and_logs(
@@ -232,6 +276,41 @@ def test_smoke_test_does_not_accept_marker_echoed_to_stderr(
 def test_smoke_test_rejects_unknown_role(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="unknown role"):
         run_agent_smoke_test(tmp_path, role_names=("bogus",))
+
+
+def test_smoke_test_emits_progress_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "agent"
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+        """,
+    )
+
+    def fake_run(*_args: Any, **kwargs: Any) -> object:
+        kwargs["stdout"].write(SMOKE_MARKER)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    events: list[tuple[str, str]] = []
+
+    run_agent_smoke_test(
+        tmp_path,
+        on_progress=lambda event: events.append((event.event, event.check_name)),
+    )
+
+    assert events == [("start", "test"), ("finish", "test")]
 
 
 def _write_agents_config(root: Path, text: str) -> None:
