@@ -362,6 +362,7 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
     assert kwargs["provider"] == "codex"
     assert kwargs["model"] == "gpt-5.5"
     assert kwargs["effort"] == "medium"
+    assert kwargs["all_providers"] is False
 
 
 def test_cli_agent_smoke_test_exits_nonzero_on_failure(
@@ -380,3 +381,25 @@ def test_cli_agent_smoke_test_exits_nonzero_on_failure(
         _run_cli(monkeypatch, "agent-smoke-test", "--root", str(tmp_path))
 
     assert exc.value.code == 1
+
+
+def test_cli_agent_smoke_test_supports_all_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_smoke(*_args: object, **kwargs: object) -> object:
+        seen["kwargs"] = kwargs
+
+        class Result:
+            passed = True
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+
+    _run_cli(monkeypatch, "agent-smoke-test", "--root", str(tmp_path), "--all-providers")
+
+    kwargs = cast("dict[str, object]", seen["kwargs"])
+    assert kwargs["all_providers"] is True

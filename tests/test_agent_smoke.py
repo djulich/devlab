@@ -12,7 +12,7 @@ from devlab.agent_smoke import (
 )
 
 
-def test_smoke_test_invokes_all_configured_providers_by_default(
+def test_smoke_test_invokes_deduplicated_workflow_provider_configs_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_agents_config(
@@ -41,6 +41,11 @@ def test_smoke_test_invokes_all_configured_providers_by_default(
         command = "other-agent"
         args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
         version_command = ""
+
+        [providers.unused]
+        command = "unused-agent"
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
         """,
     )
     calls: list[list[str]] = []
@@ -59,7 +64,12 @@ def test_smoke_test_invokes_all_configured_providers_by_default(
     result = run_agent_smoke_test(tmp_path)
 
     assert result.passed
-    assert [provider.check_name for provider in result.provider_results] == ["test", "other"]
+    assert [check.check_name for check in result.workflow_results] == ["test", "other"]
+    assert [check.role_names for check in result.workflow_results] == [
+        ("architect", "planner", "reviewer", "integrator"),
+        ("developer",),
+    ]
+    assert len(calls) == 2
     assert calls[0][:7] == [
         "agent",
         "--role",
@@ -74,8 +84,55 @@ def test_smoke_test_invokes_all_configured_providers_by_default(
     assert calls[0][9] == (
         "This is a DevLab provider wiring check. "
         "Do not inspect files, edit files, run commands, or create artifacts. "
-        "Check: test. Provider: test. Model: model-a. Effort: medium."
+        "Check: test. Provider: test. "
+        "Roles: architect, planner, reviewer, integrator. "
+        "Model: model-a. Effort: medium."
     )
+
+
+def test_smoke_test_can_invoke_all_configured_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+        model = "model-a"
+        effort = "medium"
+
+        [providers.test]
+        command = "agent"
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+
+        [providers.unused]
+        command = "unused-agent"
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+        """,
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(*args: Any, **kwargs: Any) -> object:
+        calls.append(args[0])
+        kwargs["stdout"].write(SMOKE_MARKER)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+
+    result = run_agent_smoke_test(tmp_path, all_providers=True)
+
+    assert result.passed
+    assert [provider.check_name for provider in result.provider_results] == [
+        "test",
+        "unused",
+    ]
+    assert len(calls) == 2
 
 
 def test_smoke_test_supports_custom_config_without_changing_workspace(
@@ -276,6 +333,11 @@ def test_smoke_test_does_not_accept_marker_echoed_to_stderr(
 def test_smoke_test_rejects_unknown_role(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="unknown role"):
         run_agent_smoke_test(tmp_path, role_names=("bogus",))
+
+
+def test_smoke_test_rejects_all_providers_with_roles(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="all_providers"):
+        run_agent_smoke_test(tmp_path, role_names=("developer",), all_providers=True)
 
 
 def test_smoke_test_emits_progress_events(

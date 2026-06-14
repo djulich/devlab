@@ -244,8 +244,13 @@ def main() -> None:
         default=None,
         help=(
             "Role resolution to test. May be passed more than once; "
-            "defaults to all configured providers."
+            "defaults to deduplicated workflow provider configurations."
         ),
+    )
+    smoke_parser.add_argument(
+        "--all-providers",
+        action="store_true",
+        help="Test every configured provider entry, including providers not assigned to roles.",
     )
     smoke_parser.add_argument(
         "--provider",
@@ -276,6 +281,12 @@ def main() -> None:
 
     args = parser.parse_args()
     root = args.root.resolve()
+    if (
+        args.command == "agent-smoke-test"
+        and args.all_providers
+        and args.role is not None
+    ):
+        parser.error("agent-smoke-test cannot combine --all-providers with --role")
     if args.command == "init":
         result = init_workspace(
             root,
@@ -337,6 +348,7 @@ def main() -> None:
             provider=args.provider,
             model=args.model,
             effort=args.effort,
+            all_providers=args.all_providers,
             on_progress=_print_agent_smoke_progress,
         )
         print(format_agent_smoke_report(result))
@@ -357,9 +369,10 @@ def _run_log_level(*, quiet: bool, verbose: bool) -> int:
 
 def _print_agent_smoke_progress(event: AgentSmokeProgressEvent) -> None:
     if event.event == "start":
+        roles = _format_agent_smoke_progress_roles(event.role_names)
         print(
             f"Starting [{event.check_name}] "
-            f"provider={event.config.provider} model={event.config.model}...",
+            f"provider={event.config.provider} model={event.config.model}{roles}...",
             flush=True,
         )
         return
@@ -369,6 +382,12 @@ def _print_agent_smoke_progress(event: AgentSmokeProgressEvent) -> None:
     duration = event.result.result.duration_seconds
     duration_text = "" if duration is None else f" in {duration:.1f}s"
     print(f"Finished [{event.check_name}] {status}{duration_text}", flush=True)
+
+
+def _format_agent_smoke_progress_roles(role_names: tuple[str, ...]) -> str:
+    if not role_names:
+        return ""
+    return " roles=" + ",".join(role_names)
 
 
 if __name__ == "__main__":

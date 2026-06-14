@@ -10,11 +10,12 @@ from typing import Literal
 from devlab.agent_config import (
     AGENTS_CONFIG,
     ROLE_NAMES,
+    AgentConfiguration,
     ResolvedAgentConfig,
     ResolvedProviderConfig,
     load_agent_configuration,
 )
-from devlab.agents import AgentInvocation, AgentResult
+from devlab.agents import AgentInvocation, AgentProvider, AgentResult
 
 SMOKE_MARKER = "DEVLAB_SMOKE_OK"
 
@@ -25,7 +26,8 @@ class AgentSmokeCheckResult:
     config: ResolvedAgentConfig | ResolvedProviderConfig
     result: AgentResult
     marker_found: bool
-    scope: Literal["provider", "role"]
+    scope: Literal["workflow", "provider", "role"]
+    role_names: tuple[str, ...] = ()
 
     @property
     def passed(self) -> bool:
@@ -37,6 +39,7 @@ class AgentSmokeProgressEvent:
     event: Literal["start", "finish"]
     check_name: str
     config: ResolvedAgentConfig | ResolvedProviderConfig
+    role_names: tuple[str, ...] = ()
     result: AgentSmokeCheckResult | None = None
 
 
@@ -66,6 +69,10 @@ class AgentSmokeResult:
     def provider_results(self) -> tuple[AgentSmokeCheckResult, ...]:
         return tuple(result for result in self.check_results if result.scope == "provider")
 
+    @property
+    def workflow_results(self) -> tuple[AgentSmokeCheckResult, ...]:
+        return tuple(result for result in self.check_results if result.scope == "workflow")
+
 
 def run_agent_smoke_test(
     root: Path,
@@ -75,9 +82,12 @@ def run_agent_smoke_test(
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
+    all_providers: bool = False,
     on_progress: Callable[[AgentSmokeProgressEvent], None] | None = None,
 ) -> AgentSmokeResult:
     """Invoke configured agent providers with a tiny prompt to verify wiring."""
+    if all_providers and role_names is not None:
+        raise ValueError("all_providers cannot be combined with role_names")
     if role_names is not None:
         _validate_roles(role_names)
     effective_config_path = config_path or root / AGENTS_CONFIG
@@ -91,27 +101,22 @@ def run_agent_smoke_test(
     )
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     results: list[AgentSmokeCheckResult] = []
-    if role_names is None:
+    if all_providers:
         checks = [
             (
                 provider_name,
                 "provider",
                 resolved,
                 configuration.configured_providers[provider_name],
+                (),
             )
             for provider_name, resolved in configuration.configured_provider_configs.items()
         ]
+    elif role_names is None:
+        checks = _role_provider_checks(configuration, ROLE_NAMES, scope="workflow")
     else:
-        checks = [
-            (
-                role_name,
-                "role",
-                configuration.resolved[role_name],
-                configuration.providers[configuration.role_providers[role_name]],
-            )
-            for role_name in role_names
-        ]
-    for check_name, scope, resolved, provider_instance in checks:
+        checks = _role_provider_checks(configuration, role_names, scope="role")
+    for check_name, scope, resolved, provider_instance, assigned_role_names in checks:
         stdout_log = (
             root / ".devlab/logs/agents" / f"{timestamp}_smoke_{check_name}.stdout.log"
         )
@@ -129,6 +134,7 @@ def run_agent_smoke_test(
                 "This is a DevLab provider wiring check. "
                 "Do not inspect files, edit files, run commands, or create artifacts. "
                 f"Check: {check_name}. Provider: {resolved.provider}. "
+                f"Roles: {_format_roles(assigned_role_names)}. "
                 f"Model: {resolved.model}. Effort: {resolved.effort}."
             ),
             invocation_id=f"smoke-{timestamp}-{check_name}",
@@ -137,7 +143,7 @@ def run_agent_smoke_test(
         )
         _emit_progress(
             on_progress,
-            AgentSmokeProgressEvent("start", check_name, resolved),
+            AgentSmokeProgressEvent("start", check_name, resolved, assigned_role_names),
         )
         agent_result = provider_instance.invoke(invocation)
         check_result = AgentSmokeCheckResult(
@@ -146,11 +152,18 @@ def run_agent_smoke_test(
             result=agent_result,
             marker_found=_log_contains(stdout_log, SMOKE_MARKER),
             scope=scope,
+            role_names=assigned_role_names,
         )
         results.append(check_result)
         _emit_progress(
             on_progress,
-            AgentSmokeProgressEvent("finish", check_name, resolved, check_result),
+            AgentSmokeProgressEvent(
+                "finish",
+                check_name,
+                resolved,
+                assigned_role_names,
+                check_result,
+            ),
         )
     return AgentSmokeResult(
         root=root,
@@ -160,7 +173,7 @@ def run_agent_smoke_test(
 
 
 def format_agent_smoke_report(result: AgentSmokeResult) -> str:
-    label = "Roles" if result.role_results else "Providers"
+    label = _format_result_label(result)
     lines = [
         "Agent smoke test",
         f"Workspace: {result.root}",
@@ -178,6 +191,7 @@ def format_agent_smoke_report(result: AgentSmokeResult) -> str:
                 f"Model: {config.model}",
                 f"Effort: {config.effort}",
                 f"Timeout: {_format_timeout(config.timeout_seconds)}",
+                f"Roles: {_format_roles(check_result.role_names)}",
                 f"Stdin: {_format_bool(config.uses_stdin)}",
                 "Command: " + shlex.join(config.command),
                 f"Result: {'OK' if check_result.passed else 'FAILED'}",
@@ -197,6 +211,77 @@ def format_agent_smoke_report(result: AgentSmokeResult) -> str:
         )
     lines.append(f"Summary: {result.passed_count} passed, {result.failed_count} failed")
     return "\n".join(lines)
+
+
+def _role_provider_checks(
+    configuration: AgentConfiguration,
+    role_names: tuple[str, ...],
+    *,
+    scope: Literal["workflow", "role"],
+) -> list[
+    tuple[
+        str,
+        Literal["workflow", "role"],
+        ResolvedAgentConfig,
+        AgentProvider,
+        tuple[str, ...],
+    ]
+]:
+    checks_by_key: dict[
+        tuple[str, str, str, int | None, bool],
+        tuple[str, Literal["workflow", "role"], ResolvedAgentConfig, AgentProvider, list[str]],
+    ] = {}
+    for role_name in role_names:
+        resolved = configuration.resolved[role_name]
+        provider_instance = configuration.providers[configuration.role_providers[role_name]]
+        # The rendered command may include {role_name}; smoke tests use one
+        # representative invocation for otherwise identical provider settings.
+        key = (
+            resolved.provider,
+            resolved.model,
+            resolved.effort,
+            resolved.timeout_seconds,
+            resolved.uses_stdin,
+        )
+        existing = checks_by_key.get(key)
+        if existing is None:
+            checks_by_key[key] = (
+                resolved.provider,
+                scope,
+                resolved,
+                provider_instance,
+                [role_name],
+            )
+        else:
+            existing[4].append(role_name)
+
+    checks = []
+    for (
+        check_name,
+        check_scope,
+        resolved,
+        provider_instance,
+        assigned_roles,
+    ) in checks_by_key.values():
+        role_tuple = tuple(assigned_roles)
+        if len(role_tuple) == 1 and check_scope == "role":
+            check_name = role_tuple[0]
+        checks.append((check_name, check_scope, resolved, provider_instance, role_tuple))
+    return checks
+
+
+def _format_result_label(result: AgentSmokeResult) -> str:
+    if result.provider_results:
+        return "Providers"
+    if result.workflow_results:
+        return "Workflow providers"
+    return "Roles"
+
+
+def _format_roles(role_names: tuple[str, ...]) -> str:
+    if not role_names:
+        return "none"
+    return ", ".join(role_names)
 
 
 def _emit_progress(

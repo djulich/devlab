@@ -178,11 +178,12 @@ Use `devlab status --verbose` to inspect the resolved provider, model, effort, t
 
 Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
 
-Use `devlab agent-smoke-test` to start the configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. It tests all configured providers by default, can test specific role resolutions with `--role`, prints progress as each check starts and finishes, and writes stdout/stderr logs under `.devlab/logs/agents/`.
+Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under `.devlab/logs/agents/`. Use `--all-providers` to also test configured provider entries that are not assigned to any role.
 
 ```bash
 devlab agent-smoke-test
 devlab agent-smoke-test --role developer
+devlab agent-smoke-test --all-providers
 devlab agent-smoke-test --config .local/live-eval/agents.toml
 ```
 
