@@ -106,6 +106,8 @@ Open work:
 
 Priority: medium-high. DevLab should support target workspaces where the system spec or deployment spec changes after architecture, planning, or implementation work already exists.
 
+Status: **planned**. See `docs/plans/spec-change-reconciliation.md`.
+
 Usefulness: high. This is a normal real-world workflow: requirements drift after plans and code exist. Without explicit support, DevLab may either keep executing stale tasks or require users to manually reset workflow state.
 
 Expected behavior:

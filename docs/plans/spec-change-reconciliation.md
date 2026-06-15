@@ -34,7 +34,7 @@ Semantics:
 - Missing `[specs]` means DevLab has never recorded a planning baseline for this target workspace. The next `devlab plan` is a first planning run.
 - `last_planned_tree` is the content baseline used for deterministic changed/not-changed checks.
 - `last_planned_spec_commit` supports the operator-facing explanation that specs changed through Git history since the last planning baseline.
-- Dirty staged or unstaged spec paths also count as changed, even before they have a commit.
+- Dirty staged or unstaged spec paths are detected, but they block reconciliation until the operator commits them.
 - Reporting commands may read and report this state, but must not repair or update it.
 
 ## Command Behavior
@@ -54,18 +54,18 @@ On later planning runs:
 
 1. Check spec status before the generic clean-worktree requirement.
 2. Detect changed specs from either:
-   - staged or unstaged changes under `.devlab/specs/system/` or `.devlab/specs/deployment/`, or
-   - committed changes touching those folders since `last_planned_spec_commit`, or
+   - committed changes touching `.devlab/specs/system/` or `.devlab/specs/deployment/` since `last_planned_spec_commit`, or
    - a current spec tree fingerprint that differs from `last_planned_tree`.
-3. If no spec changes exist and no `--revise` flag is passed, keep the current no-op behavior.
-4. If spec changes exist, force a planning revision path equivalent to `devlab plan --revise`.
-5. After successful architect/planner revision, update the spec baseline.
+3. Detect staged or unstaged changes under `.devlab/specs/system/` or `.devlab/specs/deployment/` and stop with a clear message asking the operator to commit spec changes before running `devlab plan`.
+4. If no committed spec changes exist and no `--revise` flag is passed, keep the current no-op behavior.
+5. If committed spec changes exist, force a planning revision path equivalent to `devlab plan --revise`.
+6. After successful architect/planner revision, update the spec baseline.
 
-Dirty working tree handling should be narrow:
+Dirty working tree handling stays strict:
 
-- Dirty paths outside the two spec folders remain a hard stop before agent sessions.
-- Dirty paths inside the spec folders are allowed for `devlab plan` reconciliation because they are the input being reconciled.
-- If spec paths are dirty, the final automatic commit may include both operator spec edits and DevLab planning revisions. The command output should say that clearly. If we want stricter authorship separation later, `devlab plan` can require users to commit spec edits first, but that would weaken the requested staged/unstaged detection flow.
+- Dirty paths anywhere remain a hard stop before agent sessions.
+- Dirty spec paths get a more specific error than generic clean-worktree failure: commit the spec changes, then run `devlab plan`.
+- This keeps operator-authored specification commits separate from DevLab-authored reconciliation commits and preserves the existing clean-worktree invariant.
 
 ### `devlab run`
 
@@ -84,6 +84,8 @@ This keeps `run` from silently turning into a planning command while preserving 
 
 `--revise` remains the explicit "review and possibly update existing plans" command. It should also refresh the spec baseline after a successful revision, even if the detected spec content did not change.
 
+`--revise` still runs both architect and planner. DevLab should not try to infer that the architect can be skipped for deployment-spec-only changes: the deployment spec may alter architecture, operability, boundaries, packaging, validation strategy, or profile needs. The bounded and reviewable rule is simple: any spec reconciliation re-runs architecture review of the design plan first, then planning.
+
 ## Git Detection Details
 
 Add a small spec-baseline helper, likely in a new focused module such as `spec_reconciliation.py` or in `workflow_state.py` if the code stays compact.
@@ -97,11 +99,11 @@ Inputs:
 
 Checks:
 
-- `git status --porcelain -- .devlab/specs/system .devlab/specs/deployment` for staged/unstaged spec changes.
+- `git status --porcelain -- .devlab/specs/system .devlab/specs/deployment` for staged/unstaged spec changes that should block reconciliation until committed.
 - `git log --format=%H -1 -- .devlab/specs/system .devlab/specs/deployment` for the latest committed spec change.
 - A stable spec content fingerprint for the current spec tree.
 
-The fingerprint should include tracked and relevant untracked spec files so dirty first-time spec edits are visible. Use Git primitives where practical, but do not parse spec Markdown outside the spec domain. If untracked files complicate pure Git tree hashing, compute a deterministic hash over relative path, mode/classification, and bytes for files under the spec folders while using Git only to decide tracked/dirty/history state.
+The fingerprint should represent committed spec content. Use Git primitives where practical, and do not parse spec Markdown outside the spec domain. Dirty or untracked spec files do not become part of the baseline until the operator commits them.
 
 Result object:
 
@@ -110,7 +112,6 @@ SpecReconciliationStatus(
     baseline_exists: bool,
     changed: bool,
     dirty_spec_paths: tuple[str, ...],
-    dirty_non_spec_paths: tuple[str, ...],
     latest_spec_commit: str,
     current_tree: str,
     baseline_tree: str,
@@ -127,8 +128,7 @@ This keeps orchestration decisions explicit and gives CLI/status/doctor code a r
   - load workflow state,
   - compute spec reconciliation status,
   - decide whether this is first planning, no-op planning, explicit revision, or detected reconciliation,
-  - allow dirty spec-only worktree when reconciliation is needed,
-  - reject dirty non-spec paths.
+  - reject any dirty worktree before agent sessions, with a spec-specific message when dirty spec paths are present.
 - For `planning_only=False`:
   - compute status,
   - reject changed specs with a `SessionError` whose message tells the user to run `devlab plan`.
@@ -142,7 +142,7 @@ After successful planning/revision, update `[specs]` in workflow state through a
 Planning revision prompts should distinguish ordinary explicit revision from spec reconciliation:
 
 - Architect: compare changed system/deployment specs against the existing design plan, completed work, integrated milestones, and architecture-review findings.
-- Planner: update project plan/tasks so stale tasks are revised, superseded, or closed with rationale, and new requirements become durable tasks.
+- Planner: update project plan/tasks so stale tasks are revised or closed with rationale, and new requirements become durable tasks.
 
 Do not ask developer/reviewer/integrator roles to infer spec reconciliation policy. They should consume reconciled workflow state or report contradictions through existing blockers/findings.
 
@@ -150,13 +150,23 @@ Do not ask developer/reviewer/integrator roles to infer spec reconciliation poli
 
 Initial implementation can avoid adding a new task status if the planner can represent decisions with existing mechanisms:
 
-- keep valid open tasks unchanged,
-- edit planned/open tasks that still apply but need updated acceptance criteria,
-- close tasks that are already satisfied by completed work,
-- create new tasks for new scope,
-- for obsolete tasks, either close with a clear rationale in the task body or leave blocked with a rationale if closure would be misleading.
+- Closed tasks remain historical completed work. Reconciliation should not reopen them automatically.
+- Open or in-review tasks that still apply may be edited by the planner to match the revised plan.
+- Open or in-review tasks that no longer apply should be closed with an explicit reconciliation rationale in the task body or review history, not assigned a new status.
+- Newly required work gets new task ids.
+- Milestones remain durable coordination units, but reconciliation may change their future scope.
 
-A dedicated `superseded` task status remains a follow-up option. It should be added only if live use shows closed-with-rationale is ambiguous in status reports or history.
+Partially implemented milestones need special handling:
+
+- Keep closed tasks in the milestone as completed evidence.
+- Reconcile every non-closed task in that milestone against the revised design plan.
+- If the milestone goal still exists, the planner may keep the milestone and replace only the obsolete remaining tasks.
+- If the milestone goal changed materially, the planner should mark the old milestone as no longer the future integration target by closing its remaining obsolete tasks with rationale, then create a new milestone for the revised goal.
+- The integrator should only integrate a milestone after its current task set is closed, so replacing the remaining task set is enough to keep integration bounded without adding a `superseded` status.
+
+This deliberately avoids a mass dismissal rule for all non-closed tasks. Blanket closure would be easy to reason about, but it would lose useful partially planned work and make partially implemented milestones noisy. The first implementation should instruct architect/planner sessions to preserve applicable tasks and close only tasks that conflict with or are made irrelevant by the revised specs.
+
+A dedicated `superseded` task status remains a follow-up option, but it is out of scope for the first implementation.
 
 ## Documentation Updates
 
@@ -173,8 +183,8 @@ Focused tests:
 
 - First `devlab plan` on initialized workspace records a spec baseline.
 - Subsequent `devlab plan` with unchanged specs remains a no-op.
-- Subsequent `devlab plan` with dirty staged spec changes forces architect/planner revision.
-- Subsequent `devlab plan` with dirty unstaged spec changes forces architect/planner revision.
+- Subsequent `devlab plan` with dirty staged spec changes stops and asks the operator to commit them.
+- Subsequent `devlab plan` with dirty unstaged spec changes stops and asks the operator to commit them.
 - Dirty non-spec changes still stop planning before agent sessions.
 - Committed spec changes after the baseline force architect/planner revision.
 - `devlab run` with changed specs stops and instructs the user to run `devlab plan`.
@@ -183,7 +193,5 @@ Focused tests:
 
 ## Open Questions
 
-1. Should dirty spec changes be allowed and committed together with planning revisions, or should `devlab plan` detect them but require the operator to commit them before reconciliation?
-2. Should deployment-spec-only changes always force both architect and planner, or may they force planner only when the design plan is unaffected?
-3. Do we want a first-class `superseded` task status in the first implementation, or should the planner use existing task statuses plus rationale until ambiguity appears in real runs?
-4. Should we add a public alias such as `devlab implement` for `devlab run`, or only change the documentation and runtime guardrails?
+1. Should the spec baseline store only the latest spec commit and content fingerprint, or should it also store a short list of changed spec files for better prompts and status output?
+2. Should reconciliation produce a separate durable summary artifact, or are architect/planner handoffs plus edited plans/tasks sufficient?
