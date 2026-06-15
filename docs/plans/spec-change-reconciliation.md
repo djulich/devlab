@@ -22,6 +22,7 @@ version = 1
 
 [planning]
 complete = false
+generation = 1
 
 [specs]
 last_planned_tree = "<git tree/content fingerprint for .devlab/specs>"
@@ -35,6 +36,9 @@ Semantics:
 - `last_planned_tree` is the content baseline used for deterministic changed/not-changed checks.
 - `last_planned_spec_commit` supports the operator-facing explanation that specs changed through Git history since the last planning baseline.
 - Dirty staged or unstaged spec paths are detected, but they block reconciliation until the operator commits them.
+- `planning.generation` is the current actionable plan generation.
+- Tasks may carry `planning_generation = N`. A task is actionable only when its generation matches `workflow.toml`'s current planning generation and its status is active.
+- Missing task generation metadata should be treated as generation 1 for backward compatibility.
 - Reporting commands may read and report this state, but must not repair or update it.
 
 ## Command Behavior
@@ -47,8 +51,9 @@ On first planning run:
 
 1. Detect that no spec baseline exists.
 2. Run the existing missing planning sessions: architect, then planner as needed.
-3. After successful planning, record the current spec baseline in `.devlab/workflow.toml`.
-4. Commit the session changes through the existing automatic version-control path.
+3. Ensure created tasks belong to the current planning generation.
+4. After successful planning, record the current spec baseline in `.devlab/workflow.toml`.
+5. Commit the session changes through the existing automatic version-control path.
 
 On later planning runs:
 
@@ -58,8 +63,9 @@ On later planning runs:
    - a current spec tree fingerprint that differs from `last_planned_tree`.
 3. Detect staged or unstaged changes under `.devlab/specs/system/` or `.devlab/specs/deployment/` and stop with a clear message asking the operator to commit spec changes before running `devlab plan`.
 4. If no committed spec changes exist and no `--revise` flag is passed, keep the current no-op behavior.
-5. If committed spec changes exist, force a planning revision path equivalent to `devlab plan --revise`.
-6. After successful architect/planner revision, update the spec baseline.
+5. If committed spec changes exist, force a planning revision path equivalent to `devlab plan --revise` with `next_generation = current_generation + 1`.
+6. During reconciliation, prior-generation active tasks remain in the repository unchanged but become stale/non-actionable once the new generation is committed.
+7. After successful architect/planner revision, update the spec baseline and advance `planning.generation` to `next_generation`.
 
 Dirty working tree handling stays strict:
 
@@ -133,40 +139,55 @@ This keeps orchestration decisions explicit and gives CLI/status/doctor code a r
   - compute status,
   - reject changed specs with a `SessionError` whose message tells the user to run `devlab plan`.
 
-The actual role forcing can reuse existing `revise_plan` behavior by deriving an internal `reconcile_plan` flag. Public API callers can still pass `revise_plan`; CLI `devlab plan` can rely on automatic detection.
+The actual role forcing can reuse existing `revise_plan` behavior by deriving an internal `reconcile_plan` flag and a `next_generation` value. Public API callers can still pass `revise_plan`; CLI `devlab plan` can rely on automatic detection.
 
-After successful planning/revision, update `[specs]` in workflow state through an explicit mutation helper and ensure the update is committed by automatic version control.
+After successful planning/revision, update `[planning].generation` and `[specs]` in workflow state through an explicit mutation helper and ensure the update is committed by automatic version control.
+
+The orchestrator owns generation advancement. Agents should not edit `planning.generation`. A conservative flow is:
+
+1. Detect committed spec change.
+2. Compute `next_generation = current_generation + 1`.
+3. Pass `next_generation` and reconciliation context to architect/planner prompts.
+4. Validate that new or carried-forward tasks are assigned to `next_generation`.
+5. After the planner handoff succeeds, write `planning.generation = next_generation` and the new spec baseline.
+
+If reconciliation fails midway, durable workflow state remains on the previous generation and `devlab run` continues to block because the spec baseline is still stale.
 
 ## Agent Prompt Changes
 
 Planning revision prompts should distinguish ordinary explicit revision from spec reconciliation:
 
 - Architect: compare changed system/deployment specs against the existing design plan, completed work, integrated milestones, and architecture-review findings.
-- Planner: update project plan/tasks so stale tasks are revised or closed with rationale, and new requirements become durable tasks.
+- Planner: create current-generation tasks for all work still required by the revised plan. Previous-generation active tasks are stale planning artifacts; they should not be edited in place unless the planner intentionally carries their content forward into a current-generation task.
 
 Do not ask developer/reviewer/integrator roles to infer spec reconciliation policy. They should consume reconciled workflow state or report contradictions through existing blockers/findings.
 
 ## Task and Milestone Treatment
 
-Initial implementation can avoid adding a new task status if the planner can represent decisions with existing mechanisms:
+Spec reconciliation advances the planning generation. It does not close, delete, archive, or re-status non-closed tasks from older generations.
 
-- Closed tasks remain historical completed work. Reconciliation should not reopen them automatically.
-- Open or in-review tasks that still apply may be edited by the planner to match the revised plan.
-- Open or in-review tasks that no longer apply should be closed with an explicit reconciliation rationale in the task body or review history, not assigned a new status.
-- Newly required work gets new task ids.
-- Milestones remain durable coordination units, but reconciliation may change their future scope.
+Core rules:
 
-Partially implemented milestones need special handling:
+- A task's `status` is interpreted within the planning generation that created it.
+- A task is actionable only when `task.planning_generation == workflow.planning.generation`.
+- Older-generation open, in-review, or changes-requested tasks are stale planning artifacts, not current workflow work.
+- Closed tasks from older generations remain historical completed work.
+- The planner creates new current-generation tasks for all work still required by the revised design/project plan.
+- If content from an old task still applies, the planner should create a new current-generation task that carries that work forward instead of mutating the old task in place.
 
-- Keep closed tasks in the milestone as completed evidence.
-- Reconcile every non-closed task in that milestone against the revised design plan.
-- If the milestone goal still exists, the planner may keep the milestone and replace only the obsolete remaining tasks.
-- If the milestone goal changed materially, the planner should mark the old milestone as no longer the future integration target by closing its remaining obsolete tasks with rationale, then create a new milestone for the revised goal.
-- The integrator should only integrate a milestone after its current task set is closed, so replacing the remaining task set is enough to keep integration bounded without adding a `superseded` status.
+This reflects the truth of the workflow: old tasks may still be open relative to the plan generation that produced them, but the plan generation itself is no longer current.
 
-This deliberately avoids a mass dismissal rule for all non-closed tasks. Blanket closure would be easy to reason about, but it would lose useful partially planned work and make partially implemented milestones noisy. The first implementation should instruct architect/planner sessions to preserve applicable tasks and close only tasks that conflict with or are made irrelevant by the revised specs.
+Partially implemented milestones:
 
-A dedicated `superseded` task status remains a follow-up option, but it is out of scope for the first implementation.
+- Completed older-generation tasks remain evidence of work already delivered.
+- Non-closed older-generation tasks in the milestone no longer count as remaining integration scope.
+- The revised plan should define current-generation milestone scope with current-generation tasks.
+- If an existing milestone still represents the right integration boundary, the planner may add current-generation tasks to that milestone.
+- If the boundary changed materially, the planner should create a new milestone for the revised goal.
+
+Milestone completion/integration logic must be generation-aware. A milestone is ready for integration only when its current-generation task set is complete. Older-generation stale tasks should be reported, but they must not block current workflow progress and must not be counted as implemented work.
+
+This deliberately avoids a mass dismissal rule for all non-closed tasks. It keeps the audit trail honest, avoids a new task status, and avoids reason fields such as `closure_kind`, while still allowing code to present "really open" current work clearly.
 
 ## Documentation Updates
 
@@ -182,11 +203,16 @@ Update:
 Focused tests:
 
 - First `devlab plan` on initialized workspace records a spec baseline.
+- First `devlab plan` records or defaults to planning generation 1.
 - Subsequent `devlab plan` with unchanged specs remains a no-op.
 - Subsequent `devlab plan` with dirty staged spec changes stops and asks the operator to commit them.
 - Subsequent `devlab plan` with dirty unstaged spec changes stops and asks the operator to commit them.
 - Dirty non-spec changes still stop planning before agent sessions.
 - Committed spec changes after the baseline force architect/planner revision.
+- Successful spec reconciliation advances planning generation.
+- Old-generation active tasks are not selected for development or review.
+- Old-generation active tasks are reported as stale planning artifacts.
+- Milestone completion considers current-generation tasks, not stale older-generation active tasks.
 - `devlab run` with changed specs stops and instructs the user to run `devlab plan`.
 - `devlab plan --revise` refreshes the baseline even when no spec change is detected.
 - `devlab status` or `doctor` can report stale spec baseline without mutating state, if we expose this diagnostically.
