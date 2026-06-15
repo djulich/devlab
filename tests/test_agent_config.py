@@ -258,6 +258,60 @@ def test_config_path_loads_explicit_agents_toml(tmp_path: Path) -> None:
     assert not (tmp_path / ".devlab/config/agents.toml").exists()
 
 
+def test_role_provider_identity_command_preserves_role_placeholder(
+    tmp_path: Path,
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "pi"
+        model = "custom"
+
+        [providers.pi]
+        command = "pi"
+        args = [
+            "--role",
+            "{role_name}",
+            "--profile",
+            "developer",
+            "--model",
+            "{model}",
+            "--system-prompt",
+            "{system_prompt}",
+            "{session_prompt}",
+        ]
+        """,
+    )
+
+    config = load_agent_configuration(tmp_path)
+
+    assert config.resolved["developer"].command == (
+        "pi",
+        "--role",
+        "developer",
+        "--profile",
+        "developer",
+        "--model",
+        "custom",
+        "--system-prompt",
+        "{system_prompt}",
+        "{session_prompt}",
+    )
+    assert config.resolved["developer"].provider_identity_command == (
+        "pi",
+        "--role",
+        "{role_name}",
+        "--profile",
+        "developer",
+        "--model",
+        "custom",
+        "--system-prompt",
+        "{system_prompt}",
+        "{session_prompt}",
+    )
+
+
 def test_missing_explicit_config_path_raises_clear_error(tmp_path: Path) -> None:
     missing = tmp_path / ".local/live-eval/missing.toml"
 

@@ -305,14 +305,12 @@ def _role_provider_targets(configuration: AgentConfiguration) -> list[AgentSmoke
     for role_name in ROLE_NAMES:
         resolved = configuration.resolved[role_name]
         provider_instance = configuration.providers[configuration.role_providers[role_name]]
-        # The rendered command may include {role_name}; smoke tests use one
-        # representative invocation for otherwise identical provider settings.
         key = (
             resolved.provider,
             resolved.model,
             resolved.effort,
             resolved.uses_stdin,
-            _normalized_role_command(resolved),
+            resolved.provider_identity_command,
         )
         existing = groups.get(key)
         if existing is None:
@@ -368,12 +366,6 @@ def _config_with_min_timeout(
         return selected, fallback_provider
     provider = configuration.providers[configuration.role_providers[selected.role_name]]
     return selected, provider
-
-
-def _normalized_role_command(config: ResolvedAgentConfig) -> tuple[str, ...]:
-    return tuple(
-        "{role_name}" if part == config.role_name else part for part in config.command
-    )
 
 
 def _unique_check_name(provider_name: str, counts: dict[str, int]) -> str:

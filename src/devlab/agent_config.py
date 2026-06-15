@@ -25,6 +25,7 @@ class ResolvedAgentConfig:
     provider_version: str
     timeout_seconds: int | None
     command: tuple[str, ...]
+    provider_identity_command: tuple[str, ...]
     uses_stdin: bool
 
 
@@ -71,6 +72,7 @@ class _ResolvedProviderInvocation:
     provider: CliAgentProvider
     provider_version: str
     command: tuple[str, ...]
+    provider_identity_command: tuple[str, ...]
     uses_stdin: bool
 
 
@@ -167,6 +169,7 @@ def load_agent_configuration(
             provider_name=provider_name,
             provider_table=provider_table,
             template_values=template_values,
+            identity_template_values=template_values,
             timeout_seconds=timeout_seconds,
             discover_provider_version=discover_provider_versions,
         )
@@ -205,10 +208,12 @@ def load_agent_configuration(
             "model": _string(values.get("model", ""), f"roles.{role_name}.model"),
             "effort": _string(values.get("effort", ""), f"roles.{role_name}.effort"),
         }
+        identity_template_values = {**template_values, "role_name": "{role_name}"}
         invocation = _resolve_provider_invocation(
             provider_name=provider_name,
             provider_table=provider_table,
             template_values=template_values,
+            identity_template_values=identity_template_values,
             timeout_seconds=timeout_seconds,
             discover_provider_version=discover_provider_versions,
         )
@@ -222,6 +227,7 @@ def load_agent_configuration(
             provider_version=invocation.provider_version,
             timeout_seconds=timeout_seconds,
             command=invocation.command,
+            provider_identity_command=invocation.provider_identity_command,
             uses_stdin=invocation.uses_stdin,
         )
 
@@ -256,6 +262,7 @@ def _resolve_provider_invocation(
     provider_name: str,
     provider_table: dict[str, Any],
     template_values: Mapping[str, str],
+    identity_template_values: Mapping[str, str],
     timeout_seconds: int | None,
     discover_provider_version: bool,
 ) -> _ResolvedProviderInvocation:
@@ -283,6 +290,9 @@ def _resolve_provider_invocation(
         ),
         provider_version=provider_version,
         command=tuple(_render_command(command, args, template_values)),
+        provider_identity_command=tuple(
+            _render_command(command, args, identity_template_values)
+        ),
         uses_stdin=stdin_template is not None,
     )
 

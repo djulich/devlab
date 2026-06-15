@@ -500,6 +500,79 @@ def test_smoke_test_deduplicates_role_configs_that_only_differ_by_timeout(
     assert timeouts == [30]
 
 
+def test_smoke_test_deduplicates_role_name_placeholder_without_normalizing_literals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+        model = "model-a"
+        effort = "medium"
+
+        [roles.architect]
+        provider = "placeholder"
+
+        [roles.planner]
+        provider = "placeholder"
+
+        [roles.developer]
+        provider = "literal"
+
+        [roles.reviewer]
+        provider = "literal"
+
+        [roles.integrator]
+        provider = "literal"
+
+        [providers.placeholder]
+        command = "agent"
+        args = [
+            "--role",
+            "{role_name}",
+            "--system-prompt",
+            "{system_prompt}",
+            "{session_prompt}",
+        ]
+        version_command = ""
+
+        [providers.literal]
+        command = "agent"
+        args = [
+            "--profile",
+            "developer",
+            "--system-prompt",
+            "{system_prompt}",
+            "{session_prompt}",
+        ]
+        version_command = ""
+        """,
+    )
+
+    def fake_run(*_args: Any, **kwargs: Any) -> object:
+        kwargs["stdout"].write(SMOKE_MARKER)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+
+    result = run_agent_smoke_test(tmp_path)
+
+    assert result.passed
+    assert [check.check_name for check in result.check_results] == [
+        "placeholder",
+        "literal",
+    ]
+    assert [check.role_names for check in result.check_results] == [
+        ("architect", "planner"),
+        ("developer", "reviewer", "integrator"),
+    ]
+
+
 def test_smoke_report_includes_config_command_and_logs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
