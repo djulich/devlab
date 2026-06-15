@@ -89,6 +89,7 @@ def run_agent_smoke_test(
     model: str | None = None,
     effort: str | None = None,
     all_providers: bool = False,
+    use_provider_defaults: bool = False,
     on_progress: Callable[[AgentSmokeProgressEvent], None] | None = None,
 ) -> AgentSmokeResult:
     """Invoke configured agent providers with a tiny prompt to verify wiring."""
@@ -98,6 +99,10 @@ def run_agent_smoke_test(
         raise ValueError("all_providers cannot be combined with provider")
     if provider is not None and role_names is not None:
         raise ValueError("provider cannot be combined with role_names")
+    if use_provider_defaults and role_names is not None:
+        raise ValueError("use_provider_defaults cannot be combined with role_names")
+    if use_provider_defaults and provider is None and not all_providers:
+        raise ValueError("use_provider_defaults requires provider or all_providers")
     if role_names is not None:
         _validate_roles(role_names)
     effective_config_path = config_path or root / AGENTS_CONFIG
@@ -115,6 +120,7 @@ def run_agent_smoke_test(
         role_names=role_names,
         provider_name=provider,
         all_providers=all_providers,
+        use_provider_defaults=use_provider_defaults,
     )
     for target in targets:
         stdout_log = (
@@ -197,7 +203,7 @@ def format_agent_smoke_report(result: AgentSmokeResult) -> str:
                 f"Timeout: {_format_timeout(config.timeout_seconds)}",
                 f"Assigned roles: {_format_roles(check_result.role_names)}",
                 f"Stdin: {_format_bool(config.uses_stdin)}",
-                "Command: " + shlex.join(config.command),
+                "Command: " + shlex.join(agent_result.command),
                 f"Result: {'OK' if check_result.passed else 'FAILED'}",
             ]
         )
@@ -234,6 +240,7 @@ def _select_smoke_targets(
     role_names: tuple[str, ...] | None,
     provider_name: str | None,
     all_providers: bool,
+    use_provider_defaults: bool,
 ) -> tuple[list[AgentSmokeTarget], list[AgentSmokeSkippedProvider]]:
     role_targets = _role_provider_targets(configuration)
     if role_names is not None:
@@ -246,6 +253,23 @@ def _select_smoke_targets(
             ],
             [],
         )
+    if use_provider_defaults:
+        if provider_name is not None:
+            if provider_name not in configuration.provider_names:
+                raise ValueError(f"unknown provider: {provider_name}")
+            target = _provider_default_target(configuration, provider_name)
+            if target is None:
+                raise ValueError(_missing_provider_defaults_message(provider_name))
+            return [target], []
+        targets: list[AgentSmokeTarget] = []
+        skipped: list[AgentSmokeSkippedProvider] = []
+        for configured_provider in configuration.provider_names:
+            target = _provider_default_target(configuration, configured_provider)
+            if target is None:
+                skipped.append(_missing_provider_defaults(configured_provider))
+            else:
+                targets.append(target)
+        return targets, skipped
     if provider_name is not None:
         if provider_name not in configuration.provider_names:
             raise ValueError(f"unknown provider: {provider_name}")
@@ -255,7 +279,7 @@ def _select_smoke_targets(
         target = _provider_default_target(configuration, provider_name)
         if target is not None:
             return [target], []
-        return [], [_missing_provider_defaults(provider_name)]
+        raise ValueError(_missing_provider_defaults_message(provider_name))
     if not all_providers:
         return role_targets, []
 
@@ -321,8 +345,8 @@ def _provider_default_target(
     configuration: AgentConfiguration,
     provider_name: str,
 ) -> AgentSmokeTarget | None:
-    config = configuration.configured_provider_configs.get(provider_name)
-    provider = configuration.configured_providers.get(provider_name)
+    config = configuration.provider_configs_with_defaults.get(provider_name)
+    provider = configuration.providers_with_defaults.get(provider_name)
     if config is None or provider is None:
         return None
     return AgentSmokeTarget(check_name=provider_name, config=config, provider=provider)
@@ -363,8 +387,12 @@ def _unique_check_name(provider_name: str, counts: dict[str, int]) -> str:
 def _missing_provider_defaults(provider_name: str) -> AgentSmokeSkippedProvider:
     return AgentSmokeSkippedProvider(
         provider=provider_name,
-        reason=f"no assigned roles and no [providers.{provider_name}.defaults]",
+        reason=_missing_provider_defaults_message(provider_name),
     )
+
+
+def _missing_provider_defaults_message(provider_name: str) -> str:
+    return f"no assigned roles and no [providers.{provider_name}.defaults]"
 
 
 def _format_roles(role_names: tuple[str, ...]) -> str:

@@ -215,11 +215,11 @@ def test_provider_defaults_resolve_provider_without_role_policy(tmp_path: Path) 
 
     config = load_agent_configuration(tmp_path)
 
-    assert "codex" not in config.configured_provider_configs
-    assert config.configured_provider_configs["unused"].model == "unused-model"
-    assert config.configured_provider_configs["unused"].effort == "low"
-    assert config.configured_provider_configs["unused"].timeout_seconds == 90
-    assert config.configured_provider_configs["unused"].command == (
+    assert "codex" not in config.provider_configs_with_defaults
+    assert config.provider_configs_with_defaults["unused"].model == "unused-model"
+    assert config.provider_configs_with_defaults["unused"].effort == "low"
+    assert config.provider_configs_with_defaults["unused"].timeout_seconds == 90
+    assert config.provider_configs_with_defaults["unused"].command == (
         "unused-agent",
         "--model",
         "unused-model",

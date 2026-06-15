@@ -238,7 +238,8 @@ def main() -> None:
         default=None,
         help="Agent config TOML path. Defaults to .devlab/config/agents.toml under --root.",
     )
-    smoke_parser.add_argument(
+    smoke_selection = smoke_parser.add_mutually_exclusive_group()
+    smoke_selection.add_argument(
         "--role",
         action="append",
         default=None,
@@ -247,15 +248,23 @@ def main() -> None:
             "defaults to deduplicated workflow provider configurations."
         ),
     )
-    smoke_parser.add_argument(
+    smoke_selection.add_argument(
         "--all-providers",
         action="store_true",
         help="Test every configured provider entry, including providers not assigned to roles.",
     )
-    smoke_parser.add_argument(
+    smoke_selection.add_argument(
         "--provider",
         default=None,
         help="Configured provider name to smoke-test.",
+    )
+    smoke_parser.add_argument(
+        "--use-provider-defaults",
+        action="store_true",
+        help=(
+            "Use [providers.<name>.defaults] instead of role-derived policy. "
+            "Valid with --provider or --all-providers."
+        ),
     )
     smoke_parser.add_argument(
         "--model",
@@ -282,12 +291,19 @@ def main() -> None:
     args = parser.parse_args()
     root = args.root.resolve()
     if args.command == "agent-smoke-test":
-        if args.all_providers and args.role is not None:
-            parser.error("agent-smoke-test cannot combine --all-providers with --role")
-        if args.provider is not None and args.role is not None:
-            parser.error("agent-smoke-test cannot combine --provider with --role")
-        if args.all_providers and args.provider is not None:
-            parser.error("agent-smoke-test cannot combine --all-providers with --provider")
+        if args.use_provider_defaults and args.role is not None:
+            parser.error(
+                "agent-smoke-test cannot combine --use-provider-defaults with --role"
+            )
+        if (
+            args.use_provider_defaults
+            and args.provider is None
+            and not args.all_providers
+        ):
+            parser.error(
+                "agent-smoke-test --use-provider-defaults requires "
+                "--provider or --all-providers"
+            )
     if args.command == "init":
         result = init_workspace(
             root,
@@ -350,6 +366,7 @@ def main() -> None:
             model=args.model,
             effort=args.effort,
             all_providers=args.all_providers,
+            use_provider_defaults=args.use_provider_defaults,
             on_progress=_print_agent_smoke_progress,
         )
         print(format_agent_smoke_report(result))

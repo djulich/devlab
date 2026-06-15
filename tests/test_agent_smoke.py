@@ -188,6 +188,112 @@ def test_smoke_test_can_select_unassigned_provider_with_provider_defaults(
     assert SMOKE_MARKER in calls[0][4]
 
 
+def test_smoke_test_can_select_provider_defaults_for_assigned_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+        model = "role-model"
+        effort = "medium"
+
+        [providers.test]
+        command = "agent"
+        args = ["--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+
+        [providers.test.defaults]
+        model = "default-model"
+        effort = "low"
+        """,
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(*args: Any, **kwargs: Any) -> object:
+        calls.append(args[0])
+        kwargs["stdout"].write(SMOKE_MARKER)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+
+    role_result = run_agent_smoke_test(tmp_path, provider="test")
+    default_result = run_agent_smoke_test(
+        tmp_path,
+        provider="test",
+        use_provider_defaults=True,
+    )
+
+    assert role_result.passed
+    assert default_result.passed
+    assert role_result.check_results[0].role_names == (
+        "architect",
+        "planner",
+        "developer",
+        "reviewer",
+        "integrator",
+    )
+    assert default_result.check_results[0].role_names == ()
+    assert calls[0][:3] == ["agent", "--model", "role-model"]
+    assert calls[1][:3] == ["agent", "--model", "default-model"]
+
+
+def test_smoke_test_can_select_all_provider_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+        model = "role-model"
+        effort = "medium"
+
+        [providers.test]
+        command = "agent"
+        args = ["--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+
+        [providers.test.defaults]
+        model = "default-model"
+        effort = "low"
+
+        [providers.unused]
+        command = "unused-agent"
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+        """,
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(*args: Any, **kwargs: Any) -> object:
+        calls.append(args[0])
+        kwargs["stdout"].write(SMOKE_MARKER)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+
+    result = run_agent_smoke_test(
+        tmp_path,
+        all_providers=True,
+        use_provider_defaults=True,
+    )
+
+    assert result.passed
+    assert [check.check_name for check in result.check_results] == ["test"]
+    assert [skipped.provider for skipped in result.skipped_providers] == ["unused"]
+    assert calls[0][:3] == ["agent", "--model", "default-model"]
+
+
 def test_smoke_test_skips_unassigned_provider_without_provider_defaults(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -232,6 +338,35 @@ def test_smoke_test_skips_unassigned_provider_without_provider_defaults(
     assert "Result: SKIPPED" in output
     assert "no [providers.unused.defaults]" in output
     assert len(calls) == 1
+
+
+def test_smoke_test_rejects_explicit_unassigned_provider_without_provider_defaults(
+    tmp_path: Path,
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+        model = "model-a"
+
+        [providers.test]
+        command = "agent"
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+
+        [providers.unused]
+        command = "unused-agent"
+        args = ["--system-prompt", "{system_prompt}", "{session_prompt}"]
+        version_command = ""
+        """,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"no assigned roles and no \[providers.unused.defaults\]",
+    ):
+        run_agent_smoke_test(tmp_path, provider="unused")
 
 
 def test_smoke_test_supports_custom_config_without_changing_workspace(
@@ -379,7 +514,15 @@ def test_smoke_report_includes_config_command_and_logs(
 
         [providers.test]
         command = "agent"
-        args = ["--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
+        args = [
+            "--role",
+            "{role_name}",
+            "--model",
+            "{model}",
+            "--system-prompt",
+            "{system_prompt}",
+            "{session_prompt}",
+        ]
         version_command = ""
         """,
     )
@@ -407,7 +550,8 @@ def test_smoke_report_includes_config_command_and_logs(
     assert "Model: model-a" in output
     assert "Effort: medium" in output
     assert "Timeout: 30s" in output
-    assert "Command: agent --model model-a" in output
+    assert "Command: agent --role test --model model-a" in output
+    assert "Command: agent --role architect" not in output
     assert "Result: OK" in output
     assert ".stdout.log" in output
     assert ".stderr.log" in output

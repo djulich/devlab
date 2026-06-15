@@ -42,8 +42,8 @@ class ResolvedProviderConfig:
 @dataclasses.dataclass(frozen=True)
 class AgentConfiguration:
     providers: dict[str, AgentProvider]
-    configured_providers: dict[str, AgentProvider]
-    configured_provider_configs: dict[str, ResolvedProviderConfig]
+    providers_with_defaults: dict[str, AgentProvider]
+    provider_configs_with_defaults: dict[str, ResolvedProviderConfig]
     provider_names: tuple[str, ...]
     role_providers: dict[str, str]
     resolved: dict[str, ResolvedAgentConfig]
@@ -64,6 +64,14 @@ class AgentExecutableProblem:
             f"provider {self.provider!r} executable {self.executable!r} was not found on PATH "
             f"(used by roles: {roles})"
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class _ResolvedProviderInvocation:
+    provider: CliAgentProvider
+    provider_version: str
+    command: tuple[str, ...]
+    uses_stdin: bool
 
 
 def find_agent_executable_problems(
@@ -121,8 +129,8 @@ def load_agent_configuration(
     providers_config = _table(data.get("providers", {}), "providers")
 
     agent_providers: dict[str, AgentProvider] = {}
-    configured_agent_providers: dict[str, AgentProvider] = {}
-    configured_provider_configs: dict[str, ResolvedProviderConfig] = {}
+    providers_with_defaults: dict[str, AgentProvider] = {}
+    provider_configs_with_defaults: dict[str, ResolvedProviderConfig] = {}
     role_providers: dict[str, str] = {}
     resolved_configs: dict[str, ResolvedAgentConfig] = {}
     provider_names = tuple(providers_config)
@@ -134,51 +142,43 @@ def load_agent_configuration(
         provider_defaults = provider_table.get("defaults")
         if provider_defaults is None:
             continue
-        values = _table(provider_defaults, f"providers.{provider_name}.defaults")
+        values = dict(_table(provider_defaults, f"providers.{provider_name}.defaults"))
         if model is not None:
             values["model"] = model
         if effort is not None:
             values["effort"] = effort
         timeout_seconds = _optional_int(
-            values.get("timeout_seconds"), f"providers.{provider_name}.timeout_seconds"
+            values.get("timeout_seconds"),
+            f"providers.{provider_name}.defaults.timeout_seconds",
         )
         template_values = {
             "role_name": provider_name,
             "provider": provider_name,
-            "model": _string(values.get("model", ""), f"providers.{provider_name}.model"),
-            "effort": _string(values.get("effort", ""), f"providers.{provider_name}.effort"),
+            "model": _string(
+                values.get("model", ""),
+                f"providers.{provider_name}.defaults.model",
+            ),
+            "effort": _string(
+                values.get("effort", ""),
+                f"providers.{provider_name}.defaults.effort",
+            ),
         }
-        args = _string_list(
-            provider_table.get("args", []), f"providers.{provider_name}.args"
-        )
-        stdin_template = _optional_string(
-            provider_table.get("stdin_template"), f"providers.{provider_name}.stdin_template"
-        )
-        prompt_transport_problems = agent_prompt_transport_problems(
-            provider_name, provider_table, args, stdin_template
-        )
-        if prompt_transport_problems:
-            raise ValueError(prompt_transport_problems[0])
-        command = _string(provider_table.get("command"), f"providers.{provider_name}.command")
-        provider_version = (
-            _provider_version(provider_table, command, template_values)
-            if discover_provider_versions else ""
-        )
-        configured_agent_providers[provider_name] = CliAgentProvider.from_command(
-            command,
-            args=args,
-            stdin_template=stdin_template,
+        invocation = _resolve_provider_invocation(
+            provider_name=provider_name,
+            provider_table=provider_table,
             template_values=template_values,
             timeout_seconds=timeout_seconds,
+            discover_provider_version=discover_provider_versions,
         )
-        configured_provider_configs[provider_name] = ResolvedProviderConfig(
+        providers_with_defaults[provider_name] = invocation.provider
+        provider_configs_with_defaults[provider_name] = ResolvedProviderConfig(
             provider=provider_name,
             model=template_values["model"],
             effort=template_values["effort"],
-            provider_version=provider_version,
+            provider_version=invocation.provider_version,
             timeout_seconds=timeout_seconds,
-            command=tuple(_render_command(command, args, template_values)),
-            uses_stdin=stdin_template is not None,
+            command=invocation.command,
+            uses_stdin=invocation.uses_stdin,
         )
 
     for role_name in ROLE_NAMES:
@@ -205,46 +205,30 @@ def load_agent_configuration(
             "model": _string(values.get("model", ""), f"roles.{role_name}.model"),
             "effort": _string(values.get("effort", ""), f"roles.{role_name}.effort"),
         }
-        args = _string_list(
-            provider_table.get("args", []), f"providers.{provider_name}.args"
-        )
-        stdin_template = _optional_string(
-            provider_table.get("stdin_template"), f"providers.{provider_name}.stdin_template"
-        )
-        prompt_transport_problems = agent_prompt_transport_problems(
-            provider_name, provider_table, args, stdin_template
-        )
-        if prompt_transport_problems:
-            raise ValueError(prompt_transport_problems[0])
-        command = _string(provider_table.get("command"), f"providers.{provider_name}.command")
-        provider_version = (
-            _provider_version(provider_table, command, template_values)
-            if discover_provider_versions else ""
-        )
-        cli_provider = CliAgentProvider.from_command(
-            command,
-            args=args,
-            stdin_template=stdin_template,
+        invocation = _resolve_provider_invocation(
+            provider_name=provider_name,
+            provider_table=provider_table,
             template_values=template_values,
             timeout_seconds=timeout_seconds,
+            discover_provider_version=discover_provider_versions,
         )
-        agent_providers[provider_key] = cli_provider
+        agent_providers[provider_key] = invocation.provider
         role_providers[role_name] = provider_key
         resolved_configs[role_name] = ResolvedAgentConfig(
             role_name=role_name,
             provider=provider_name,
             model=template_values["model"],
             effort=template_values["effort"],
-            provider_version=provider_version,
+            provider_version=invocation.provider_version,
             timeout_seconds=timeout_seconds,
-            command=tuple(_render_command(command, args, template_values)),
-            uses_stdin=stdin_template is not None,
+            command=invocation.command,
+            uses_stdin=invocation.uses_stdin,
         )
 
     return AgentConfiguration(
         providers=agent_providers,
-        configured_providers=configured_agent_providers,
-        configured_provider_configs=configured_provider_configs,
+        providers_with_defaults=providers_with_defaults,
+        provider_configs_with_defaults=provider_configs_with_defaults,
         provider_names=provider_names,
         role_providers=role_providers,
         resolved=resolved_configs,
@@ -265,6 +249,42 @@ def format_resolved_agent_config(config: ResolvedAgentConfig) -> str:
         lines.append(f"timeout_seconds = {config.timeout_seconds}")
     lines.append("command = [" + ", ".join(_toml_string(part) for part in config.command) + "]")
     return "\n".join(lines) + "\n"
+
+
+def _resolve_provider_invocation(
+    *,
+    provider_name: str,
+    provider_table: dict[str, Any],
+    template_values: Mapping[str, str],
+    timeout_seconds: int | None,
+    discover_provider_version: bool,
+) -> _ResolvedProviderInvocation:
+    args = _string_list(provider_table.get("args", []), f"providers.{provider_name}.args")
+    stdin_template = _optional_string(
+        provider_table.get("stdin_template"), f"providers.{provider_name}.stdin_template"
+    )
+    prompt_transport_problems = agent_prompt_transport_problems(
+        provider_name, provider_table, args, stdin_template
+    )
+    if prompt_transport_problems:
+        raise ValueError(prompt_transport_problems[0])
+    command = _string(provider_table.get("command"), f"providers.{provider_name}.command")
+    provider_version = (
+        _provider_version(provider_table, command, template_values)
+        if discover_provider_version else ""
+    )
+    return _ResolvedProviderInvocation(
+        provider=CliAgentProvider.from_command(
+            command,
+            args=args,
+            stdin_template=stdin_template,
+            template_values=template_values,
+            timeout_seconds=timeout_seconds,
+        ),
+        provider_version=provider_version,
+        command=tuple(_render_command(command, args, template_values)),
+        uses_stdin=stdin_template is not None,
+    )
 
 
 def _load_config(root: Path, *, config_path: Path | None = None) -> dict[str, Any] | None:

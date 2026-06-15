@@ -361,6 +361,7 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
     assert kwargs["model"] == "gpt-5.5"
     assert kwargs["effort"] == "medium"
     assert kwargs["all_providers"] is False
+    assert kwargs["use_provider_defaults"] is False
 
 
 def test_cli_agent_smoke_test_exits_nonzero_on_failure(
@@ -401,3 +402,49 @@ def test_cli_agent_smoke_test_supports_all_providers(
 
     kwargs = cast("dict[str, object]", seen["kwargs"])
     assert kwargs["all_providers"] is True
+
+
+def test_cli_agent_smoke_test_supports_provider_defaults_modifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_smoke(*_args: object, **kwargs: object) -> object:
+        seen["kwargs"] = kwargs
+
+        class Result:
+            passed = True
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+
+    _run_cli(
+        monkeypatch,
+        "agent-smoke-test",
+        "--root",
+        str(tmp_path),
+        "--provider",
+        "codex",
+        "--use-provider-defaults",
+    )
+
+    kwargs = cast("dict[str, object]", seen["kwargs"])
+    assert kwargs["provider"] == "codex"
+    assert kwargs["use_provider_defaults"] is True
+
+
+def test_cli_agent_smoke_test_requires_selector_for_provider_defaults_modifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(
+            monkeypatch,
+            "agent-smoke-test",
+            "--root",
+            str(tmp_path),
+            "--use-provider-defaults",
+        )
+
+    assert exc.value.code == 2

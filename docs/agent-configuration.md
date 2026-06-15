@@ -89,7 +89,8 @@ options; they are not DevLab placeholder names.
 Provider-local defaults are optional. They are used when a provider is smoke-tested
 outside a role context, for example with `devlab agent-smoke-test --provider codex`
 when no role currently uses `codex`, or with `--all-providers` for unassigned
-providers.
+providers. Use `--use-provider-defaults` to test provider-local defaults even
+when the provider is assigned to roles.
 
 ```toml
 [providers.codex.defaults]
@@ -100,7 +101,9 @@ timeout_seconds = 1200
 
 If an unassigned provider has no `[providers.<name>.defaults]`, `--all-providers`
 reports it as skipped instead of inventing model or effort values from global
-role defaults that may belong to a different provider.
+role defaults that may belong to a different provider. Explicit provider checks
+fail when DevLab cannot derive an invocation policy from either role assignment
+or provider-local defaults.
 
 ## Provider Examples
 
@@ -198,13 +201,15 @@ Use `devlab status --verbose` to inspect the resolved provider, model, effort, t
 
 Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
 
-Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under `.devlab/logs/agents/`. Use `--provider <name>` to select one provider, or `--all-providers` to also test unassigned provider entries that have provider-local defaults.
+Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under `.devlab/logs/agents/`. Use `--provider <name>` to select one provider, or `--all-providers` to also test unassigned provider entries that have provider-local defaults. Add `--use-provider-defaults` with `--provider` or `--all-providers` to test `[providers.<name>.defaults]` directly instead of role-derived policy.
 
 ```bash
 devlab agent-smoke-test
 devlab agent-smoke-test --role developer
 devlab agent-smoke-test --provider codex
+devlab agent-smoke-test --provider codex --use-provider-defaults
 devlab agent-smoke-test --all-providers
+devlab agent-smoke-test --all-providers --use-provider-defaults
 devlab agent-smoke-test --config .local/live-eval/agents.toml
 ```
 
