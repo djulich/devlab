@@ -189,6 +189,46 @@ def test_stdin_provider_is_configured(tmp_path: Path) -> None:
     assert config.resolved["developer"].uses_stdin is True
 
 
+def test_provider_defaults_resolve_provider_without_role_policy(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "codex"
+        model = "role-model"
+        effort = "medium"
+
+        [providers.codex]
+        command = "codex"
+        args = ["--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
+
+        [providers.unused]
+        command = "unused-agent"
+        args = ["--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
+
+        [providers.unused.defaults]
+        model = "unused-model"
+        effort = "low"
+        timeout_seconds = 90
+        """,
+    )
+
+    config = load_agent_configuration(tmp_path)
+
+    assert "codex" not in config.configured_provider_configs
+    assert config.configured_provider_configs["unused"].model == "unused-model"
+    assert config.configured_provider_configs["unused"].effort == "low"
+    assert config.configured_provider_configs["unused"].timeout_seconds == 90
+    assert config.configured_provider_configs["unused"].command == (
+        "unused-agent",
+        "--model",
+        "unused-model",
+        "--system-prompt",
+        "{system_prompt}",
+        "{session_prompt}",
+    )
+
+
 def test_config_path_loads_explicit_agents_toml(tmp_path: Path) -> None:
     config_path = tmp_path / ".local/live-eval/agents.toml"
     config_path.parent.mkdir(parents=True)

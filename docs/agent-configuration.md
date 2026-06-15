@@ -49,7 +49,9 @@ effort = "high"
 
 ## Provider Definitions
 
-Provider sections describe how DevLab invokes a CLI agent.
+Provider sections describe how DevLab invokes a CLI agent. They own transport mechanics:
+the executable, arguments, stdin prompt transport, and version discovery. Invocation policy
+such as model, effort, and timeout normally comes from `[defaults]` and `[roles.<role>]`.
 
 ```toml
 [providers.pi]
@@ -69,7 +71,6 @@ Fields:
 - `args`: ordered command arguments. These may include provider options and prompt placeholders.
 - `stdin_template`: optional template used to send prompts through standard input. When set, DevLab treats stdin as the prompt transport; otherwise prompt placeholders should appear in `args`.
 - `version_command`: optional provider version command used when recording session metadata during `devlab run`. If omitted, DevLab tries `<provider-executable> --version`; set it to `""` to skip version discovery.
-- `timeout_seconds`: optional role/session command timeout.
 
 Supported placeholders:
 
@@ -84,6 +85,22 @@ Supported placeholders:
 conventions, role instructions, applicable domain overlays, and tooling policy.
 Provider flags such as Claude's `--system-prompt` are provider-specific transport
 options; they are not DevLab placeholder names.
+
+Provider-local defaults are optional. They are used when a provider is smoke-tested
+outside a role context, for example with `devlab agent-smoke-test --provider codex`
+when no role currently uses `codex`, or with `--all-providers` for unassigned
+providers.
+
+```toml
+[providers.codex.defaults]
+model = "gpt-5.5"
+effort = "medium"
+timeout_seconds = 1200
+```
+
+If an unassigned provider has no `[providers.<name>.defaults]`, `--all-providers`
+reports it as skipped instead of inventing model or effort values from global
+role defaults that may belong to a different provider.
 
 ## Provider Examples
 
@@ -147,12 +164,15 @@ effort = "high"
 
 ## Precedence
 
-Resolved agent settings should use this precedence:
+Resolved role settings use this precedence:
 
 1. CLI overrides for the current run.
 2. Role-specific values in `.devlab/config/agents.toml`.
 3. Defaults in `.devlab/config/agents.toml`.
 4. DevLab built-in fallback defaults.
+
+Provider-local defaults do not participate in normal role resolution. They only provide
+invocation policy for provider smoke tests that are not based on an assigned role.
 
 ## Prompt Context Thresholds
 
@@ -178,11 +198,12 @@ Use `devlab status --verbose` to inspect the resolved provider, model, effort, t
 
 Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
 
-Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under `.devlab/logs/agents/`. Use `--all-providers` to also test configured provider entries that are not assigned to any role.
+Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under `.devlab/logs/agents/`. Use `--provider <name>` to select one provider, or `--all-providers` to also test unassigned provider entries that have provider-local defaults.
 
 ```bash
 devlab agent-smoke-test
 devlab agent-smoke-test --role developer
+devlab agent-smoke-test --provider codex
 devlab agent-smoke-test --all-providers
 devlab agent-smoke-test --config .local/live-eval/agents.toml
 ```

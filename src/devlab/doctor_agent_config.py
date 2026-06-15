@@ -233,6 +233,22 @@ def _check_provider(
     display_path: str,
     problems: list[DoctorProblem],
 ) -> None:
+    provider_defaults = provider.get("defaults")
+    if provider_defaults is not None:
+        defaults_table = _require_table(
+            provider_defaults,
+            f"providers.{provider_name}.defaults",
+            display_path,
+            problems,
+        )
+        if defaults_table is not None:
+            _check_role_values(
+                defaults_table,
+                f"providers.{provider_name}.defaults",
+                display_path,
+                problems,
+            )
+
     command = provider.get("command")
     if not isinstance(command, str):
         problems.append(

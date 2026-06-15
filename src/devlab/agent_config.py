@@ -44,6 +44,7 @@ class AgentConfiguration:
     providers: dict[str, AgentProvider]
     configured_providers: dict[str, AgentProvider]
     configured_provider_configs: dict[str, ResolvedProviderConfig]
+    provider_names: tuple[str, ...]
     role_providers: dict[str, str]
     resolved: dict[str, ResolvedAgentConfig]
 
@@ -124,13 +125,16 @@ def load_agent_configuration(
     configured_provider_configs: dict[str, ResolvedProviderConfig] = {}
     role_providers: dict[str, str] = {}
     resolved_configs: dict[str, ResolvedAgentConfig] = {}
-    selected_provider_names = (provider,) if provider is not None else tuple(providers_config)
+    provider_names = tuple(providers_config)
 
-    for provider_name in selected_provider_names:
+    for provider_name in provider_names:
         provider_table = _table(
             providers_config.get(provider_name), f"providers.{provider_name}"
         )
-        values = dict(defaults)
+        provider_defaults = provider_table.get("defaults")
+        if provider_defaults is None:
+            continue
+        values = _table(provider_defaults, f"providers.{provider_name}.defaults")
         if model is not None:
             values["model"] = model
         if effort is not None:
@@ -241,6 +245,7 @@ def load_agent_configuration(
         providers=agent_providers,
         configured_providers=configured_agent_providers,
         configured_provider_configs=configured_provider_configs,
+        provider_names=provider_names,
         role_providers=role_providers,
         resolved=resolved_configs,
     )

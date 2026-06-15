@@ -255,7 +255,7 @@ def main() -> None:
     smoke_parser.add_argument(
         "--provider",
         default=None,
-        help="Override the configured provider for this smoke test.",
+        help="Configured provider name to smoke-test.",
     )
     smoke_parser.add_argument(
         "--model",
@@ -281,12 +281,13 @@ def main() -> None:
 
     args = parser.parse_args()
     root = args.root.resolve()
-    if (
-        args.command == "agent-smoke-test"
-        and args.all_providers
-        and args.role is not None
-    ):
-        parser.error("agent-smoke-test cannot combine --all-providers with --role")
+    if args.command == "agent-smoke-test":
+        if args.all_providers and args.role is not None:
+            parser.error("agent-smoke-test cannot combine --all-providers with --role")
+        if args.provider is not None and args.role is not None:
+            parser.error("agent-smoke-test cannot combine --provider with --role")
+        if args.all_providers and args.provider is not None:
+            parser.error("agent-smoke-test cannot combine --all-providers with --provider")
     if args.command == "init":
         result = init_workspace(
             root,

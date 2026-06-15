@@ -344,8 +344,6 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
         str(tmp_path),
         "--config",
         str(tmp_path / ".local/live-eval/agents.toml"),
-        "--role",
-        "developer",
         "--provider",
         "codex",
         "--model",
@@ -358,7 +356,7 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
     assert seen["args"] == (tmp_path.resolve(),)
     kwargs = cast("dict[str, object]", seen["kwargs"])
     assert kwargs["config_path"] == (tmp_path / ".local/live-eval/agents.toml").resolve()
-    assert kwargs["role_names"] == ("developer",)
+    assert kwargs["role_names"] is None
     assert kwargs["provider"] == "codex"
     assert kwargs["model"] == "gpt-5.5"
     assert kwargs["effort"] == "medium"
