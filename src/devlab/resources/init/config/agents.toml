@@ -97,9 +97,11 @@ args = [
 #     "--model", "{model}",
 #     "--thinking", "{effort}",
 #     "-p",
-#     "--system-prompt", "{system_prompt}",
-#     "{session_prompt}",
 # ]
+# stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+# [providers.pi.defaults]
+# model = "gpt-5.5"
+# effort = "medium"
 #
 # [providers.codex]
 # command = "codex"
@@ -111,3 +113,19 @@ args = [
 #     "exec", "-",
 # ]
 # stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
+# [providers.codex.defaults]
+# model = "gpt-5-codex"
+# effort = "medium"
+#
+# [providers.claude]
+# command = "claude"
+# args = [
+#     "--bare", "-p",
+#     "--model", "{model}",
+#     "--effort", "{effort}",
+#     "--append-system-prompt", "{system_prompt}",
+#     "{session_prompt}",
+#     ]
+# [providers.claude.defaults]
+# model = "sonnet"
+# effort = "medium"
