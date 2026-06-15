@@ -370,6 +370,58 @@ def test_non_stdin_provider_must_deliver_prompts(tmp_path: Path) -> None:
         load_agent_configuration(tmp_path)
 
 
+def test_provider_arg_placeholder_syntax_error_identifies_arg(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "agent"
+        args = [
+            "--effort",
+            "{effort]",
+            "--system-prompt",
+            "{system_prompt}",
+            "{session_prompt}",
+        ]
+        """,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"providers\.test\.args\[1\] has invalid placeholder syntax",
+    ):
+        load_agent_configuration(tmp_path)
+
+
+def test_provider_arg_unknown_placeholder_identifies_arg(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "agent"
+        args = [
+            "--model",
+            "{unknown}",
+            "--system-prompt",
+            "{system_prompt}",
+            "{session_prompt}",
+        ]
+        """,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"providers\.test\.args\[1\] references unknown placeholder \{unknown\}",
+    ):
+        load_agent_configuration(tmp_path)
+
+
 def test_records_provider_version_from_configured_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

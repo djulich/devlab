@@ -382,6 +382,21 @@ def test_cli_agent_smoke_test_exits_nonzero_on_failure(
     assert exc.value.code == 1
 
 
+def test_cli_agent_smoke_test_reports_configuration_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_smoke(*_args: object, **_kwargs: object) -> object:
+        raise ValueError("providers.test.args[1] has invalid placeholder syntax")
+
+    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "agent-smoke-test", "--root", str(tmp_path))
+
+    assert exc.value.code == 2
+    assert "providers.test.args[1] has invalid placeholder syntax" in capsys.readouterr().err
+
+
 def test_cli_agent_smoke_test_supports_all_providers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

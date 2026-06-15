@@ -358,17 +358,20 @@ def main() -> None:
         if problems:
             raise SystemExit(1)
     elif args.command == "agent-smoke-test":
-        result = run_agent_smoke_test(
-            root,
-            config_path=args.config.resolve() if args.config is not None else None,
-            role_names=tuple(args.role) if args.role is not None else None,
-            provider=args.provider,
-            model=args.model,
-            effort=args.effort,
-            all_providers=args.all_providers,
-            use_provider_defaults=args.use_provider_defaults,
-            on_progress=_print_agent_smoke_progress,
-        )
+        try:
+            result = run_agent_smoke_test(
+                root,
+                config_path=args.config.resolve() if args.config is not None else None,
+                role_names=tuple(args.role) if args.role is not None else None,
+                provider=args.provider,
+                model=args.model,
+                effort=args.effort,
+                all_providers=args.all_providers,
+                use_provider_defaults=args.use_provider_defaults,
+                on_progress=_print_agent_smoke_progress,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
         print(format_agent_smoke_report(result))
         if not result.passed:
             raise SystemExit(1)

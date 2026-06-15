@@ -289,9 +289,21 @@ def _resolve_provider_invocation(
             timeout_seconds=timeout_seconds,
         ),
         provider_version=provider_version,
-        command=tuple(_render_command(command, args, template_values)),
+        command=tuple(
+            _render_command(
+                command,
+                args,
+                template_values,
+                args_name=f"providers.{provider_name}.args",
+            )
+        ),
         provider_identity_command=tuple(
-            _render_command(command, args, identity_template_values)
+            _render_command(
+                command,
+                args,
+                identity_template_values,
+                args_name=f"providers.{provider_name}.args",
+            )
         ),
         uses_stdin=stdin_template is not None,
     )
@@ -325,13 +337,35 @@ def _fallback_config() -> dict[str, Any]:
     }
 
 
-def _render_command(command: str, args: list[str], values: Mapping[str, str]) -> list[str]:
+def _render_command(
+    command: str,
+    args: list[str],
+    values: Mapping[str, str],
+    *,
+    args_name: str = "providers.<provider>.args",
+) -> list[str]:
     render_values = {
         **values,
         "system_prompt": "{system_prompt}",
         "session_prompt": "{session_prompt}",
     }
-    return [*shlex.split(command), *(arg.format_map(render_values) for arg in args)]
+    return [
+        *shlex.split(command),
+        *(
+            _format_template(arg, f"{args_name}[{index}]", render_values)
+            for index, arg in enumerate(args)
+        ),
+    ]
+
+
+def _format_template(value: str, name: str, values: Mapping[str, str]) -> str:
+    try:
+        return value.format_map(values)
+    except KeyError as exc:
+        missing = str(exc.args[0])
+        raise ValueError(f"{name} references unknown placeholder {{{missing}}}") from exc
+    except ValueError as exc:
+        raise ValueError(f"{name} has invalid placeholder syntax: {exc}") from exc
 
 
 def agent_prompt_transport_problems(
@@ -393,7 +427,14 @@ def _provider_version(
             return ""
         version_command = [command_parts[0], "--version"]
     else:
-        version_command = [part.format_map(values) for part in shlex.split(configured)]
+        version_command = [
+            _format_template(
+                part,
+                f"providers.<provider>.version_command[{index}]",
+                values,
+            )
+            for index, part in enumerate(shlex.split(configured))
+        ]
     try:
         result = subprocess.run(
             version_command,
