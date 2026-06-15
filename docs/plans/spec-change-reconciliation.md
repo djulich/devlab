@@ -64,7 +64,7 @@ On later planning runs:
    - a current spec tree fingerprint that differs from `last_planned_tree`.
 3. Detect staged or unstaged changes under `.devlab/specs/system/` or `.devlab/specs/deployment/` and stop with a clear message asking the operator to commit spec changes before running `devlab plan`.
 4. If no committed spec changes exist and no `--revise` flag is passed, keep the current no-op behavior.
-5. If committed spec changes exist, force a planning revision path equivalent to `devlab plan --revise` with `next_generation = current_generation + 1`.
+5. If committed spec changes exist, infer reconciliation automatically and run architect/planner with `next_generation = current_generation + 1`; `--revise` is not required.
 6. During reconciliation, prior-generation active tasks and unfinished milestones remain in the repository unchanged but become stale/non-actionable once the new generation is committed.
 7. After successful architect/planner revision, update the spec baseline and advance `planning.generation` to `next_generation`.
 
@@ -92,6 +92,14 @@ This keeps `run` from silently turning into a planning command while preserving 
 `--revise` remains the explicit "review and possibly update existing plans" command. It should also refresh the spec baseline after a successful revision, even if the detected spec content did not change.
 
 `--revise` still runs both architect and planner. DevLab should not try to infer that the architect can be skipped for deployment-spec-only changes: the deployment spec may alter architecture, operability, boundaries, packaging, validation strategy, or profile needs. The bounded and reviewable rule is simple: any spec reconciliation re-runs architecture review of the design plan first, then planning.
+
+`--revise` does not by itself advance planning generation. Generation advancement is tied to reconciling committed spec changes against an existing baseline:
+
+- First `devlab plan --revise`: treat as initial planning, keep generation 1, and record the first spec baseline after success.
+- `devlab plan --revise` with committed spec changes: reconcile because the specs changed, advance exactly once from `N` to `N + 1`.
+- `devlab plan --revise` with no committed spec changes: run architect/planner against the current generation and refresh the baseline after success, but keep `planning.generation = N`.
+
+This keeps the invariant simple: planning generation changes only when the specification baseline changes.
 
 ## Git Detection Details
 
@@ -140,9 +148,9 @@ This keeps orchestration decisions explicit and gives CLI/status/doctor code a r
   - compute status,
   - reject changed specs with a `SessionError` whose message tells the user to run `devlab plan`.
 
-The actual role forcing can reuse existing `revise_plan` behavior by deriving an internal `reconcile_plan` flag and a `next_generation` value. Public API callers can still pass `revise_plan`; CLI `devlab plan` can rely on automatic detection.
+The actual role forcing can reuse existing planning-revision behavior by deriving an internal `reconcile_plan` flag and a `next_generation` value when committed specs changed. Public API callers can still pass `revise_plan`; CLI `devlab plan` should rely on automatic detection for normal reconciliation.
 
-After successful planning/revision, update `[planning].generation` and `[specs]` in workflow state through an explicit mutation helper and ensure the update is committed by automatic version control.
+After successful planning/revision, update `[specs]` in workflow state through an explicit mutation helper and ensure the update is committed by automatic version control. Update `[planning].generation` only for committed spec reconciliation, not for ordinary `--revise` runs without spec changes.
 
 The orchestrator owns generation advancement. Agents should not edit `planning.generation`. A conservative flow is:
 
@@ -214,8 +222,11 @@ Focused tests:
 - Subsequent `devlab plan` with dirty staged spec changes stops and asks the operator to commit them.
 - Subsequent `devlab plan` with dirty unstaged spec changes stops and asks the operator to commit them.
 - Dirty non-spec changes still stop planning before agent sessions.
-- Committed spec changes after the baseline force architect/planner revision.
+- Committed spec changes after the baseline automatically force architect/planner reconciliation without requiring `--revise`.
 - Successful spec reconciliation advances planning generation.
+- First `devlab plan --revise` does not advance beyond generation 1.
+- `devlab plan --revise` with committed spec changes advances exactly once.
+- `devlab plan --revise` without committed spec changes does not advance planning generation.
 - Old-generation active tasks are not selected for development or review.
 - Old-generation active tasks are reported as stale planning artifacts.
 - Old-generation unfinished milestones are not selected for integration.
