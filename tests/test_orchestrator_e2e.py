@@ -44,7 +44,6 @@ class HappyPathWorkflow:
                 "- T0001: Implement tiny CLI\n"
             )
             write_task(call.root, "T0001", "Implement tiny CLI", "M1")
-            _mark_planning_complete(call.root)
         elif call.role_name == "developer":
             assert "## Assigned Task" in call.session_prompt
             assert "T0001" in call.session_prompt
@@ -88,7 +87,6 @@ class CorrectiveWorkflow:
                     "- T0001: Implement tiny CLI\n"
                 )
                 write_task(call.root, "T0001", "Implement tiny CLI", "M1")
-                _mark_planning_complete(call.root)
             else:
                 assert "## Open Findings" in call.session_prompt
                 assert "F0001" in call.session_prompt
@@ -106,7 +104,6 @@ class CorrectiveWorkflow:
                     depends_on=["T0001"],
                     addresses_findings=["F0001"],
                 )
-                _mark_planning_complete(call.root)
         elif call.role_name == "developer":
             task = FileTaskTracker(call.root).select_next_development_task()
             assert task is not None
@@ -156,7 +153,6 @@ class ChangesRequestedWorkflow:
                 "- T0001: Implement tiny CLI\n"
             )
             write_task(call.root, "T0001", "Implement tiny CLI", "M1")
-            _mark_planning_complete(call.root)
         elif call.role_name == "developer":
             assert "T0001" in call.session_prompt
             complete_acceptance(call.root, "T0001")
@@ -179,12 +175,6 @@ class ChangesRequestedWorkflow:
                 open_issues="- CLI output is incomplete, needs full message.",
             )
         return handoff(call.role_name)
-
-
-def _mark_planning_complete(root: Path) -> None:
-    (root / ".devlab/workflow.toml").write_text(
-        "version = 1\n\n[planning]\ncomplete = true\n"
-    )
 
 
 def test_run_loop_completes_full_happy_path_workflow(tmp_path: Path) -> None:

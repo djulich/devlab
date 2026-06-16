@@ -246,6 +246,12 @@ class MockProvider:
             return handoff_factory(call)
         if self.handoff_text is not None:
             return self.handoff_text
+        planning_state = (
+            "## Planning State\n"
+            "planning_complete = false\n"
+            if call.role_name == "planner"
+            else ""
+        )
         return (
             f"# Handoff: {call.role_name}\n"
             "## Done\n"
@@ -258,6 +264,7 @@ class MockProvider:
             "- None\n"
             "## Next Session Hint\n"
             "Continue.\n"
+            f"{planning_state}"
         )
 
 

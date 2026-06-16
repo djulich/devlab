@@ -26,10 +26,11 @@ The flag is intentionally minimal. We do not add a `next_focus` field yet; the f
 
 - `devlab init` creates `.devlab/workflow.toml` with planning incomplete.
 - `WorkspaceSnapshot.assess_state()` routes to planner when all known work is closed but planning is incomplete.
-- Planner prompts include the current planning completion state and instructions for updating it.
-- Planner role instructions permit incremental milestone planning and require updating `.devlab/workflow.toml`.
+- Planner prompts include the current planning completion state and instructions for reporting the desired state in the planner handoff.
+- Planner role instructions permit incremental milestone planning and require `planning_complete = true|false` in the handoff's `## Planning State` section.
+- The orchestrator owns `.devlab/workflow.toml`, parses the planner handoff, and updates `planning.complete` programmatically.
 - `devlab doctor` validates workflow state when present in initialized workspaces.
-- The orchestrator rejects a follow-up planner session invoked on exhausted backlog if the planner neither creates new durable work nor sets `planning.complete = true`.
+- The orchestrator rejects a follow-up planner session invoked on exhausted backlog if the planner neither creates new durable work nor reports `planning_complete = true`.
 
 ## Future Extension
 

@@ -37,7 +37,7 @@ from devlab.version_control import (
 from devlab.version_control import (
     tag as create_git_tag,
 )
-from devlab.workflow_state import load_workflow_state
+from devlab.workflow_state import load_workflow_state, set_planning_complete
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -284,6 +284,20 @@ def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> 
         finding.resolve_if_complete()
 
 
+def _apply_planner_workflow_state(workspace: Workspace, handoff: Handoff) -> None:
+    if handoff.role_name != "planner":
+        return
+    planning_complete = handoff.planning_complete
+    if planning_complete is None:
+        raise HandoffError("planner handoff is missing planning completion state")
+    set_planning_complete(workspace.root, planning_complete)
+    workspace.did_mutate()
+    logger.info(
+        "Planning completion set to %s by planner handoff",
+        str(planning_complete).lower(),
+    )
+
+
 @dataclasses.dataclass(frozen=True)
 class ProcessResult:
     integrated_milestone: str | None = None
@@ -434,7 +448,7 @@ def _validate_exhausted_backlog_planner_progress(
     return (
         "planner was invoked because the backlog was exhausted while "
         ".devlab/workflow.toml has planning.complete = false, but it neither created "
-        "new durable work nor set planning.complete = true"
+        "new durable work nor reported planning_complete = true"
     )
 
 
@@ -800,6 +814,7 @@ def run_loop(
         try:
             handoff = parse_handoff(handoff_path, role_name)
             validate_handoff(handoff, workspace.snapshot)
+            _apply_planner_workflow_state(workspace, handoff)
             planner_noop_error = _validate_exhausted_backlog_planner_progress(
                 start_snapshot,
                 workspace.snapshot,

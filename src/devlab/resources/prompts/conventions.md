@@ -124,4 +124,6 @@ Use exactly `- None` for `## Open Issues` when there are no open issues. Do not 
 
 For planner handoffs, use `- FXXXX: TXXXX[, TXXXX]` in `## Addressed Findings` to assert the complete follow-up task set for each addressed finding. Use exactly `- None` only when no findings were addressed; do not mix `- None` with mappings or prose.
 
+Planner handoffs must append `## Planning State` with exactly `planning_complete = true` or `planning_complete = false`. Non-planner handoffs must omit it.
+
 In `## Commit Message`, write a concise one-line summary of what your session changed. Do not include the task ID or role prefix; the orchestrator adds that prefix when creating the commit.

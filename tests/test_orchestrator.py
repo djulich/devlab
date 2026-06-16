@@ -1267,6 +1267,7 @@ class TestRunLoop:
                 "## Addressed Findings\n"
                 f"- {finding.id}: T0002\n"
                 "## Next Session Hint\nImplement follow-up task.\n"
+                "## Planning State\nplanning_complete = false\n"
             ),
             on_invoke=on_invoke,
         )
@@ -1293,6 +1294,7 @@ class TestRunLoop:
                 "## Addressed Findings\n"
                 f"- {finding.id}\n"
                 "## Next Session Hint\nImplement follow-up task.\n"
+                "## Planning State\nplanning_complete = false\n"
             )
         )
 
@@ -1706,7 +1708,7 @@ class TestRunLoop:
 
         assert result.exit_code == 1
         assert result.errors[0].phase == "handoff_validation"
-        assert "neither created new durable work nor set planning.complete = true" in (
+        assert "neither created new durable work nor reported planning_complete = true" in (
             result.errors[0].message
         )
 
@@ -1718,12 +1720,17 @@ class TestRunLoop:
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Done", status="closed")
 
-        def complete_planning(call: AgentCall) -> None:
-            (call.root / ".devlab/workflow.toml").write_text(
-                "version = 1\n\n[planning]\ncomplete = true\n"
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: planner\n"
+                "## Done\n- Planning completed.\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- None\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nNone.\n"
+                "## Planning State\nplanning_complete = true\n"
             )
-
-        provider = MockProvider(on_invoke=complete_planning)
+        )
 
         result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import tomllib
 from pathlib import Path
 
 REQUIRED_HANDOFF_HEADINGS = (
@@ -11,7 +12,7 @@ REQUIRED_HANDOFF_HEADINGS = (
     "Addressed Findings",
     "Next Session Hint",
 )
-OPTIONAL_HANDOFF_HEADINGS = ("Commit Message",)
+OPTIONAL_HANDOFF_HEADINGS = ("Planning State", "Commit Message")
 
 _HEADING_RE = re.compile(r"^## (?P<heading>.+?)[ \t]*$", re.MULTILINE)
 _NONE_LINES = {"none", "- none"}
@@ -48,6 +49,13 @@ class Handoff:
     def commit_message(self) -> str:
         return first_commit_message_line(self.section("Commit Message"))
 
+    @property
+    def planning_complete(self) -> bool | None:
+        section = self.section("Planning State")
+        if not section:
+            return None
+        return parse_planning_state(section)
+
     def addressed_finding_tasks(self) -> dict[str, tuple[str, ...]]:
         return addressed_finding_tasks(self.addressed_findings)
 
@@ -63,7 +71,7 @@ def parse_handoff(path: Path, role_name: str) -> Handoff:
     text = path.read_text()
     if not text.strip():
         raise HandoffError("handoff file is empty")
-    return Handoff(path=path, role_name=role_name, sections=_parse_sections(text))
+    return Handoff(path=path, role_name=role_name, sections=_parse_sections(text, role_name))
 
 
 def validate_handoff_contract(path: Path, role_name: str) -> tuple[bool, str]:
@@ -85,6 +93,23 @@ def first_commit_message_line(section: str) -> str:
     return ""
 
 
+def parse_planning_state(section: str) -> bool:
+    try:
+        data = tomllib.loads(section)
+    except tomllib.TOMLDecodeError as exc:
+        raise HandoffError("handoff section ## Planning State must be TOML") from exc
+    if set(data) != {"planning_complete"}:
+        raise HandoffError(
+            "handoff section ## Planning State must contain only planning_complete"
+        )
+    planning_complete = data["planning_complete"]
+    if not isinstance(planning_complete, bool):
+        raise HandoffError(
+            "handoff section ## Planning State planning_complete must be a boolean"
+        )
+    return planning_complete
+
+
 def addressed_finding_tasks(section: str) -> dict[str, tuple[str, ...]]:
     lines = _meaningful_lines(section)
     if len(lines) == 1 and lines[0].lower() in _NONE_LINES:
@@ -100,7 +125,7 @@ def addressed_finding_tasks(section: str) -> dict[str, tuple[str, ...]]:
     return mappings
 
 
-def _parse_sections(text: str) -> dict[str, str]:
+def _parse_sections(text: str, role_name: str) -> dict[str, str]:
     matches = list(_HEADING_RE.finditer(text))
     if not matches:
         raise HandoffError("handoff is missing required heading(s): " + ", ".join(
@@ -142,7 +167,23 @@ def _parse_sections(text: str) -> dict[str, str]:
 
     _validate_none_section(sections["Open Issues"], "Open Issues")
     _validate_addressed_findings_section(sections["Addressed Findings"])
+    _validate_planning_state_section(sections, role_name)
     return sections
+
+
+def _validate_planning_state_section(sections: dict[str, str], role_name: str) -> None:
+    section = sections.get("Planning State", "")
+    if role_name == "planner":
+        if not section:
+            raise HandoffError(
+                "planner handoff is missing required heading: ## Planning State"
+            )
+        parse_planning_state(section)
+        return
+    if section:
+        raise HandoffError(
+            "handoff section ## Planning State is only allowed for planner handoffs"
+        )
 
 
 def _validate_none_section(section: str, heading: str) -> None:

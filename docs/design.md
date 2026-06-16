@@ -94,7 +94,7 @@ The repository is the system of record. Agents should not depend on conversation
 
 Important workflow state is stored in files, for example:
 
-- `.devlab/workflow.toml` — small workflow-control state, currently planning completeness.
+- `.devlab/workflow.toml` — small orchestrator-owned workflow-control state, currently planning completeness.
 - `.devlab/specs/` — target-workspace system and deployment specifications.
 - `.devlab/config/` — target-workspace tooling, agent, profile, and environment lifecycle configuration.
 - `.devlab/plans/` — design and project plans.
@@ -331,7 +331,9 @@ complete = false
 
 `planning.complete = false` means backlog exhaustion is not workflow completion. When all known tasks/milestones are closed and planning is still incomplete, the orchestrator routes back to the planner so the next milestone can be planned. `planning.complete = true` means the planner asserts all required in-scope specification work is represented by durable tasks/milestones or explicitly out of scope; once all known work is closed, the workflow may stop.
 
-This avoids treating prose such as "future milestone candidates" as hidden workflow state. The planner may plan only the next milestone, but a follow-up planner session invoked on an exhausted backlog must either create new durable work or set `planning.complete = true`.
+This avoids treating prose such as "future milestone candidates" as hidden workflow state. The planner may plan only the next milestone, but a follow-up planner session invoked on an exhausted backlog must either create new durable work or report `planning_complete = true` in its handoff.
+
+Agents do not edit `.devlab/workflow.toml` directly. The orchestrator supplies the current planning state in planner prompt context, parses the planner handoff's `## Planning State` section, and updates `.devlab/workflow.toml` programmatically.
 
 ## Agent providers
 

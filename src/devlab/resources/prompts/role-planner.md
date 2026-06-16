@@ -23,7 +23,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 - Open finding files
 - `.devlab/session-artifacts/planner/` (if previous session artifacts exist)
 - Recent planner handoffs in `.devlab/history/`
-- `.devlab/workflow.toml` planning completion state
+- `.devlab/workflow.toml` planning completion state supplied in prompt context
 
 ## Session Flow
 
@@ -37,10 +37,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 8. Assign each task at most one profile with task metadata `profile = "<profile-id>"`; omit `profile` only when the default profile is appropriate.
 9. Update `CONTEXT.md` when project-specific language is clarified while planning tasks or corrective work.
 10. Update the project plan with the milestone and its task references.
-11. Update `.devlab/workflow.toml`:
-    - keep `[planning].complete = false` when future planner sessions are still needed;
-    - set `[planning].complete = true` only when all required in-scope specification work is represented by durable tasks/milestones or explicitly out of scope.
-12. Write handoff to `.devlab/session-artifacts/planner/handoff.md`.
+11. Write handoff to `.devlab/session-artifacts/planner/handoff.md`, including `## Planning State` with `planning_complete = false` when future planner sessions are still needed or `planning_complete = true` when all required in-scope spec work is represented by durable tasks/milestones or explicitly out of scope.
 
 ## Milestone planning
 
@@ -78,7 +75,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 
 ## Project Plan Format
 
-The project plan is a milestone outline. It may list task IDs for traceability, but task status lives only in the task files. You may plan incrementally: create tasks for the next milestone now and leave `.devlab/workflow.toml` with `[planning].complete = false` for later milestone planning. Do not leave required future work only as prose if `.devlab/workflow.toml` has `[planning].complete = true`.
+The project plan is a milestone outline. It may list task IDs for traceability, but task status lives only in the task files. You may plan incrementally: create tasks for the next milestone now and report `planning_complete = false` in the handoff for later milestone planning. Do not leave required future work only as prose if you report `planning_complete = true`.
 
 ```
 ## M1: <milestone name>
