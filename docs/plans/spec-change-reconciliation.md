@@ -9,7 +9,7 @@ The desired mental model is sharper:
 - `devlab plan` reconciles operator-authored specifications with DevLab workflow state.
 - `devlab run` implements the already-reconciled workflow state.
 
-If `.devlab/specs/system/` or `.devlab/specs/deployment/` changes after planning, DevLab must not blindly keep executing stale tasks. The operator should run `devlab plan` again so architecture and planning sessions can preserve still-valid work, revise or supersede stale work, and add newly required work.
+If `.devlab/specs/system/` or `.devlab/specs/deployment/` changes after planning, DevLab must not blindly keep executing stale tasks. The operator should run `devlab plan` again so architecture and planning sessions can preserve completed work, carry still-valid unfinished work forward into the new planning generation, revise stale work, and add newly required work.
 
 ## Decision
 
@@ -25,20 +25,21 @@ complete = false
 generation = 1
 
 [specs]
-last_planned_tree = "<git tree/content fingerprint for .devlab/specs>"
+last_planned_tree = "<git tree/content fingerprint for .devlab/specs/system and .devlab/specs/deployment>"
 last_planned_spec_commit = "<latest commit touching .devlab/specs/system or .devlab/specs/deployment>"
 last_planned_at = "2026-06-15T12:34:56Z"
 ```
 
 Semantics:
 
+- `[specs]` is still required because it is the durable planning baseline. `planning.generation` says which workflow generation is actionable, but it does not identify which committed specification content that generation reconciled.
 - Missing `[specs]` means DevLab has never recorded a planning baseline for this target workspace. The next `devlab plan` is a first planning run.
-- `last_planned_tree` is the content baseline used for deterministic changed/not-changed checks.
-- `last_planned_spec_commit` supports the operator-facing explanation that specs changed through Git history since the last planning baseline.
+- `last_planned_tree` is the source of truth for deterministic changed/not-changed checks.
+- `last_planned_spec_commit` supports operator-facing explanations and diagnostics, but it is not the sole correctness check. A later commit that leaves the spec content identical to `last_planned_tree` does not need a new planning generation.
 - Dirty staged or unstaged spec paths are detected, but they block reconciliation until the operator commits them.
 - `planning.generation` is the current actionable plan generation.
 - Tasks may carry `planning_generation = N`. A task is actionable only when its generation matches `workflow.toml`'s current planning generation and its status is active.
-- Milestones may carry `planning_generation = N`. A milestone is actionable only when its generation matches the current planning generation, unless it is already completed historical work.
+- Milestones may carry `planning_generation = N`. A milestone participates in current orchestration only when its generation matches the current planning generation. Older integrated, architecture-reviewed, or complete milestones remain historical evidence of delivered work, not current workflow targets.
 - Missing task or milestone generation metadata should be treated as generation 1 for backward compatibility.
 - Reporting commands may read and report this state, but must not repair or update it.
 
@@ -59,12 +60,10 @@ On first planning run:
 On later planning runs:
 
 1. Check spec status before the generic clean-worktree requirement.
-2. Detect changed specs from either:
-   - committed changes touching `.devlab/specs/system/` or `.devlab/specs/deployment/` since `last_planned_spec_commit`, or
-   - a current spec tree fingerprint that differs from `last_planned_tree`.
+2. Detect changed specs by comparing the current committed spec content fingerprint with `last_planned_tree`. The latest spec commit can be reported to explain the Git history, but generation advancement is tied to a content-baseline difference.
 3. Detect staged or unstaged changes under `.devlab/specs/system/` or `.devlab/specs/deployment/` and stop with a clear message asking the operator to commit spec changes before running `devlab plan`.
-4. If no committed spec changes exist and no `--revise` flag is passed, keep the current no-op behavior.
-5. If committed spec changes exist, infer reconciliation automatically and run architect/planner with `next_generation = current_generation + 1`; `--revise` is not required.
+4. If no committed spec content changes exist and no `--revise` flag is passed, keep the current no-op behavior.
+5. If committed spec content changes exist, infer reconciliation automatically and run architect/planner with `next_generation = current_generation + 1`; `--revise` is not required.
 6. During reconciliation, prior-generation active tasks and unfinished milestones remain in the repository unchanged but become stale/non-actionable once the new generation is committed.
 7. After successful architect/planner revision, update the spec baseline and advance `planning.generation` to `next_generation`.
 
@@ -78,14 +77,14 @@ Dirty working tree handling stays strict:
 
 `devlab run` should be described and validated as implementation continuation, not reconciliation.
 
-Before selecting implementation roles, it should check whether specs differ from the recorded planning baseline. If they do, it should stop with a clear error:
+Before selecting any non-planning workflow role, it should check whether specs differ from the recorded planning baseline. If they do, it should stop with a clear error:
 
 ```text
 Specifications changed since the last devlab plan baseline.
-Run devlab plan to reconcile .devlab/specs with workflow state before running implementation.
+Run devlab plan to reconcile .devlab/specs with workflow state before continuing.
 ```
 
-This keeps `run` from silently turning into a planning command while preserving bounded role sessions and the user review point.
+This guard applies to developer, reviewer, integrator, and architecture-review continuation sessions. Only `devlab plan` may proceed from a changed-spec state, because it is the command that reconciles specs with workflow state. This keeps `run` from silently turning into a planning command while preserving bounded role sessions and the user review point.
 
 ### `devlab plan --revise`
 
@@ -93,13 +92,13 @@ This keeps `run` from silently turning into a planning command while preserving 
 
 `--revise` still runs both architect and planner. DevLab should not try to infer that the architect can be skipped for deployment-spec-only changes: the deployment spec may alter architecture, operability, boundaries, packaging, validation strategy, or profile needs. The bounded and reviewable rule is simple: any spec reconciliation re-runs architecture review of the design plan first, then planning.
 
-`--revise` does not by itself advance planning generation. Generation advancement is tied to reconciling committed spec changes against an existing baseline:
+`--revise` does not by itself advance planning generation. Generation advancement is tied to reconciling committed spec content changes against an existing baseline:
 
 - First `devlab plan --revise`: treat as initial planning, keep generation 1, and record the first spec baseline after success.
-- `devlab plan --revise` with committed spec changes: reconcile because the specs changed, advance exactly once from `N` to `N + 1`.
-- `devlab plan --revise` with no committed spec changes: run architect/planner against the current generation and refresh the baseline after success, but keep `planning.generation = N`.
+- `devlab plan --revise` with committed spec content changes: reconcile because the specs changed, advance exactly once from `N` to `N + 1`.
+- `devlab plan --revise` with no committed spec content changes: run architect/planner against the current generation and refresh the baseline after success, but keep `planning.generation = N`.
 
-This keeps the invariant simple: planning generation changes only when the specification baseline changes.
+This keeps the invariant simple: planning generation changes only when the committed specification content changes.
 
 ## Git Detection Details
 
@@ -115,7 +114,7 @@ Inputs:
 Checks:
 
 - `git status --porcelain -- .devlab/specs/system .devlab/specs/deployment` for staged/unstaged spec changes that should block reconciliation until committed.
-- `git log --format=%H -1 -- .devlab/specs/system .devlab/specs/deployment` for the latest committed spec change.
+- `git log --format=%H -1 -- .devlab/specs/system .devlab/specs/deployment` for the latest committed spec change, used for diagnostics and operator-facing messages.
 - A stable spec content fingerprint for the current spec tree.
 
 The fingerprint should represent committed spec content. Use Git primitives where practical, and do not parse spec Markdown outside the spec domain. Dirty or untracked spec files do not become part of the baseline until the operator commits them.
@@ -125,7 +124,7 @@ Result object:
 ```python
 SpecReconciliationStatus(
     baseline_exists: bool,
-    changed: bool,
+    changed: bool,  # current_tree != baseline_tree
     dirty_spec_paths: tuple[str, ...],
     latest_spec_commit: str,
     current_tree: str,
@@ -146,15 +145,15 @@ This keeps orchestration decisions explicit and gives CLI/status/doctor code a r
   - reject any dirty worktree before agent sessions, with a spec-specific message when dirty spec paths are present.
 - For `planning_only=False`:
   - compute status,
-  - reject changed specs with a `SessionError` whose message tells the user to run `devlab plan`.
+  - reject changed specs before role assessment or agent invocation with a `SessionError` whose message tells the user to run `devlab plan`.
 
-The actual role forcing can reuse existing planning-revision behavior by deriving an internal `reconcile_plan` flag and a `next_generation` value when committed specs changed. Public API callers can still pass `revise_plan`; CLI `devlab plan` should rely on automatic detection for normal reconciliation.
+The actual role forcing can reuse existing planning-revision behavior by deriving an internal `reconcile_plan` flag and a `next_generation` value when committed spec content changed. Public API callers can still pass `revise_plan`; CLI `devlab plan` should rely on automatic detection for normal reconciliation.
 
-After successful planning/revision, update `[specs]` in workflow state through an explicit mutation helper and ensure the update is committed by automatic version control. Update `[planning].generation` only for committed spec reconciliation, not for ordinary `--revise` runs without spec changes.
+After successful planning/revision, update `[specs]` in workflow state through an explicit mutation helper and ensure the update is committed by automatic version control. Update `[planning].generation` only for committed spec content reconciliation, not for ordinary `--revise` runs without spec changes.
 
 The orchestrator owns generation advancement. Agents should not edit `planning.generation`. A conservative flow is:
 
-1. Detect committed spec change.
+1. Detect committed spec content change.
 2. Compute `next_generation = current_generation + 1`.
 3. Pass `next_generation` and reconciliation context to architect/planner prompts.
 4. Validate that new tasks and milestones are assigned to `next_generation`.
@@ -222,17 +221,18 @@ Focused tests:
 - Subsequent `devlab plan` with dirty staged spec changes stops and asks the operator to commit them.
 - Subsequent `devlab plan` with dirty unstaged spec changes stops and asks the operator to commit them.
 - Dirty non-spec changes still stop planning before agent sessions.
-- Committed spec changes after the baseline automatically force architect/planner reconciliation without requiring `--revise`.
+- Committed spec content changes after the baseline automatically force architect/planner reconciliation without requiring `--revise`.
 - Successful spec reconciliation advances planning generation.
 - First `devlab plan --revise` does not advance beyond generation 1.
-- `devlab plan --revise` with committed spec changes advances exactly once.
-- `devlab plan --revise` without committed spec changes does not advance planning generation.
+- `devlab plan --revise` with committed spec content changes advances exactly once.
+- `devlab plan --revise` without committed spec content changes does not advance planning generation.
+- `devlab plan --revise` with a later spec commit whose content matches the stored baseline does not advance planning generation.
 - Old-generation active tasks are not selected for development or review.
 - Old-generation active tasks are reported as stale planning artifacts.
 - Old-generation unfinished milestones are not selected for integration.
 - Old-generation unfinished milestones are reported as stale planning artifacts.
 - Milestone completion considers current-generation milestones and tasks, not stale older-generation artifacts.
-- `devlab run` with changed specs stops and instructs the user to run `devlab plan`.
+- `devlab run` with changed specs stops before any non-planning role assessment or agent invocation and instructs the user to run `devlab plan`.
 - `devlab plan --revise` refreshes the baseline even when no spec change is detected.
 - `devlab status` or `doctor` can report stale spec baseline without mutating state, if we expose this diagnostically.
 
