@@ -13,7 +13,9 @@ If `.devlab/specs/system/` or `.devlab/specs/deployment/` changes after planning
 
 ## Decision
 
-Add durable spec baseline state to `.devlab/workflow.toml` and make `devlab plan` responsible for reconciling changes against that baseline.
+Add durable spec baseline state to `.devlab/workflow.toml` and make `devlab plan` responsible for reconciling changes against that baseline. This plan depends on moving `.devlab/workflow.toml` ownership to the orchestrator first: planner agents should report desired planning completion in their handoff, and the orchestrator should update `[planning].complete` programmatically.
+
+Prerequisite plan: [orchestrator-owned-workflow-state.md](orchestrator-owned-workflow-state.md).
 
 Proposed state:
 
@@ -32,6 +34,8 @@ last_planned_at = "2026-06-15T12:34:56Z"
 
 Semantics:
 
+- `.devlab/workflow.toml` is the semantically correct home for this state because it is durable workflow-control state.
+- The orchestrator should own all writes to `.devlab/workflow.toml`. Agents may read summarized workflow state and report requested state changes through structured handoff fields, but they should not edit this TOML file directly.
 - `[specs]` is still required because it is the durable planning baseline. `planning.generation` says which workflow generation is actionable, but it does not identify which committed specification content that generation reconciled.
 - Missing `[specs]` means DevLab has never recorded a planning baseline for this target workspace. The next `devlab plan` is a first planning run.
 - `last_planned_tree` is the source of truth for deterministic changed/not-changed checks.
@@ -149,7 +153,7 @@ This keeps orchestration decisions explicit and gives CLI/status/doctor code a r
 
 The actual role forcing can reuse existing planning-revision behavior by deriving an internal `reconcile_plan` flag and a `next_generation` value when committed spec content changed. Public API callers can still pass `revise_plan`; CLI `devlab plan` should rely on automatic detection for normal reconciliation.
 
-After successful planning/revision, update `[specs]` in workflow state through an explicit mutation helper and ensure the update is committed by automatic version control. Update `[planning].generation` only for committed spec content reconciliation, not for ordinary `--revise` runs without spec changes.
+After successful planning/revision, update `.devlab/workflow.toml` through an explicit mutation helper and ensure the update is committed by automatic version control. Update `[planning].generation` only for committed spec content reconciliation, not for ordinary `--revise` runs without spec changes.
 
 The orchestrator owns generation advancement. Agents should not edit `planning.generation`. A conservative flow is:
 
