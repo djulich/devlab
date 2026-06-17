@@ -112,19 +112,17 @@ Usefulness: high. This is a normal real-world workflow: requirements drift after
 
 Expected behavior:
 
-- Detect that source specs changed after the current design/project plan was produced.
+- Detect that the latest committed system/deployment spec revision changed after the current design/project plan was produced.
 - Route to an architecture/planning revision path instead of blindly continuing stale implementation tasks.
 - Preserve completed work where it still matches the revised specs.
-- Mark, revise, supersede, or close tasks that no longer apply.
+- Treat older-generation open tasks and unfinished milestones as stale historical planning artifacts rather than current workflow work.
 - Add new tasks for newly in-scope work.
 - Represent the revision decision durably in repository state, not conversational memory.
 
 Open design questions:
 
-- How should DevLab identify the spec version a design plan, project plan, task, milestone, or finding was based on: file hash, timestamp, explicit revision id, or embedded metadata?
-- Should spec changes always force architect review first, or can small deployment-spec-only changes route directly to planner?
-- How should superseded tasks be represented: a new task status, metadata field, archived task, or planner-authored closure rationale?
-- What CLI should users run: `devlab plan --revise`, automatic detection during `devlab run`, or a dedicated `devlab reconcile-specs` command?
+- Consider a future explicit bypass command such as `devlab plan --mark-specs-planned` for operator-confirmed format-only, typo-only, or otherwise plan-neutral spec commits. The command would require a clean worktree, refuse uncommitted spec changes, update `[specs].last_planned_spec_commit` to the current latest committed spec commit without running architect/planner, and clearly warn that it bypasses the reconciliation guardrail. Do not add this to the first implementation unless real usage shows false-positive reconciliation is painful.
+- Decide whether reconciliation should produce a separate durable summary artifact, or whether architect/planner handoffs plus edited plans/tasks are sufficient.
 
 ## 10. Add Durable Operator Clarifications
 
