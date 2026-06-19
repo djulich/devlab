@@ -225,9 +225,6 @@ def validate_handoff(
     if "unrecoverable" in handoff.open_issues.lower():
         raise HandoffError("handoff reports an unrecoverable issue")
     if handoff.role_name == "planner":
-        planned_task_error = _validate_planner_planned_tasks(snapshot, handoff)
-        if planned_task_error:
-            raise HandoffError(planned_task_error)
         planner_error = _validate_planner_addressed_findings(snapshot, handoff)
         if planner_error:
             raise HandoffError(planner_error)
@@ -276,36 +273,6 @@ def _validate_planner_addressed_findings(snapshot: WorkspaceSnapshot, handoff: H
     return ""
 
 
-def _validate_planner_planned_tasks(snapshot: WorkspaceSnapshot, handoff: Handoff) -> str:
-    task_by_id = {task.id: task for task in snapshot.list_tasks()}
-    planned_ids = set(handoff.planned_task_ids())
-    for task_id in planned_ids:
-        if task_id not in task_by_id:
-            return f"planner Planned Tasks references unknown task {task_id}"
-    changed_task_ids = _changed_task_ids(handoff.section("Changed Artifacts"))
-    missing = sorted(changed_task_ids - planned_ids)
-    if missing:
-        return (
-            "planner Changed Artifacts lists task file(s) not declared in "
-            "Planned Tasks: "
-            + ", ".join(missing)
-        )
-    return ""
-
-
-def _changed_task_ids(section: str) -> set[str]:
-    task_ids: set[str] = set()
-    for line in section.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("- .devlab/tasks/"):
-            continue
-        name = Path(stripped.removeprefix("- ").split()[0]).name
-        task_id = name.split("_", 1)[0].removesuffix(".md")
-        if task_id.startswith("T") and task_id[1:].isdigit():
-            task_ids.add(task_id)
-    return task_ids
-
-
 def _validate_reviewer_outcome(snapshot: WorkspaceSnapshot, handoff: Handoff) -> str:
     task = snapshot.select_next_review_task()
     if task is None:
@@ -325,6 +292,88 @@ def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> 
 class PlanningStateUpdate:
     generation: int | None = None
     last_planned_spec_commit: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class PlannerTaskSnapshot:
+    id: str
+    planning_generation: int
+    content: str
+
+
+@dataclasses.dataclass(frozen=True)
+class PlannerTaskDiff:
+    stamp_task_ids: tuple[str, ...]
+
+
+def _capture_planner_task_state(snapshot: WorkspaceSnapshot) -> dict[str, PlannerTaskSnapshot]:
+    contents = snapshot.task_file_contents()
+    return {
+        task.id: PlannerTaskSnapshot(
+            id=task.id,
+            planning_generation=task.planning_generation,
+            content=contents[task.id],
+        )
+        for task in snapshot.list_tasks()
+    }
+
+
+def _validate_planner_pre_session_task_state(
+    before: dict[str, PlannerTaskSnapshot],
+    *,
+    current_generation: int,
+    target_generation: int,
+) -> None:
+    if target_generation <= current_generation:
+        return
+    future_tasks = sorted(
+        task_id
+        for task_id, task in before.items()
+        if task.planning_generation >= target_generation
+    )
+    if future_tasks:
+        raise HandoffError(
+            "planner session cannot start with task(s) already assigned to "
+            f"target generation {target_generation}: "
+            + ", ".join(future_tasks)
+        )
+
+
+def _classify_planner_task_diff(
+    before: dict[str, PlannerTaskSnapshot],
+    snapshot: WorkspaceSnapshot,
+    *,
+    target_generation: int,
+) -> PlannerTaskDiff:
+    after_tasks = {task.id: task for task in snapshot.list_tasks()}
+    after_contents = snapshot.task_file_contents()
+    deleted = sorted(set(before) - set(after_tasks))
+    if deleted:
+        raise HandoffError(
+            "planner sessions must not delete task files: " + ", ".join(deleted)
+        )
+
+    stamp_ids: list[str] = []
+    for task_id, task in sorted(after_tasks.items()):
+        prior = before.get(task_id)
+        if prior is None:
+            stamp_ids.append(task_id)
+            continue
+        if after_contents[task_id] == prior.content:
+            continue
+        if prior.planning_generation < target_generation:
+            raise HandoffError(
+                f"planner modified older-generation task {task_id}; "
+                "create a new task for carried-forward work instead"
+            )
+        if prior.planning_generation == target_generation:
+            stamp_ids.append(task_id)
+            continue
+        raise HandoffError(
+            f"planner modified future-generation task {task_id} "
+            f"(generation {prior.planning_generation})"
+        )
+    return PlannerTaskDiff(stamp_task_ids=tuple(stamp_ids))
 
 
 def _apply_planner_workflow_state(
@@ -357,16 +406,21 @@ def _finalize_planner_generation(
     workspace: Workspace,
     handoff: Handoff,
     *,
+    before: dict[str, PlannerTaskSnapshot],
     target_generation: int,
 ) -> None:
     if handoff.role_name != "planner":
         return
-    task_ids = handoff.planned_task_ids()
-    workspace.tasks().set_planning_generation(task_ids, target_generation)
-    if task_ids:
+    diff = _classify_planner_task_diff(
+        before,
+        workspace.snapshot,
+        target_generation=target_generation,
+    )
+    workspace.tasks().set_planning_generation(diff.stamp_task_ids, target_generation)
+    if diff.stamp_task_ids:
         logger.info(
             "Stamped %s planner task(s) with planning generation %s",
-            len(task_ids),
+            len(diff.stamp_task_ids),
             target_generation,
         )
 
@@ -871,6 +925,37 @@ def run_loop(
                 workspace.milestones().get(milestone).mark_ready_for_integration()
 
         start_snapshot = workspace.snapshot
+        planner_generation_update = (
+            planning_update
+            if role_name == "planner"
+            and (
+                planning_only
+                or (spec_status is not None and not spec_status.baseline_exists)
+            )
+            else None
+        )
+        planner_target_generation = (
+            planner_generation_update.generation
+            if planner_generation_update and planner_generation_update.generation is not None
+            else start_snapshot.current_planning_generation()
+        )
+        planner_task_state: dict[str, PlannerTaskSnapshot] = {}
+        if role_name == "planner":
+            planner_task_state = _capture_planner_task_state(start_snapshot)
+            try:
+                _validate_planner_pre_session_task_state(
+                    planner_task_state,
+                    current_generation=start_snapshot.current_planning_generation(),
+                    target_generation=planner_target_generation,
+                )
+            except HandoffError as exc:
+                logger.error("%s. Stopping.", exc)
+                return RunResult(
+                    sessions_run,
+                    False,
+                    1,
+                    (SessionError("handoff_validation", str(exc), 1),),
+                )
         session_task = _task_for_role(start_snapshot, role_name)
         session_task_id = session_task.id if session_task is not None else None
         session_milestone_id = (
@@ -1001,19 +1086,10 @@ def run_loop(
         try:
             handoff = parse_handoff(handoff_path, role_name)
             validate_handoff(handoff, workspace.snapshot)
-            planner_generation_update = (
-                planning_update
-                if planning_only or (spec_status is not None and not spec_status.baseline_exists)
-                else None
-            )
-            planner_target_generation = (
-                planner_generation_update.generation
-                if planner_generation_update and planner_generation_update.generation is not None
-                else workspace.snapshot.current_planning_generation()
-            )
             _finalize_planner_generation(
                 workspace,
                 handoff,
+                before=planner_task_state,
                 target_generation=planner_target_generation,
             )
             _apply_planner_workflow_state(

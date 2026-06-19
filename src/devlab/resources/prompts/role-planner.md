@@ -37,7 +37,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 8. Assign each task at most one profile with task metadata `profile = "<profile-id>"`; omit `profile` only when the default profile is appropriate.
 9. Update `CONTEXT.md` when project-specific language is clarified while planning tasks or corrective work.
 10. Update the project plan with the milestone and its task references.
-11. Write handoff to `.devlab/session-artifacts/planner/handoff.md`, including `## Planned Tasks` with each task ID created or intentionally carried forward in this session, and `## Planning State` with `planning_complete = false` when future planner sessions are still needed or `planning_complete = true` when all required in-scope spec work is represented by durable tasks/milestones or explicitly out of scope.
+11. Write handoff to `.devlab/session-artifacts/planner/handoff.md`, including `## Planning State` with `planning_complete = false` when future planner sessions are still needed or `planning_complete = true` when all required in-scope spec work is represented by durable tasks/milestones or explicitly out of scope.
 
 ## Milestone planning
 
@@ -60,7 +60,8 @@ The planner breaks the design plan into milestones and actionable tasks.
 - If a task depends on another, add the dependency task IDs to the task metadata's `depends_on` array.
 - New tasks start with `status = "open"`.
 - New tasks use `domain = "general"` unless the task's primary acceptance criteria match a more specific available domain.
-- Do not set task `planning_generation`; DevLab stamps that workflow metadata from the planner handoff.
+- Do not set task `planning_generation`; DevLab stamps that workflow metadata from task files changed during the planner session.
+- Do not modify older-generation task files. If older work is still required, create a new task for the current plan.
 
 ## Profile and Environment Planning
 
@@ -91,4 +92,3 @@ The project plan is a milestone outline. It may list task IDs for traceability, 
 - Plan required test coverage as tasks.
 - When creating follow-up task(s) for findings, add `addresses_findings = ["FXXXX"]` to each task's front matter.
 - In the handoff `## Addressed Findings` section, use only `- FXXXX: TXXXX[, TXXXX]` entries to assert the complete follow-up task set for each planned finding, or `- None`.
-- In the handoff `## Planned Tasks` section, use only `- TXXXX` entries for tasks created or intentionally carried forward in this session, or `- None`.

@@ -247,8 +247,6 @@ class MockProvider:
         if self.handoff_text is not None:
             return self.handoff_text
         planning_state = (
-            "## Planned Tasks\n"
-            "- None\n"
             "## Planning State\n"
             "planning_complete = false\n"
             if call.role_name == "planner"

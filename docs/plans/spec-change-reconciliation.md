@@ -167,7 +167,7 @@ If reconciliation fails midway, durable workflow state remains on the previous g
 Planning revision prompts should distinguish ordinary explicit revision from spec reconciliation:
 
 - Architect: compare changed system/deployment specs against the existing design plan, completed work, integrated milestones, and architecture-review findings.
-- Planner: create tasks for all work still required by the revised plan and list task IDs created or intentionally carried forward in `## Planned Tasks`. DevLab stamps those tasks and synced milestones with the target generation. Previous-generation unfinished milestones and active tasks are stale planning artifacts; they should not be edited in place unless the planner intentionally carries their content forward into current-generation milestone/task structure.
+- Planner: create tasks for all work still required by the revised plan. DevLab stamps added task files and allowed current-generation task edits with the target generation. Previous-generation unfinished milestones and active tasks are stale planning artifacts; they should not be edited in place.
 
 Do not ask developer/reviewer/integrator roles to infer spec reconciliation policy. They should consume reconciled workflow state or report contradictions through existing blockers/findings.
 
@@ -185,8 +185,8 @@ Core rules:
 - A milestone is actionable only when `milestone.planning_generation == workflow.planning.generation`.
 - Older-generation milestones that were not fully integrated and architecture-reviewed are stale planning artifacts, not current integration targets.
 - Integrated or architecture-reviewed older-generation milestones remain historical delivered work.
-- The planner creates tasks for all work still required by the revised design/project plan and lists the task IDs in `## Planned Tasks`; DevLab stamps those tasks and synced milestones with the target generation.
-- If content from an old task or milestone still applies, the planner should create or explicitly list structure that carries that work forward instead of mutating old-generation artifacts in place without declaring it.
+- The planner creates tasks for all work still required by the revised design/project plan; DevLab stamps added task files and allowed current-generation task edits with the target generation.
+- If content from an old task or milestone still applies, the planner should create new structure that carries that work forward instead of mutating old-generation artifacts in place.
 
 This reflects the truth of the workflow: old tasks and milestones may still be open relative to the plan generation that produced them, but that plan generation itself is no longer current.
 

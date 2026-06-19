@@ -11,7 +11,6 @@ def handoff(
     changed: str = "- None",
     open_issues: str = "- None",
     addressed: str = "- None",
-    planned_tasks: str = "- None",
     planning_complete: bool | None = None,
 ) -> str:
     if role_name == "planner" and planning_complete is None:
@@ -19,12 +18,7 @@ def handoff(
     planning_state = ""
     if planning_complete is not None:
         value = "true" if planning_complete else "false"
-        planning_state = (
-            "## Planned Tasks\n"
-            f"{planned_tasks}\n"
-            "## Planning State\n"
-            f"planning_complete = {value}\n"
-        )
+        planning_state = "## Planning State\n" f"planning_complete = {value}\n"
     return (
         f"# Handoff: {role_name}\n"
         "## Done\n"

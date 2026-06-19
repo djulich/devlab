@@ -333,7 +333,7 @@ complete = false
 
 This avoids treating prose such as "future milestone candidates" as hidden workflow state. The planner may plan only the next milestone, but a follow-up planner session invoked on an exhausted backlog must either create new durable work or report `planning_complete = true` in its handoff.
 
-Agents do not edit `.devlab/workflow.toml` directly. The orchestrator supplies the current planning state in planner prompt context, parses the planner handoff's `## Planning State` section, and updates `.devlab/workflow.toml` programmatically. Planner handoffs also list task IDs in `## Planned Tasks`; DevLab stamps those task files with the target `planning_generation` as workflow metadata after a valid planner session.
+Agents do not edit `.devlab/workflow.toml` directly. The orchestrator supplies the current planning state in planner prompt context, parses the planner handoff's `## Planning State` section, and updates `.devlab/workflow.toml` programmatically. After a valid planner session, DevLab compares pre-session and post-session task files and stamps added or current-generation modified tasks with the target `planning_generation` as workflow metadata. Planner sessions must not modify older-generation task files.
 
 ## Agent providers
 

@@ -117,9 +117,6 @@ Required `##` sections must appear exactly in this order. Do not insert extra `#
     - <finding ID>: <task ID>[, <task ID>]
     ## Next Session Hint
     <what the next session for this role should prioritize>
-    ## Planned Tasks
-    - <task ID>
-    (planner handoffs only; use `- None` if no task was created or intentionally carried forward)
     ## Commit Message
     <one-line description of what changed>
 

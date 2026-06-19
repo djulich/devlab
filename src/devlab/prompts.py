@@ -86,9 +86,8 @@ def _planning_revision_section(
     reconciliation_text = (
         "\n\nThis is spec reconciliation. Previous-generation active tasks and "
         "unfinished milestones are historical planning artifacts. Carry still-required "
-        "work forward by creating or updating planning structure and listing those "
-        "task IDs in the planner handoff `## Planned Tasks` section; "
-        "do not close, delete, or mass-restatus stale artifacts."
+        "work forward by creating new planning structure; do not modify, close, "
+        "delete, or mass-restatus stale artifacts."
         if spec_reconciliation
         else ""
     )

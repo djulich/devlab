@@ -335,6 +335,9 @@ class WorkspaceSnapshot:
             self._tasks = self._task_tracker.list_tasks()
         return list(self._tasks)
 
+    def task_file_contents(self) -> dict[str, str]:
+        return {task.id: read_file(task.path) for task in self.list_tasks()}
+
     def list_findings(self) -> list[Finding]:
         if self._findings is None:
             self._findings = self._finding_tracker.list_findings()
