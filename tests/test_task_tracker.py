@@ -423,6 +423,14 @@ class TestFileTaskTrackerStatusTransitions:
 
         assert "planning_generation = 3" in path.read_text()
 
+    def test_set_planning_generation_writes_task_metadata(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        path = _write_task(tmp_path, "T0001", "First")
+
+        FileTaskTracker(tmp_path).set_planning_generation("T0001", 4)
+
+        assert "planning_generation = 4" in path.read_text()
+
     def test_mark_changes_requested_writes_status_to_task_file(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
         path = _write_task(tmp_path, "T0001", "First", status="in_review")

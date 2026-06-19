@@ -85,7 +85,10 @@ class FileMilestoneTracker:
             if task.milestone is None:
                 continue
             task_ids_by_milestone.setdefault(task.milestone, []).append(task.id)
-            generation_by_milestone.setdefault(task.milestone, task.planning_generation)
+            generation_by_milestone[task.milestone] = max(
+                generation_by_milestone.get(task.milestone, 0),
+                task.planning_generation,
+            )
 
         milestones: list[Milestone] = []
         for milestone_id in sorted(task_ids_by_milestone, key=_natural_sort_key):
@@ -98,9 +101,14 @@ class FileMilestoneTracker:
                         key=_natural_sort_key,
                     )
                 )
-                if merged_task_ids != milestone.task_ids:
+                target_generation = generation_by_milestone[milestone_id]
+                if (
+                    merged_task_ids != milestone.task_ids
+                    or target_generation != milestone.planning_generation
+                ):
                     metadata = dict(milestone.metadata)
                     metadata["task_ids"] = list(merged_task_ids)
+                    metadata["planning_generation"] = target_generation
                     if milestone.integrated:
                         metadata["status"] = MilestoneStatus.ACTIVE.value
                         metadata["integrated"] = False

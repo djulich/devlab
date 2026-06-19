@@ -165,6 +165,12 @@ class WorkspaceTasks:
     def from_path(self, path: Path) -> WorkspaceTask:
         return self.get(path.stem.split("_")[0])
 
+    def set_planning_generation(self, task_ids: tuple[str, ...], generation: int) -> None:
+        for task_id in task_ids:
+            self.workspace._task_tracker().set_planning_generation(task_id, generation)
+        if task_ids:
+            self.workspace.did_mutate()
+
 
 @dataclasses.dataclass(frozen=True)
 class WorkspaceFindings:

@@ -107,12 +107,55 @@ def test_parse_planner_handoff_reads_planning_state(tmp_path: Path) -> None:
     path = _write_handoff(
         tmp_path,
         role_name="planner",
-        extra_after="## Planning State\nplanning_complete = true\n",
+        extra_after=(
+            "## Planned Tasks\n- T0001\n"
+            "## Planning State\nplanning_complete = true\n"
+        ),
     )
 
     handoff = parse_handoff(path, "planner")
 
     assert handoff.planning_complete is True
+    assert handoff.planned_task_ids() == ("T0001",)
+
+
+def test_parse_planner_handoff_requires_planned_tasks(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        role_name="planner",
+        extra_after="## Planning State\nplanning_complete = true\n",
+    )
+
+    with pytest.raises(HandoffError, match="missing required heading: ## Planned Tasks"):
+        parse_handoff(path, "planner")
+
+
+def test_parse_planner_handoff_rejects_malformed_planned_tasks(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        role_name="planner",
+        extra_after=(
+            "## Planned Tasks\n- T0001: Build feature\n"
+            "## Planning State\nplanning_complete = true\n"
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="Planned Tasks entries must use"):
+        parse_handoff(path, "planner")
+
+
+def test_parse_planner_handoff_rejects_duplicate_planned_tasks(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        role_name="planner",
+        extra_after=(
+            "## Planned Tasks\n- T0001\n- T0001\n"
+            "## Planning State\nplanning_complete = true\n"
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="duplicate task T0001"):
+        parse_handoff(path, "planner")
 
 
 def test_parse_planner_handoff_rejects_malformed_planning_state(tmp_path: Path) -> None:
@@ -166,6 +209,16 @@ def test_parse_non_planner_handoff_rejects_planning_state(tmp_path: Path) -> Non
         parse_handoff(path, "developer")
 
 
+def test_parse_non_planner_handoff_rejects_planned_tasks(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after="## Planned Tasks\n- T0001\n",
+    )
+
+    with pytest.raises(HandoffError, match="only allowed for planner"):
+        parse_handoff(path, "developer")
+
+
 def test_parse_handoff_allows_missing_commit_message(tmp_path: Path) -> None:
     path = _write_handoff(tmp_path)
 
@@ -202,7 +255,10 @@ def test_parse_handoff_rejects_malformed_addressed_findings(tmp_path: Path) -> N
         tmp_path,
         role_name="planner",
         addressed="- F0001 T0002",
-        extra_after="## Planning State\nplanning_complete = false\n",
+        extra_after=(
+            "## Planned Tasks\n- T0002\n"
+            "## Planning State\nplanning_complete = false\n"
+        ),
     )
 
     with pytest.raises(HandoffError, match="Addressed Findings entries must use"):
@@ -214,7 +270,10 @@ def test_parse_handoff_parses_addressed_finding_mappings(tmp_path: Path) -> None
         tmp_path,
         role_name="planner",
         addressed="- F0001: T0002, T0003",
-        extra_after="## Planning State\nplanning_complete = false\n",
+        extra_after=(
+            "## Planned Tasks\n- T0002\n- T0003\n"
+            "## Planning State\nplanning_complete = false\n"
+        ),
     )
 
     handoff = parse_handoff(path, "planner")
@@ -227,7 +286,10 @@ def test_parse_handoff_rejects_duplicate_addressed_finding(tmp_path: Path) -> No
         tmp_path,
         role_name="planner",
         addressed="- F0001: T0002\n- F0001: T0003",
-        extra_after="## Planning State\nplanning_complete = false\n",
+        extra_after=(
+            "## Planned Tasks\n- T0002\n- T0003\n"
+            "## Planning State\nplanning_complete = false\n"
+        ),
     )
 
     with pytest.raises(HandoffError, match="lists F0001 more than once"):
@@ -239,7 +301,10 @@ def test_parse_handoff_rejects_duplicate_addressing_task(tmp_path: Path) -> None
         tmp_path,
         role_name="planner",
         addressed="- F0001: T0002, T0002",
-        extra_after="## Planning State\nplanning_complete = false\n",
+        extra_after=(
+            "## Planned Tasks\n- T0002\n"
+            "## Planning State\nplanning_complete = false\n"
+        ),
     )
 
     with pytest.raises(HandoffError, match="lists duplicate task"):
@@ -253,7 +318,10 @@ def test_parse_handoff_rejects_mixed_none_and_addressed_findings(
         tmp_path,
         role_name="planner",
         addressed="- None\n- F0001: T0002",
-        extra_after="## Planning State\nplanning_complete = false\n",
+        extra_after=(
+            "## Planned Tasks\n- None\n"
+            "## Planning State\nplanning_complete = false\n"
+        ),
     )
 
     with pytest.raises(HandoffError, match="cannot mix"):

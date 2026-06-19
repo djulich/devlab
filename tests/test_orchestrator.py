@@ -1432,6 +1432,7 @@ class TestRunLoop:
                 "## Addressed Findings\n"
                 f"- {finding.id}: T0002\n"
                 "## Next Session Hint\nImplement follow-up task.\n"
+                "## Planned Tasks\n- T0002\n"
                 "## Planning State\nplanning_complete = false\n"
             ),
             on_invoke=on_invoke,
@@ -1440,6 +1441,70 @@ class TestRunLoop:
         run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.PLANNED
+
+    def test_planner_declared_task_is_stamped_with_current_generation(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = false\ngeneration = 2\n"
+        )
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+
+        def on_invoke(call: AgentCall) -> None:
+            _write_task(call.root, "T0002", "Current work", milestone="M1")
+
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: planner\n"
+                "## Done\n- Created task.\n"
+                "## Changed Artifacts\n- .devlab/tasks/T0002_current-work.md (created)\n"
+                "## Open Issues\n- None\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nImplement current work.\n"
+                "## Planned Tasks\n- T0002\n"
+                "## Planning State\nplanning_complete = false\n"
+            ),
+            on_invoke=on_invoke,
+        )
+
+        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+
+        assert result.exit_code == 0
+        task_text = (tmp_path / TASKS_DIR / "T0002_current-work.md").read_text()
+        assert "planning_generation = 2" in task_text
+
+    def test_planner_changed_task_must_be_declared_for_generation_stamping(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = false\ngeneration = 2\n"
+        )
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+
+        def on_invoke(call: AgentCall) -> None:
+            _write_task(call.root, "T0002", "Current work", milestone="M1")
+
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: planner\n"
+                "## Done\n- Created task.\n"
+                "## Changed Artifacts\n- .devlab/tasks/T0002_current-work.md (created)\n"
+                "## Open Issues\n- None\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nFix handoff.\n"
+                "## Planned Tasks\n- None\n"
+                "## Planning State\nplanning_complete = false\n"
+            ),
+            on_invoke=on_invoke,
+        )
+
+        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+
+        assert result.completed is False
+        assert result.errors[0].phase == "handoff_validation"
+        assert "not declared in Planned Tasks: T0002" in result.errors[0].message
 
     def test_planner_addressed_findings_requires_task_mapping(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -1459,6 +1524,7 @@ class TestRunLoop:
                 "## Addressed Findings\n"
                 f"- {finding.id}\n"
                 "## Next Session Hint\nImplement follow-up task.\n"
+                "## Planned Tasks\n- None\n"
                 "## Planning State\nplanning_complete = false\n"
             )
         )
@@ -1906,6 +1972,7 @@ class TestRunLoop:
                 "## Open Issues\n- None\n"
                 "## Addressed Findings\n- None\n"
                 "## Next Session Hint\nNone.\n"
+                "## Planned Tasks\n- None\n"
                 "## Planning State\nplanning_complete = true\n"
             )
         )

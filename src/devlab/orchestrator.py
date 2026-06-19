@@ -225,6 +225,9 @@ def validate_handoff(
     if "unrecoverable" in handoff.open_issues.lower():
         raise HandoffError("handoff reports an unrecoverable issue")
     if handoff.role_name == "planner":
+        planned_task_error = _validate_planner_planned_tasks(snapshot, handoff)
+        if planned_task_error:
+            raise HandoffError(planned_task_error)
         planner_error = _validate_planner_addressed_findings(snapshot, handoff)
         if planner_error:
             raise HandoffError(planner_error)
@@ -273,6 +276,36 @@ def _validate_planner_addressed_findings(snapshot: WorkspaceSnapshot, handoff: H
     return ""
 
 
+def _validate_planner_planned_tasks(snapshot: WorkspaceSnapshot, handoff: Handoff) -> str:
+    task_by_id = {task.id: task for task in snapshot.list_tasks()}
+    planned_ids = set(handoff.planned_task_ids())
+    for task_id in planned_ids:
+        if task_id not in task_by_id:
+            return f"planner Planned Tasks references unknown task {task_id}"
+    changed_task_ids = _changed_task_ids(handoff.section("Changed Artifacts"))
+    missing = sorted(changed_task_ids - planned_ids)
+    if missing:
+        return (
+            "planner Changed Artifacts lists task file(s) not declared in "
+            "Planned Tasks: "
+            + ", ".join(missing)
+        )
+    return ""
+
+
+def _changed_task_ids(section: str) -> set[str]:
+    task_ids: set[str] = set()
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- .devlab/tasks/"):
+            continue
+        name = Path(stripped.removeprefix("- ").split()[0]).name
+        task_id = name.split("_", 1)[0].removesuffix(".md")
+        if task_id.startswith("T") and task_id[1:].isdigit():
+            task_ids.add(task_id)
+    return task_ids
+
+
 def _validate_reviewer_outcome(snapshot: WorkspaceSnapshot, handoff: Handoff) -> str:
     task = snapshot.select_next_review_task()
     if task is None:
@@ -318,6 +351,24 @@ def _apply_planner_workflow_state(
         "Planning completion set to %s by planner handoff",
         str(planning_complete).lower(),
     )
+
+
+def _finalize_planner_generation(
+    workspace: Workspace,
+    handoff: Handoff,
+    *,
+    target_generation: int,
+) -> None:
+    if handoff.role_name != "planner":
+        return
+    task_ids = handoff.planned_task_ids()
+    workspace.tasks().set_planning_generation(task_ids, target_generation)
+    if task_ids:
+        logger.info(
+            "Stamped %s planner task(s) with planning generation %s",
+            len(task_ids),
+            target_generation,
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -950,12 +1001,25 @@ def run_loop(
         try:
             handoff = parse_handoff(handoff_path, role_name)
             validate_handoff(handoff, workspace.snapshot)
+            planner_generation_update = (
+                planning_update
+                if planning_only or (spec_status is not None and not spec_status.baseline_exists)
+                else None
+            )
+            planner_target_generation = (
+                planner_generation_update.generation
+                if planner_generation_update and planner_generation_update.generation is not None
+                else workspace.snapshot.current_planning_generation()
+            )
+            _finalize_planner_generation(
+                workspace,
+                handoff,
+                target_generation=planner_target_generation,
+            )
             _apply_planner_workflow_state(
                 workspace,
                 handoff,
-                planning_update=planning_update
-                if planning_only or (spec_status is not None and not spec_status.baseline_exists)
-                else None,
+                planning_update=planner_generation_update,
             )
             if role_name == "planner" and spec_status is not None:
                 workflow_state, spec_status = _load_workflow_and_spec_status(root)

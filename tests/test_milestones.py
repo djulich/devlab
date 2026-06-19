@@ -43,6 +43,36 @@ def test_upsert_from_tasks_uses_task_planning_generation_for_new_milestone(
     assert milestone.planning_generation == 3
 
 
+def test_upsert_from_tasks_updates_existing_milestone_to_latest_task_generation(
+    tmp_path: Path,
+) -> None:
+    _write_task(tmp_path, "T0001", "Old", milestone="M1", generation=1)
+    _write_task(tmp_path, "T0002", "New", milestone="M1", generation=2)
+    milestones_dir = tmp_path / ".devlab/milestones"
+    milestones_dir.mkdir(parents=True)
+    (milestones_dir / "M1.toml").write_text(
+        'version = 1\n'
+        'id = "M1"\n'
+        'title = "Existing"\n'
+        'status = "planned"\n'
+        "integration_required = true\n"
+        "integrated = false\n"
+        "architecture_reviewed = false\n"
+        "planning_generation = 1\n"
+        'task_ids = ["T0001"]\n'
+        'integration_handoff = ""\n'
+        'architecture_review_handoff = ""\n'
+        "findings = []\n"
+    )
+
+    milestone = FileMilestoneTracker(tmp_path).upsert_from_tasks(
+        FileTaskTracker(tmp_path).list_tasks()
+    )[0]
+
+    assert milestone.planning_generation == 2
+    assert milestone.task_ids == ("T0001", "T0002")
+
+
 def test_upsert_from_tasks_resets_integrated_state_when_adding_task_ids(
     tmp_path: Path,
 ) -> None:

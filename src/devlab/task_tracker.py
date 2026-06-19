@@ -182,6 +182,14 @@ class FileTaskTracker:
             metadata["validation"] = list(task.validation)
         task.path.write_text(_format_task_file(metadata, task.body))
 
+    def set_planning_generation(self, task_id: str, planning_generation: int) -> None:
+        if planning_generation < 1:
+            raise ValueError("planning_generation must be a positive integer")
+        task = self.get(task_id)
+        metadata = dict(task.metadata)
+        metadata["planning_generation"] = planning_generation
+        task.path.write_text(_format_task_file(metadata, task.body))
+
     def _read_task(self, path: Path) -> Task:
         text = path.read_text()
         metadata, body = _split_front_matter(text)

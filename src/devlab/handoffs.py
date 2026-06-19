@@ -20,6 +20,7 @@ _ADDRESSED_FINDING_LINE_RE = re.compile(
     r"^-\s+(?P<finding>F\d{4,5}):\s+"
     r"(?P<tasks>T\d{3,5}(?:\s*,\s*T\d{3,5})*)\s*$"
 )
+_PLANNED_TASK_LINE_RE = re.compile(r"^-\s+(?P<task>T\d{3,5})\s*$")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -58,6 +59,13 @@ class Handoff:
 
     def addressed_finding_tasks(self) -> dict[str, tuple[str, ...]]:
         return addressed_finding_tasks(self.addressed_findings)
+
+    @property
+    def planned_tasks(self) -> str:
+        return self.section("Planned Tasks")
+
+    def planned_task_ids(self) -> tuple[str, ...]:
+        return planned_task_ids(self.planned_tasks)
 
 
 class HandoffError(ValueError):
@@ -125,6 +133,22 @@ def addressed_finding_tasks(section: str) -> dict[str, tuple[str, ...]]:
     return mappings
 
 
+def planned_task_ids(section: str) -> tuple[str, ...]:
+    lines = _meaningful_lines(section)
+    if len(lines) == 1 and lines[0].lower() in _NONE_LINES:
+        return ()
+    task_ids: list[str] = []
+    for line in lines:
+        match = _PLANNED_TASK_LINE_RE.fullmatch(line)
+        if match is None:
+            raise HandoffError("Planned Tasks entries must use '- TXXXX'")
+        task_id = match.group("task")
+        if task_id in task_ids:
+            raise HandoffError(f"Planned Tasks lists duplicate task {task_id}")
+        task_ids.append(task_id)
+    return tuple(task_ids)
+
+
 def _parse_sections(text: str, role_name: str) -> dict[str, str]:
     matches = list(_HEADING_RE.finditer(text))
     if not matches:
@@ -154,7 +178,9 @@ def _parse_sections(text: str, role_name: str) -> dict[str, str]:
         raise HandoffError("handoff has unexpected ## section between required headings")
 
     sections: dict[str, str] = {}
-    recognized_headings = set(REQUIRED_HANDOFF_HEADINGS) | set(OPTIONAL_HANDOFF_HEADINGS)
+    recognized_headings = (
+        set(REQUIRED_HANDOFF_HEADINGS) | set(OPTIONAL_HANDOFF_HEADINGS) | {"Planned Tasks"}
+    )
     for index, match in enumerate(matches):
         heading = headings[index]
         if heading not in recognized_headings:
@@ -168,6 +194,7 @@ def _parse_sections(text: str, role_name: str) -> dict[str, str]:
     _validate_none_section(sections["Open Issues"], "Open Issues")
     _validate_addressed_findings_section(sections["Addressed Findings"])
     _validate_planning_state_section(sections, role_name)
+    _validate_planned_tasks_section(sections, role_name)
     return sections
 
 
@@ -183,6 +210,21 @@ def _validate_planning_state_section(sections: dict[str, str], role_name: str) -
     if section:
         raise HandoffError(
             "handoff section ## Planning State is only allowed for planner handoffs"
+        )
+
+
+def _validate_planned_tasks_section(sections: dict[str, str], role_name: str) -> None:
+    section = sections.get("Planned Tasks", "")
+    if role_name == "planner":
+        if not section:
+            raise HandoffError(
+                "planner handoff is missing required heading: ## Planned Tasks"
+            )
+        planned_task_ids(section)
+        return
+    if section:
+        raise HandoffError(
+            "handoff section ## Planned Tasks is only allowed for planner handoffs"
         )
 
 

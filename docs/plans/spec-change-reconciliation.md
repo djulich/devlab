@@ -41,7 +41,7 @@ Semantics:
 - This favors a simple operator-facing invariant: DevLab plans against a committed spec revision; when that spec revision changes, run `devlab plan` again.
 - Dirty staged or unstaged spec paths are detected, but they block reconciliation until the operator commits them.
 - `planning.generation` is the current actionable plan generation.
-- Tasks may carry `planning_generation = N`. A task is actionable only when its generation matches `workflow.toml`'s current planning generation and its status is active.
+- Tasks carry orchestrator-stamped `planning_generation = N`. A task is actionable only when its generation matches `workflow.toml`'s current planning generation and its status is active.
 - Milestones may carry `planning_generation = N`. A milestone participates in current orchestration only when its generation matches the current planning generation. Older integrated, architecture-reviewed, or complete milestones remain historical evidence of delivered work, not current workflow targets.
 - Missing task or milestone generation metadata should be treated as generation 1 for backward compatibility.
 - Reporting commands may read and report this state, but must not repair or update it.
@@ -56,7 +56,7 @@ On first planning run:
 
 1. Detect that no spec baseline exists.
 2. Run the existing missing planning sessions: architect, then planner as needed.
-3. Ensure created tasks and milestones belong to the current planning generation.
+3. Stamp planner-declared tasks and synced milestones with the current planning generation.
 4. After successful planning, record the current spec baseline in `.devlab/workflow.toml`.
 5. Commit the session changes through the existing automatic version-control path.
 
@@ -157,7 +157,7 @@ The orchestrator owns generation advancement. Agents should not edit `planning.g
 1. Detect changed latest committed spec revision.
 2. Compute `next_generation = current_generation + 1`.
 3. Pass `next_generation` and reconciliation context to architect/planner prompts.
-4. Validate that new tasks and milestones are assigned to `next_generation`.
+4. Stamp planner-declared tasks and synced milestones with `next_generation`.
 5. After the planner handoff succeeds, write `planning.generation = next_generation` and the new spec baseline.
 
 If reconciliation fails midway, durable workflow state remains on the previous generation and `devlab run` continues to block because the spec baseline is still stale.
@@ -167,7 +167,7 @@ If reconciliation fails midway, durable workflow state remains on the previous g
 Planning revision prompts should distinguish ordinary explicit revision from spec reconciliation:
 
 - Architect: compare changed system/deployment specs against the existing design plan, completed work, integrated milestones, and architecture-review findings.
-- Planner: create current-generation milestones and tasks for all work still required by the revised plan. Previous-generation unfinished milestones and active tasks are stale planning artifacts; they should not be edited in place unless the planner intentionally carries their content forward into current-generation milestone/task structure.
+- Planner: create tasks for all work still required by the revised plan and list task IDs created or intentionally carried forward in `## Planned Tasks`. DevLab stamps those tasks and synced milestones with the target generation. Previous-generation unfinished milestones and active tasks are stale planning artifacts; they should not be edited in place unless the planner intentionally carries their content forward into current-generation milestone/task structure.
 
 Do not ask developer/reviewer/integrator roles to infer spec reconciliation policy. They should consume reconciled workflow state or report contradictions through existing blockers/findings.
 
@@ -185,8 +185,8 @@ Core rules:
 - A milestone is actionable only when `milestone.planning_generation == workflow.planning.generation`.
 - Older-generation milestones that were not fully integrated and architecture-reviewed are stale planning artifacts, not current integration targets.
 - Integrated or architecture-reviewed older-generation milestones remain historical delivered work.
-- The planner creates new current-generation milestones and tasks for all work still required by the revised design/project plan.
-- If content from an old task or milestone still applies, the planner should create current-generation structure that carries that work forward instead of mutating old-generation artifacts in place.
+- The planner creates tasks for all work still required by the revised design/project plan and lists the task IDs in `## Planned Tasks`; DevLab stamps those tasks and synced milestones with the target generation.
+- If content from an old task or milestone still applies, the planner should create or explicitly list structure that carries that work forward instead of mutating old-generation artifacts in place without declaring it.
 
 This reflects the truth of the workflow: old tasks and milestones may still be open relative to the plan generation that produced them, but that plan generation itself is no longer current.
 
