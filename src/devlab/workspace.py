@@ -344,18 +344,35 @@ class WorkspaceSnapshot:
             self._workflow_state = load_workflow_state(self.root)
         return self._workflow_state
 
+    def current_planning_generation(self) -> int:
+        return self.workflow_state().planning.generation
+
+    def current_generation_tasks(self) -> list[Task]:
+        generation = self.current_planning_generation()
+        return [
+            task for task in self.list_tasks() if task.planning_generation == generation
+        ]
+
+    def current_generation_milestones(self) -> list[Milestone]:
+        generation = self.current_planning_generation()
+        return [
+            milestone
+            for milestone in self.list_milestones()
+            if milestone.planning_generation == generation
+        ]
+
     def active_tasks(self) -> list[Task]:
-        return [task for task in self.list_tasks() if task.is_active]
+        return [task for task in self.current_generation_tasks() if task.is_active]
 
     def select_next_development_task(self) -> Task | None:
         closed_ids = {task.id for task in self.list_tasks() if task.status == TaskStatus.CLOSED}
-        for task in self.list_tasks():
+        for task in self.current_generation_tasks():
             if task.status in DEVELOPABLE_STATUSES and set(task.depends_on).issubset(closed_ids):
                 return task
         return None
 
     def select_next_review_task(self) -> Task | None:
-        for task in self.list_tasks():
+        for task in self.current_generation_tasks():
             if task.status == TaskStatus.IN_REVIEW:
                 return task
         return None
@@ -364,13 +381,15 @@ class WorkspaceSnapshot:
         closed_ids = {task.id for task in self.list_tasks() if task.status == TaskStatus.CLOSED}
         return [
             task
-            for task in self.list_tasks()
+            for task in self.current_generation_tasks()
             if task.status in DEVELOPABLE_STATUSES
             and not set(task.depends_on).issubset(closed_ids)
         ]
 
     def tasks_for_milestone(self, milestone: str) -> list[Task]:
-        return [task for task in self.list_tasks() if task.milestone == milestone]
+        return [
+            task for task in self.current_generation_tasks() if task.milestone == milestone
+        ]
 
     def milestone_complete(self, milestone: str) -> bool:
         tasks = self.tasks_for_milestone(milestone)
@@ -390,7 +409,7 @@ class WorkspaceSnapshot:
         return task.path if task else None
 
     def select_integration_milestone(self) -> str | None:
-        for milestone in self.list_milestones():
+        for milestone in self.current_generation_milestones():
             if (
                 milestone.integration_required
                 and not milestone.integrated
@@ -400,13 +419,13 @@ class WorkspaceSnapshot:
         return None
 
     def select_architecture_review_milestone(self) -> str | None:
-        for milestone in self.list_milestones():
+        for milestone in self.current_generation_milestones():
             if milestone.integrated and not milestone.architecture_reviewed:
                 return milestone.id
         return None
 
     def all_milestones_complete(self) -> bool:
-        tasks = self.list_tasks()
+        tasks = self.current_generation_tasks()
         if tasks:
             return all(task.status == TaskStatus.CLOSED for task in tasks)
         text = read_file(self.root / PROJECT_PLAN)
@@ -421,7 +440,7 @@ class WorkspaceSnapshot:
             return False
         if not self.workflow_state().planning.complete:
             return False
-        if self.list_tasks():
+        if self.current_generation_tasks():
             return False
         text = read_file(self.root / PROJECT_PLAN)
         return "- [x]" not in text and "- [ ]" not in text

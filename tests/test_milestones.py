@@ -26,8 +26,21 @@ def test_upsert_from_tasks_creates_missing_milestone_files(tmp_path: Path) -> No
     assert milestone.integration_required is True
     assert milestone.integrated is False
     assert milestone.architecture_reviewed is False
+    assert milestone.planning_generation == 1
     assert milestone.task_ids == ("T0001", "T0002")
     assert (tmp_path / ".devlab/milestones/M1.toml").exists()
+
+
+def test_upsert_from_tasks_uses_task_planning_generation_for_new_milestone(
+    tmp_path: Path,
+) -> None:
+    _write_task(tmp_path, "T0001", "First", milestone="M1", generation=3)
+
+    milestone = FileMilestoneTracker(tmp_path).upsert_from_tasks(
+        FileTaskTracker(tmp_path).list_tasks()
+    )[0]
+
+    assert milestone.planning_generation == 3
 
 
 def test_upsert_from_tasks_resets_integrated_state_when_adding_task_ids(
@@ -140,7 +153,14 @@ def test_invalid_milestone_status_raises_clear_error(tmp_path: Path) -> None:
         FileMilestoneTracker(tmp_path).get("M1")
 
 
-def _write_task(root: Path, task_id: str, title: str, *, milestone: str) -> None:
+def _write_task(
+    root: Path,
+    task_id: str,
+    title: str,
+    *,
+    milestone: str,
+    generation: int = 1,
+) -> None:
     tasks_dir = root / ".devlab/tasks"
     tasks_dir.mkdir(parents=True, exist_ok=True)
     tasks_dir.joinpath(f"{task_id}_{title.lower()}.md").write_text(
@@ -149,6 +169,7 @@ def _write_task(root: Path, task_id: str, title: str, *, milestone: str) -> None
         f'title = "{title}"\n'
         'status = "open"\n'
         f'milestone = "{milestone}"\n'
+        f"planning_generation = {generation}\n"
         "depends_on = []\n"
         "+++\n\n"
         f"# {task_id}: {title}\n"

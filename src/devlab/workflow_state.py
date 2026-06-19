@@ -14,23 +14,30 @@ WORKFLOW_STATE_VERSION = 1
 @dataclasses.dataclass(frozen=True)
 class PlanningState:
     complete: bool
+    generation: int = 1
+
+
+@dataclasses.dataclass(frozen=True)
+class SpecsState:
+    last_planned_spec_commit: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
 class WorkflowState:
     version: int
     planning: PlanningState
+    specs: SpecsState = dataclasses.field(default_factory=SpecsState)
 
 
 def default_workflow_state(*, planning_complete: bool = True) -> WorkflowState:
     return WorkflowState(
         version=WORKFLOW_STATE_VERSION,
-        planning=PlanningState(complete=planning_complete),
+        planning=PlanningState(complete=planning_complete, generation=1),
     )
 
 
 def initial_workflow_state_text() -> str:
-    return "version = 1\n\n[planning]\ncomplete = false\n"
+    return "version = 1\n\n[planning]\ncomplete = false\ngeneration = 1\n"
 
 
 def load_workflow_state(root: Path) -> WorkflowState:
@@ -49,14 +56,49 @@ def write_workflow_state(root: Path, state: WorkflowState) -> None:
 
 
 def set_planning_complete(root: Path, complete: bool) -> WorkflowState:
+    return update_workflow_state(root, planning_complete=complete)
+
+
+def update_workflow_state(
+    root: Path,
+    *,
+    planning_complete: bool | None = None,
+    planning_generation: int | None = None,
+    last_planned_spec_commit: str | None = None,
+) -> WorkflowState:
     path = root / WORKFLOW_STATE
     current = load_workflow_state(root)
+    complete = current.planning.complete if planning_complete is None else planning_complete
+    generation = (
+        current.planning.generation
+        if planning_generation is None
+        else planning_generation
+    )
     updated = WorkflowState(
         version=current.version,
-        planning=PlanningState(complete=complete),
+        planning=PlanningState(complete=complete, generation=generation),
+        specs=SpecsState(
+            last_planned_spec_commit=(
+                current.specs.last_planned_spec_commit
+                if last_planned_spec_commit is None
+                else last_planned_spec_commit
+            )
+        ),
     )
     if path.exists():
-        path.write_text(_replace_planning_complete(path.read_text(), complete))
+        text = path.read_text()
+        if planning_complete is not None:
+            text = _replace_table_key(text, "planning", "complete", complete)
+        if planning_generation is not None:
+            text = _replace_table_key(text, "planning", "generation", generation)
+        if last_planned_spec_commit is not None:
+            text = _replace_table_key(
+                text,
+                "specs",
+                "last_planned_spec_commit",
+                last_planned_spec_commit,
+            )
+        path.write_text(text)
     else:
         write_workflow_state(root, updated)
     return updated
@@ -67,29 +109,44 @@ def format_workflow_state(state: WorkflowState) -> str:
         f"version = {format_toml_value(state.version)}\n\n"
         "[planning]\n"
         f"complete = {format_toml_value(state.planning.complete)}\n"
+        f"generation = {format_toml_value(state.planning.generation)}\n"
+        + (
+            "\n[specs]\n"
+            f"last_planned_spec_commit = "
+            f"{format_toml_value(state.specs.last_planned_spec_commit)}\n"
+            if state.specs.last_planned_spec_commit is not None
+            else ""
+        )
     )
 
 
 def _replace_planning_complete(text: str, complete: bool) -> str:
-    replacement = f"complete = {format_toml_value(complete)}"
+    return _replace_table_key(text, "planning", "complete", complete)
+
+
+def _replace_table_key(text: str, table: str, key: str, value: object) -> str:
+    replacement = f"{key} = {format_toml_value(value)}"
     lines = text.splitlines(keepends=True)
-    in_planning = False
-    planning_header_index: int | None = None
+    in_table = False
+    table_header_index: int | None = None
+    insert_before_index: int | None = None
     for index, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
-            in_planning = stripped == "[planning]"
-            if in_planning:
-                planning_header_index = index
+            if in_table and insert_before_index is None:
+                insert_before_index = index
+            in_table = stripped == f"[{table}]"
+            if in_table:
+                table_header_index = index
             continue
-        if in_planning and stripped.split("=", 1)[0].strip() == "complete":
+        if in_table and stripped.split("=", 1)[0].strip() == key:
             newline = "\n" if line.endswith("\n") else ""
             lines[index] = replacement + newline
             return "".join(lines)
-    if planning_header_index is None:
+    if table_header_index is None:
         suffix = "" if text.endswith("\n") or not text else "\n"
-        return text + suffix + "\n[planning]\n" + replacement + "\n"
-    insert_at = planning_header_index + 1
+        return text + suffix + f"\n[{table}]\n" + replacement + "\n"
+    insert_at = insert_before_index if insert_before_index is not None else table_header_index + 1
     lines.insert(insert_at, replacement + "\n")
     return "".join(lines)
 
@@ -107,7 +164,23 @@ def parse_workflow_state(data: object) -> WorkflowState:
     complete = planning.get("complete")
     if not isinstance(complete, bool):
         raise ValueError(f"{WORKFLOW_STATE}.planning.complete must be a boolean")
+    generation = planning.get("generation", 1)
+    if not isinstance(generation, int) or generation < 1:
+        raise ValueError(f"{WORKFLOW_STATE}.planning.generation must be a positive integer")
+    specs = config.get("specs", {})
+    if specs is None:
+        specs = {}
+    if not isinstance(specs, dict):
+        raise ValueError(f"{WORKFLOW_STATE}.specs must be a TOML table")
+    last_planned_spec_commit = specs.get("last_planned_spec_commit")
+    if last_planned_spec_commit is not None and not isinstance(
+        last_planned_spec_commit, str
+    ):
+        raise ValueError(
+            f"{WORKFLOW_STATE}.specs.last_planned_spec_commit must be a string"
+        )
     return WorkflowState(
         version=version,
-        planning=PlanningState(complete=complete),
+        planning=PlanningState(complete=complete, generation=generation),
+        specs=SpecsState(last_planned_spec_commit=last_planned_spec_commit),
     )

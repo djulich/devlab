@@ -45,7 +45,12 @@ def build_base_prompt(
 
 
 def build_session_prompt(
-    snapshot: WorkspaceSnapshot, role_name: str, *, planning_revision: bool = False
+    snapshot: WorkspaceSnapshot,
+    role_name: str,
+    *,
+    planning_revision: bool = False,
+    target_planning_generation: int | None = None,
+    spec_reconciliation: bool = False,
 ) -> str:
     builders = {
         "architect": _build_architect_prompt,
@@ -59,17 +64,40 @@ def build_session_prompt(
     if knowledge:
         prompt = knowledge + "\n\n" + prompt
     if planning_revision:
-        prompt += _planning_revision_section(role_name)
+        prompt += _planning_revision_section(
+            role_name,
+            target_planning_generation=target_planning_generation,
+            spec_reconciliation=spec_reconciliation,
+        )
     return prompt + _handoff_reminder(role_name)
 
 
-def _planning_revision_section(role_name: str) -> str:
+def _planning_revision_section(
+    role_name: str,
+    *,
+    target_planning_generation: int | None,
+    spec_reconciliation: bool,
+) -> str:
+    generation_text = (
+        f"\n\nTarget planning generation: `{target_planning_generation}`."
+        if target_planning_generation is not None
+        else ""
+    )
+    reconciliation_text = (
+        "\n\nThis is spec reconciliation. Previous-generation active tasks and "
+        "unfinished milestones are historical planning artifacts. Carry still-required "
+        "work forward by creating or updating current-generation planning structure; "
+        "do not close, delete, or mass-restatus stale artifacts."
+        if spec_reconciliation
+        else ""
+    )
     if role_name == "architect":
         return (
             "\n\n## Planning Revision Mode\n\n"
             "Review the existing design plan against the current specifications and "
             "workflow state. Edit the design plan only when it materially improves "
             "accuracy, clarity, or implementation guidance."
+            f"{generation_text}{reconciliation_text}"
         )
     if role_name == "planner":
         return (
@@ -78,6 +106,7 @@ def _planning_revision_section(role_name: str) -> str:
             "plan and specifications. Edit plans or tasks only when it materially improves "
             "accuracy, sequencing, scope, or acceptance criteria. Do not recreate tasks "
             "that already exist."
+            f"{generation_text}{reconciliation_text}"
         )
     return ""
 
@@ -328,6 +357,7 @@ def _build_planner_prompt(snapshot: WorkspaceSnapshot) -> str:
         "## Workflow Planning State\n\n"
         f"Current `[planning].complete`: "
         f"`{str(workflow_state.planning.complete).lower()}`.\n\n"
+        f"Current `[planning].generation`: `{workflow_state.planning.generation}`.\n\n"
         "Report the next value in handoff `## Planning State`: "
         "`planning_complete = false` if future planner sessions are still needed, "
         "or `planning_complete = true` when all required in-scope spec work is "

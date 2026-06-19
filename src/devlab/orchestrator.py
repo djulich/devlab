@@ -28,6 +28,10 @@ from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompts import build_base_prompt, build_session_prompt
 from devlab.session_logging import session_finish_context, session_start_context
+from devlab.spec_reconciliation import (
+    SpecReconciliationStatus,
+    inspect_spec_reconciliation,
+)
 from devlab.task_tracker import Task, TaskStatus
 from devlab.version_control import (
     assert_clean_worktree,
@@ -37,7 +41,7 @@ from devlab.version_control import (
 from devlab.version_control import (
     tag as create_git_tag,
 )
-from devlab.workflow_state import load_workflow_state, set_planning_complete
+from devlab.workflow_state import WorkflowState, load_workflow_state, update_workflow_state
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -284,13 +288,31 @@ def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> 
         finding.resolve_if_complete()
 
 
-def _apply_planner_workflow_state(workspace: Workspace, handoff: Handoff) -> None:
+@dataclasses.dataclass(frozen=True)
+class PlanningStateUpdate:
+    generation: int | None = None
+    last_planned_spec_commit: str | None = None
+
+
+def _apply_planner_workflow_state(
+    workspace: Workspace,
+    handoff: Handoff,
+    *,
+    planning_update: PlanningStateUpdate | None = None,
+) -> None:
     if handoff.role_name != "planner":
         return
     planning_complete = handoff.planning_complete
     if planning_complete is None:
         raise HandoffError("planner handoff is missing planning completion state")
-    set_planning_complete(workspace.root, planning_complete)
+    update_workflow_state(
+        workspace.root,
+        planning_complete=planning_complete,
+        planning_generation=planning_update.generation if planning_update else None,
+        last_planned_spec_commit=(
+            planning_update.last_planned_spec_commit if planning_update else None
+        ),
+    )
     workspace.did_mutate()
     logger.info(
         "Planning completion set to %s by planner handoff",
@@ -457,7 +479,9 @@ def _needs_incremental_planning(snapshot: WorkspaceSnapshot) -> bool:
 
 
 def _has_actionable_or_planned_work(snapshot: WorkspaceSnapshot) -> bool:
-    return any(task.status != TaskStatus.CLOSED for task in snapshot.list_tasks())
+    return any(
+        task.status != TaskStatus.CLOSED for task in snapshot.current_generation_tasks()
+    )
 
 
 
@@ -554,6 +578,39 @@ def _build_session_metadata(
     )
 
 
+def _dirty_spec_error(paths: tuple[str, ...]) -> SessionError:
+    joined = ", ".join(paths)
+    return SessionError(
+        "spec_reconciliation",
+        "specification paths have staged or unstaged changes; commit them before "
+        f"running devlab plan: {joined}",
+        1,
+    )
+
+
+def _stale_specs_error(status: SpecReconciliationStatus) -> SessionError:
+    if not status.baseline_exists:
+        message = (
+            "Specifications have no recorded devlab plan baseline. "
+            "Run devlab plan to reconcile .devlab/specs with workflow state before "
+            "continuing."
+        )
+    else:
+        message = (
+            "Specifications changed since the last devlab plan baseline. "
+            "Run devlab plan to reconcile .devlab/specs with workflow state before "
+            "continuing."
+        )
+    return SessionError("spec_reconciliation", message, 1)
+
+
+def _load_workflow_and_spec_status(
+    root: Path,
+) -> tuple[WorkflowState, SpecReconciliationStatus]:
+    workflow_state = load_workflow_state(root)
+    return workflow_state, inspect_spec_reconciliation(root, workflow_state)
+
+
 def _notify_session_progress(
     callback: SessionProgressCallback | None,
     event: str,
@@ -587,18 +644,33 @@ def run_loop(
     if revise_plan and not planning_only:
         raise ValueError("revise_plan requires planning_only")
     sessions_run = 0
+    spec_status: SpecReconciliationStatus | None = None
+    workflow_state: WorkflowState
     if automatic_version_control:
         try:
             ensure_git_repository(root)
+            workflow_state, spec_status = _load_workflow_and_spec_status(root)
+            if planning_only and spec_status.dirty_spec_paths:
+                error = _dirty_spec_error(spec_status.dirty_spec_paths)
+                logger.error("%s. Stopping.", error.message)
+                return RunResult(0, False, error.exit_code, (error,))
             assert_clean_worktree(root)
         except VersionControlError as exc:
             logger.error("%s. Stopping.", exc)
             return RunResult(0, False, 1, (SessionError("version_control", str(exc), 1),))
-    try:
-        load_workflow_state(root)
-    except (OSError, ValueError) as exc:
-        logger.error("%s. Stopping.", exc)
-        return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
+        except (OSError, ValueError) as exc:
+            logger.error("%s. Stopping.", exc)
+            return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
+        if not planning_only and spec_status is not None and spec_status.changed:
+            error = _stale_specs_error(spec_status)
+            logger.error("%s. Stopping.", error.message)
+            return RunResult(0, False, error.exit_code, (error,))
+    else:
+        try:
+            workflow_state = load_workflow_state(root)
+        except (OSError, ValueError) as exc:
+            logger.error("%s. Stopping.", exc)
+            return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
 
     workspace = Workspace(root)
     resolved_agent_configs = None
@@ -623,7 +695,28 @@ def run_loop(
         role_agent_providers = agent_configuration.role_providers
         resolved_agent_configs = agent_configuration.resolved
 
-    forced_planning_roles = ("architect", "planner") if revise_plan else ()
+    reconcile_plan = bool(spec_status and spec_status.changed)
+    forced_planning_roles = (
+        ("architect", "planner") if revise_plan or reconcile_plan else ()
+    )
+    target_planning_generation = (
+        workflow_state.planning.generation + 1
+        if reconcile_plan
+        else workflow_state.planning.generation
+    )
+    planning_update = PlanningStateUpdate(
+        generation=(
+            target_planning_generation
+            if planning_only or (spec_status is not None and not spec_status.baseline_exists)
+            else None
+        ),
+        last_planned_spec_commit=(
+            spec_status.latest_spec_commit
+            if spec_status is not None
+            and (planning_only or not spec_status.baseline_exists)
+            else None
+        ),
+    )
 
     while sessions_run < max_sessions:
         if automatic_version_control:
@@ -637,7 +730,7 @@ def run_loop(
                     1,
                     (SessionError("version_control", str(exc), 1),),
                 )
-        if planning_only and not revise_plan:
+        if planning_only and not revise_plan and not reconcile_plan:
             role_name = workspace.snapshot.assess_state()
         else:
             workspace.sync()
@@ -657,12 +750,49 @@ def run_loop(
             logger.info("Stopping.")
             break
 
+        if (
+            not planning_only
+            and spec_status is not None
+            and (
+                spec_status.dirty_spec_paths
+                or not spec_status.baseline_exists
+                or spec_status.changed
+            )
+            and role_name not in {"architect", "planner"}
+        ):
+            error = _stale_specs_error(spec_status)
+            logger.error("%s. Stopping.", error.message)
+            return RunResult(sessions_run, False, error.exit_code, (error,))
+
         if planning_only and not revise_plan and role_name not in {"architect", "planner"}:
             if sessions_run == 0:
                 logger.info(
                     "Planning state already exists; no planning session needed. "
                     "Use devlab plan --revise to review and update plans."
                 )
+                if spec_status is not None and not spec_status.baseline_exists:
+                    try:
+                        update_workflow_state(
+                            root,
+                            planning_generation=workflow_state.planning.generation,
+                            last_planned_spec_commit=spec_status.latest_spec_commit,
+                        )
+                        workspace.did_mutate()
+                        if automatic_version_control:
+                            committed = commit_all(
+                                root,
+                                "Record DevLab spec planning baseline",
+                            )
+                            if committed:
+                                logger.info("Committed DevLab spec planning baseline")
+                    except VersionControlError as exc:
+                        logger.error("%s. Stopping.", exc)
+                        return RunResult(
+                            sessions_run,
+                            False,
+                            1,
+                            (SessionError("version_control", str(exc), 1),),
+                        )
             else:
                 logger.info("Planning complete; stopping before implementation roles.")
             logger.info("Stopping before %s session.", role_name)
@@ -731,7 +861,13 @@ def run_loop(
             session_prompt = build_session_prompt(
                 snapshot,
                 role_name,
-                planning_revision=planning_only and revise_plan,
+                planning_revision=planning_only and (revise_plan or reconcile_plan),
+                target_planning_generation=(
+                    target_planning_generation
+                    if planning_only and role_name in {"architect", "planner"}
+                    else None
+                ),
+                spec_reconciliation=reconcile_plan,
             )
             ctx.write_prompt_logs(base_prompt, session_prompt)
             environment = _environment_for_session(root, workspace.snapshot, role_name)
@@ -814,7 +950,15 @@ def run_loop(
         try:
             handoff = parse_handoff(handoff_path, role_name)
             validate_handoff(handoff, workspace.snapshot)
-            _apply_planner_workflow_state(workspace, handoff)
+            _apply_planner_workflow_state(
+                workspace,
+                handoff,
+                planning_update=planning_update
+                if planning_only or (spec_status is not None and not spec_status.baseline_exists)
+                else None,
+            )
+            if role_name == "planner" and spec_status is not None:
+                workflow_state, spec_status = _load_workflow_and_spec_status(root)
             planner_noop_error = _validate_exhausted_backlog_planner_progress(
                 start_snapshot,
                 workspace.snapshot,

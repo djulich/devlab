@@ -106,20 +106,11 @@ Open work:
 
 Priority: medium-high. DevLab should support target workspaces where the system spec or deployment spec changes after architecture, planning, or implementation work already exists.
 
-Status: **planned**. See `docs/plans/spec-change-reconciliation.md`.
+Status: **initial implementation complete**. DevLab records committed spec baselines in `.devlab/workflow.toml`, advances planning generations during spec reconciliation, ignores older-generation open work for current orchestration, and blocks `devlab run` when committed specs are unreconciled. See `docs/plans/spec-change-reconciliation.md`.
 
 Usefulness: high. This is a normal real-world workflow: requirements drift after plans and code exist. Without explicit support, DevLab may either keep executing stale tasks or require users to manually reset workflow state.
 
-Expected behavior:
-
-- Detect that the latest committed system/deployment spec revision changed after the current design/project plan was produced.
-- Route to an architecture/planning revision path instead of blindly continuing stale implementation tasks.
-- Preserve completed work where it still matches the revised specs.
-- Treat older-generation open tasks and unfinished milestones as stale historical planning artifacts rather than current workflow work.
-- Add new tasks for newly in-scope work.
-- Represent the revision decision durably in repository state, not conversational memory.
-
-Open design questions:
+Open work:
 
 - Consider a future explicit bypass command such as `devlab plan --mark-specs-planned` for operator-confirmed format-only, typo-only, or otherwise plan-neutral spec commits. The command would require a clean worktree, refuse uncommitted spec changes, update `[specs].last_planned_spec_commit` to the current latest committed spec commit without running architect/planner, and clearly warn that it bypasses the reconciliation guardrail. Do not add this to the first implementation unless real usage shows false-positive reconciliation is painful.
 - Decide whether reconciliation should produce a separate durable summary artifact, or whether architect/planner handoffs plus edited plans/tasks are sufficient.

@@ -120,9 +120,9 @@ devlab plan
 devlab doctor
 ```
 
-`devlab plan` is safe to repeat: if design and project planning state already exists, it stops without editing plans. This gives you a review point before implementation: read and edit the generated design and project plans, because implementation work will follow those plans and a design that drifts from your intended specification can waste later agent sessions. Use `devlab plan --revise` when you explicitly want architect and planner sessions to review and update existing plans.
+`devlab plan` reconciles committed system/deployment specs with durable workflow state. It creates missing design and project planning state, records the committed spec revision it planned against, and stops before implementation. Later, if committed files under `.devlab/specs/system/` or `.devlab/specs/deployment/` change, run `devlab plan` again so architect and planner sessions can carry still-valid work into the current planning generation. Use `devlab plan --revise` when you explicitly want architect and planner sessions to review and update existing plans even without a spec change.
 
-Run the workflow. `devlab run` requires a Git repository with a clean working tree and commits all non-ignored changes after every valid session. It catches up from the current durable workflow state, so re-running it continues where the last `devlab plan` or `devlab run` stopped:
+Run the workflow. `devlab run` implements already-reconciled workflow state. It requires a Git repository with a clean working tree, stops if committed specs changed since the last `devlab plan` baseline, and commits all non-ignored changes after every valid session. Re-running it continues where the last `devlab plan` or `devlab run` stopped:
 
 ```bash
 devlab run --max-sessions 20
@@ -139,8 +139,8 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 ## CLI commands
 
 - `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
-- `devlab plan [--root PATH] [--revise] [--max-sessions N] [...]` — run missing planning sessions and stop before implementation; repeat runs are no-ops unless `--revise` is used.
-- `devlab run [--root PATH] [--max-sessions N] [...]` — run the workflow loop from the current durable state, continuing where prior runs stopped.
+- `devlab plan [--root PATH] [--revise] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
+- `devlab run [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.

@@ -81,6 +81,7 @@ class TestFileTaskTrackerParsing:
         assert task.milestone == "M1"
         assert task.profile == "api"
         assert task.domain == "general"
+        assert task.planning_generation == 1
         assert task.depends_on == ("T0000",)
         assert task.addresses_findings == ()
         assert task.validation is None
@@ -95,6 +96,15 @@ class TestFileTaskTrackerParsing:
 
         assert task.title == "First"
         assert task.status == TaskStatus.OPEN
+        assert task.planning_generation == 1
+
+    def test_reads_planning_generation(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(tmp_path, "T0001", extra_metadata="planning_generation = 3\n")
+
+        task = FileTaskTracker(tmp_path).get("T0001")
+
+        assert task.planning_generation == 3
 
     def test_reads_legacy_depends_on_section(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
@@ -399,6 +409,19 @@ class TestFileTaskTrackerStatusTransitions:
         FileTaskTracker(tmp_path).mark_in_review("T0001")
 
         assert 'addresses_findings = ["F0001"]' in path.read_text()
+
+    def test_status_transition_preserves_planning_generation(self, tmp_path: Path) -> None:
+        _setup_tasks_dir(tmp_path)
+        path = _write_task(
+            tmp_path,
+            "T0001",
+            "First",
+            extra_metadata="planning_generation = 3\n",
+        )
+
+        FileTaskTracker(tmp_path).mark_in_review("T0001")
+
+        assert "planning_generation = 3" in path.read_text()
 
     def test_mark_changes_requested_writes_status_to_task_file(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)

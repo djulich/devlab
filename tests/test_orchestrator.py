@@ -145,6 +145,59 @@ def _write_profile(
     return path
 
 
+def _init_git_repo(root: Path) -> None:
+    subprocess.run(["git", "-C", root.as_posix(), "init"], check=True)
+    subprocess.run(
+        ["git", "-C", root.as_posix(), "config", "user.name", "DevLab Test"],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            root.as_posix(),
+            "config",
+            "user.email",
+            "devlab-test@example.invalid",
+        ],
+        check=True,
+    )
+
+
+def _commit_all(root: Path, message: str) -> str:
+    subprocess.run(["git", "-C", root.as_posix(), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", root.as_posix(), "commit", "-m", message], check=True)
+    return subprocess.run(
+        ["git", "-C", root.as_posix(), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _write_system_spec(root: Path, text: str) -> None:
+    path = root / ".devlab/specs/system/spec.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def _write_workflow_state(
+    root: Path,
+    *,
+    generation: int = 1,
+    baseline: str | None = None,
+) -> None:
+    text = (
+        "version = 1\n\n"
+        "[planning]\n"
+        "complete = true\n"
+        f"generation = {generation}\n"
+    )
+    if baseline is not None:
+        text += "\n[specs]\n" f'last_planned_spec_commit = "{baseline}"\n'
+    (root / ".devlab/workflow.toml").write_text(text)
+
+
 class TestAssessState:
     def test_no_design_plan_returns_architect(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -635,6 +688,118 @@ class TestRunLoop:
         )
 
         assert result.sessions_run == 0
+        assert provider.calls == []
+
+    def test_planning_only_noop_records_missing_spec_baseline(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        _write_task(tmp_path, "T0001", "First")
+        _write_system_spec(tmp_path, "# Spec\n")
+        _init_git_repo(tmp_path)
+        baseline = _commit_all(tmp_path, "init")
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=5,
+            planning_only=True,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.sessions_run == 0
+        assert provider.calls == []
+        assert f'last_planned_spec_commit = "{baseline}"' in (
+            tmp_path / ".devlab/workflow.toml"
+        ).read_text()
+        assert not subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+
+    def test_planning_only_changed_specs_force_architect_and_planner(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        _write_task(tmp_path, "T0001", "First")
+        _write_system_spec(tmp_path, "# Spec\n")
+        _init_git_repo(tmp_path)
+        baseline = _commit_all(tmp_path, "init")
+        _write_workflow_state(tmp_path, generation=1, baseline=baseline)
+        _commit_all(tmp_path, "record baseline")
+        _write_system_spec(tmp_path, "# Changed spec\n")
+        latest = _commit_all(tmp_path, "change spec")
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.sessions_run == 2
+        assert [call.role_name for call in provider.calls] == ["architect", "planner"]
+        workflow_text = (tmp_path / ".devlab/workflow.toml").read_text()
+        assert "generation = 2" in workflow_text
+        assert f'last_planned_spec_commit = "{latest}"' in workflow_text
+        assert "Target planning generation: `2`" in provider.calls[-1].session_prompt
+
+    def test_planning_only_dirty_spec_paths_fail_before_agent_session(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        _write_system_spec(tmp_path, "# Spec\n")
+        _init_git_repo(tmp_path)
+        baseline = _commit_all(tmp_path, "init")
+        _write_workflow_state(tmp_path, baseline=baseline)
+        _commit_all(tmp_path, "record baseline")
+        _write_system_spec(tmp_path, "# Dirty spec\n")
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "spec_reconciliation"
+        assert "commit them before running devlab plan" in result.errors[0].message
+        assert provider.calls == []
+
+    def test_run_blocks_when_spec_baseline_is_stale(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        _write_task(tmp_path, "T0001", "First")
+        _write_system_spec(tmp_path, "# Spec\n")
+        _init_git_repo(tmp_path)
+        baseline = _commit_all(tmp_path, "init")
+        _write_workflow_state(tmp_path, baseline=baseline)
+        _commit_all(tmp_path, "record baseline")
+        _write_system_spec(tmp_path, "# Changed spec\n")
+        _commit_all(tmp_path, "change spec")
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=1,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "spec_reconciliation"
+        assert "Run devlab plan to reconcile" in result.errors[0].message
         assert provider.calls == []
 
     def test_revise_plan_runs_architect_and_planner_even_when_planned(
@@ -1386,6 +1551,19 @@ class TestRunLoop:
         )
         subprocess.run(["git", "-C", tmp_path.as_posix(), "add", "-A"], check=True)
         subprocess.run(["git", "-C", tmp_path.as_posix(), "commit", "-m", "init"], check=True)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n"
+            "[planning]\n"
+            "complete = true\n"
+            "generation = 1\n\n"
+            "[specs]\n"
+            'last_planned_spec_commit = ""\n'
+        )
+        subprocess.run(["git", "-C", tmp_path.as_posix(), "add", "-A"], check=True)
+        subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "commit", "-m", "record baseline"],
+            check=True,
+        )
 
         result = run_loop(tmp_path, max_sessions=1, automatic_version_control=True)
 

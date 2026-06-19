@@ -136,22 +136,80 @@ def test_workspace_finding_handles_create_and_transition_findings(tmp_path: Path
     assert workspace.findings().get("F0001").read().status == "resolved"
 
 
-def _write_task(root: Path, task_id: str, milestone: str | None = None) -> None:
+def test_workspace_selectors_ignore_old_generation_tasks(tmp_path: Path) -> None:
+    _write_workflow_state(tmp_path, generation=2)
+    _write_task(tmp_path, "T0001", generation=1)
+    _write_task(tmp_path, "T0002", generation=2)
+
+    snapshot = Workspace(tmp_path).snapshot
+
+    assert snapshot.active_tasks()[0].id == "T0002"
+    assert snapshot.select_next_development_task().id == "T0002"  # type: ignore[union-attr]
+
+
+def test_workspace_review_selector_ignores_old_generation_tasks(tmp_path: Path) -> None:
+    _write_workflow_state(tmp_path, generation=2)
+    _write_task(tmp_path, "T0001", status="in_review", generation=1)
+    _write_task(tmp_path, "T0002", status="in_review", generation=2)
+
+    task = Workspace(tmp_path).snapshot.select_next_review_task()
+
+    assert task is not None
+    assert task.id == "T0002"
+
+
+def test_workspace_integration_selector_ignores_old_generation_milestones(
+    tmp_path: Path,
+) -> None:
+    _write_workflow_state(tmp_path, generation=2)
+    _write_task(tmp_path, "T0001", milestone="M1", status="closed", generation=1)
+    _write_milestone(tmp_path, "M1", generation=1)
+    _write_task(tmp_path, "T0002", milestone="M2", status="closed", generation=2)
+    _write_milestone(tmp_path, "M2", task_ids=("T0002",), generation=2)
+
+    assert Workspace(tmp_path).snapshot.select_integration_milestone() == "M2"
+
+
+def test_workspace_milestone_completion_uses_current_generation_tasks(
+    tmp_path: Path,
+) -> None:
+    _write_workflow_state(tmp_path, generation=2)
+    _write_task(tmp_path, "T0001", milestone="M1", status="open", generation=1)
+    _write_task(tmp_path, "T0002", milestone="M1", status="closed", generation=2)
+
+    assert Workspace(tmp_path).snapshot.milestone_complete("M1") is True
+
+
+def _write_task(
+    root: Path,
+    task_id: str,
+    milestone: str | None = None,
+    *,
+    status: str = "open",
+    generation: int = 1,
+) -> None:
     path = root / ".devlab/tasks" / f"{task_id}_task.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "+++\n"
         f'id = "{task_id}"\n'
         f'title = "{task_id}"\n'
-        'status = "open"\n'
+        f'status = "{status}"\n'
         f'{f"milestone = {milestone!r}" if milestone is not None else ""}\n'
+        f"planning_generation = {generation}\n"
         "depends_on = []\n"
         "+++\n\n"
         f"# {task_id}\n"
     )
 
 
-def _write_milestone(root: Path, milestone_id: str) -> None:
+def _write_milestone(
+    root: Path,
+    milestone_id: str,
+    *,
+    task_ids: tuple[str, ...] = ("T0001",),
+    generation: int = 1,
+) -> None:
     path = root / ".devlab/milestones" / f"{milestone_id}.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -162,8 +220,20 @@ def _write_milestone(root: Path, milestone_id: str) -> None:
         'integration_required = true\n'
         'integrated = false\n'
         'architecture_reviewed = false\n'
-        'task_ids = ["T0001"]\n'
+        f"planning_generation = {generation}\n"
+        f"task_ids = {list(task_ids)!r}\n"
         'integration_handoff = ""\n'
         'architecture_review_handoff = ""\n'
         'findings = []\n'
+    )
+
+
+def _write_workflow_state(root: Path, *, generation: int) -> None:
+    path = root / ".devlab/workflow.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "version = 1\n\n"
+        "[planning]\n"
+        "complete = true\n"
+        f"generation = {generation}\n"
     )
