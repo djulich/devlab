@@ -418,6 +418,7 @@ def _finalize_planner_generation(
     )
     workspace.tasks().set_planning_generation(diff.stamp_task_ids, target_generation)
     if diff.stamp_task_ids:
+        workspace.sync()
         logger.info(
             "Stamped %s planner task(s) with planning generation %s",
             len(diff.stamp_task_ids),

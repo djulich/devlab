@@ -101,6 +101,7 @@ def _write_milestone(
     integrated: bool = False,
     architecture_reviewed: bool = False,
     task_ids: list[str] | None = None,
+    generation: int | None = None,
 ) -> Path:
     path = root / ".devlab/milestones" / f"{milestone_id}.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -111,6 +112,9 @@ def _write_milestone(
     else:
         status = "planned"
     task_ids_text = ", ".join(f'"{task_id}"' for task_id in (task_ids or []))
+    generation_line = (
+        f"planning_generation = {generation}\n" if generation is not None else ""
+    )
     path.write_text(
         "version = 1\n"
         f'id = "{milestone_id}"\n'
@@ -119,6 +123,7 @@ def _write_milestone(
         "integration_required = true\n"
         f"integrated = {str(integrated).lower()}\n"
         f"architecture_reviewed = {str(architecture_reviewed).lower()}\n"
+        f"{generation_line}"
         f"task_ids = [{task_ids_text}]\n"
         'integration_handoff = ""\n'
         'architecture_review_handoff = ""\n'
@@ -1504,6 +1509,62 @@ class TestRunLoop:
         assert result.exit_code == 0
         task_text = (tmp_path / TASKS_DIR / "T0002_current-work.md").read_text()
         assert "planning_generation = 2" in task_text
+
+    def test_planner_reused_milestone_is_stamped_with_current_generation(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = false\ngeneration = 2\n"
+        )
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path,
+            "T0001",
+            "Previous work",
+            status="closed",
+            milestone="M1",
+            generation=1,
+        )
+        _write_milestone(
+            tmp_path,
+            "M1",
+            integrated=True,
+            task_ids=["T0001"],
+            generation=1,
+        )
+
+        def on_invoke(call: AgentCall) -> None:
+            _write_task(
+                call.root,
+                "T0002",
+                "Current work",
+                status="closed",
+                milestone="M1",
+            )
+
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: planner\n"
+                "## Done\n- Created current-generation work under M1.\n"
+                "## Changed Artifacts\n- .devlab/tasks/T0002_current-work.md (created)\n"
+                "## Open Issues\n- None\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nIntegrate M1.\n"
+                "## Planning State\nplanning_complete = true\n"
+            ),
+            on_invoke=on_invoke,
+        )
+
+        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+
+        assert result.exit_code == 0
+        milestone = FileMilestoneTracker(tmp_path).get("M1")
+        assert milestone.planning_generation == 2
+        assert milestone.status == MilestoneStatus.ACTIVE
+        assert milestone.integrated is False
+        assert milestone.task_ids == ("T0001", "T0002")
+        assert Workspace(tmp_path).snapshot.select_integration_milestone() == "M1"
 
     def test_planner_modified_current_generation_task_is_stamped(
         self, tmp_path: Path
