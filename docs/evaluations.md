@@ -100,6 +100,15 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_deployable_web_api_happy_path_evaluation -s
 ```
 
+The spec reconciliation live evaluation runs a small project to completion, commits a system-spec change, verifies that normal `devlab run` is blocked until reconciliation, runs `devlab plan`, verifies that generation 1 was archived and generation 2 has active tasks, then finishes the replacement project. This structural test reports the target root and agent log directory on failure rather than writing the standard evaluation diagnostics JSON. It is skipped unless explicitly enabled:
+
+```bash
+DEVLAB_LIVE_EVALS=1 \
+DEVLAB_LIVE_SPEC_RECONCILIATION=1 \
+DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_spec_reconciliation_archives_and_replans -s
+```
+
 Useful environment variables:
 
 - `DEVLAB_EVAL_DEPLOYMENT_TOOLS=1`: enable optional tool-backed deployment checks, such as target-owned Make targets. Missing host tools are skipped/unverified, not installed.
@@ -115,6 +124,9 @@ Useful environment variables:
 - `DEVLAB_LIVE_STATIC_FRONTEND_MAX_SESSIONS`: optional session cap for the static frontend live run; defaults to `20`.
 - `DEVLAB_LIVE_DEPLOYMENT=1`: enable the deployable web API live evaluation.
 - `DEVLAB_LIVE_DEPLOYMENT_MAX_SESSIONS`: optional session cap for the deployable web API live run; defaults to `22`.
+- `DEVLAB_LIVE_SPEC_RECONCILIATION=1`: enable the spec reconciliation live evaluation.
+- `DEVLAB_LIVE_SPEC_RECONCILIATION_INITIAL_MAX`: optional session cap for the initial live run before the spec change; defaults to `10`.
+- `DEVLAB_LIVE_SPEC_RECONCILIATION_FINAL_MAX`: optional session cap for the final live run after reconciliation; defaults to `10`.
 - `DEVLAB_EVAL_RESULTS_DIR`: optional directory for persistent diagnostics copies.
 - `DEVLAB_LIVE_RETAIN_PROMPTS=1`: retain split base/session prompt logs under `.devlab/logs/agents/` for live-run debugging.
 

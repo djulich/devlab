@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 import pytest
 
+from devlab.generations import active_generation, archived_generation_numbers
+from devlab.git import run_git
+from devlab.orchestrator import run_loop
+from devlab.task_tracker import FileTaskTracker
 from tests.evaluations.checks import (
     command_check,
     command_fails_check,
@@ -16,6 +21,7 @@ from tests.evaluations.checks import (
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
     EvaluationScenario,
+    init_target_workspace,
     run_live_evaluation,
 )
 
@@ -42,6 +48,28 @@ def _run_live_scenario(tmp_path: Path, scenario: EvaluationScenario) -> Evaluati
     )
 
 
+def _configure_live_agents(root: Path) -> None:
+    agent_config = _live_agent_config()
+    if agent_config is None:
+        return
+    shutil.copyfile(agent_config, root / ".devlab/config/agents.toml")
+    run_git(root, "add", ".devlab/config/agents.toml")
+    run_git(root, "commit", "-m", "Configure live evaluation agents")
+
+
+def _run_live_loop(root: Path, *, max_sessions: int, planning_only: bool = False):
+    return run_loop(
+        root,
+        max_sessions=max_sessions,
+        provider=os.environ.get("DEVLAB_LIVE_PROVIDER"),
+        model=os.environ.get("DEVLAB_LIVE_MODEL"),
+        effort=os.environ.get("DEVLAB_LIVE_EFFORT"),
+        retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
+        automatic_version_control=True,
+        planning_only=planning_only,
+    )
+
+
 def _assert_live_diagnostics(
     tmp_path: Path,
     scenario: EvaluationScenario,
@@ -65,6 +93,73 @@ def _assert_live_diagnostics(
     assert diagnostics.git.commit_count > diagnostics.git.baseline_commit_count, failure_context
     assert diagnostics.git.session_commit_count >= diagnostics.sessions_run, failure_context
     assert not diagnostics.git.missing_milestone_tags, failure_context
+
+
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_SPEC_RECONCILIATION") != "1",
+    reason="spec reconciliation live evaluation requires DEVLAB_LIVE_SPEC_RECONCILIATION=1",
+)
+def test_live_spec_reconciliation_archives_and_replans(tmp_path: Path) -> None:
+    init_target_workspace(
+        tmp_path,
+        "Build a Python CLI calculator in calculator.py. It must work from the "
+        "repository root as python calculator.py add <left> <right> and print only "
+        "the numeric sum. Keep the implementation dependency-free.",
+    )
+    _configure_live_agents(tmp_path)
+    failure_context = (
+        f"target_root={tmp_path}\n"
+        f"agent_logs={tmp_path / '.devlab/logs/agents'}"
+    )
+
+    initial = _run_live_loop(
+        tmp_path,
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_SPEC_RECONCILIATION_INITIAL_MAX", "10")),
+    )
+
+    assert initial.completed is True, failure_context
+    assert initial.exit_code == 0, failure_context
+    initial_check = command_check("calculator add", ["calculator.py", "add", "2", "3"], "5")(
+        tmp_path
+    )
+    assert initial_check.passed is True, initial_check.message + "\n" + failure_context
+    assert active_generation(tmp_path) == 1, failure_context
+
+    spec_path = tmp_path / ".devlab/specs/system/README.md"
+    spec_path.write_text(
+        "# System Specification\n\n"
+        "Replace the current product plan with a Python CLI greeter in greeter.py. "
+        "It must work from the repository root as python greeter.py <name> and print "
+        "exactly hello <name>. Keep the implementation dependency-free.\n"
+    )
+    run_git(tmp_path, "add", ".devlab/specs/system/README.md")
+    run_git(tmp_path, "commit", "-m", "Change system spec to greeter")
+
+    blocked = _run_live_loop(tmp_path, max_sessions=1)
+
+    assert blocked.completed is False, failure_context
+    assert blocked.exit_code == 1, failure_context
+    assert blocked.errors[0].phase == "spec_reconciliation", failure_context
+
+    planned = _run_live_loop(tmp_path, max_sessions=2, planning_only=True)
+
+    assert planned.completed is True, failure_context
+    assert planned.exit_code == 0, failure_context
+    assert active_generation(tmp_path) == 2, failure_context
+    assert archived_generation_numbers(tmp_path) == (1,), failure_context
+    assert list((tmp_path / ".devlab/generations/0001/tasks").glob("*.md")), failure_context
+    assert FileTaskTracker(tmp_path).list_tasks(), failure_context
+
+    final = _run_live_loop(
+        tmp_path,
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_SPEC_RECONCILIATION_FINAL_MAX", "10")),
+    )
+
+    assert final.completed is True, failure_context
+    assert final.exit_code == 0, failure_context
+    final_check = command_check("greeter", ["greeter.py", "Ada"], "hello Ada")(tmp_path)
+    assert final_check.passed is True, final_check.message + "\n" + failure_context
+    assert run_git(tmp_path, "status", "--porcelain").stdout.strip() == "", failure_context
 
 
 @pytest.mark.skipif(

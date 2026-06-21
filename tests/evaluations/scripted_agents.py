@@ -332,6 +332,85 @@ class StatefulWebApiScriptedAgent:
         return handoff(invocation.role_name)
 
 
+class SpecReconciliationScriptedAgent:
+    def __init__(self) -> None:
+        self.roles: list[str] = []
+        self.role_counts: dict[str, int] = {}
+        self.review_rejections = 0
+        self.prompt_chars: list[int] = []
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        self.roles.append(invocation.role_name)
+        self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
+        role = invocation.role_name
+        if role == "architect":
+            self._architect(invocation)
+        elif role == "planner":
+            self._planner(invocation)
+        elif role == "developer":
+            self._developer(invocation.root)
+        elif role == "reviewer":
+            approve_review_task(invocation.root)
+        elif role == "integrator":
+            assert "## Assigned Completed Milestone" in invocation.session_prompt
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        return handoff(invocation.role_name)
+
+    def _architect(self, invocation: AgentInvocation) -> None:
+        if self.role_counts["architect"] == 1:
+            _design_plan(invocation.root).write_text(
+                "# Design Plan\n\nBuild a tiny calculator CLI.\n"
+            )
+            return
+        if self.role_counts["architect"] == 3:
+            assert "DevLab archived the previous active planning graph" in invocation.session_prompt
+            _design_plan(invocation.root).write_text(
+                "# Design Plan\n\nBuild a tiny greeter CLI.\n"
+            )
+            return
+        assert "Assigned Integrated Milestone for Architecture Review" in invocation.session_prompt
+
+    def _planner(self, invocation: AgentInvocation) -> None:
+        if self.role_counts["planner"] == 1:
+            _project_plan(invocation.root).write_text(
+                "# Project Plan\n\n"
+                "## M1: Calculator CLI\n"
+                "- T0001: Implement calculator CLI\n"
+            )
+            write_task(invocation.root, "T0001", "Implement calculator CLI", "M1")
+            return
+        assert "DevLab archived the previous active planning graph" in invocation.session_prompt
+        assert not list((invocation.root / ".devlab/tasks").glob("*.md"))
+        _project_plan(invocation.root).write_text(
+            "# Project Plan\n\n"
+            "## M1: Greeter CLI\n"
+            "- T0001: Implement greeter CLI\n"
+        )
+        write_task(invocation.root, "T0001", "Implement greeter CLI", "M1")
+
+    def _developer(self, root: Path) -> None:
+        task = FileTaskTracker(root).select_next_development_task()
+        assert task is not None
+        complete_acceptance(root, task.id)
+        if task.title == "Implement calculator CLI":
+            (root / "calculator.py").write_text(
+                "import sys\n\n"
+                "if len(sys.argv) != 4 or sys.argv[1] != 'add':\n"
+                "    raise SystemExit(2)\n"
+                "print(int(sys.argv[2]) + int(sys.argv[3]))\n"
+            )
+        elif task.title == "Implement greeter CLI":
+            (root / "greeter.py").write_text(
+                "import sys\n\n"
+                "name = sys.argv[1] if len(sys.argv) > 1 else 'world'\n"
+                "print(f'hello {name}')\n"
+            )
+        else:  # pragma: no cover - defensive scripted-agent guard
+            raise AssertionError(f"unexpected task title: {task.title}")
+
+
 
 def finding_exists(root: Path, finding_id: str) -> bool:
     return any(finding.id == finding_id for finding in FileFindingTracker(root).list_findings())

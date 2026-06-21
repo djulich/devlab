@@ -5,9 +5,17 @@ from pathlib import Path
 
 import pytest
 
+from devlab.agents import MockProvider
 from devlab.artifact_hygiene import ArtifactHygiene, collect_artifact_hygiene
 from devlab.findings import FileFindingTracker, FindingStatus
+from devlab.generations import (
+    active_generation,
+    archived_generation_numbers,
+    load_generation_manifest,
+)
+from devlab.git import run_git
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
+from devlab.orchestrator import run_loop
 from devlab.task_tracker import FileTaskTracker, TaskStatus
 from devlab.workflow_diagnostics import (
     TaskMetrics,
@@ -52,6 +60,7 @@ from tests.evaluations.scripted_agents import (
     DeploymentWebApiScriptedAgent,
     HttpApiScriptedAgent,
     StatefulWebApiScriptedAgent,
+    SpecReconciliationScriptedAgent,
     StaticFrontendScriptedAgent,
 )
 
@@ -373,6 +382,112 @@ def test_scripted_compose_deployment_evaluation(tmp_path: Path) -> None:
         diagnostics,
         scenario,
         expected_artifact="compose.yaml",
+    )
+
+
+def test_scripted_spec_reconciliation_archives_and_replans(tmp_path: Path) -> None:
+    init_target_workspace(
+        tmp_path,
+        "Build a Python CLI calculator in calculator.py with an add command.",
+    )
+    agent = SpecReconciliationScriptedAgent()
+    provider = MockProvider(on_invoke=agent.on_invoke, handoff_text=agent.handoff_for)
+
+    initial = run_loop(
+        tmp_path,
+        max_sessions=8,
+        agent_providers={"default": provider},
+        automatic_version_control=True,
+    )
+
+    assert initial.completed is True
+    assert initial.exit_code == 0
+    assert agent.roles == [
+        "architect",
+        "planner",
+        "developer",
+        "reviewer",
+        "integrator",
+        "architect",
+    ]
+    assert active_generation(tmp_path) == 1
+    assert FileTaskTracker(tmp_path).get("T0001").title == "Implement calculator CLI"
+    assert FileMilestoneTracker(tmp_path).get("M1").status == (
+        MilestoneStatus.ARCHITECTURE_REVIEWED
+    )
+
+    spec_path = tmp_path / ".devlab/specs/system/README.md"
+    spec_path.write_text(
+        "# System Specification\n\n"
+        "Build a Python CLI greeter in greeter.py. It prints 'hello <name>'.\n"
+    )
+    run_git(tmp_path, "add", ".devlab/specs/system/README.md")
+    run_git(tmp_path, "commit", "-m", "Change system spec to greeter")
+
+    blocked = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+        automatic_version_control=True,
+    )
+
+    assert blocked.completed is False
+    assert blocked.exit_code == 1
+    assert blocked.errors[0].phase == "spec_reconciliation"
+
+    planned = run_loop(
+        tmp_path,
+        max_sessions=2,
+        agent_providers={"default": provider},
+        automatic_version_control=True,
+        planning_only=True,
+    )
+
+    assert planned.completed is True
+    assert planned.exit_code == 0
+    assert active_generation(tmp_path) == 2
+    assert archived_generation_numbers(tmp_path) == (1,)
+    manifest = load_generation_manifest(tmp_path / ".devlab/generations/0001/generation.toml")
+    assert manifest.reason == "spec_reconciliation"
+    assert (tmp_path / ".devlab/generations/0001/tasks/T0001_implement-calculator-cli.md").exists()
+    assert (tmp_path / ".devlab/generations/0001/milestones/M1.toml").exists()
+    assert not (tmp_path / ".devlab/tasks/T0001_implement-calculator-cli.md").exists()
+    assert FileTaskTracker(tmp_path).get("T0001").title == "Implement greeter CLI"
+    assert FileMilestoneTracker(tmp_path).get("M1").task_ids == ("T0001",)
+
+    final = run_loop(
+        tmp_path,
+        max_sessions=8,
+        agent_providers={"default": provider},
+        automatic_version_control=True,
+    )
+
+    assert final.completed is True
+    assert final.exit_code == 0
+    assert agent.roles == [
+        "architect",
+        "planner",
+        "developer",
+        "reviewer",
+        "integrator",
+        "architect",
+        "architect",
+        "planner",
+        "developer",
+        "reviewer",
+        "integrator",
+        "architect",
+    ]
+    assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.CLOSED
+    assert FileTaskTracker(tmp_path).get("T0001").title == "Implement greeter CLI"
+    assert FileMilestoneTracker(tmp_path).get("M1").status == (
+        MilestoneStatus.ARCHITECTURE_REVIEWED
+    )
+    assert (tmp_path / "calculator.py").exists()
+    assert (tmp_path / "greeter.py").exists()
+    assert run_git(tmp_path, "status", "--porcelain").stdout.strip() == ""
+    assert run_git(tmp_path, "tag", "--list", "devlab/milestone/M1").stdout.strip() == (
+        "devlab/milestone/M1"
     )
 
 
