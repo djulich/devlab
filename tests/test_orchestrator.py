@@ -930,6 +930,60 @@ class TestRunLoop:
         assert [call.role_name for call in provider.calls] == ["architect", "planner"]
         assert all("## Planning Revision Mode" in call.session_prompt for call in provider.calls)
 
+    def test_revise_plan_rejects_deleted_active_task(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        (tmp_path / PROJECT_PLAN).write_text("## M1: Initial\n- T0001: First\n")
+        task_path = _write_task(tmp_path, "T0001", "First", milestone="M1")
+
+        def on_invoke(call: AgentCall) -> None:
+            if call.role_name == "planner":
+                task_path.unlink()
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=5,
+            planning_only=True,
+            revise_plan=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.sessions_run == 1
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "handoff_validation"
+        assert "planner deleted active task file(s): T0001" in result.errors[0].message
+
+    def test_planner_follow_up_rejects_deleted_active_task(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        (tmp_path / PROJECT_PLAN).write_text("## M1: Initial\n- T0001: First\n")
+        task_path = _write_task(tmp_path, "T0001", "First", status="closed", milestone="M1")
+        FileFindingTracker(tmp_path).create(
+            title="Missing follow-up",
+            source="integrator",
+            milestone="M1",
+            body="# Finding\n",
+        )
+
+        def on_invoke(call: AgentCall) -> None:
+            assert call.role_name == "planner"
+            task_path.unlink()
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.sessions_run == 0
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "handoff_validation"
+        assert "planner deleted active task file(s): T0001" in result.errors[0].message
+
     def test_developer_completed_task_is_marked_in_review(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")

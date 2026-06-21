@@ -472,6 +472,29 @@ def _validate_exhausted_backlog_planner_progress(
     )
 
 
+def _validate_planner_preserved_active_tasks(
+    before: WorkspaceSnapshot,
+    after: WorkspaceSnapshot,
+    role_name: str,
+    *,
+    fresh_generation_plan: bool,
+) -> str | None:
+    if role_name != "planner" or fresh_generation_plan:
+        return None
+    before_tasks = {task.id: task for task in before.current_generation_tasks()}
+    if not before_tasks:
+        return None
+    after_task_ids = {task.id for task in after.current_generation_tasks()}
+    deleted_ids = sorted(set(before_tasks) - after_task_ids)
+    if not deleted_ids:
+        return None
+    deleted = ", ".join(
+        f"{task_id} ({before_tasks[task_id].path.relative_to(before.root).as_posix()})"
+        for task_id in deleted_ids
+    )
+    return f"planner deleted active task file(s): {deleted}"
+
+
 def _needs_incremental_planning(snapshot: WorkspaceSnapshot) -> bool:
     return snapshot.all_milestones_complete() and not snapshot.workflow_state().planning.complete
 
@@ -1033,6 +1056,14 @@ def run_loop(
             )
             if role_name == "planner" and spec_status is not None:
                 workflow_state, spec_status = _load_workflow_and_spec_status(root)
+            planner_task_error = _validate_planner_preserved_active_tasks(
+                start_snapshot,
+                workspace.snapshot,
+                role_name,
+                fresh_generation_plan=fresh_generation_plan,
+            )
+            if planner_task_error is not None:
+                raise HandoffError(planner_task_error)
             planner_noop_error = _validate_exhausted_backlog_planner_progress(
                 start_snapshot,
                 workspace.snapshot,
