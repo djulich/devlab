@@ -84,11 +84,11 @@ Priority: medium. DevLab should support operation on a project developed outside
 
 In this case, the system spec acts as a feature spec. DevLab adds the specified features to the existing project using the same workflow it uses to develop from scratch. The architect and planner roles need to account for existing code and infrastructure rather than assuming a greenfield project.
 
-Status: **workflow mode and scripted coverage implemented; live evaluation coverage still needed**. `devlab plan --adopt-existing` explicitly asks the architect and planner to treat the repository as an already-started project and is only allowed before an active DevLab plan exists. During adoption, the architect must create a current-state design baseline before the planner creates new work.
+Status: **implemented; provider baseline collection remains**. `devlab plan --adopt-existing` explicitly asks the architect and planner to treat the repository as an already-started project and is only allowed before an active DevLab plan exists. During adoption, the architect must create a current-state design baseline before the planner creates new work. Scripted and opt-in live evaluation coverage exist for a pre-existing tiny repo plus a feature spec.
 
 Open work:
 
-- Add live/provider evaluations using a pre-existing tiny repo plus a feature spec.
+- Run the opt-in adopt-existing live evaluation across local provider environments and collect baseline outcomes.
 
 ## 8. Multi-session Architecture Planning for Large Specs
 

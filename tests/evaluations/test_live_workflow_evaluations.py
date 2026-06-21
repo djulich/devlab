@@ -57,7 +57,13 @@ def _configure_live_agents(root: Path) -> None:
     run_git(root, "commit", "-m", "Configure live evaluation agents")
 
 
-def _run_live_loop(root: Path, *, max_sessions: int, planning_only: bool = False):
+def _run_live_loop(
+    root: Path,
+    *,
+    max_sessions: int,
+    planning_only: bool = False,
+    adopt_existing: bool = False,
+):
     return run_loop(
         root,
         max_sessions=max_sessions,
@@ -67,6 +73,7 @@ def _run_live_loop(root: Path, *, max_sessions: int, planning_only: bool = False
         retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
         automatic_version_control=True,
         planning_only=planning_only,
+        adopt_existing=adopt_existing,
     )
 
 
@@ -93,6 +100,84 @@ def _assert_live_diagnostics(
     assert diagnostics.git.commit_count > diagnostics.git.baseline_commit_count, failure_context
     assert diagnostics.git.session_commit_count >= diagnostics.sessions_run, failure_context
     assert not diagnostics.git.missing_milestone_tags, failure_context
+
+
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_ADOPT_EXISTING") != "1",
+    reason="adopt-existing live evaluation requires DEVLAB_LIVE_ADOPT_EXISTING=1",
+)
+def test_live_adopt_existing_current_state_baseline_and_feature_work(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "calculator.py").write_text(
+        "import sys\n\n"
+        "def calculate(command: str, left: int, right: int) -> int:\n"
+        "    if command == 'add':\n"
+        "        return left + right\n"
+        "    raise ValueError(command)\n\n"
+        "def main() -> None:\n"
+        "    if len(sys.argv) != 4:\n"
+        "        raise SystemExit(2)\n"
+        "    print(calculate(sys.argv[1], int(sys.argv[2]), int(sys.argv[3])))\n\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+    (tmp_path / "test_calculator.py").write_text(
+        "from calculator import calculate\n\n\n"
+        "def test_add():\n"
+        "    assert calculate('add', 2, 3) == 5\n"
+    )
+    init_target_workspace(
+        tmp_path,
+        "Add a subtract command to the existing Python calculator CLI. Preserve the "
+        "existing add command and keep the CLI runnable from the repository root as "
+        "python calculator.py <command> <left> <right>. The command must print only "
+        "the numeric result. Update the existing tests or add adjacent tests for the "
+        "new subtract behavior. Treat the current repository as an already-started "
+        "project, not a greenfield project.",
+    )
+    _configure_live_agents(tmp_path)
+    failure_context = (
+        f"target_root={tmp_path}\n"
+        f"agent_logs={tmp_path / '.devlab/logs/agents'}"
+    )
+
+    planned = _run_live_loop(
+        tmp_path,
+        max_sessions=2,
+        planning_only=True,
+        adopt_existing=True,
+    )
+
+    assert planned.completed is True, failure_context
+    assert planned.exit_code == 0, failure_context
+    design = (tmp_path / ".devlab/plans/design-plan.md").read_text().lower()
+    assert "calculator.py" in design, failure_context
+    assert "add" in design, failure_context
+    assert "subtract" in design, failure_context
+    assert (
+        "current-state" in design
+        or "current state" in design
+        or "existing" in design
+    ), failure_context
+    assert FileTaskTracker(tmp_path).list_tasks(), failure_context
+
+    final = _run_live_loop(
+        tmp_path,
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_ADOPT_EXISTING_MAX_SESSIONS", "8")),
+    )
+
+    assert final.completed is True, failure_context
+    assert final.exit_code == 0, failure_context
+    add_check = command_check("existing add command", ["calculator.py", "add", "2", "3"], "5")(
+        tmp_path
+    )
+    subtract_check = command_check(
+        "new subtract command", ["calculator.py", "subtract", "7", "4"], "3"
+    )(tmp_path)
+    assert add_check.passed is True, add_check.message + "\n" + failure_context
+    assert subtract_check.passed is True, subtract_check.message + "\n" + failure_context
+    assert run_git(tmp_path, "status", "--porcelain").stdout.strip() == "", failure_context
 
 
 @pytest.mark.skipif(

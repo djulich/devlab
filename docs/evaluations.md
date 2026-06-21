@@ -109,6 +109,19 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_spec_reconciliation_archives_and_replans -s
 ```
 
+The adopt-existing live evaluation starts from a tiny pre-existing calculator repo,
+runs `devlab plan --adopt-existing`, checks that the design plan records
+current-state evidence, then runs implementation and verifies both the existing
+`add` behavior and the newly requested `subtract` behavior. It is skipped unless
+explicitly enabled:
+
+```bash
+DEVLAB_LIVE_EVALS=1 \
+DEVLAB_LIVE_ADOPT_EXISTING=1 \
+DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_adopt_existing_current_state_baseline_and_feature_work -s
+```
+
 Useful environment variables:
 
 - `DEVLAB_EVAL_DEPLOYMENT_TOOLS=1`: enable optional tool-backed deployment checks, such as target-owned Make targets. Missing host tools are skipped/unverified, not installed.
@@ -127,6 +140,8 @@ Useful environment variables:
 - `DEVLAB_LIVE_SPEC_RECONCILIATION=1`: enable the spec reconciliation live evaluation.
 - `DEVLAB_LIVE_SPEC_RECONCILIATION_INITIAL_MAX`: optional session cap for the initial live run before the spec change; defaults to `10`.
 - `DEVLAB_LIVE_SPEC_RECONCILIATION_FINAL_MAX`: optional session cap for the final live run after reconciliation; defaults to `10`.
+- `DEVLAB_LIVE_ADOPT_EXISTING=1`: enable the adopt-existing live evaluation.
+- `DEVLAB_LIVE_ADOPT_EXISTING_MAX_SESSIONS`: optional session cap for the implementation run after adopt-existing planning; defaults to `8`.
 - `DEVLAB_EVAL_RESULTS_DIR`: optional directory for persistent diagnostics copies.
 - `DEVLAB_LIVE_RETAIN_PROMPTS=1`: retain split base/session prompt logs under `.devlab/logs/agents/` for live-run debugging.
 
