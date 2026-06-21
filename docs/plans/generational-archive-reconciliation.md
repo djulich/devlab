@@ -1,5 +1,13 @@
 # Generational Archive Reconciliation
 
+Status: **implemented**. DevLab now archives the active workflow bundle for
+fresh-generation planning, derives the active generation from archive directories,
+removes active task/milestone `planning_generation` front matter, supports
+`devlab plan --replace-plan` and `devlab plan --adopt-existing`, and blocks
+`devlab run` until committed spec changes are reconciled. Remaining ideas at the
+end of this document are follow-up hardening options, not active implementation
+instructions.
+
 ## Problem
 
 The current spec-change reconciliation design keeps all task and milestone files in
@@ -245,7 +253,7 @@ Consequences:
    archived generations.
 9. Update docs and evaluations for existing-project adoption and spec reconciliation.
 
-## Test Plan
+## Implemented Coverage
 
 - First `devlab plan` with no active plan creates generation 1 without archiving.
 - `devlab plan --adopt-existing` is allowed only with no active plan.
@@ -261,15 +269,17 @@ Consequences:
 - Active task IDs can restart at `T0001` without conflicting with archived `T0001`.
 - Active selectors ignore archived tasks and milestones.
 - Planner sessions cannot mutate archived generation files.
-- A failed replacement planning run leaves a detectable recovery state.
 - Existing-project adoption prompt context includes repository inspection guidance.
-- Spec reconciliation prompt context includes summarized previous-generation context.
+- Spec reconciliation and replacement prompts tell agents that the prior active
+  planning graph was archived and that the new plan must be complete.
 
-## Open Questions
+## Follow-Up Options
 
 - What exact recovery command should handle a failure after archive creation but
   before a new active plan is completed?
 - How much previous-generation detail should prompts include before context-size
   reduction becomes necessary?
+- Should fresh-generation planning prompts include summarized previous-generation
+  context, beyond telling agents that the prior graph was archived?
 - Should generation archive manifests store the commit that performed the archive
   after automatic version control commits the session?

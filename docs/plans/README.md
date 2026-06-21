@@ -6,10 +6,11 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [generational-archive-reconciliation.md](generational-archive-reconciliation.md) — replace in-place planning-generation filtering with archived generation bundles for spec reconciliation and existing-project adoption
+None.
 
 ## Implemented
 
+- [generational-archive-reconciliation.md](generational-archive-reconciliation.md) — replaced in-place planning-generation filtering with archived generation bundles for spec reconciliation and existing-project adoption
 - [spec-change-reconciliation.md](spec-change-reconciliation.md) — detect system/deployment spec changes after planning and require `devlab plan` reconciliation before implementation
 - [orchestrator-owned-workflow-state.md](orchestrator-owned-workflow-state.md) — move `.devlab/workflow.toml` writes from planner agents to orchestrator-owned handoff processing
 - [agent-invocation-observability-and-error-handling.md](agent-invocation-observability-and-error-handling.md) — AgentResult, per-session logs, SessionContext, structured error handling
