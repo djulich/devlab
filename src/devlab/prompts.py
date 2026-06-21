@@ -98,7 +98,12 @@ def _planning_revision_section(
     elif adopt_existing:
         mode_text = (
             "\n\nThis is existing-project adoption. Inspect existing source, tests, "
-            "tooling, packaging, and deployment files before creating planning state."
+            "tooling, packaging, and deployment files before creating planning state. "
+            "Preserve the existing project's development stack and validation approach "
+            "when one is present; do not replace it with DevLab's preferred tooling "
+            "just because the reusable tooling policy recommends it. Validation must "
+            "use target-owned commands, scripts, profiles, or documented prerequisites, "
+            "not globally installed or harness-inherited tools."
         )
     if role_name == "architect":
         if adopt_existing:
@@ -107,7 +112,9 @@ def _planning_revision_section(
                 "describing target changes. The baseline must summarize the existing "
                 "source structure, runtime/tooling, tests, deployment-relevant files, "
                 "implemented behavior, and the gaps between current behavior and the "
-                "current specifications."
+                "current specifications. If the existing project has no reliable "
+                "target-owned validation path, say so explicitly and describe what kind "
+                "of validation/profile work planning should add."
             )
         return (
             "\n\n## Planning Revision Mode\n\n"
@@ -117,6 +124,14 @@ def _planning_revision_section(
             f"{mode_text}"
         )
     if role_name == "planner":
+        if adopt_existing:
+            mode_text += (
+                " Plan implementation tasks around the existing project's validation "
+                "path when it is reliable. If no reliable target-owned validation path "
+                "exists, plan explicit tooling/profile work before tasks that depend on "
+                "that validation. Do not silently rely on host-global or "
+                "DevLab-harness tools."
+            )
         return (
             "\n\n## Planning Revision Mode\n\n"
             "Review the existing project plan and task files against the current design "

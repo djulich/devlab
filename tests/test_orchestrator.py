@@ -857,7 +857,13 @@ class TestRunLoop:
         assert [call.role_name for call in provider.calls] == ["architect", "planner"]
         assert "existing-project adoption" in provider.calls[0].session_prompt
         assert "current-state design baseline" in provider.calls[0].session_prompt
+        assert "Preserve the existing project's development stack" in (
+            provider.calls[0].session_prompt
+        )
+        assert "target-owned validation path" in provider.calls[0].session_prompt
         assert "existing-project adoption" in provider.calls[-1].session_prompt
+        assert "target-owned validation path" in provider.calls[-1].session_prompt
+        assert "Do not silently rely on host-global" in provider.calls[-1].session_prompt
         assert not (tmp_path / ".devlab/generations").exists()
 
     def test_planning_only_dirty_spec_paths_fail_before_agent_session(

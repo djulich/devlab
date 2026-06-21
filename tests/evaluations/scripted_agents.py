@@ -434,6 +434,8 @@ class AdoptExistingScriptedAgent:
     def _architect(self, invocation: AgentInvocation) -> None:
         assert "existing-project adoption" in invocation.session_prompt
         assert "current-state design baseline" in invocation.session_prompt
+        assert "Preserve the existing project's development stack" in invocation.session_prompt
+        assert "target-owned validation path" in invocation.session_prompt
         assert (invocation.root / "calculator.py").exists()
         assert (invocation.root / "test_calculator.py").exists()
         _design_plan(invocation.root).write_text(
@@ -452,6 +454,8 @@ class AdoptExistingScriptedAgent:
 
     def _planner(self, invocation: AgentInvocation) -> None:
         assert "existing-project adoption" in invocation.session_prompt
+        assert "target-owned validation path" in invocation.session_prompt
+        assert "Do not silently rely on host-global" in invocation.session_prompt
         assert "Current-State Design Baseline" in _design_plan(invocation.root).read_text()
         _project_plan(invocation.root).write_text(
             "# Project Plan\n\n"

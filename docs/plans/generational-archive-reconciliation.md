@@ -125,7 +125,12 @@ run. This affects prompt mode: architect and planner must inspect existing code,
 tests, tooling, packaging, and deployment state before planning new work. The
 architect records a current-state design baseline in the normal design plan before
 describing target changes, so planner and later implementation sessions can
-distinguish existing behavior from newly requested work.
+distinguish existing behavior from newly requested work. Adoption should preserve
+the existing project's development stack and validation approach when they are
+reliable. If the project lacks a target-owned validation path, planner work should
+add explicit tooling/profile support before implementation tasks depend on that
+validation; agents should not silently rely on globally installed or
+DevLab-harness tools.
 
 Validation:
 
