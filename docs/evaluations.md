@@ -112,8 +112,11 @@ uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_spe
 The adopt-existing live evaluation starts from a tiny pre-existing calculator repo,
 runs `devlab plan --adopt-existing`, checks that the design plan records
 current-state evidence, then runs implementation and verifies both the existing
-`add` behavior and the newly requested `subtract` behavior. It is skipped unless
-explicitly enabled:
+`add` behavior and the newly requested `subtract` behavior. The target repo owns
+its validation environment through `pyproject.toml`, `uv.lock`, `.gitignore`, and
+the validation command `uv run pytest`; the evaluation rejects planned task
+validation that uses bare `pytest`, because that can accidentally resolve to the
+DevLab harness environment. It is skipped unless explicitly enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \

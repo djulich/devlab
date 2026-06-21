@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,8 @@ from devlab.git import run_git
 from devlab.orchestrator import run_loop
 from devlab.task_tracker import FileTaskTracker
 from tests.evaluations.checks import (
+    BlackBoxCheck,
+    CheckResult,
     command_check,
     command_fails_check,
     deployment_artifacts_check,
@@ -102,6 +105,31 @@ def _assert_live_diagnostics(
     assert not diagnostics.git.missing_milestone_tags, failure_context
 
 
+def _target_command_check(
+    name: str,
+    args: list[str],
+    expected_text: str,
+) -> BlackBoxCheck:
+    def check(root: Path) -> CheckResult:
+        result = subprocess.run(
+            args,
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        output = result.stdout + result.stderr
+        passed = result.returncode == 0 and expected_text in output
+        return CheckResult(
+            name,
+            passed,
+            "" if passed else f"exit={result.returncode} output={output!r}",
+        )
+
+    return check
+
+
 @pytest.mark.skipif(
     os.environ.get("DEVLAB_LIVE_ADOPT_EXISTING") != "1",
     reason="adopt-existing live evaluation requires DEVLAB_LIVE_ADOPT_EXISTING=1",
@@ -109,6 +137,20 @@ def _assert_live_diagnostics(
 def test_live_adopt_existing_current_state_baseline_and_feature_work(
     tmp_path: Path,
 ) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "adopt-existing-calculator"\n'
+        'version = "0.1.0"\n'
+        'requires-python = ">=3.12"\n'
+        "\n"
+        "[dependency-groups]\n"
+        'dev = ["pytest"]\n'
+    )
+    (tmp_path / ".gitignore").write_text(
+        ".venv/\n"
+        "__pycache__/\n"
+        ".pytest_cache/\n"
+    )
     (tmp_path / "calculator.py").write_text(
         "import sys\n\n"
         "def calculate(command: str, left: int, right: int) -> int:\n"
@@ -133,9 +175,50 @@ def test_live_adopt_existing_current_state_baseline_and_feature_work(
         "existing add command and keep the CLI runnable from the repository root as "
         "python calculator.py <command> <left> <right>. The command must print only "
         "the numeric result. Update the existing tests or add adjacent tests for the "
-        "new subtract behavior. Treat the current repository as an already-started "
-        "project, not a greenfield project.",
+        "new subtract behavior. The target-owned validation command is "
+        "`uv run pytest`; do not use bare `pytest` because the evaluation must not "
+        "rely on globally installed or harness-inherited tools. Treat the current "
+        "repository as an already-started project, not a greenfield project.",
     )
+    tooling_path = tmp_path / ".devlab/config/tooling.md"
+    tooling_path.write_text(
+        tooling_path.read_text()
+        + "\n\n## Existing-Project Evaluation Validation\n\n"
+        "This target owns its Python test environment through `pyproject.toml` and "
+        "uv dependency groups. Use `uv run pytest` for task validation. Do not use "
+        "bare `pytest`, because that can accidentally resolve to the DevLab harness "
+        "environment instead of target-owned tooling.\n"
+    )
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        'version = 1\n'
+        'id = "default"\n'
+        'title = "Default evaluation profile"\n'
+        '\n[tooling]\n'
+        'summary = "Target-owned Python validation through uv and pyproject.toml."\n'
+        'default_validation = ["uv run pytest"]\n'
+        '\n[environment]\n'
+        'managed_roles = []\n'
+    )
+    lock_result = subprocess.run(
+        ["uv", "--cache-dir", "/tmp/uv-cache", "lock"],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    assert lock_result.returncode == 0, lock_result.stderr
+    run_git(
+        tmp_path,
+        "add",
+        ".gitignore",
+        "pyproject.toml",
+        "uv.lock",
+        ".devlab/config/tooling.md",
+        ".devlab/config/profiles/default.toml",
+    )
+    run_git(tmp_path, "commit", "-m", "Configure target-owned validation")
     _configure_live_agents(tmp_path)
     failure_context = (
         f"target_root={tmp_path}\n"
@@ -160,7 +243,18 @@ def test_live_adopt_existing_current_state_baseline_and_feature_work(
         or "current state" in design
         or "existing" in design
     ), failure_context
-    assert FileTaskTracker(tmp_path).list_tasks(), failure_context
+    tasks = FileTaskTracker(tmp_path).list_tasks()
+    assert tasks, failure_context
+    planned_validation = {
+        command
+        for task in tasks
+        if task.validation is not None
+        for command in task.validation
+    }
+    assert "pytest" not in planned_validation, failure_context
+    assert any("uv run pytest" in command for command in planned_validation) or any(
+        task.validation is None for task in tasks
+    ), failure_context
 
     final = _run_live_loop(
         tmp_path,
@@ -177,6 +271,10 @@ def test_live_adopt_existing_current_state_baseline_and_feature_work(
     )(tmp_path)
     assert add_check.passed is True, add_check.message + "\n" + failure_context
     assert subtract_check.passed is True, subtract_check.message + "\n" + failure_context
+    validation = _target_command_check("target-owned pytest", ["uv", "run", "pytest"], "passed")(
+        tmp_path
+    )
+    assert validation.passed is True, validation.message + "\n" + failure_context
     assert run_git(tmp_path, "status", "--porcelain").stdout.strip() == "", failure_context
 
 
