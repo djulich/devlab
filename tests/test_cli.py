@@ -71,7 +71,11 @@ def test_cli_status_reports_next_role_for_initialized_workspace(
 
     _run_cli(monkeypatch, "status", "--root", str(tmp_path))
 
-    assert capsys.readouterr().out.strip() == "Next role: architect"
+    assert capsys.readouterr().out.strip() == (
+        "Next role: architect\n"
+        "Active generation: 1\n"
+        "Archived generations: none"
+    )
 
 
 def test_cli_status_verbose_reports_agent_configuration(

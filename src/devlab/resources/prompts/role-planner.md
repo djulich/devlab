@@ -60,8 +60,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 - If a task depends on another, add the dependency task IDs to the task metadata's `depends_on` array.
 - New tasks start with `status = "open"`.
 - New tasks use `domain = "general"` unless the task's primary acceptance criteria match a more specific available domain.
-- Do not set task `planning_generation`; DevLab stamps that workflow metadata from task files changed during the planner session.
-- Do not modify older-generation task files. If older work is still required, create a new task for the current plan.
+- Do not set task `planning_generation`; generation is represented by DevLab archive scope, not task front matter.
 
 ## Profile and Environment Planning
 

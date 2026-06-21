@@ -736,6 +736,7 @@ class TestRunLoop:
     ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        (tmp_path / PROJECT_PLAN).write_text("# Project\n")
         _write_task(tmp_path, "T0001", "First")
         _write_system_spec(tmp_path, "# Spec\n")
         _init_git_repo(tmp_path)
@@ -757,37 +758,105 @@ class TestRunLoop:
         assert result.sessions_run == 2
         assert [call.role_name for call in provider.calls] == ["architect", "planner"]
         workflow_text = (tmp_path / ".devlab/workflow.toml").read_text()
-        assert "generation = 2" in workflow_text
+        assert "generation =" not in workflow_text
         assert f'last_planned_spec_commit = "{latest}"' in workflow_text
-        assert "Target planning generation: `2`" in provider.calls[-1].session_prompt
+        assert "This is spec reconciliation" in provider.calls[-1].session_prompt
+        assert (tmp_path / ".devlab/generations/0001/tasks/T0001_first.md").exists()
+        assert not (tmp_path / ".devlab/tasks/T0001_first.md").exists()
 
-    def test_planning_reconciliation_fails_when_target_generation_tasks_exist(
+    def test_replace_plan_archives_active_plan(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\n")
-        _write_task(tmp_path, "T0001", "Future task", generation=2)
-        _write_system_spec(tmp_path, "# Spec\n")
-        _init_git_repo(tmp_path)
-        baseline = _commit_all(tmp_path, "init")
-        _write_workflow_state(tmp_path, generation=1, baseline=baseline)
-        _commit_all(tmp_path, "record baseline")
-        _write_system_spec(tmp_path, "# Changed spec\n")
-        _commit_all(tmp_path, "change spec")
+        _write_task(tmp_path, "T0001", "First")
         provider = MockProvider()
 
         result = run_loop(
             tmp_path,
             max_sessions=2,
             planning_only=True,
-            automatic_version_control=True,
+            replace_plan=True,
             agent_providers={"default": provider},
         )
 
-        assert result.completed is False
-        assert result.errors[0].phase == "handoff_validation"
-        assert "already assigned to target generation 2: T0001" in result.errors[0].message
-        assert [call.role_name for call in provider.calls] == ["architect"]
+        assert result.sessions_run == 2
+        assert (tmp_path / ".devlab/generations/0001/tasks/T0001_first.md").exists()
+        assert not (tmp_path / ".devlab/tasks/T0001_first.md").exists()
+        assert "replacement planning" in provider.calls[-1].session_prompt
+
+    def test_adopt_existing_is_rejected_when_active_plan_exists(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            adopt_existing=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 2
+        assert result.errors[0].phase == "planning_mode"
+        assert provider.calls == []
+
+    def test_replace_plan_is_rejected_without_active_plan(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            replace_plan=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 2
+        assert result.errors[0].phase == "planning_mode"
+        assert provider.calls == []
+
+    def test_adopt_existing_and_replace_plan_are_mutually_exclusive(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            adopt_existing=True,
+            replace_plan=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 2
+        assert result.errors[0].phase == "planning_mode"
+        assert provider.calls == []
+
+    def test_adopt_existing_runs_first_planning_with_adoption_prompt(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            adopt_existing=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.sessions_run == 2
+        assert [call.role_name for call in provider.calls] == ["architect", "planner"]
+        assert "existing-project adoption" in provider.calls[-1].session_prompt
+        assert not (tmp_path / ".devlab/generations").exists()
 
     def test_planning_only_dirty_spec_paths_fail_before_agent_session(
         self, tmp_path: Path
@@ -1479,12 +1548,12 @@ class TestRunLoop:
 
         assert FileFindingTracker(tmp_path).get(finding.id).status == FindingStatus.PLANNED
 
-    def test_planner_added_task_is_stamped_with_current_generation(
+    def test_planner_added_task_remains_active_without_generation_metadata(
         self, tmp_path: Path
     ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / ".devlab/workflow.toml").write_text(
-            "version = 1\n\n[planning]\ncomplete = false\ngeneration = 2\n"
+            "version = 1\n\n[planning]\ncomplete = false\n"
         )
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
 
@@ -1498,100 +1567,6 @@ class TestRunLoop:
                 "## Changed Artifacts\n- .devlab/tasks/T0002_current-work.md (created)\n"
                 "## Open Issues\n- None\n"
                 "## Addressed Findings\n- None\n"
-                "## Next Session Hint\nImplement current work.\n"
-                "## Planning State\nplanning_complete = false\n"
-            ),
-            on_invoke=on_invoke,
-        )
-
-        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
-
-        assert result.exit_code == 0
-        task_text = (tmp_path / TASKS_DIR / "T0002_current-work.md").read_text()
-        assert "planning_generation = 2" in task_text
-
-    def test_planner_reused_milestone_is_stamped_with_current_generation(
-        self, tmp_path: Path
-    ) -> None:
-        _setup_tree(tmp_path)
-        (tmp_path / ".devlab/workflow.toml").write_text(
-            "version = 1\n\n[planning]\ncomplete = false\ngeneration = 2\n"
-        )
-        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        _write_task(
-            tmp_path,
-            "T0001",
-            "Previous work",
-            status="closed",
-            milestone="M1",
-            generation=1,
-        )
-        _write_milestone(
-            tmp_path,
-            "M1",
-            integrated=True,
-            task_ids=["T0001"],
-            generation=1,
-        )
-
-        def on_invoke(call: AgentCall) -> None:
-            _write_task(
-                call.root,
-                "T0002",
-                "Current work",
-                status="closed",
-                milestone="M1",
-            )
-
-        provider = MockProvider(
-            handoff_text=(
-                "# Handoff: planner\n"
-                "## Done\n- Created current-generation work under M1.\n"
-                "## Changed Artifacts\n- .devlab/tasks/T0002_current-work.md (created)\n"
-                "## Open Issues\n- None\n"
-                "## Addressed Findings\n- None\n"
-                "## Next Session Hint\nIntegrate M1.\n"
-                "## Planning State\nplanning_complete = true\n"
-            ),
-            on_invoke=on_invoke,
-        )
-
-        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
-
-        assert result.exit_code == 0
-        milestone = FileMilestoneTracker(tmp_path).get("M1")
-        assert milestone.planning_generation == 2
-        assert milestone.status == MilestoneStatus.ACTIVE
-        assert milestone.integrated is False
-        assert milestone.task_ids == ("T0001", "T0002")
-        assert Workspace(tmp_path).snapshot.select_integration_milestone() == "M1"
-
-    def test_planner_modified_current_generation_task_is_stamped(
-        self, tmp_path: Path
-    ) -> None:
-        _setup_tree(tmp_path)
-        (tmp_path / ".devlab/workflow.toml").write_text(
-            "version = 1\n\n[planning]\ncomplete = false\ngeneration = 2\n"
-        )
-        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        task = _write_task(
-            tmp_path,
-            "T0002",
-            "Current work",
-            status="closed",
-            generation=2,
-        )
-
-        def on_invoke(call: AgentCall) -> None:
-            task.write_text(task.read_text() + "\n## Notes\nRefined scope.\n")
-
-        provider = MockProvider(
-            handoff_text=(
-                "# Handoff: planner\n"
-                "## Done\n- Refined task.\n"
-                "## Changed Artifacts\n- .devlab/tasks/T0002_current-work.md (created)\n"
-                "## Open Issues\n- None\n"
-                "## Addressed Findings\n- None\n"
                 "## Next Session Hint\nImplement task.\n"
                 "## Planning State\nplanning_complete = true\n"
             ),
@@ -1601,73 +1576,9 @@ class TestRunLoop:
         result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert result.exit_code == 0
-        assert "planning_generation = 2" in task.read_text()
-
-    def test_planner_modified_old_generation_task_fails(self, tmp_path: Path) -> None:
-        _setup_tree(tmp_path)
-        (tmp_path / ".devlab/workflow.toml").write_text(
-            "version = 1\n\n[planning]\ncomplete = false\ngeneration = 2\n"
-        )
-        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        task = _write_task(tmp_path, "T0001", "Stale work", milestone="M1", generation=1)
-
-        def on_invoke(call: AgentCall) -> None:
-            task.write_text(task.read_text() + "\n## Notes\nHistorical annotation.\n")
-
-        provider = MockProvider(
-            handoff_text=(
-                "# Handoff: planner\n"
-                "## Done\n- Annotated stale task.\n"
-                "## Changed Artifacts\n- .devlab/tasks/T0001_stale-work.md (modified)\n"
-                "## Open Issues\n- None\n"
-                "## Addressed Findings\n- None\n"
-                "## Next Session Hint\nCreate current task.\n"
-                "## Planning State\nplanning_complete = false\n"
-            ),
-            on_invoke=on_invoke,
-        )
-
-        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
-
-        assert result.completed is False
-        assert result.errors[0].phase == "handoff_validation"
-        assert "modified older-generation task T0001" in result.errors[0].message
-
-    def test_planner_deleted_task_fails(self, tmp_path: Path) -> None:
-        _setup_tree(tmp_path)
-        (tmp_path / ".devlab/workflow.toml").write_text(
-            "version = 1\n\n[planning]\ncomplete = false\ngeneration = 2\n"
-        )
-        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        task = _write_task(
-            tmp_path,
-            "T0002",
-            "Current work",
-            status="closed",
-            generation=2,
-        )
-
-        def on_invoke(call: AgentCall) -> None:
-            task.unlink()
-
-        provider = MockProvider(
-            handoff_text=(
-                "# Handoff: planner\n"
-                "## Done\n- Removed task.\n"
-                "## Changed Artifacts\n- .devlab/tasks/T0002_current-work.md (deleted)\n"
-                "## Open Issues\n- None\n"
-                "## Addressed Findings\n- None\n"
-                "## Next Session Hint\nRestore task.\n"
-                "## Planning State\nplanning_complete = false\n"
-            ),
-            on_invoke=on_invoke,
-        )
-
-        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
-
-        assert result.completed is False
-        assert result.errors[0].phase == "handoff_validation"
-        assert "must not delete task files: T0002" in result.errors[0].message
+        task_text = (tmp_path / TASKS_DIR / "T0002_current-work.md").read_text()
+        assert "planning_generation" not in task_text
+        assert Workspace(tmp_path).snapshot.select_next_development_task().id == "T0002"
 
     def test_planner_addressed_findings_requires_task_mapping(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

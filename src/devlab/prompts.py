@@ -49,7 +49,8 @@ def build_session_prompt(
     role_name: str,
     *,
     planning_revision: bool = False,
-    target_planning_generation: int | None = None,
+    adopt_existing: bool = False,
+    fresh_generation: bool = False,
     spec_reconciliation: bool = False,
 ) -> str:
     builders = {
@@ -66,7 +67,8 @@ def build_session_prompt(
     if planning_revision:
         prompt += _planning_revision_section(
             role_name,
-            target_planning_generation=target_planning_generation,
+            adopt_existing=adopt_existing,
+            fresh_generation=fresh_generation,
             spec_reconciliation=spec_reconciliation,
         )
     return prompt + _handoff_reminder(role_name)
@@ -75,29 +77,36 @@ def build_session_prompt(
 def _planning_revision_section(
     role_name: str,
     *,
-    target_planning_generation: int | None,
+    adopt_existing: bool,
+    fresh_generation: bool,
     spec_reconciliation: bool,
 ) -> str:
-    generation_text = (
-        f"\n\nTarget planning generation: `{target_planning_generation}`."
-        if target_planning_generation is not None
-        else ""
-    )
-    reconciliation_text = (
-        "\n\nThis is spec reconciliation. Previous-generation active tasks and "
-        "unfinished milestones are historical planning artifacts. Carry still-required "
-        "work forward by creating new planning structure; do not modify, close, "
-        "delete, or mass-restatus stale artifacts."
-        if spec_reconciliation
-        else ""
-    )
+    mode_text = ""
+    if spec_reconciliation:
+        mode_text = (
+            "\n\nThis is spec reconciliation. DevLab archived the previous active "
+            "planning graph before this session. Create a complete fresh active plan "
+            "for the current specifications and repository state. Use previous DevLab "
+            "state only as historical context if it appears in the prompt."
+        )
+    elif fresh_generation:
+        mode_text = (
+            "\n\nThis is replacement planning. DevLab archived the previous active "
+            "planning graph before this session. Create a complete fresh active plan "
+            "for the current specifications and repository state."
+        )
+    elif adopt_existing:
+        mode_text = (
+            "\n\nThis is existing-project adoption. Inspect existing source, tests, "
+            "tooling, packaging, and deployment files before creating planning state."
+        )
     if role_name == "architect":
         return (
             "\n\n## Planning Revision Mode\n\n"
             "Review the existing design plan against the current specifications and "
             "workflow state. Edit the design plan only when it materially improves "
             "accuracy, clarity, or implementation guidance."
-            f"{generation_text}{reconciliation_text}"
+            f"{mode_text}"
         )
     if role_name == "planner":
         return (
@@ -106,7 +115,7 @@ def _planning_revision_section(
             "plan and specifications. Edit plans or tasks only when it materially improves "
             "accuracy, sequencing, scope, or acceptance criteria. Do not recreate tasks "
             "that already exist."
-            f"{generation_text}{reconciliation_text}"
+            f"{mode_text}"
         )
     return ""
 
@@ -357,7 +366,6 @@ def _build_planner_prompt(snapshot: WorkspaceSnapshot) -> str:
         "## Workflow Planning State\n\n"
         f"Current `[planning].complete`: "
         f"`{str(workflow_state.planning.complete).lower()}`.\n\n"
-        f"Current `[planning].generation`: `{workflow_state.planning.generation}`.\n\n"
         "Report the next value in handoff `## Planning State`: "
         "`planning_complete = false` if future planner sessions are still needed, "
         "or `planning_complete = true` when all required in-scope spec work is "

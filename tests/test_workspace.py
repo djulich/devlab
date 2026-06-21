@@ -136,18 +136,18 @@ def test_workspace_finding_handles_create_and_transition_findings(tmp_path: Path
     assert workspace.findings().get("F0001").read().status == "resolved"
 
 
-def test_workspace_selectors_ignore_old_generation_tasks(tmp_path: Path) -> None:
+def test_workspace_selectors_use_all_active_task_files(tmp_path: Path) -> None:
     _write_workflow_state(tmp_path, generation=2)
     _write_task(tmp_path, "T0001", generation=1)
     _write_task(tmp_path, "T0002", generation=2)
 
     snapshot = Workspace(tmp_path).snapshot
 
-    assert snapshot.active_tasks()[0].id == "T0002"
-    assert snapshot.select_next_development_task().id == "T0002"  # type: ignore[union-attr]
+    assert [task.id for task in snapshot.active_tasks()] == ["T0001", "T0002"]
+    assert snapshot.select_next_development_task().id == "T0001"  # type: ignore[union-attr]
 
 
-def test_workspace_review_selector_ignores_old_generation_tasks(tmp_path: Path) -> None:
+def test_workspace_review_selector_uses_all_active_task_files(tmp_path: Path) -> None:
     _write_workflow_state(tmp_path, generation=2)
     _write_task(tmp_path, "T0001", status="in_review", generation=1)
     _write_task(tmp_path, "T0002", status="in_review", generation=2)
@@ -155,10 +155,10 @@ def test_workspace_review_selector_ignores_old_generation_tasks(tmp_path: Path) 
     task = Workspace(tmp_path).snapshot.select_next_review_task()
 
     assert task is not None
-    assert task.id == "T0002"
+    assert task.id == "T0001"
 
 
-def test_workspace_integration_selector_ignores_old_generation_milestones(
+def test_workspace_integration_selector_uses_all_active_milestones(
     tmp_path: Path,
 ) -> None:
     _write_workflow_state(tmp_path, generation=2)
@@ -167,17 +167,17 @@ def test_workspace_integration_selector_ignores_old_generation_milestones(
     _write_task(tmp_path, "T0002", milestone="M2", status="closed", generation=2)
     _write_milestone(tmp_path, "M2", task_ids=("T0002",), generation=2)
 
-    assert Workspace(tmp_path).snapshot.select_integration_milestone() == "M2"
+    assert Workspace(tmp_path).snapshot.select_integration_milestone() == "M1"
 
 
-def test_workspace_milestone_completion_uses_current_generation_tasks(
+def test_workspace_milestone_completion_uses_all_active_tasks(
     tmp_path: Path,
 ) -> None:
     _write_workflow_state(tmp_path, generation=2)
     _write_task(tmp_path, "T0001", milestone="M1", status="open", generation=1)
     _write_task(tmp_path, "T0002", milestone="M1", status="closed", generation=2)
 
-    assert Workspace(tmp_path).snapshot.milestone_complete("M1") is True
+    assert Workspace(tmp_path).snapshot.milestone_complete("M1") is False
 
 
 def _write_task(

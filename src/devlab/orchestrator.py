@@ -23,6 +23,7 @@ from devlab.agents import (
     provider_for_role,
 )
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
+from devlab.generations import archive_active_generation, has_active_plan
 from devlab.git import VersionControlError
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
@@ -290,90 +291,7 @@ def _mark_addressed_findings_planned(workspace: Workspace, handoff: Handoff) -> 
 
 @dataclasses.dataclass(frozen=True)
 class PlanningStateUpdate:
-    generation: int | None = None
     last_planned_spec_commit: str | None = None
-
-
-@dataclasses.dataclass(frozen=True)
-class PlannerTaskSnapshot:
-    id: str
-    planning_generation: int
-    content: str
-
-
-@dataclasses.dataclass(frozen=True)
-class PlannerTaskDiff:
-    stamp_task_ids: tuple[str, ...]
-
-
-def _capture_planner_task_state(snapshot: WorkspaceSnapshot) -> dict[str, PlannerTaskSnapshot]:
-    contents = snapshot.task_file_contents()
-    return {
-        task.id: PlannerTaskSnapshot(
-            id=task.id,
-            planning_generation=task.planning_generation,
-            content=contents[task.id],
-        )
-        for task in snapshot.list_tasks()
-    }
-
-
-def _validate_planner_pre_session_task_state(
-    before: dict[str, PlannerTaskSnapshot],
-    *,
-    current_generation: int,
-    target_generation: int,
-) -> None:
-    if target_generation <= current_generation:
-        return
-    future_tasks = sorted(
-        task_id
-        for task_id, task in before.items()
-        if task.planning_generation >= target_generation
-    )
-    if future_tasks:
-        raise HandoffError(
-            "planner session cannot start with task(s) already assigned to "
-            f"target generation {target_generation}: "
-            + ", ".join(future_tasks)
-        )
-
-
-def _classify_planner_task_diff(
-    before: dict[str, PlannerTaskSnapshot],
-    snapshot: WorkspaceSnapshot,
-    *,
-    target_generation: int,
-) -> PlannerTaskDiff:
-    after_tasks = {task.id: task for task in snapshot.list_tasks()}
-    after_contents = snapshot.task_file_contents()
-    deleted = sorted(set(before) - set(after_tasks))
-    if deleted:
-        raise HandoffError(
-            "planner sessions must not delete task files: " + ", ".join(deleted)
-        )
-
-    stamp_ids: list[str] = []
-    for task_id, task in sorted(after_tasks.items()):
-        prior = before.get(task_id)
-        if prior is None:
-            stamp_ids.append(task_id)
-            continue
-        if after_contents[task_id] == prior.content:
-            continue
-        if prior.planning_generation < target_generation:
-            raise HandoffError(
-                f"planner modified older-generation task {task_id}; "
-                "create a new task for carried-forward work instead"
-            )
-        if prior.planning_generation == target_generation:
-            stamp_ids.append(task_id)
-            continue
-        raise HandoffError(
-            f"planner modified future-generation task {task_id} "
-            f"(generation {prior.planning_generation})"
-        )
-    return PlannerTaskDiff(stamp_task_ids=tuple(stamp_ids))
 
 
 def _apply_planner_workflow_state(
@@ -390,7 +308,6 @@ def _apply_planner_workflow_state(
     update_workflow_state(
         workspace.root,
         planning_complete=planning_complete,
-        planning_generation=planning_update.generation if planning_update else None,
         last_planned_spec_commit=(
             planning_update.last_planned_spec_commit if planning_update else None
         ),
@@ -400,31 +317,6 @@ def _apply_planner_workflow_state(
         "Planning completion set to %s by planner handoff",
         str(planning_complete).lower(),
     )
-
-
-def _finalize_planner_generation(
-    workspace: Workspace,
-    handoff: Handoff,
-    *,
-    before: dict[str, PlannerTaskSnapshot],
-    target_generation: int,
-) -> None:
-    if handoff.role_name != "planner":
-        return
-    diff = _classify_planner_task_diff(
-        before,
-        workspace.snapshot,
-        target_generation=target_generation,
-    )
-    workspace.tasks().set_planning_generation(diff.stamp_task_ids, target_generation)
-    if diff.stamp_task_ids:
-        workspace.sync()
-        logger.info(
-            "Stamped %s planner task(s) with planning generation %s",
-            len(diff.stamp_task_ids),
-            target_generation,
-        )
-
 
 @dataclasses.dataclass(frozen=True)
 class ProcessResult:
@@ -744,14 +636,60 @@ def run_loop(
     automatic_version_control: bool = False,
     planning_only: bool = False,
     revise_plan: bool = False,
+    replace_plan: bool = False,
+    adopt_existing: bool = False,
     session_progress: SessionProgressCallback | None = None,
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
     if revise_plan and not planning_only:
         raise ValueError("revise_plan requires planning_only")
+    if replace_plan and not planning_only:
+        raise ValueError("replace_plan requires planning_only")
+    if adopt_existing and not planning_only:
+        raise ValueError("adopt_existing requires planning_only")
+    if replace_plan and adopt_existing:
+        return RunResult(
+            0,
+            False,
+            2,
+            (
+                SessionError(
+                    "planning_mode",
+                    "devlab plan cannot combine --replace-plan and --adopt-existing",
+                    2,
+                ),
+            ),
+        )
     sessions_run = 0
     spec_status: SpecReconciliationStatus | None = None
     workflow_state: WorkflowState
+    active_plan_exists = has_active_plan(root)
+    if planning_only and adopt_existing and active_plan_exists:
+        return RunResult(
+            0,
+            False,
+            2,
+            (
+                SessionError(
+                    "planning_mode",
+                    "--adopt-existing is only allowed when no active DevLab plan exists",
+                    2,
+                ),
+            ),
+        )
+    if planning_only and replace_plan and not active_plan_exists:
+        return RunResult(
+            0,
+            False,
+            2,
+            (
+                SessionError(
+                    "planning_mode",
+                    "--replace-plan requires an active DevLab plan to archive",
+                    2,
+                ),
+            ),
+        )
     if automatic_version_control:
         try:
             ensure_git_repository(root)
@@ -802,20 +740,36 @@ def run_loop(
         resolved_agent_configs = agent_configuration.resolved
 
     reconcile_plan = bool(spec_status and spec_status.changed)
+    fresh_generation_plan = planning_only and (replace_plan or reconcile_plan)
+    if fresh_generation_plan:
+        try:
+            manifest = archive_active_generation(
+                root,
+                reason="spec_reconciliation" if reconcile_plan else "replace_plan",
+                spec_baseline=(
+                    spec_status.baseline_spec_commit if spec_status is not None else ""
+                ),
+            )
+            workspace = Workspace(root)
+            logger.info("Archived active DevLab generation %s", manifest.generation)
+            if automatic_version_control:
+                committed = commit_all(root, f"Archive DevLab generation {manifest.generation}")
+                if committed:
+                    logger.info("Committed DevLab generation archive")
+        except OSError as exc:
+            logger.error("%s. Stopping.", exc)
+            return RunResult(
+                0,
+                False,
+                1,
+                (SessionError("generation_archive", str(exc), 1),),
+            )
     forced_planning_roles = (
-        ("architect", "planner") if revise_plan or reconcile_plan else ()
-    )
-    target_planning_generation = (
-        workflow_state.planning.generation + 1
-        if reconcile_plan
-        else workflow_state.planning.generation
+        ("architect", "planner")
+        if revise_plan or fresh_generation_plan or adopt_existing
+        else ()
     )
     planning_update = PlanningStateUpdate(
-        generation=(
-            target_planning_generation
-            if planning_only or (spec_status is not None and not spec_status.baseline_exists)
-            else None
-        ),
         last_planned_spec_commit=(
             spec_status.latest_spec_commit
             if spec_status is not None
@@ -836,7 +790,7 @@ def run_loop(
                     1,
                     (SessionError("version_control", str(exc), 1),),
                 )
-        if planning_only and not revise_plan and not reconcile_plan:
+        if planning_only and not revise_plan and not fresh_generation_plan and not adopt_existing:
             role_name = workspace.snapshot.assess_state()
         else:
             workspace.sync()
@@ -870,7 +824,13 @@ def run_loop(
             logger.error("%s. Stopping.", error.message)
             return RunResult(sessions_run, False, error.exit_code, (error,))
 
-        if planning_only and not revise_plan and role_name not in {"architect", "planner"}:
+        if (
+            planning_only
+            and not revise_plan
+            and not fresh_generation_plan
+            and not adopt_existing
+            and role_name not in {"architect", "planner"}
+        ):
             if sessions_run == 0:
                 logger.info(
                     "Planning state already exists; no planning session needed. "
@@ -880,7 +840,6 @@ def run_loop(
                     try:
                         update_workflow_state(
                             root,
-                            planning_generation=workflow_state.planning.generation,
                             last_planned_spec_commit=spec_status.latest_spec_commit,
                         )
                         workspace.did_mutate()
@@ -903,7 +862,11 @@ def run_loop(
                 logger.info("Planning complete; stopping before implementation roles.")
             logger.info("Stopping before %s session.", role_name)
             break
-        if planning_only and revise_plan and sessions_run >= len(forced_planning_roles):
+        if (
+            planning_only
+            and (revise_plan or fresh_generation_plan or adopt_existing)
+            and sessions_run >= len(forced_planning_roles)
+        ):
             logger.info("Planning revision complete; stopping before implementation roles.")
             break
 
@@ -935,28 +898,6 @@ def run_loop(
             )
             else None
         )
-        planner_target_generation = (
-            planner_generation_update.generation
-            if planner_generation_update and planner_generation_update.generation is not None
-            else start_snapshot.current_planning_generation()
-        )
-        planner_task_state: dict[str, PlannerTaskSnapshot] = {}
-        if role_name == "planner":
-            planner_task_state = _capture_planner_task_state(start_snapshot)
-            try:
-                _validate_planner_pre_session_task_state(
-                    planner_task_state,
-                    current_generation=start_snapshot.current_planning_generation(),
-                    target_generation=planner_target_generation,
-                )
-            except HandoffError as exc:
-                logger.error("%s. Stopping.", exc)
-                return RunResult(
-                    sessions_run,
-                    False,
-                    1,
-                    (SessionError("handoff_validation", str(exc), 1),),
-                )
         session_task = _task_for_role(start_snapshot, role_name)
         session_task_id = session_task.id if session_task is not None else None
         session_milestone_id = (
@@ -998,12 +939,10 @@ def run_loop(
             session_prompt = build_session_prompt(
                 snapshot,
                 role_name,
-                planning_revision=planning_only and (revise_plan or reconcile_plan),
-                target_planning_generation=(
-                    target_planning_generation
-                    if planning_only and role_name in {"architect", "planner"}
-                    else None
-                ),
+                planning_revision=planning_only
+                and (revise_plan or fresh_generation_plan or adopt_existing),
+                adopt_existing=planning_only and adopt_existing,
+                fresh_generation=planning_only and fresh_generation_plan,
                 spec_reconciliation=reconcile_plan,
             )
             ctx.write_prompt_logs(base_prompt, session_prompt)
@@ -1087,12 +1026,6 @@ def run_loop(
         try:
             handoff = parse_handoff(handoff_path, role_name)
             validate_handoff(handoff, workspace.snapshot)
-            _finalize_planner_generation(
-                workspace,
-                handoff,
-                before=planner_task_state,
-                target_generation=planner_target_generation,
-            )
             _apply_planner_workflow_state(
                 workspace,
                 handoff,
@@ -1169,7 +1102,11 @@ def run_loop(
         _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
 
-        if planning_only and revise_plan and sessions_run >= len(forced_planning_roles):
+        if (
+            planning_only
+            and (revise_plan or fresh_generation_plan or adopt_existing)
+            and sessions_run >= len(forced_planning_roles)
+        ):
             logger.info("Planning revision complete; stopping before implementation roles.")
             break
 

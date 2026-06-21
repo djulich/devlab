@@ -40,7 +40,6 @@ class Task:
     milestone: str | None
     profile: str | None
     domain: str
-    planning_generation: int
     depends_on: tuple[str, ...]
     addresses_findings: tuple[str, ...]
     # None means validation metadata is omitted; () means explicit validation = [].
@@ -173,21 +172,12 @@ class FileTaskTracker:
         else:
             metadata.pop("profile", None)
         metadata["domain"] = task.domain
-        metadata["planning_generation"] = task.planning_generation
         metadata["depends_on"] = list(task.depends_on)
         metadata["addresses_findings"] = list(task.addresses_findings)
         if task.validation is None:
             metadata.pop("validation", None)
         else:
             metadata["validation"] = list(task.validation)
-        task.path.write_text(_format_task_file(metadata, task.body))
-
-    def set_planning_generation(self, task_id: str, planning_generation: int) -> None:
-        if planning_generation < 1:
-            raise ValueError("planning_generation must be a positive integer")
-        task = self.get(task_id)
-        metadata = dict(task.metadata)
-        metadata["planning_generation"] = planning_generation
         task.path.write_text(_format_task_file(metadata, task.body))
 
     def _read_task(self, path: Path) -> Task:
@@ -201,7 +191,6 @@ class FileTaskTracker:
         milestone = metadata.get("milestone")
         profile = metadata.get("profile")
         domain = _parse_domain(metadata.get("domain"))
-        planning_generation = _parse_planning_generation(metadata.get("planning_generation"))
         depends_on = _parse_depends_on(metadata.get("depends_on"), body)
         addresses_findings = _parse_string_list(
             metadata.get("addresses_findings", []), "addresses_findings"
@@ -214,7 +203,7 @@ class FileTaskTracker:
         normalized_metadata["title"] = title
         normalized_metadata["status"] = status.value
         normalized_metadata["domain"] = domain
-        normalized_metadata["planning_generation"] = planning_generation
+        normalized_metadata.pop("planning_generation", None)
         normalized_metadata["addresses_findings"] = list(addresses_findings)
         if validation is not None:
             normalized_metadata["validation"] = list(validation)
@@ -226,7 +215,6 @@ class FileTaskTracker:
             milestone=str(milestone) if milestone is not None else None,
             profile=str(profile) if profile is not None else None,
             domain=domain,
-            planning_generation=planning_generation,
             depends_on=tuple(depends_on),
             addresses_findings=tuple(addresses_findings),
             validation=tuple(validation) if validation is not None else None,
@@ -252,7 +240,6 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
         "milestone",
         "profile",
         "domain",
-        "planning_generation",
         "depends_on",
         "addresses_findings",
         "validation",
@@ -270,7 +257,6 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
         "milestone",
         "profile",
         "domain",
-        "planning_generation",
         "depends_on",
         "addresses_findings",
         "validation",
@@ -311,16 +297,6 @@ def _parse_domain(value: Any) -> str:
             f"{TASK_DOMAIN_RE.pattern!r}; got {domain!r}"
         )
     return domain
-
-
-def _parse_planning_generation(value: Any) -> int:
-    if value is None:
-        return 1
-    if not isinstance(value, int) or value < 1:
-        raise ValueError(
-            "task front matter field 'planning_generation' must be a positive integer"
-        )
-    return value
 
 
 def _parse_depends_on(value: Any, body: str) -> list[str]:

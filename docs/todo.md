@@ -106,7 +106,7 @@ Open work:
 
 Priority: medium-high. DevLab should support target workspaces where the system spec or deployment spec changes after architecture, planning, or implementation work already exists.
 
-Status: **initial implementation complete**. DevLab records committed spec baselines in `.devlab/workflow.toml`, advances planning generations during spec reconciliation, ignores older-generation open work for current orchestration, and blocks `devlab run` when committed specs are unreconciled. See `docs/plans/spec-change-reconciliation.md`.
+Status: **implemented with generation archives**. DevLab records committed spec baselines in `.devlab/workflow.toml`, archives the active workflow bundle under `.devlab/generations/NNNN/` during spec reconciliation, starts a fresh active planning graph, and blocks `devlab run` when committed specs are unreconciled. See `docs/plans/generational-archive-reconciliation.md`.
 
 Usefulness: high. This is a normal real-world workflow: requirements drift after plans and code exist. Without explicit support, DevLab may either keep executing stale tasks or require users to manually reset workflow state.
 

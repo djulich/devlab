@@ -33,7 +33,6 @@ class Milestone:
     integration_required: bool
     integrated: bool
     architecture_reviewed: bool
-    planning_generation: int
     task_ids: tuple[str, ...]
     integration_handoff: str
     architecture_review_handoff: str
@@ -80,15 +79,10 @@ class FileMilestoneTracker:
         self.milestones_path.mkdir(parents=True, exist_ok=True)
         titles = _milestone_titles_from_project_plan(project_plan_text)
         task_ids_by_milestone: dict[str, list[str]] = {}
-        generation_by_milestone: dict[str, int] = {}
         for task in tasks:
             if task.milestone is None:
                 continue
             task_ids_by_milestone.setdefault(task.milestone, []).append(task.id)
-            generation_by_milestone[task.milestone] = max(
-                generation_by_milestone.get(task.milestone, 0),
-                task.planning_generation,
-            )
 
         milestones: list[Milestone] = []
         for milestone_id in sorted(task_ids_by_milestone, key=_natural_sort_key):
@@ -101,14 +95,9 @@ class FileMilestoneTracker:
                         key=_natural_sort_key,
                     )
                 )
-                target_generation = generation_by_milestone[milestone_id]
-                if (
-                    merged_task_ids != milestone.task_ids
-                    or target_generation != milestone.planning_generation
-                ):
+                if merged_task_ids != milestone.task_ids:
                     metadata = dict(milestone.metadata)
                     metadata["task_ids"] = list(merged_task_ids)
-                    metadata["planning_generation"] = target_generation
                     if milestone.integrated:
                         metadata["status"] = MilestoneStatus.ACTIVE.value
                         metadata["integrated"] = False
@@ -120,7 +109,6 @@ class FileMilestoneTracker:
                     milestone_id,
                     titles.get(milestone_id, milestone_id),
                     task_ids_by_milestone[milestone_id],
-                    generation_by_milestone[milestone_id],
                 )
                 path.write_text(_format_milestone_file(metadata))
                 milestone = self._read_milestone(path)
@@ -176,9 +164,7 @@ class FileMilestoneTracker:
         normalized["integration_required"] = bool(metadata.get("integration_required", True))
         normalized["integrated"] = bool(metadata.get("integrated", False))
         normalized["architecture_reviewed"] = bool(metadata.get("architecture_reviewed", False))
-        normalized["planning_generation"] = _parse_planning_generation(
-            metadata.get("planning_generation")
-        )
+        normalized.pop("planning_generation", None)
         normalized["task_ids"] = list(task_ids)
         normalized["integration_handoff"] = str(metadata.get("integration_handoff", ""))
         normalized["architecture_review_handoff"] = str(
@@ -192,7 +178,6 @@ class FileMilestoneTracker:
             integration_required=normalized["integration_required"],
             integrated=normalized["integrated"],
             architecture_reviewed=normalized["architecture_reviewed"],
-            planning_generation=normalized["planning_generation"],
             task_ids=task_ids,
             integration_handoff=normalized["integration_handoff"],
             architecture_review_handoff=normalized["architecture_review_handoff"],
@@ -214,7 +199,7 @@ def sync_milestones_from_tasks(
 
 
 def _default_milestone_metadata(
-    milestone_id: str, title: str, task_ids: list[str], planning_generation: int
+    milestone_id: str, title: str, task_ids: list[str]
 ) -> dict[str, Any]:
     return {
         "version": 1,
@@ -224,7 +209,6 @@ def _default_milestone_metadata(
         "integration_required": True,
         "integrated": False,
         "architecture_reviewed": False,
-        "planning_generation": planning_generation,
         "task_ids": sorted(task_ids, key=_natural_sort_key),
         "integration_handoff": "",
         "architecture_review_handoff": "",
@@ -241,7 +225,6 @@ def _format_milestone_file(metadata: dict[str, Any]) -> str:
         "integration_required",
         "integrated",
         "architecture_reviewed",
-        "planning_generation",
         "task_ids",
         "integration_handoff",
         "architecture_review_handoff",
@@ -266,14 +249,6 @@ def _parse_status(value: object) -> MilestoneStatus:
         raise ValueError(
             f"invalid milestone status {value!r}; expected one of: {allowed}"
         ) from exc
-
-
-def _parse_planning_generation(value: object) -> int:
-    if value is None:
-        return 1
-    if not isinstance(value, int) or value < 1:
-        raise ValueError("milestone field 'planning_generation' must be a positive integer")
-    return value
 
 
 def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:

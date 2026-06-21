@@ -21,6 +21,7 @@ from devlab.artifact_hygiene import (
     has_large_ignored_artifacts,
 )
 from devlab.findings import FindingStatus
+from devlab.generations import active_generation, archived_generation_numbers
 from devlab.profiles import DEFAULT_PROFILE, PROFILES_DIR, load_profile
 from devlab.task_tracker import TaskStatus
 from devlab.workflow_history import (
@@ -95,6 +96,12 @@ class PromptLogMetrics:
 
 
 @dataclasses.dataclass(frozen=True)
+class GenerationMetrics:
+    active: int
+    archived: list[int]
+
+
+@dataclasses.dataclass(frozen=True)
 class QualitySummary:
     correctness_checked: bool
     correctness_passed: bool | None
@@ -116,6 +123,7 @@ class WorkflowDiagnostics:
     review_rejections: int
     integrator_rework: IntegratorReworkSummary
     profiles: ProfileMetrics
+    generations: GenerationMetrics
     artifact_hygiene: ArtifactHygiene
     agent_logs: AgentLogMetrics
     prompt_logs: PromptLogMetrics
@@ -150,6 +158,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
         review_rejections=derive_review_rejections(root),
         integrator_rework=integrator_rework,
         profiles=collect_profile_metrics(root, snapshot=snapshot),
+        generations=collect_generation_metrics(root),
         artifact_hygiene=artifact_hygiene,
         agent_logs=collect_agent_log_metrics(root),
         prompt_logs=collect_prompt_log_metrics(root),
@@ -161,6 +170,13 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
             task_rework=task_rework,
             integrator_rework=integrator_rework,
         ),
+    )
+
+
+def collect_generation_metrics(root: Path) -> GenerationMetrics:
+    return GenerationMetrics(
+        active=active_generation(root),
+        archived=list(archived_generation_numbers(root)),
     )
 
 
@@ -312,6 +328,7 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
     lines.append(_format_rework_summary(diagnostics.task_rework))
     lines.append(_format_integrator_summary(diagnostics.integrator_rework))
     lines.append(_format_profile_summary(diagnostics.profiles))
+    lines.append(_format_generation_summary(diagnostics.generations))
     lines.append(_format_artifact_hygiene_summary(diagnostics.artifact_hygiene))
     if diagnostics.quality.warnings:
         lines.append("Warnings:")
@@ -359,6 +376,15 @@ def _format_profile_summary(profiles: ProfileMetrics) -> str:
     if profiles.ids:
         return "Profiles: " + ", ".join(profiles.ids)
     return "Profiles: none"
+
+
+def _format_generation_summary(generations: GenerationMetrics) -> str:
+    archived = (
+        ", ".join(str(number) for number in generations.archived)
+        if generations.archived
+        else "none"
+    )
+    return f"Generations: active {generations.active}, archived {archived}"
 
 
 def _format_artifact_hygiene_summary(artifact_hygiene: ArtifactHygiene) -> str:

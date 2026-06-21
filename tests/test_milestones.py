@@ -26,12 +26,11 @@ def test_upsert_from_tasks_creates_missing_milestone_files(tmp_path: Path) -> No
     assert milestone.integration_required is True
     assert milestone.integrated is False
     assert milestone.architecture_reviewed is False
-    assert milestone.planning_generation == 1
     assert milestone.task_ids == ("T0001", "T0002")
     assert (tmp_path / ".devlab/milestones/M1.toml").exists()
 
 
-def test_upsert_from_tasks_uses_task_planning_generation_for_new_milestone(
+def test_upsert_from_tasks_omits_generation_metadata_for_new_milestone(
     tmp_path: Path,
 ) -> None:
     _write_task(tmp_path, "T0001", "First", milestone="M1", generation=3)
@@ -40,10 +39,10 @@ def test_upsert_from_tasks_uses_task_planning_generation_for_new_milestone(
         FileTaskTracker(tmp_path).list_tasks()
     )[0]
 
-    assert milestone.planning_generation == 3
+    assert "planning_generation" not in milestone.metadata
 
 
-def test_upsert_from_tasks_updates_existing_milestone_to_latest_task_generation(
+def test_upsert_from_tasks_drops_legacy_generation_from_existing_milestone(
     tmp_path: Path,
 ) -> None:
     _write_task(tmp_path, "T0001", "Old", milestone="M1", generation=1)
@@ -69,7 +68,7 @@ def test_upsert_from_tasks_updates_existing_milestone_to_latest_task_generation(
         FileTaskTracker(tmp_path).list_tasks()
     )[0]
 
-    assert milestone.planning_generation == 2
+    assert "planning_generation" not in milestone.path.read_text()
     assert milestone.task_ids == ("T0001", "T0002")
 
 

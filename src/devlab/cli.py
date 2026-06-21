@@ -123,6 +123,16 @@ def main() -> None:
         help="Review and possibly update existing design and project plans.",
     )
     plan_parser.add_argument(
+        "--adopt-existing",
+        action="store_true",
+        help="Treat the first planning run as adoption of an already-started project.",
+    )
+    plan_parser.add_argument(
+        "--replace-plan",
+        action="store_true",
+        help="Archive the active DevLab plan and create a fresh current plan.",
+    )
+    plan_parser.add_argument(
         "--provider",
         default=None,
         help="Override the configured provider for this plan run.",
@@ -340,6 +350,8 @@ def main() -> None:
             automatic_version_control=True,
             planning_only=True,
             revise_plan=args.revise,
+            adopt_existing=args.adopt_existing,
+            replace_plan=args.replace_plan,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)

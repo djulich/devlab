@@ -4,6 +4,7 @@ from pathlib import Path
 
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
 from devlab.findings import Finding
+from devlab.generations import active_generation, archived_generation_numbers
 from devlab.milestones import Milestone
 from devlab.prompt_context import PromptContextReport, build_prompt_context_report
 from devlab.task_tracker import Task, TaskStatus
@@ -18,6 +19,12 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
         lines.append("No role selected; workflow is complete or blocked.")
     else:
         lines.append(f"Next role: {role_name}")
+    lines.append(f"Active generation: {active_generation(root)}")
+    archived = archived_generation_numbers(root)
+    lines.append(
+        "Archived generations: "
+        + (", ".join(str(number) for number in archived) if archived else "none")
+    )
 
     if verbose:
         lines.extend(["", *_format_agent_configuration(root)])

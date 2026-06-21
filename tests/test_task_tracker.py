@@ -81,7 +81,6 @@ class TestFileTaskTrackerParsing:
         assert task.milestone == "M1"
         assert task.profile == "api"
         assert task.domain == "general"
-        assert task.planning_generation == 1
         assert task.depends_on == ("T0000",)
         assert task.addresses_findings == ()
         assert task.validation is None
@@ -96,15 +95,14 @@ class TestFileTaskTrackerParsing:
 
         assert task.title == "First"
         assert task.status == TaskStatus.OPEN
-        assert task.planning_generation == 1
 
-    def test_reads_planning_generation(self, tmp_path: Path) -> None:
+    def test_ignores_legacy_planning_generation_metadata(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
         _write_task(tmp_path, "T0001", extra_metadata="planning_generation = 3\n")
 
         task = FileTaskTracker(tmp_path).get("T0001")
 
-        assert task.planning_generation == 3
+        assert "planning_generation" not in task.metadata
 
     def test_reads_legacy_depends_on_section(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
@@ -410,7 +408,9 @@ class TestFileTaskTrackerStatusTransitions:
 
         assert 'addresses_findings = ["F0001"]' in path.read_text()
 
-    def test_status_transition_preserves_planning_generation(self, tmp_path: Path) -> None:
+    def test_status_transition_drops_legacy_planning_generation(
+        self, tmp_path: Path
+    ) -> None:
         _setup_tasks_dir(tmp_path)
         path = _write_task(
             tmp_path,
@@ -421,15 +421,7 @@ class TestFileTaskTrackerStatusTransitions:
 
         FileTaskTracker(tmp_path).mark_in_review("T0001")
 
-        assert "planning_generation = 3" in path.read_text()
-
-    def test_set_planning_generation_writes_task_metadata(self, tmp_path: Path) -> None:
-        _setup_tasks_dir(tmp_path)
-        path = _write_task(tmp_path, "T0001", "First")
-
-        FileTaskTracker(tmp_path).set_planning_generation("T0001", 4)
-
-        assert "planning_generation = 4" in path.read_text()
+        assert "planning_generation" not in path.read_text()
 
     def test_mark_changes_requested_writes_status_to_task_file(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)

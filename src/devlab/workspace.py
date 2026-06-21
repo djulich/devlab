@@ -11,6 +11,7 @@ import dataclasses
 from pathlib import Path
 
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
+from devlab.generations import active_generation
 from devlab.milestones import FileMilestoneTracker, Milestone
 from devlab.task_tracker import DEVELOPABLE_STATUSES, FileTaskTracker, Task, TaskStatus
 from devlab.workflow_state import WORKFLOW_STATE, WorkflowState, load_workflow_state
@@ -164,12 +165,6 @@ class WorkspaceTasks:
 
     def from_path(self, path: Path) -> WorkspaceTask:
         return self.get(path.stem.split("_")[0])
-
-    def set_planning_generation(self, task_ids: tuple[str, ...], generation: int) -> None:
-        for task_id in task_ids:
-            self.workspace._task_tracker().set_planning_generation(task_id, generation)
-        if task_ids:
-            self.workspace.did_mutate()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -354,21 +349,13 @@ class WorkspaceSnapshot:
         return self._workflow_state
 
     def current_planning_generation(self) -> int:
-        return self.workflow_state().planning.generation
+        return active_generation(self.root)
 
     def current_generation_tasks(self) -> list[Task]:
-        generation = self.current_planning_generation()
-        return [
-            task for task in self.list_tasks() if task.planning_generation == generation
-        ]
+        return self.list_tasks()
 
     def current_generation_milestones(self) -> list[Milestone]:
-        generation = self.current_planning_generation()
-        return [
-            milestone
-            for milestone in self.list_milestones()
-            if milestone.planning_generation == generation
-        ]
+        return self.list_milestones()
 
     def active_tasks(self) -> list[Task]:
         return [task for task in self.current_generation_tasks() if task.is_active]

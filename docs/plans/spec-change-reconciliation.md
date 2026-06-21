@@ -1,5 +1,10 @@
 # Spec Change Reconciliation
 
+> Superseded by
+> [generational-archive-reconciliation.md](generational-archive-reconciliation.md).
+> This document records the earlier in-place planning-generation design and is
+> retained as historical context, not current implementation guidance.
+
 ## Problem
 
 `devlab plan` currently behaves like an optional planning preflight: it creates missing design/project planning state and becomes a no-op once implementation tasks exist. `devlab run` then continues the workflow from durable state. That makes `run` easy to treat as the command that will figure everything out, even when the target system or deployment specification has changed after planning.
