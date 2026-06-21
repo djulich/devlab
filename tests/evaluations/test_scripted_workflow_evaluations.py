@@ -55,6 +55,7 @@ from tests.evaluations.harness import (
     run_scripted_evaluation,
 )
 from tests.evaluations.scripted_agents import (
+    AdoptExistingScriptedAgent,
     CalculatorScriptedAgent,
     ComposeDeploymentScriptedAgent,
     DeploymentWebApiScriptedAgent,
@@ -489,6 +490,61 @@ def test_scripted_spec_reconciliation_archives_and_replans(tmp_path: Path) -> No
     assert run_git(tmp_path, "tag", "--list", "devlab/milestone/M1").stdout.strip() == (
         "devlab/milestone/M1"
     )
+
+
+def test_scripted_adopt_existing_creates_current_state_design_baseline(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "calculator.py").write_text(
+        "import sys\n\n"
+        "def calculate(command: str, left: int, right: int) -> int:\n"
+        "    if command == 'add':\n"
+        "        return left + right\n"
+        "    raise ValueError(command)\n\n"
+        "if __name__ == '__main__':\n"
+        "    print(calculate(sys.argv[1], int(sys.argv[2]), int(sys.argv[3])))\n"
+    )
+    (tmp_path / "test_calculator.py").write_text(
+        "from calculator import calculate\n\n\n"
+        "def test_add():\n"
+        "    assert calculate('add', 2, 3) == 5\n"
+    )
+    init_target_workspace(
+        tmp_path,
+        "Add a subtract command to the existing Python calculator CLI.",
+    )
+    (tmp_path / ".devlab/plans/design-plan.md").unlink()
+    (tmp_path / ".devlab/plans/project-plan.md").unlink()
+    run_git(tmp_path, "add", ".devlab/plans")
+    run_git(tmp_path, "commit", "-m", "Remove starter planning artifacts")
+    agent = AdoptExistingScriptedAgent()
+    provider = MockProvider(
+        on_invoke=agent.on_invoke,
+        handoff_text=agent.handoff_for,
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=2,
+        planning_only=True,
+        adopt_existing=True,
+        automatic_version_control=True,
+        agent_providers={"default": provider},
+    )
+
+    assert result.completed is True
+    assert result.exit_code == 0
+    assert agent.roles == ["architect", "planner"]
+    design = (tmp_path / ".devlab/plans/design-plan.md").read_text()
+    assert "## Current-State Design Baseline" in design
+    assert "calculator.py" in design
+    assert "test_calculator.py" in design
+    assert "does not support subtraction" in design
+    project = (tmp_path / ".devlab/plans/project-plan.md").read_text()
+    assert "Add subtract command to existing calculator CLI" in project
+    task = FileTaskTracker(tmp_path).get("T0001")
+    assert task.title == "Add subtract command to existing calculator CLI"
+    assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
 
 
 def test_stateful_todo_api_check_accepts_any_successful_create_status(

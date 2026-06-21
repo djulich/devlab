@@ -855,6 +855,8 @@ class TestRunLoop:
 
         assert result.sessions_run == 2
         assert [call.role_name for call in provider.calls] == ["architect", "planner"]
+        assert "existing-project adoption" in provider.calls[0].session_prompt
+        assert "current-state design baseline" in provider.calls[0].session_prompt
         assert "existing-project adoption" in provider.calls[-1].session_prompt
         assert not (tmp_path / ".devlab/generations").exists()
 

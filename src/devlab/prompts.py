@@ -101,6 +101,14 @@ def _planning_revision_section(
             "tooling, packaging, and deployment files before creating planning state."
         )
     if role_name == "architect":
+        if adopt_existing:
+            mode_text += (
+                " Create a current-state design baseline in the design plan before "
+                "describing target changes. The baseline must summarize the existing "
+                "source structure, runtime/tooling, tests, deployment-relevant files, "
+                "implemented behavior, and the gaps between current behavior and the "
+                "current specifications."
+            )
         return (
             "\n\n## Planning Revision Mode\n\n"
             "Review the existing design plan against the current specifications and "

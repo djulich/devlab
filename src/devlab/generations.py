@@ -82,10 +82,11 @@ def has_active_plan(root: Path) -> bool:
     for relative in (
         "tasks/*.md",
         "milestones/*.toml",
-        "history/*",
     ):
         if any(path.is_file() for path in devlab.glob(relative)):
             return True
+    if any(path.is_file() and path.name != ".gitkeep" for path in devlab.glob("history/*")):
+        return True
     return False
 
 

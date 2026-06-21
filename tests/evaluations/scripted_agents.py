@@ -411,6 +411,61 @@ class SpecReconciliationScriptedAgent:
             raise AssertionError(f"unexpected task title: {task.title}")
 
 
+class AdoptExistingScriptedAgent:
+    def __init__(self) -> None:
+        self.roles: list[str] = []
+        self.role_counts: dict[str, int] = {}
+        self.review_rejections = 0
+        self.prompt_chars: list[int] = []
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        self.roles.append(invocation.role_name)
+        self.role_counts[invocation.role_name] = self.role_counts.get(invocation.role_name, 0) + 1
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
+        role = invocation.role_name
+        if role == "architect":
+            self._architect(invocation)
+        elif role == "planner":
+            self._planner(invocation)
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        return handoff(invocation.role_name)
+
+    def _architect(self, invocation: AgentInvocation) -> None:
+        assert "existing-project adoption" in invocation.session_prompt
+        assert "current-state design baseline" in invocation.session_prompt
+        assert (invocation.root / "calculator.py").exists()
+        assert (invocation.root / "test_calculator.py").exists()
+        _design_plan(invocation.root).write_text(
+            "# Design Plan\n\n"
+            "## Current-State Design Baseline\n\n"
+            "- Existing source structure: `calculator.py` provides a Python CLI entry point.\n"
+            "- Existing behavior: the CLI supports an `add` command.\n"
+            "- Existing tests: `test_calculator.py` covers addition.\n"
+            "- Existing tooling: the project uses Python stdlib execution with pytest tests.\n"
+            "- Deployment state: no deployment artifacts are present.\n"
+            "- Specification gaps: the current CLI does not support subtraction.\n\n"
+            "## Target Design\n\n"
+            "Extend the existing calculator CLI with a subtract command while preserving "
+            "the current add command and test style.\n"
+        )
+
+    def _planner(self, invocation: AgentInvocation) -> None:
+        assert "existing-project adoption" in invocation.session_prompt
+        assert "Current-State Design Baseline" in _design_plan(invocation.root).read_text()
+        _project_plan(invocation.root).write_text(
+            "# Project Plan\n\n"
+            "## M1: Adopted calculator enhancement\n"
+            "- T0001: Add subtract command to existing calculator CLI\n"
+        )
+        write_task(
+            invocation.root,
+            "T0001",
+            "Add subtract command to existing calculator CLI",
+            "M1",
+        )
+
+
 
 def finding_exists(root: Path, finding_id: str) -> bool:
     return any(finding.id == finding_id for finding in FileFindingTracker(root).list_findings())

@@ -122,7 +122,10 @@ baseline, it stops and instructs the operator to run `devlab plan`.
 
 Explicitly treat the repository as an already-started project on the first planning
 run. This affects prompt mode: architect and planner must inspect existing code,
-tests, tooling, packaging, and deployment state before planning new work.
+tests, tooling, packaging, and deployment state before planning new work. The
+architect records a current-state design baseline in the normal design plan before
+describing target changes, so planner and later implementation sessions can
+distinguish existing behavior from newly requested work.
 
 Validation:
 

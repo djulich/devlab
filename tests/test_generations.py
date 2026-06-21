@@ -76,6 +76,16 @@ def test_has_active_plan_ignores_archived_generations(tmp_path: Path) -> None:
     assert has_active_plan(tmp_path) is True
 
 
+def test_has_active_plan_ignores_history_gitkeep(tmp_path: Path) -> None:
+    _write(tmp_path / ".devlab/history/.gitkeep", "")
+
+    assert has_active_plan(tmp_path) is False
+
+    _write(tmp_path / ".devlab/history/architect-001.md", "handoff")
+
+    assert has_active_plan(tmp_path) is True
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
