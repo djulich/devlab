@@ -6,7 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-None.
+- [generational-archive-reconciliation.md](generational-archive-reconciliation.md) — replace in-place planning-generation filtering with archived generation bundles for spec reconciliation and existing-project adoption
 
 ## Implemented
 
