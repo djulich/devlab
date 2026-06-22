@@ -50,7 +50,7 @@ Priority: high. DevLab is intended to be a reusable CLI/package, but the reposit
 
 Open work:
 
-- Expand user-level documentation for profiles, findings, milestones, and handoffs beyond the top-level README.
+- Keep the operator guide current as profiles, findings, milestones, handoffs, and generation behavior evolve.
 - Keep maturity guidance current as live-agent evaluation baselines accumulate.
 - Add or decide on license and release/versioning expectations.
 - Decide whether the dogfood `.devlab/` state should model DevLab's own workflow or remain a starter/example workspace only.

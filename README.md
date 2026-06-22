@@ -212,6 +212,7 @@ uv run pytest -q
 ## More documentation
 
 - [`docs/design.md`](docs/design.md) — architecture and workflow overview.
+- [`docs/operator-guide.md`](docs/operator-guide.md) — operating DevLab in a target workspace.
 - [`docs/agent-configuration.md`](docs/agent-configuration.md) — target-owned agent command configuration.
 - [`docs/evaluations.md`](docs/evaluations.md) — scripted and live workflow evaluations.
 - [`docs/todo.md`](docs/todo.md) — current roadmap and known gaps.
