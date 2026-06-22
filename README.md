@@ -70,10 +70,14 @@ uv tool install /path/to/devlab-checkout
 If the repository is available over Git, install directly from a branch, tag, or commit:
 
 ```bash
-uv tool install "git+https://example.com/org/devlab.git@main"
+uv tool install "git+https://github.com/mucisland/harness-template-1.git@main"
 ```
 
 After installation, the `devlab` command can be run from inside any target project repository.
+
+DevLab is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).
+Pre-1.0 compatibility and release expectations are documented in
+[`docs/release-policy.md`](docs/release-policy.md).
 
 ## Quickstart inside a target project
 
@@ -215,4 +219,5 @@ uv run pytest -q
 - [`docs/operator-guide.md`](docs/operator-guide.md) — operating DevLab in a target workspace.
 - [`docs/agent-configuration.md`](docs/agent-configuration.md) — target-owned agent command configuration.
 - [`docs/evaluations.md`](docs/evaluations.md) — scripted and live workflow evaluations.
+- [`docs/release-policy.md`](docs/release-policy.md) — versioning, compatibility, and release expectations.
 - [`docs/todo.md`](docs/todo.md) — current roadmap and known gaps.
