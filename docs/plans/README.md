@@ -6,7 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-None.
+- [workflow-state-reporting.md](workflow-state-reporting.md) — add an operator-facing lifecycle state command backed by durable workflow events and inference for older target workspaces
 
 ## Implemented
 

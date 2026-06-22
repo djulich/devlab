@@ -159,6 +159,25 @@ Open design questions:
 - Should notifications be sent synchronously at the end of the command or queued/best-effort?
 - How should notification failures be reported without obscuring the primary workflow result?
 
+## 12. Add Workflow State Reporting
+
+Priority: medium-high. Operators should be able to inspect a target project's
+workflow lifecycle state without manually reading `.devlab/` artifacts, project
+files, generation archives, or Git history.
+
+Usefulness: high. This answers whether a target is greenfield or adopted,
+whether design and planning have happened, whether specs are reconciled, how many
+planning generations exist, and how often plan revision/reconciliation happened.
+
+Plan: `docs/plans/workflow-state-reporting.md`.
+
+Open work:
+
+- Add an orchestrator-owned lifecycle event log for future precise provenance.
+- Add `devlab workflow-state [--json]` as a read-only lifecycle report.
+- Infer useful report fields for older workspaces that lack lifecycle events.
+- Document the command in the README and operator guide.
+
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).
