@@ -238,9 +238,12 @@ Focused tests:
 
 - Should the command name remain `workflow-state`, or should `state` be added as
   an alias after the report stabilizes?
+  -> ANSWER: Keep `workflow-state` for the first implementation.
 - Should failed plan/run attempts be represented in the event log, or should this
   command focus only on successful lifecycle transitions?
+  -> ANSWER: I would prefer to have the failed attempts in the event log as well, if their addition doesn't cause too much "noise" or add too much code complexity.
 - Should lifecycle events be archived with active generations during spec
   reconciliation, or stay cross-generation at `.devlab/workflow-events.jsonl`?
   Recommendation: keep them cross-generation, because they describe the target
   workflow timeline rather than the active planning graph.
+  -> ANSWER: Keep them cross-generation
