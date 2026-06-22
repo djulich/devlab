@@ -219,7 +219,6 @@ Tests:
 Files:
 
 - `src/devlab/resources/init/config/agents.toml`
-- `.devlab/config/agents.toml` if keeping dogfood starter config aligned
 - `docs/agent-configuration.md`
 - possibly `docs/todo.md`
 

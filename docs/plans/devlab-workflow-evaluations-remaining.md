@@ -11,7 +11,8 @@ No blocking reason is apparent:
 - Deterministic scripted evaluations already exist and run in the default suite.
 - Agent invocation observability is implemented, so live-agent failures have stdout/stderr/config logs.
 - DevLab logging is implemented, so optional live runs can emit useful run logs.
-- Evaluations already use temporary target repositories, preserving the dogfood workspace boundary.
+- Evaluations already use temporary target repositories, preserving the boundary
+  between DevLab's source repository and target workflow state.
 - Existing scenarios already record diagnostics and use black-box checks, giving a foundation for reuse.
 
 Main risks are manageable rather than blocking:

@@ -52,7 +52,6 @@ Open work:
 
 - Keep the operator guide current as profiles, findings, milestones, handoffs, and generation behavior evolve.
 - Keep maturity guidance current as live-agent evaluation baselines accumulate.
-- Decide whether the dogfood `.devlab/` state should model DevLab's own workflow or remain a starter/example workspace only.
 
 ## 5. Trust and Safety Model for Executable Configuration
 

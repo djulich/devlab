@@ -31,7 +31,8 @@ The evaluation system should answer:
 - Do not add token-consuming tests without an explicit opt-in flag/environment variable.
 - Do not build a full benchmark suite or leaderboard.
 - Do not introduce a new workflow engine for evaluations.
-- Do not mutate the dogfood `.devlab/` workspace; all evaluations use temporary target repositories.
+- Use temporary target repositories for evaluations; this repository does not keep
+  checked-in root `.devlab/` workflow state for DevLab itself.
 - Do not rely on conversational memory for grading; grade with files, commands, HTTP responses, package builds, or test suites.
 
 ## Evaluation layers

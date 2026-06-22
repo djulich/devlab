@@ -21,7 +21,10 @@ At a high level, DevLab should be able to:
 
 DevLab should be understood as a reusable development tool, not as the product being developed. It operates on a target workspace: a repository that contains the system specification, plans, tasks, history, source code, and tests for the product under development.
 
-During early development, this repository can also be used as a target workspace for dogfooding. That is a convenience, not a design requirement. DevLab should continue to work when invoked against another repository, for example:
+This repository does not keep checked-in `.devlab/` workflow state for DevLab
+itself. DevLab's starter target files live under `src/devlab/resources/init/`
+and are copied into target repositories by `devlab init`. DevLab should continue
+to work when invoked against another repository, for example:
 
 ```bash
 cd /path/to/target-project
@@ -50,6 +53,7 @@ devlab-repo/
 ├── src/devlab/
 ├── tests/
 ├── docs/
+├── src/devlab/resources/init/
 ├── src/devlab/resources/prompts/
 └── examples/
 ```
@@ -84,7 +88,10 @@ DevLab code should avoid assuming that the target workspace is DevLab repository
 - `.devlab/specs/system/` describes DevLab itself,
 - `AGENTS.md` and packaged DevLab prompt resources serve the same audience.
 
-The guiding principle is: DevLab is a reusable tool that operates on a target workspace. Dogfooding in this repository is allowed, but must not leak target-specific assumptions into DevLab design.
+The guiding principle is: DevLab is a reusable tool that operates on a target
+workspace. DevLab may be tested against temporary target repositories, but this
+repository's durable maintenance state should remain in normal project files
+such as `docs/`, `docs/adr/`, `docs/todo.md`, `CONTEXT.md`, and `AGENTS.md`.
 
 ## Core design principles
 
@@ -415,7 +422,11 @@ This design trades some database convenience for transparency and restartability
 
 The project prefers fewer tools and simple defaults.
 
-Current Python tooling policy is documented in `.devlab/config/tooling.md`. Default validation commands and executable environment lifecycle commands are defined in `.devlab/config/profiles/default.toml`.
+Current Python tooling is declared in `pyproject.toml`, `uv.lock`, the
+`Makefile`, and agent-facing maintenance guidance in `AGENTS.md`. Target
+workspaces may still document their own tooling policy in
+`.devlab/config/tooling.md` and profile validation commands in
+`.devlab/config/profiles/default.toml`.
 
 In short:
 

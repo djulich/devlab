@@ -13,7 +13,7 @@ DevLab is developed and maintained by AI agents. Code and project structure must
 - Orchestrator decides what to do; providers decide how to invoke agents; trackers decide how to store state.
 - Keep packaged role prompts minimal; enforce workflow rules in code/tests where practical.
 - Keep durable workflow state in repository files, not conversational memory or hidden runtime state.
-- DevLab operates on a target workspace; dogfooding must not assume the target is this repo.
+- DevLab operates on a target workspace; do not assume the target is this repo or reintroduce checked-in root `.devlab/` workflow state for DevLab itself.
 - Preserve bounded sessions: one role per session, one task per developer/reviewer session.
 - Keep task storage behind `task_tracker.py`; do not parse task files elsewhere.
 - Use workspace boundaries: `WorkspaceSnapshot` for cached reads; `Workspace` domain handles (`workspace.tasks()`, `workspace.findings()`, `workspace.milestones()`) for mutations. Direct tracker access is lower-level infrastructure for tracker modules/tests and read-only diagnostics when no snapshot helper exists.

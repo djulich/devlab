@@ -6,7 +6,7 @@ Add a small repository-level `Makefile` that improves DevLab source-checkout con
 
 ## Outcome
 
-Implemented. The root `Makefile` provides source-checkout convenience targets for help, dependency sync, validation, tests, uv tool installation, forced reinstall, and uninstall. It intentionally does not include a dogfood `doctor` target or shell-completion installation.
+Implemented. The root `Makefile` provides source-checkout convenience targets for help, dependency sync, validation, tests, uv tool installation, forced reinstall, and uninstall. It intentionally does not include target-workspace `doctor` or shell-completion installation targets.
 
 The Makefile is for the DevLab source repository itself. It should help people install, validate, and optionally remove the local `devlab` tool. Target repositories should still invoke the installed `devlab` command directly.
 
