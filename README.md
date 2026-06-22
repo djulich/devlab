@@ -12,12 +12,14 @@ Current confidence:
 
 - deterministic unit/integration tests cover the core workflow mechanics;
 - scripted workflow evaluations exercise temporary target repositories;
-- an opt-in live-agent evaluation path exists and has been used for a small calculator scenario.
+- opt-in live-agent evaluations exist for representative workflows, with baseline
+  collection still ongoing;
+- existing-project adoption, spec reconciliation, prompt-size monitoring, and
+  agent invocation diagnostics are implemented.
 
 Current limits:
 
 - broad live-agent baseline results are not collected yet;
-- existing-project adoption is still planned work;
 - target-owned test-suite execution and deployment verification are deferred;
 - sandboxing and approval policy are not implemented.
 
