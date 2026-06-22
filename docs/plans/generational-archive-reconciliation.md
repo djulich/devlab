@@ -191,7 +191,12 @@ workspace as a normal first-planning run.
 
 Fresh-generation planning must require a clean worktree before archiving.
 
-Archive these active paths together when they exist:
+The active generation bundle is the set of generation-scoped workflow artifacts
+under the active `.devlab/` layout. DevLab keeps these paths in their existing
+operator-friendly locations during normal work, but treats them as one logical
+bundle when archiving or replacing a planning generation.
+
+Archive these active generation bundle paths together when they exist:
 
 - `.devlab/tasks/`
 - `.devlab/milestones/`
@@ -202,7 +207,9 @@ Archive these active paths together when they exist:
 - `.devlab/plans/`
 - `.devlab/workflow.toml`
 
-Do not archive these target-owned configuration or requirement inputs:
+Do not archive these target-owned configuration, knowledge, or requirement
+inputs. They are not part of the active generation bundle because they survive
+across generations and remain inputs to the next planning run:
 
 - `.devlab/specs/`
 - `.devlab/config/`

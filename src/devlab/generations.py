@@ -12,7 +12,11 @@ from devlab._toml import format_toml_value
 GENERATIONS_DIR = ".devlab/generations"
 GENERATION_MANIFEST = "generation.toml"
 
-ACTIVE_ARCHIVE_PATHS = (
+# The active generation bundle is scoped to the current planning generation.
+# Fresh-generation planning archives, clears, and recreates these workflow
+# artifacts together while leaving cross-generation inputs such as specs and
+# configuration in place.
+ACTIVE_GENERATION_BUNDLE_PATHS = (
     ".devlab/tasks",
     ".devlab/milestones",
     ".devlab/findings",
@@ -23,7 +27,7 @@ ACTIVE_ARCHIVE_PATHS = (
     ".devlab/workflow.toml",
 )
 
-ACTIVE_SKELETON_DIRS = (
+ACTIVE_GENERATION_SKELETON_DIRS = (
     ".devlab/tasks",
     ".devlab/milestones",
     ".devlab/findings",
@@ -102,7 +106,7 @@ def archive_active_generation(
     if archive_root.exists():
         raise FileExistsError(f"generation archive already exists: {archive_root}")
     archive_root.mkdir(parents=True)
-    for relative in ACTIVE_ARCHIVE_PATHS:
+    for relative in ACTIVE_GENERATION_BUNDLE_PATHS:
         source = root / relative
         if not source.exists():
             continue
@@ -126,7 +130,7 @@ def archive_active_generation(
 
 
 def clear_active_generation(root: Path) -> None:
-    for relative in ACTIVE_ARCHIVE_PATHS:
+    for relative in ACTIVE_GENERATION_BUNDLE_PATHS:
         path = root / relative
         if not path.exists():
             continue
@@ -137,7 +141,7 @@ def clear_active_generation(root: Path) -> None:
 
 
 def create_active_skeleton(root: Path) -> None:
-    for relative in ACTIVE_SKELETON_DIRS:
+    for relative in ACTIVE_GENERATION_SKELETON_DIRS:
         (root / relative).mkdir(parents=True, exist_ok=True)
 
 

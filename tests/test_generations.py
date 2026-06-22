@@ -7,6 +7,7 @@ from devlab.generations import (
     active_generation,
     archive_active_generation,
     archived_generation_numbers,
+    ACTIVE_GENERATION_SKELETON_DIRS,
     has_active_plan,
     load_generation_manifest,
     previous_generation,
@@ -38,6 +39,8 @@ def test_archive_active_generation_moves_workflow_bundle_and_keeps_specs(
     _write(tmp_path / ".devlab/plans/project-plan.md", "plan")
     _write(tmp_path / ".devlab/workflow.toml", "version = 1\n")
     _write(tmp_path / ".devlab/specs/system/spec.md", "spec")
+    _write(tmp_path / ".devlab/config/agents.toml", "config")
+    _write(tmp_path / ".devlab/adr/0001-decision.md", "adr")
 
     manifest = archive_active_generation(
         tmp_path,
@@ -57,9 +60,14 @@ def test_archive_active_generation_moves_workflow_bundle_and_keeps_specs(
     assert (archive / "plans/project-plan.md").read_text() == "plan"
     assert (archive / "workflow.toml").read_text() == "version = 1\n"
     assert not (archive / "specs").exists()
+    assert not (archive / "config").exists()
+    assert not (archive / "adr").exists()
     assert (tmp_path / ".devlab/specs/system/spec.md").read_text() == "spec"
+    assert (tmp_path / ".devlab/config/agents.toml").read_text() == "config"
+    assert (tmp_path / ".devlab/adr/0001-decision.md").read_text() == "adr"
     assert not (tmp_path / ".devlab/tasks/T0001_task.md").exists()
-    assert (tmp_path / ".devlab/tasks").is_dir()
+    for relative in ACTIVE_GENERATION_SKELETON_DIRS:
+        assert (tmp_path / relative).is_dir()
     assert load_generation_manifest(archive / "generation.toml").reason == (
         "spec_reconciliation"
     )
