@@ -38,7 +38,7 @@ def test_cli_init_creates_devlab_tree_and_git_baseline(
     assert "created: .devlab/manifest.toml" in output
     assert "Next steps:" in output
     assert ".devlab/config/agents.toml" in output
-    assert "DevLab plan/run require a clean Git working tree" in output
+    assert "DevLab plan/implement require a clean Git working tree" in output
     assert (tmp_path / ".devlab/manifest.toml").exists()
     assert (tmp_path / ".devlab/config/profiles/default.toml").exists()
     assert (tmp_path / ".devlab/config/agents.toml").exists()
@@ -177,16 +177,28 @@ def test_cli_doctor_reports_ok_for_initialized_workspace(
     assert capsys.readouterr().out.strip() == "DevLab doctor: OK"
 
 
-def test_cli_run_emits_progress_logs_by_default(
+def test_cli_implement_emits_progress_logs_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
 
-    _run_cli(monkeypatch, "run", "--root", str(tmp_path), "--max-sessions", "0")
+    _run_cli(monkeypatch, "implement", "--root", str(tmp_path), "--max-sessions", "0")
 
     captured = capsys.readouterr()
     assert "Orchestrator finished after 0 session(s)." in captured.err
+
+
+def test_cli_run_is_not_registered(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["devlab", "run", "--max-sessions", "0"])
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 2
+    assert "invalid choice: 'run'" in capsys.readouterr().err
 
 
 def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -218,7 +230,9 @@ def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert seen["max_sessions"] == 2
 
 
-def test_cli_run_passes_retain_prompts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_cli_implement_passes_retain_prompts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     seen: dict[str, object] = {}
 
     def fake_run_loop(*_args: object, **kwargs: object) -> object:
@@ -233,7 +247,7 @@ def test_cli_run_passes_retain_prompts(monkeypatch: pytest.MonkeyPatch, tmp_path
 
     _run_cli(
         monkeypatch,
-        "run",
+        "implement",
         "--retain-prompts",
         "--root",
         str(tmp_path),
@@ -245,19 +259,27 @@ def test_cli_run_passes_retain_prompts(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert seen["retain_prompts"] is True
 
 
-def test_cli_run_quiet_suppresses_progress_logs(
+def test_cli_implement_quiet_suppresses_progress_logs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
 
-    _run_cli(monkeypatch, "run", "--quiet", "--root", str(tmp_path), "--max-sessions", "0")
+    _run_cli(
+        monkeypatch,
+        "implement",
+        "--quiet",
+        "--root",
+        str(tmp_path),
+        "--max-sessions",
+        "0",
+    )
 
     captured = capsys.readouterr()
     assert "Orchestrator finished" not in captured.err
 
 
-def test_cli_run_verbose_emits_debug_logs(
+def test_cli_implement_verbose_emits_debug_logs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def fake_run_loop(*_args: object, **_kwargs: object) -> object:
@@ -270,13 +292,21 @@ def test_cli_run_verbose_emits_debug_logs(
 
     monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
 
-    _run_cli(monkeypatch, "run", "--verbose", "--root", str(tmp_path), "--max-sessions", "1")
+    _run_cli(
+        monkeypatch,
+        "implement",
+        "--verbose",
+        "--root",
+        str(tmp_path),
+        "--max-sessions",
+        "1",
+    )
 
     captured = capsys.readouterr()
     assert "DEBUG: debug detail" in captured.err
 
 
-def test_cli_run_log_file_captures_debug_logs_when_console_is_quiet(
+def test_cli_implement_log_file_captures_debug_logs_when_console_is_quiet(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def fake_run_loop(*_args: object, **_kwargs: object) -> object:
@@ -292,7 +322,7 @@ def test_cli_run_log_file_captures_debug_logs_when_console_is_quiet(
 
     _run_cli(
         monkeypatch,
-        "run",
+        "implement",
         "--quiet",
         "--log-file",
         str(log_file),

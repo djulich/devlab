@@ -223,7 +223,7 @@ Do not export prompt contents.
 
 ### 7. Live session progress output
 
-Long live evaluations can run for several minutes with no pytest output. Live evaluations configure the standard DevLab logger at INFO level and rely on the same workflow session logs as `devlab run`:
+Long live evaluations can run for several minutes with no pytest output. Live evaluations configure the standard DevLab logger at INFO level and rely on the same workflow session logs as `devlab implement`:
 
 ```text
 Starting session 3: developer task=T0001 status=open profile=default domain=general milestone=M1

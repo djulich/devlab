@@ -174,8 +174,8 @@ def format_init_next_steps() -> str:
   6. Generate plans:
        devlab plan
 
-DevLab plan/run require a clean Git working tree. Commit spec and config edits before
-starting agent sessions."""
+DevLab plan/implement require a clean Git working tree. Commit spec and config edits
+before starting agent sessions."""
 
 
 def _ensure_dir(path: Path, created: list[Path]) -> None:

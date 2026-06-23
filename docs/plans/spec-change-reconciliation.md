@@ -7,12 +7,12 @@
 
 ## Problem
 
-`devlab plan` currently behaves like an optional planning preflight: it creates missing design/project planning state and becomes a no-op once implementation tasks exist. `devlab run` then continues the workflow from durable state. That makes `run` easy to treat as the command that will figure everything out, even when the target system or deployment specification has changed after planning.
+`devlab plan` currently behaves like an optional planning preflight: it creates missing design/project planning state and becomes a no-op once implementation tasks exist. `devlab implement` then continues the workflow from durable state. That makes implementation easy to treat as the command that will figure everything out, even when the target system or deployment specification has changed after planning.
 
 The desired mental model is sharper:
 
 - `devlab plan` reconciles operator-authored specifications with DevLab workflow state.
-- `devlab run` implements the already-reconciled workflow state.
+- `devlab implement` implements the already-reconciled workflow state.
 
 If `.devlab/specs/system/` or `.devlab/specs/deployment/` changes after planning, DevLab must not blindly keep executing stale tasks. The operator should run `devlab plan` again so architecture and planning sessions can preserve completed work, carry still-valid unfinished work forward into the new planning generation, revise stale work, and add newly required work.
 
@@ -81,9 +81,9 @@ Dirty working tree handling stays strict:
 - Dirty spec paths get a more specific error than generic clean-worktree failure: commit the spec changes, then run `devlab plan`.
 - This keeps operator-authored specification commits separate from DevLab-authored reconciliation commits and preserves the existing clean-worktree invariant.
 
-### `devlab run`
+### `devlab implement`
 
-`devlab run` should be described and validated as implementation continuation, not reconciliation.
+`devlab implement` should be described and validated as implementation continuation, not reconciliation.
 
 Before selecting any non-planning workflow role, it should check whether specs differ from the recorded planning baseline. If they do, it should stop with a clear error:
 
@@ -165,7 +165,7 @@ The orchestrator owns generation advancement. Agents should not edit `planning.g
 4. Stamp planner-declared tasks and synced milestones with `next_generation`.
 5. After the planner handoff succeeds, write `planning.generation = next_generation` and the new spec baseline.
 
-If reconciliation fails midway, durable workflow state remains on the previous generation and `devlab run` continues to block because the spec baseline is still stale.
+If reconciliation fails midway, durable workflow state remains on the previous generation and `devlab implement` continues to block because the spec baseline is still stale.
 
 ## Agent Prompt Changes
 
@@ -212,7 +212,7 @@ This deliberately avoids a mass dismissal rule for all non-closed tasks and unfi
 
 Update:
 
-- `README.md`: present `devlab plan` as spec/workflow reconciliation and `devlab run` as implementation continuation.
+- `README.md`: present `devlab plan` as spec/workflow reconciliation and `devlab implement` as implementation continuation.
 - `docs/design.md`: replace the current "idempotent planning preflight" language with the new command model.
 - `docs/todo.md`: mark item 9 as planned once this design is accepted.
 - `docs/plans/README.md`: list this plan as active until implemented.
@@ -238,7 +238,7 @@ Focused tests:
 - Old-generation unfinished milestones are not selected for integration.
 - Old-generation unfinished milestones are reported as stale planning artifacts.
 - Milestone completion considers current-generation milestones and tasks, not stale older-generation artifacts.
-- `devlab run` with changed specs stops before any non-planning role assessment or agent invocation and instructs the user to run `devlab plan`.
+- `devlab implement` with changed specs stops before any non-planning role assessment or agent invocation and instructs the user to run `devlab plan`.
 - `devlab plan --revise` refreshes the baseline even when no spec change is detected.
 - `devlab status` or `doctor` can report stale spec baseline without mutating state, if we expose this diagnostically.
 

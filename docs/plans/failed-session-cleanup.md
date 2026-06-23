@@ -2,7 +2,7 @@
 
 ## Goal
 
-Improve recovery after failed `devlab plan` / `devlab run` sessions that leave diagnostic logs or session artifacts in the Git working tree.
+Improve recovery after failed `devlab plan` / `devlab implement` sessions that leave diagnostic logs or session artifacts in the Git working tree.
 
 DevLab should preserve diagnostics by default, but provide an explicit cleanup command so users can retry after inspecting or deciding to discard failed-session artifacts.
 

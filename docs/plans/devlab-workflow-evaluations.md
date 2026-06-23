@@ -269,7 +269,7 @@ Behavior:
 
 - skip unless `DEVLAB_LIVE_EVALS=1`
 - optionally require `DEVLAB_LIVE_PROVIDER` or use configured default provider
-- use `devlab run --log-file` equivalent behavior or direct `run_loop` with configured logging
+- use `devlab implement --log-file` equivalent behavior or direct `run_loop` with configured logging
 - cap `max_sessions` tightly per scenario
 - always print/write paths to `.devlab/logs/agents/` and evaluation diagnostics
 

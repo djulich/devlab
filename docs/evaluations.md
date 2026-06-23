@@ -100,7 +100,7 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_deployable_web_api_happy_path_evaluation -s
 ```
 
-The spec reconciliation live evaluation runs a small project to completion, commits a system-spec change, verifies that normal `devlab run` is blocked until reconciliation, runs `devlab plan`, verifies that generation 1 was archived and generation 2 has active tasks, then finishes the replacement project. This structural test reports the target root and agent log directory on failure rather than writing the standard evaluation diagnostics JSON. It is skipped unless explicitly enabled:
+The spec reconciliation live evaluation runs a small project to completion, commits a system-spec change, verifies that normal `devlab implement` is blocked until reconciliation, runs `devlab plan`, verifies that generation 1 was archived and generation 2 has active tasks, then finishes the replacement project. This structural test reports the target root and agent log directory on failure rather than writing the standard evaluation diagnostics JSON. It is skipped unless explicitly enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \

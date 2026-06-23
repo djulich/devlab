@@ -53,54 +53,56 @@ def main() -> None:
         help="Git user.email for DevLab-created commits.",
     )
 
-    run_parser = subparsers.add_parser("run", help="Run the DevLab workflow loop.")
-    run_parser.add_argument(
+    implement_parser = subparsers.add_parser(
+        "implement", help="Implement planned DevLab workflow tasks."
+    )
+    implement_parser.add_argument(
         "--root",
         type=Path,
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to operate on (default: current working directory).",
     )
-    run_parser.add_argument(
+    implement_parser.add_argument(
         "--max-sessions",
         type=int,
         default=20,
         help="Maximum number of sessions to run (default: 20).",
     )
-    run_parser.add_argument(
+    implement_parser.add_argument(
         "--provider",
         default=None,
-        help="Override the configured provider for this run.",
+        help="Override the configured provider for this implementation run.",
     )
-    run_parser.add_argument(
+    implement_parser.add_argument(
         "--model",
         default=None,
-        help="Override the configured model for this run.",
+        help="Override the configured model for this implementation run.",
     )
-    run_parser.add_argument(
+    implement_parser.add_argument(
         "--effort",
         default=None,
-        help="Override the configured effort for this run.",
+        help="Override the configured effort for this implementation run.",
     )
-    verbosity = run_parser.add_mutually_exclusive_group()
+    verbosity = implement_parser.add_mutually_exclusive_group()
     verbosity.add_argument(
         "-q",
         "--quiet",
         action="store_true",
-        help="Show only warnings and errors during the run.",
+        help="Show only warnings and errors during implementation.",
     )
     verbosity.add_argument(
         "-v",
         "--verbose",
         action="store_true",
-        help="Show debug diagnostics during the run.",
+        help="Show debug diagnostics during implementation.",
     )
-    run_parser.add_argument(
+    implement_parser.add_argument(
         "--log-file",
         type=Path,
         default=None,
-        help="Write detailed DevLab run logs to this file.",
+        help="Write detailed DevLab implementation logs to this file.",
     )
-    run_parser.add_argument(
+    implement_parser.add_argument(
         "--retain-prompts",
         action="store_true",
         help="Write full base/session prompts to .devlab/logs/agents/ for debugging.",
@@ -344,7 +346,7 @@ def main() -> None:
         print(format_init_result(result, root))
         print()
         print(format_init_next_steps())
-    elif args.command == "run":
+    elif args.command == "implement":
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         result = run_loop(
             root,

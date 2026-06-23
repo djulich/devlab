@@ -4,7 +4,7 @@ Status: **implemented**. DevLab now archives the active workflow bundle for
 fresh-generation planning, derives the active generation from archive directories,
 removes active task/milestone `planning_generation` front matter, supports
 `devlab plan --replace-plan` and `devlab plan --adopt-existing`, and blocks
-`devlab run` until committed spec changes are reconciled. Remaining ideas at the
+`devlab implement` until committed spec changes are reconciled. Remaining ideas at the
 end of this document are follow-up hardening options, not active implementation
 instructions.
 
@@ -115,7 +115,7 @@ spec_baseline = "<baseline commit, if known>"
 - **No changed specs and active planning exists**: keep the current no-op behavior
   unless `--revise` or `--replace-plan` is supplied.
 
-`devlab run` never auto-reconciles specs. If committed specs differ from the recorded
+`devlab implement` never auto-reconciles specs. If committed specs differ from the recorded
 baseline, it stops and instructs the operator to run `devlab plan`.
 
 ### `devlab plan --adopt-existing`
@@ -278,7 +278,7 @@ Consequences:
 - `devlab plan --adopt-existing --replace-plan` is rejected.
 - Committed spec changes after a baseline cause plain `devlab plan` to archive and
   reconcile automatically.
-- `devlab run` with stale committed specs stops before implementation roles.
+- `devlab implement` with stale committed specs stops before implementation roles.
 - Archived tasks, milestones, findings, history, logs, and plans remain together in
   the same generation directory.
 - Active task IDs can restart at `T0001` without conflicting with archived `T0001`.

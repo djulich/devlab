@@ -40,7 +40,7 @@ This keeps normal installation predictable while still making enhanced shell UX 
 ## Non-goals
 
 - Do not replace `uv` project metadata or package configuration.
-- Do not add target-project workflow commands such as `make devlab-run`; users should run `devlab run` inside target repositories.
+- Do not add target-project workflow commands such as `make devlab-implement`; users should run `devlab implement` inside target repositories.
 - Do not require root privileges or write to system directories.
 - Do not install agent CLIs, deployment tools, or other host prerequisites.
 - Do not make live-agent evaluations part of the default `check` target; they are opt-in and token/provider dependent.

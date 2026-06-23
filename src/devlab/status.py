@@ -87,7 +87,7 @@ def _format_milestone_status(snapshot: WorkspaceSnapshot) -> list[str]:
             [
                 f"- {milestone_id}: missing milestone state file",
                 "  referenced_by_tasks: " + ", ".join(task_ids),
-                "  note: run devlab run to advance workflow state",
+                "  note: run devlab implement to advance workflow state",
             ]
         )
     return lines

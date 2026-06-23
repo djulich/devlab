@@ -70,7 +70,7 @@ Fields:
 - `command`: executable name or command prefix.
 - `args`: ordered command arguments. These may include provider options and prompt placeholders.
 - `stdin_template`: optional template used to send prompts through standard input. When set, DevLab treats stdin as the prompt transport; otherwise prompt placeholders should appear in `args`.
-- `version_command`: optional provider version command used when recording session metadata during `devlab run`. If omitted, DevLab tries `<provider-executable> --version`; set it to `""` to skip version discovery.
+- `version_command`: optional provider version command used when recording session metadata during `devlab implement`. If omitted, DevLab tries `<provider-executable> --version`; set it to `""` to skip version discovery.
 
 Supported placeholders:
 
@@ -225,7 +225,7 @@ DevLab writes per-session agent diagnostics under `.devlab/logs/agents/`:
 
 Failure reports include the role, failure kind, exit code, timeout when present, command shape, and log paths. The config log resolves operational placeholders such as `{model}` and `{effort}`, but leaves `{system_prompt}` and `{session_prompt}` unexpanded so prompt contents are not written there.
 
-By default, DevLab does not retain full prompts. For debugging, run with `devlab run --retain-prompts` to write split prompt logs next to the agent invocation logs:
+By default, DevLab does not retain full prompts. For debugging, run with `devlab implement --retain-prompts` to write split prompt logs next to the agent invocation logs:
 
 - `<timestamp>_<session>_<role>.base-prompt.md`
 - `<timestamp>_<session>_<role>.session-prompt.md`

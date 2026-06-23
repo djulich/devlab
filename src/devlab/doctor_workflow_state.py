@@ -50,7 +50,7 @@ def check_git_worktree(root: Path) -> list[DoctorProblem]:
         DoctorProblem(
             ".",
             "working tree is dirty; commit, stash, or ignore changes before running "
-            f"DevLab plan/run ({preview})",
+            f"DevLab plan/implement ({preview})",
         )
     ]
 

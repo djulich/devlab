@@ -1,6 +1,6 @@
 # Logging Facility Plan
 
-Status: initial implementation complete. DevLab uses a single `devlab` logger for `run` workflow output, supports `devlab run --quiet`, `--verbose`, and `--log-file`, includes lightweight session start/finish context, and leaves report/interactive command output as direct prints.
+Status: initial implementation complete. DevLab uses a single `devlab` logger for implementation workflow output, supports `devlab implement --quiet`, `--verbose`, and `--log-file`, includes lightweight session start/finish context, and leaves report/interactive command output as direct prints.
 
 ## Motivation
 

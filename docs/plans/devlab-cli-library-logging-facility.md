@@ -6,8 +6,8 @@ Implement TODO #13 by replacing DevLab workflow progress/error `print()` calls w
 
 This improves:
 
-- CLI verbosity control for `devlab run`.
-- Optional durable DevLab run logs via `--log-file`.
+- CLI verbosity control for `devlab implement`.
+- Optional durable DevLab implementation logs via `--log-file`.
 - Library embedding: callers can configure or silence the `devlab` logger instead of receiving unavoidable stdout writes.
 
 This does **not** replace per-session agent stdout/stderr capture in `.devlab/logs/agents/`.
@@ -17,7 +17,7 @@ This does **not** replace per-session agent stdout/stderr capture in `.devlab/lo
 In scope:
 
 - Add a single `devlab` logger using Python's `logging` module.
-- Add logging configuration for `devlab run` only.
+- Add logging configuration for `devlab implement` only.
 - Replace orchestrator workflow progress/error prints with logger calls.
 - Keep `init`, `status`, and `doctor` formatted reports as `print()` output.
 - Keep interactive handoff preview and `input()` prompt as direct terminal output.
@@ -70,7 +70,7 @@ Recommended behavior: console level follows CLI verbosity, file level is `DEBUG`
 
 ### CLI flags
 
-Add to `devlab run`:
+Add to `devlab implement`:
 
 - `-q`, `--quiet`: console level `WARNING`
 - default: console level `INFO`
@@ -87,7 +87,7 @@ Use levels consistently:
 
 - `ERROR`: failures that stop the loop.
 - `WARNING`: abnormal but non-fatal conditions; none expected initially.
-- `INFO`: normal workflow progress visible during `devlab run`.
+- `INFO`: normal workflow progress visible during `devlab implement`.
 - `DEBUG`: diagnostics useful for troubleshooting, especially paths and configuration side effects.
 
 Current orchestrator output mapping:
@@ -115,7 +115,7 @@ No direct workflow-loop output is needed beyond logging; user-facing reporting c
 3. Update `src/devlab/cli.py`:
    - add `run` verbosity flags
    - add `--log-file`
-   - call `configure_logging()` only for `args.command == "run"` before `run_loop()`
+   - call `configure_logging()` only for `args.command == "implement"` before `run_loop()`
 4. Add CLI argument tests if current CLI tests can inspect behavior cheaply.
 
 ### Phase 2: Orchestrator conversion
@@ -134,7 +134,7 @@ No direct workflow-loop output is needed beyond logging; user-facing reporting c
 
 1. Update `docs/todo.md` item #13 to `initial implementation complete` once implemented.
 2. Update user-facing docs if present; at minimum update `docs/agent-configuration.md` or add a short logging section elsewhere if a better user docs file exists by then.
-3. Clarify that DevLab run logs are separate from `.devlab/logs/agents/` agent subprocess logs.
+3. Clarify that DevLab implementation logs are separate from `.devlab/logs/agents/` agent subprocess logs.
 
 ## Test strategy
 
@@ -154,8 +154,8 @@ Focused behavior tests:
 - `configure_logging(logging.DEBUG)` prefixes console output with level name.
 - `configure_logging(..., log_file=path)` writes DEBUG+ messages to the file and creates parent directories.
 - Reconfiguring does not duplicate messages.
-- `devlab run --quiet` suppresses progress logs.
-- `devlab run --verbose` includes DEBUG diagnostics.
+- `devlab implement --quiet` suppresses progress logs.
+- `devlab implement --verbose` includes DEBUG diagnostics.
 - `devlab status`, `devlab doctor`, and `devlab init` continue to print their formatted command output without requiring logging setup.
 
 ## Risks and mitigations
@@ -164,4 +164,4 @@ Focused behavior tests:
 - **Duplicate logs in embedded use.** Mark and replace only DevLab-owned handlers; document that library callers can configure `logging.getLogger("devlab")` directly.
 - **Quiet mode hiding important terminal information.** Use `ERROR` for stop conditions so quiet mode still surfaces failures.
 - **Log file accidentally containing prompts.** Do not log prompt text. Debug logs may include paths, role names, command shape, and failure metadata only.
-- **Confusion with agent logs.** Documentation and messages should call DevLab logs `run logs` or `DevLab logs`, while agent stdout/stderr logs remain per-session agent diagnostics under `.devlab/logs/agents/`.
+- **Confusion with agent logs.** Documentation and messages should call DevLab logs `implementation logs` or `DevLab logs`, while agent stdout/stderr logs remain per-session agent diagnostics under `.devlab/logs/agents/`.

@@ -18,7 +18,7 @@ A finished project should answer:
 - What configuration and secrets must I provide?
 - How do I tear it down?
 
-A finished project should expose project-owned commands, such as Make targets or scripts, for generating deployment artifacts and for deploying them to local, disposable, or staging environments. The project does not need to be left running by `devlab run`; however, the DevLab workflow must be able to generate and test the deployment artifacts it claims to support so developer/reviewer/integrator sessions can verify deployment tasks and milestones.
+A finished project should expose project-owned commands, such as Make targets or scripts, for generating deployment artifacts and for deploying them to local, disposable, or staging environments. The project does not need to be left running by `devlab implement`; however, the DevLab workflow must be able to generate and test the deployment artifacts it claims to support so developer/reviewer/integrator sessions can verify deployment tasks and milestones.
 
 Production deployment should normally be performed by a human, CI/CD pipeline, GitOps system, platform team tool, or other explicitly configured release mechanism.
 
@@ -234,7 +234,7 @@ docs/
 
 ## What DevLab Should Verify
 
-Deployment verification should be layered. DevLab does not have to leave the system running after `devlab run`, but it must be able to execute the artifact-generation and verification commands needed to prove deployment-related tasks are complete. Reviewers and integrators should treat unsupported or unverified deployment artifacts as incomplete work unless the deployment specification explicitly marks them as documentation-only or future scope.
+Deployment verification should be layered. DevLab does not have to leave the system running after `devlab implement`, but it must be able to execute the artifact-generation and verification commands needed to prove deployment-related tasks are complete. Reviewers and integrators should treat unsupported or unverified deployment artifacts as incomplete work unless the deployment specification explicitly marks them as documentation-only or future scope.
 
 ### Layer 1: Static / Artifact Validation
 

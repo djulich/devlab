@@ -21,10 +21,10 @@ The usual operator loop is:
    `devlab agent-smoke-test`.
 4. Run `devlab plan`.
 5. Inspect generated plans/tasks if needed.
-6. Run `devlab run --max-sessions N`.
+6. Run `devlab implement --max-sessions N`.
 7. Use `devlab status`, `devlab diagnostics`, and Git history to inspect results.
 
-`devlab plan` and `devlab run` require a clean working tree before agent
+`devlab plan` and `devlab implement` require a clean working tree before agent
 sessions. This keeps operator-authored changes separate from DevLab-authored
 session commits.
 
@@ -70,7 +70,7 @@ DevLab reads all Markdown files under:
 
 After editing specs, commit the changes and run `devlab plan`. DevLab records the
 latest committed spec revision it planned against in `.devlab/workflow.toml`.
-If committed specs change later, `devlab run` stops and asks you to run
+If committed specs change later, `devlab implement` stops and asks you to run
 `devlab plan` again.
 
 During spec reconciliation or `devlab plan --replace-plan`, DevLab archives the

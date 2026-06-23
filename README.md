@@ -35,7 +35,7 @@ In particular:
 - `.devlab/config/profiles/*.toml` may define setup/teardown/environment lifecycle commands;
 - agent permission and approval behavior is provider-specific and controlled through `.devlab/config/agents.toml`.
 
-DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab run`, especially in cloned or agent-modified workspaces.
+DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab implement`, especially in cloned or agent-modified workspaces.
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ To install and run DevLab, you need:
 - Python 3.12 or newer.
 - [`uv`](https://docs.astral.sh/uv/) for installing and running the DevLab tool.
 - Git on `PATH`; DevLab initializes target repositories when needed and commits workflow changes after valid sessions.
-- At least one configured agent CLI/provider, such as a local coding-agent command, declared in the target project's `.devlab/config/agents.toml` before running `devlab plan` or `devlab run`.
+- At least one configured agent CLI/provider, such as a local coding-agent command, declared in the target project's `.devlab/config/agents.toml` before running `devlab plan` or `devlab implement`.
 
 Target projects may define their own validation, build, environment lifecycle, or deployment commands. DevLab may invoke those target-owned commands when configured, but it does not install missing project tools for you.
 
@@ -103,7 +103,7 @@ Configure the target project's agent command. The configured executable must be 
 .devlab/config/agents.toml
 ```
 
-Commit your user-authored setup changes before planning. `devlab plan` and `devlab run` require a clean Git working tree so agent-authored changes can be isolated and committed safely:
+Commit your user-authored setup changes before planning. `devlab plan` and `devlab implement` require a clean Git working tree so agent-authored changes can be isolated and committed safely:
 
 ```bash
 git add .devlab/specs .devlab/config
@@ -129,16 +129,16 @@ devlab doctor
 
 `devlab plan` reconciles committed system/deployment specs with durable workflow state. It creates missing design and project planning state, records the committed spec revision it planned against, and stops before implementation. Later, if committed files under `.devlab/specs/system/` or `.devlab/specs/deployment/` change, run `devlab plan` again so architect and planner sessions can carry still-valid work into the current planning generation. Use `devlab plan --revise` when you explicitly want architect and planner sessions to review and update existing plans even without a spec change.
 
-Run the workflow. `devlab run` implements already-reconciled workflow state. It requires a Git repository with a clean working tree, stops if committed specs changed since the last `devlab plan` baseline, and commits all non-ignored changes after every valid session. Re-running it continues where the last `devlab plan` or `devlab run` stopped:
+Implement the planned workflow. `devlab implement` carries out already-reconciled workflow state. It requires a Git repository with a clean working tree, stops if committed specs changed since the last `devlab plan` baseline, and commits all non-ignored changes after every valid session. Re-running it continues where the last `devlab plan` or `devlab implement` stopped:
 
 ```bash
-devlab run --max-sessions 20
+devlab implement --max-sessions 20
 ```
 
 For prompt-debugging only, retain full base/session prompts alongside agent logs:
 
 ```bash
-devlab run --retain-prompts
+devlab implement --retain-prompts
 ```
 
 Prompt logs and agent output can contain target-project details. Treat `.devlab/logs/agents/` as sensitive.
@@ -147,7 +147,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 
 - `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
 - `devlab plan [--root PATH] [--revise] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
-- `devlab run [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
+- `devlab implement [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab workflow-state [--root PATH] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state.
 - `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
@@ -155,7 +155,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
 - `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.
 
-Useful `run` and `plan` options include `--provider`, `--model`, `--effort`, `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`.
+Useful `implement` and `plan` options include `--provider`, `--model`, `--effort`, `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`.
 
 ## Target workspace layout
 
