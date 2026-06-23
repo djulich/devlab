@@ -185,6 +185,42 @@ Open work:
 - Consider failed-attempt lifecycle events if successful-transition provenance
   proves insufficient.
 
+## 13. Consider Internal Workflow Event Hooks
+
+Priority: low until another event consumer is implemented; likely medium if
+work starts on item #11 workflow attention notifications.
+
+Usefulness: conditional. DevLab now writes lifecycle provenance events directly
+from orchestrator transitions. A general hook system would probably be premature
+for only `.devlab/workflow-events.jsonl`, because it adds abstraction around a
+small number of explicit state transitions and can make workflow control harder
+to reason about.
+
+This becomes more attractive if multiple independent event consumers emerge,
+especially workflow attention notifications from item #11. Other possible
+consumers include metrics/telemetry, audit export, test-only observers, or future
+clarification/blocker reporting.
+
+Preferred direction if needed:
+
+- Add a narrow internal `WorkflowEventSink` / `WorkflowObserver` abstraction
+  rather than a broad plugin hook system.
+- Use typed lifecycle event dataclasses instead of arbitrary string payloads.
+- Keep hooks outside workflow control: sinks observe events and must not decide
+  role selection, state transitions, or task progression.
+- Make sink failure policy explicit. Notification failures should not fail an
+  otherwise successful workflow by default; durable control-state updates should
+  remain direct and transactional.
+- Keep role agents out of the mechanism; agents must not invoke hooks or edit
+  `.devlab/workflow-events.jsonl`.
+- Ensure reporting commands remain read-only and never emit lifecycle events.
+
+Open work:
+
+- Revisit this when implementing item #11 or another second event consumer.
+- If revisited, first refactor the current JSONL lifecycle logger behind a small
+  sink interface and add a composite sink only when more than one sink exists.
+
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).
