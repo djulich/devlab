@@ -10,20 +10,9 @@ Status: **initial hardening implemented**. DevLab now validates handoff section 
 
 Open work:
 
-- Watch live-agent runs for remaining Markdown contract ambiguity.
-- Keep planner addressed-findings validation strict until live evaluations show whether malformed mappings are common; see `docs/agent-output-validation-assessment.md`.
-- Consider an explicit structured outcome block for reviewer/integrator/architect handoffs only if Markdown parsing remains fragile. This is not merely deferred implementation work: a structured block can create two-source-of-truth conflicts with prose, make agent output more brittle, impose a schema-evolution burden on archived handoffs, and tempt agents/orchestrator contracts toward over-specified workflow control. If added, keep it minimal and authoritative, and reject contradictions with prose.
 - Consider post-reviewer structural validation: the orchestrator runs profile-driven validation commands after the reviewer session and treats failure as a rejection regardless of the reviewer's approval. This moves mechanical correctness checking (tests pass, linter clean, types check) from prompt-dependent reviewer behavior to structural enforcement. The reviewer still owns subjective code quality judgment. Tradeoff: the reviewer can no longer deliberately approve with a known failing test, which is sometimes valid during incremental development.
 
-## 2. Agent Invocation Observability and Error Handling
-
-Status: **initial implementation complete**. CLI providers now capture per-session stdout/stderr, convert timeout/missing executable/nonzero exit/provider errors into structured `AgentResult` values, and the orchestrator includes log paths and invocation diagnostics in `SessionError` / `RunResult` failures. Starter config and docs prefer stdin prompt transport where supported. DevLab persists per-session non-prompt invocation metadata such as role, provider, model, provider version when cheaply available, outcome, task id, and duration, and exposes it through `devlab history`.
-
-Open work:
-
-- Exercise diagnostics in live-agent runs and refine message wording if users need faster failure triage.
-
-## 3. DevLab Workflow Evaluations
+## 2. DevLab Workflow Evaluations
 
 Status: **evaluation harness implemented; live result collection ongoing**. Deterministic evaluations under `tests/evaluations/` create temporary target repositories, run the normal workflow with scripted fake agents, grade generated systems with black-box checks, and write diagnostics JSON artifacts. The suite includes CLI calculator, corrective workflow, tiny stdlib HTTP API, stateful JSON web API, static frontend, and deployable web API scenarios. Skipped-by-default live-agent evaluations reuse the same harness. Diagnostics now include task-cycle rework, integrator finding rework, profile usage, artifact hygiene, and quality warnings. See `docs/evaluations.md`, `docs/plans/devlab-workflow-evaluations.md`, `docs/plans/devlab-workflow-evaluations-remaining.md`, and `docs/plans/stateful-web-api-evaluation.md`.
 
@@ -41,31 +30,20 @@ Open work:
 - Run the opt-in `live-stateful-web-api-happy-path` evaluation across local provider environments and collect baseline outcomes.
 - Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect additional baseline outcomes, especially `live-static-frontend-todo-app-happy-path` and additional `live-deployable-web-api-happy-path` runs across provider environments. Initial deployment baseline: `docs/plans/deployment-live-baseline-2026-06-06.md`.
 - Calibrate quality-warning thresholds after more live baselines, especially high sessions per closed task, same-task rework warnings, integrator finding warnings, and large ignored artifact footprints.
-- Watch whether developer/reviewer task attribution from changed `.devlab/tasks/TXXXX_*.md` artifacts is sufficient in live runs; only add fallback parsing if real handoffs are frequently unattributed.
-- Refine diagnostics/message wording if live failures are hard to triage.
+- Decide from live baselines whether developer/reviewer task attribution from changed `.devlab/tasks/TXXXX_*.md` artifacts is sufficient, or whether fallback handoff parsing is needed.
 
-## 4. Package and User-Facing Documentation
-
-Priority: high. DevLab is intended to be a reusable CLI/package, but the repository lacks a user-facing quickstart and maturity/trust guidance.
-
-Open work:
-
-- Keep the operator guide current as profiles, findings, milestones, handoffs, and generation behavior evolve.
-- Keep maturity guidance current as live-agent evaluation baselines accumulate.
-
-## 5. Trust and Safety Model for Executable Configuration
+## 3. Trust and Safety Model for Executable Configuration
 
 Priority: high-medium. Target-owned `agents.toml` and profile environment lifecycle commands are trusted executable configuration. This needs to be explicit before broader reuse.
+
+Status: **trust guidance documented**. README and operator docs now warn that DevLab runs target-owned agent/profile commands without sandboxing, describe ownership of generated workflow files, and call out `.gitignore`, logs, retained prompts, and automatic commits.
 
 Open work:
 
 - Add `doctor` warnings for obviously dangerous profile commands or permission-skip flags where practical.
-- Clarify that DevLab does not sandbox agent commands or environment lifecycle commands.
 - Consider a future workspace trust marker or explicit `--allow-exec-config` mode before running target-owned executable config.
-- Keep sandboxing/approval policy as a deferred feature unless real use shows it is necessary sooner.
-- Clarify what DevLab may commit automatically, especially logs, prompts, session artifacts, and other non-ignored files; document that users must configure .gitignore/workspace hygiene before broader use.
 
-## 6. Prompt Context Size Monitoring and Reduction
+## 4. Prompt Context Size Monitoring and Reduction
 
 Status: **initial monitoring implemented**. DevLab estimates system, session, and total prompt size per role using the actual prompt builders. `devlab status --verbose` reports approximate token counts and threshold status. Thresholds are configurable in `.devlab/config/agents.toml`; `devlab doctor` validates the configuration.
 
@@ -76,15 +54,7 @@ Open work:
 - Consider splitting `conventions.md` into role-relevant sections.
 - Consider model-specific tokenizers or provider-specific context windows if approximate sizing proves insufficient.
 
-## 7. Starting Workflow on an Existing Project
-
-Priority: medium. DevLab should support operation on a project developed outside DevLab.
-
-In this case, the system spec acts as a feature spec. DevLab adds the specified features to the existing project using the same workflow it uses to develop from scratch. The architect and planner roles need to account for existing code and infrastructure rather than assuming a greenfield project.
-
-Status: **implemented**. `devlab plan --adopt-existing` explicitly asks the architect and planner to treat the repository as an already-started project and is only allowed before an active DevLab plan exists. During adoption, the architect must create a current-state design baseline before the planner creates new work, and planner work must preserve existing tooling while using target-owned validation paths. Scripted and opt-in live evaluation coverage exist for a pre-existing tiny repo plus a feature spec; the first live baseline was collected and used to tighten target-owned validation guidance.
-
-## 8. Multi-session Architecture Planning for Large Specs
+## 5. Multi-session Architecture Planning for Large Specs
 
 Priority: medium-low. Useful for substantial target systems where one architect session cannot produce a reliable design plan, but lower priority until workflow evaluations show concrete context or quality failures on large specs.
 
@@ -95,7 +65,7 @@ Open work:
 - Avoid overloading implementation tasks for pre-planning work; if design slices are needed, store them as architecture-planning artifacts rather than normal developer tasks.
 - Add tests/evaluations with an intentionally large spec that requires multiple architecture passes.
 
-## 9. Reconcile Spec Changes with Workflow State
+## 6. Reconcile Spec Changes with Workflow State
 
 Priority: medium-high. DevLab should support target workspaces where the system spec or deployment spec changes after architecture, planning, or implementation work already exists.
 
@@ -108,7 +78,7 @@ Open work:
 - Consider a future explicit bypass command such as `devlab plan --mark-specs-planned` for operator-confirmed format-only, typo-only, or otherwise plan-neutral spec commits. The command would require a clean worktree, refuse uncommitted spec changes, update `[specs].last_planned_spec_commit` to the current latest committed spec commit without running architect/planner, and clearly warn that it bypasses the reconciliation guardrail. Do not add this to the first implementation unless real usage shows false-positive reconciliation is painful.
 - Decide whether reconciliation should produce a separate durable summary artifact, or whether architect/planner handoffs plus edited plans/tasks are sufficient.
 
-## 10. Add Durable Operator Clarifications
+## 7. Add Durable Operator Clarifications
 
 Priority: medium. DevLab should support bounded user clarification when a role session encounters an ambiguity, contradiction, missing prerequisite, or scope decision that cannot be resolved safely from repository state.
 
@@ -130,7 +100,7 @@ Open design questions:
 - How should DevLab prevent vague or excessive questions: max question count per session, required answer options, severity, or validation rules?
 - Should unanswered questions block all workflow progress or only the affected task/milestone?
 
-## 11. Add Workflow Attention Notifications
+## 8. Add Workflow Attention Notifications
 
 Priority: medium-low. DevLab should optionally notify operators about workflow events that require attention or indicate completion, especially for long-running unattended `devlab plan` / `devlab implement` workflows.
 
@@ -159,7 +129,7 @@ Open design questions:
 - Should notifications be sent synchronously at the end of the command or queued/best-effort?
 - How should notification failures be reported without obscuring the primary workflow result?
 
-## 12. Add Workflow State Reporting
+## 9. Add Workflow State Reporting
 
 Status: **initial implementation complete**. DevLab now writes a small
 orchestrator-owned `.devlab/workflow-events.jsonl` lifecycle log, exposes
@@ -180,46 +150,8 @@ Plan: `docs/plans/workflow-state-reporting.md`.
 
 Open work:
 
-- Exercise `devlab workflow-state` against live target workspaces and refine
-  wording/fields if operators need faster triage.
 - Consider failed-attempt lifecycle events if successful-transition provenance
   proves insufficient.
-
-## 13. Consider Internal Workflow Event Hooks
-
-Priority: low until another event consumer is implemented; likely medium if
-work starts on item #11 workflow attention notifications.
-
-Usefulness: conditional. DevLab now writes lifecycle provenance events directly
-from orchestrator transitions. A general hook system would probably be premature
-for only `.devlab/workflow-events.jsonl`, because it adds abstraction around a
-small number of explicit state transitions and can make workflow control harder
-to reason about.
-
-This becomes more attractive if multiple independent event consumers emerge,
-especially workflow attention notifications from item #11. Other possible
-consumers include metrics/telemetry, audit export, test-only observers, or future
-clarification/blocker reporting.
-
-Preferred direction if needed:
-
-- Add a narrow internal `WorkflowEventSink` / `WorkflowObserver` abstraction
-  rather than a broad plugin hook system.
-- Use typed lifecycle event dataclasses instead of arbitrary string payloads.
-- Keep hooks outside workflow control: sinks observe events and must not decide
-  role selection, state transitions, or task progression.
-- Make sink failure policy explicit. Notification failures should not fail an
-  otherwise successful workflow by default; durable control-state updates should
-  remain direct and transactional.
-- Keep role agents out of the mechanism; agents must not invoke hooks or edit
-  `.devlab/workflow-events.jsonl`.
-- Ensure reporting commands remain read-only and never emit lifecycle events.
-
-Open work:
-
-- Revisit this when implementing item #11 or another second event consumer.
-- If revisited, first refactor the current JSONL lifecycle logger behind a small
-  sink interface and add a composite sink only when more than one sink exists.
 
 ## Later / Non-goals for Now
 
