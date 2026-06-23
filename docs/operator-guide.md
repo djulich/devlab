@@ -257,6 +257,9 @@ Useful inspection commands:
 
 - `devlab status --verbose`: current workflow state, resolved providers, and
   approximate prompt sizes.
+- `devlab workflow-state`: lifecycle/provenance summary, planning generation
+  counts, spec reconciliation state, and current work counts. Use
+  `devlab workflow-state --json` for tooling.
 - `devlab diagnostics --verbose`: workflow-history diagnostics and quality
   warnings.
 - `devlab doctor`: workspace configuration and workflow-state validation.
@@ -290,6 +293,10 @@ archived into generations. They remain active inputs for the next planning run.
 
 Archived generations are read-only history. Active selectors ignore archived
 tasks and milestones.
+
+`.devlab/workflow-events.jsonl` is cross-generation lifecycle history. The
+orchestrator appends small events for initialization, planning runs, and
+generation archival. Role agents should not edit it directly.
 
 ## Before Running Unattended
 

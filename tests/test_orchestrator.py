@@ -16,6 +16,7 @@ from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import _timestamp, close_task, process_handoff, run_loop, validate_handoff
 from devlab.prompts import build_base_prompt, build_session_prompt
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
+from devlab.workflow_events import load_workflow_events
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -626,6 +627,32 @@ class TestRunLoop:
         assert result.sessions_run == 2
         assert [call.role_name for call in provider.calls] == ["architect", "planner"]
         assert Workspace(tmp_path).snapshot.assess_state() == "developer"
+
+    def test_planning_only_records_lifecycle_events(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+
+        def on_invoke(call: AgentCall) -> None:
+            if call.role_name == "architect":
+                (call.root / DESIGN_PLAN).write_text("# Design\n")
+            elif call.role_name == "planner":
+                (call.root / PROJECT_PLAN).write_text("## M1: Initial\n- T0001: First\n")
+                _write_task(call.root, "T0001", "First", milestone="M1")
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=5,
+            planning_only=True,
+            agent_providers={"default": provider},
+        )
+
+        events = load_workflow_events(tmp_path)
+        assert result.sessions_run == 2
+        assert [(event.type, event.data["mode"]) for event in events] == [
+            ("plan_started", "greenfield"),
+            ("plan_completed", "greenfield"),
+        ]
 
     def test_planning_only_with_version_control_commits_synced_milestones(
         self, tmp_path: Path

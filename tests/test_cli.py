@@ -92,6 +92,32 @@ def test_cli_status_verbose_reports_agent_configuration(
     assert "Source: .devlab/config/agents.toml" in output
 
 
+def test_cli_help_includes_workflow_state(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["devlab", "--help"])
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 0
+    assert "workflow-state" in capsys.readouterr().out
+
+
+def test_cli_workflow_state_json_reports_lifecycle_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(monkeypatch, "workflow-state", "--json", "--root", str(tmp_path))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["project_mode"] == "unknown"
+    assert payload["lifecycle_phase"] == "awaiting design"
+    assert payload["next_role"] == "architect"
+
+
 def test_cli_diagnostics_reports_workflow_diagnostics(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -23,7 +23,7 @@ from devlab.agents import (
     provider_for_role,
 )
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
-from devlab.generations import archive_active_generation, has_active_plan
+from devlab.generations import active_generation, archive_active_generation, has_active_plan
 from devlab.git import VersionControlError
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
@@ -42,6 +42,7 @@ from devlab.version_control import (
 from devlab.version_control import (
     tag as create_git_tag,
 )
+from devlab.workflow_events import append_workflow_event
 from devlab.workflow_state import WorkflowState, load_workflow_state, update_workflow_state
 from devlab.workspace import (
     AGENT_LOG_DIR,
@@ -632,6 +633,24 @@ def _load_workflow_and_spec_status(
     return workflow_state, inspect_spec_reconciliation(root, workflow_state)
 
 
+def _planning_event_mode(
+    *,
+    revise_plan: bool,
+    replace_plan: bool,
+    adopt_existing: bool,
+    reconcile_plan: bool,
+) -> str:
+    if reconcile_plan:
+        return "spec_reconciliation"
+    if replace_plan:
+        return "replace_plan"
+    if revise_plan:
+        return "revise"
+    if adopt_existing:
+        return "adopt_existing"
+    return "greenfield"
+
+
 def _notify_session_progress(
     callback: SessionProgressCallback | None,
     event: str,
@@ -763,6 +782,12 @@ def run_loop(
         resolved_agent_configs = agent_configuration.resolved
 
     reconcile_plan = bool(spec_status and spec_status.changed)
+    planning_event_mode = _planning_event_mode(
+        revise_plan=revise_plan,
+        replace_plan=replace_plan,
+        adopt_existing=adopt_existing,
+        reconcile_plan=reconcile_plan,
+    )
     fresh_generation_plan = planning_only and (replace_plan or reconcile_plan)
     if fresh_generation_plan:
         try:
@@ -772,6 +797,13 @@ def run_loop(
                 spec_baseline=(
                     spec_status.baseline_spec_commit if spec_status is not None else ""
                 ),
+            )
+            append_workflow_event(
+                root,
+                "generation_archived",
+                mode="spec_reconciliation" if reconcile_plan else "replace_plan",
+                generation=manifest.generation,
+                spec_baseline=manifest.spec_baseline,
             )
             workspace = Workspace(root)
             logger.info("Archived active DevLab generation %s", manifest.generation)
@@ -800,6 +832,7 @@ def run_loop(
             else None
         ),
     )
+    plan_started_recorded = False
 
     while sessions_run < max_sessions:
         if automatic_version_control:
@@ -1085,6 +1118,22 @@ def run_loop(
 
         commit_message = _commit_message(workspace.snapshot, handoff)
         process_result = process_handoff(handoff, workspace)
+        if planning_only and not plan_started_recorded and role_name in {"architect", "planner"}:
+            append_workflow_event(
+                root,
+                "plan_started",
+                mode=planning_event_mode,
+                generation=active_generation(root),
+            )
+            plan_started_recorded = True
+        if planning_only and role_name == "planner":
+            append_workflow_event(
+                root,
+                "plan_completed",
+                mode=planning_event_mode,
+                generation=active_generation(root),
+                planning_complete=workspace.snapshot.workflow_state().planning.complete,
+            )
         metadata = _build_session_metadata(
             ctx, agent_result, resolved_agent_configs, session_task_id,
         )

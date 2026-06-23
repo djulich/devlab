@@ -115,6 +115,7 @@ Inspect the workspace:
 ```bash
 devlab doctor
 devlab status --verbose
+devlab workflow-state
 devlab agent-smoke-test
 devlab diagnostics
 ```
@@ -148,6 +149,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab plan [--root PATH] [--revise] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
 - `devlab run [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
+- `devlab workflow-state [--root PATH] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state.
 - `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
@@ -162,6 +164,7 @@ A DevLab target repository contains workflow state under `.devlab/`:
 ```text
 .devlab/
 ├── workflow.toml        # workflow control state, including planning completeness
+├── workflow-events.jsonl # append-only lifecycle/provenance events
 ├── config/              # agents, profiles, tooling policy
 ├── specs/               # system and deployment specs
 ├── plans/               # design and project plans

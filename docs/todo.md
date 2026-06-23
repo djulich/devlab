@@ -161,6 +161,13 @@ Open design questions:
 
 ## 12. Add Workflow State Reporting
 
+Status: **initial implementation complete**. DevLab now writes a small
+orchestrator-owned `.devlab/workflow-events.jsonl` lifecycle log, exposes
+`devlab workflow-state [--json]`, reports lifecycle phase, planning/project
+mode, generations, spec reconciliation, planning-history counters, and current
+work counts, and falls back to generation manifests/session history for older
+workspaces without events.
+
 Priority: medium-high. Operators should be able to inspect a target project's
 workflow lifecycle state without manually reading `.devlab/` artifacts, project
 files, generation archives, or Git history.
@@ -173,10 +180,10 @@ Plan: `docs/plans/workflow-state-reporting.md`.
 
 Open work:
 
-- Add an orchestrator-owned lifecycle event log for future precise provenance.
-- Add `devlab workflow-state [--json]` as a read-only lifecycle report.
-- Infer useful report fields for older workspaces that lack lifecycle events.
-- Document the command in the README and operator guide.
+- Exercise `devlab workflow-state` against live target workspaces and refine
+  wording/fields if operators need faster triage.
+- Consider failed-attempt lifecycle events if successful-transition provenance
+  proves insufficient.
 
 ## Later / Non-goals for Now
 

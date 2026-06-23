@@ -17,6 +17,10 @@ from devlab.init import format_init_next_steps, format_init_result, init_workspa
 from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
+from devlab.workflow_state_report import (
+    build_workflow_state_report,
+    format_workflow_state_report,
+)
 
 
 def main() -> None:
@@ -183,6 +187,21 @@ def main() -> None:
         "--verbose",
         action="store_true",
         help="Show resolved agent configuration details.",
+    )
+
+    workflow_state_parser = subparsers.add_parser(
+        "workflow-state", help="Show workflow lifecycle state."
+    )
+    workflow_state_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to inspect (default: current working directory).",
+    )
+    workflow_state_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit workflow lifecycle state as JSON.",
     )
 
     diagnostics_parser = subparsers.add_parser(
@@ -357,6 +376,12 @@ def main() -> None:
             raise SystemExit(result.exit_code)
     elif args.command == "status":
         print(format_status(root, verbose=args.verbose))
+    elif args.command == "workflow-state":
+        report = build_workflow_state_report(root)
+        if args.json:
+            print(report.to_json())
+        else:
+            print(format_workflow_state_report(report))
     elif args.command == "diagnostics":
         if args.json:
             print(build_workflow_diagnostics(root).to_json())

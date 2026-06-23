@@ -11,6 +11,7 @@ from devlab.version_control import (
     has_git_repository,
     init_repository,
 )
+from devlab.workflow_events import WORKFLOW_EVENTS, append_workflow_event
 from devlab.workflow_state import WORKFLOW_STATE, initial_workflow_state_text
 
 LAYOUT_VERSION = 1
@@ -128,6 +129,9 @@ def init_workspace(
             skipped=skipped,
             overwritten=overwritten,
         )
+
+    if created or overwritten or not (root / WORKFLOW_EVENTS).exists():
+        append_workflow_event(root, "init")
 
     if automatic_git:
         commit_all(root, "Initialize DevLab workspace")

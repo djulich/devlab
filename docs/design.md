@@ -102,6 +102,7 @@ The repository is the system of record. Agents should not depend on conversation
 Important workflow state is stored in files, for example:
 
 - `.devlab/workflow.toml` — small orchestrator-owned workflow-control state, currently planning completeness.
+- `.devlab/workflow-events.jsonl` — append-only orchestrator-owned lifecycle events used for provenance reporting, not workflow control.
 - `.devlab/specs/` — target-workspace system and deployment specifications.
 - `.devlab/config/` — target-workspace tooling, agent, profile, and environment lifecycle configuration.
 - `.devlab/plans/` — design and project plans.
@@ -148,7 +149,7 @@ For example, task files have statuses such as:
 
 The orchestrator changes these statuses after validating the relevant session output. Task files are not moved between folders to represent state.
 
-Reporting paths are intentionally non-mutating. `devlab status`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. Explicit mutation belongs to workflow commands such as `devlab plan` and `devlab run`, or to future commands whose purpose is repair/sync.
+Reporting paths are intentionally non-mutating. `devlab status`, `devlab workflow-state`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. Explicit mutation belongs to workflow commands such as `devlab plan` and `devlab run`, or to future commands whose purpose is repair/sync.
 
 `devlab plan` is the spec/workflow reconciliation command. It creates missing design/project planning state, records the latest committed revision that touched `.devlab/specs/system/` or `.devlab/specs/deployment/`, and stops before implementation roles. If those committed specs change later, `devlab plan` archives the active DevLab workflow bundle under `.devlab/generations/NNNN/`, starts a fresh active planning graph, and runs architect and planner again. `devlab plan --revise` explicitly asks architect and planner to review existing active plans even when the committed spec baseline has not changed. `devlab plan --replace-plan` forces the same archive-and-plan replacement when an active DevLab plan exists. `devlab plan --adopt-existing` tells first planning to treat repository files as an already-started project; the architect records a current-state design baseline in `.devlab/plans/design-plan.md` before the planner creates new work. During adoption, DevLab prompts agents to preserve the existing development stack and use target-owned validation paths. If the project lacks reliable validation, planner work should add explicit tooling/profile support instead of silently relying on globally installed or DevLab-harness tools. `devlab run` is implementation continuation: it reads durable reconciled state and stops before selecting developer, reviewer, integrator, or architecture-review sessions if committed specs no longer match the recorded planning baseline.
 
@@ -340,7 +341,7 @@ complete = false
 
 This avoids treating prose such as "future milestone candidates" as hidden workflow state. The planner may plan only the next milestone, but a follow-up planner session invoked on an exhausted backlog must either create new durable work or report `planning_complete = true` in its handoff.
 
-Agents do not edit `.devlab/workflow.toml` directly. The orchestrator supplies the current planning state in planner prompt context, parses the planner handoff's `## Planning State` section, and updates `.devlab/workflow.toml` programmatically. Planning generation is represented by directory scope: active `.devlab/tasks/`, `.devlab/milestones/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/session-artifacts/`, `.devlab/logs/agents/`, and `.devlab/plans/` describe the current generation, while archived generations live under `.devlab/generations/NNNN/`. Task and milestone front matter does not carry `planning_generation`.
+Agents do not edit `.devlab/workflow.toml` or `.devlab/workflow-events.jsonl` directly. The orchestrator supplies the current planning state in planner prompt context, parses the planner handoff's `## Planning State` section, updates `.devlab/workflow.toml` programmatically, and appends lifecycle events for reporting. Planning generation is represented by directory scope: active `.devlab/tasks/`, `.devlab/milestones/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/session-artifacts/`, `.devlab/logs/agents/`, and `.devlab/plans/` describe the current generation, while archived generations live under `.devlab/generations/NNNN/`. Task and milestone front matter does not carry `planning_generation`.
 
 ## Agent providers
 
