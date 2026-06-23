@@ -144,7 +144,9 @@ def test_workspace_selectors_use_all_active_task_files(tmp_path: Path) -> None:
     snapshot = Workspace(tmp_path).snapshot
 
     assert [task.id for task in snapshot.active_tasks()] == ["T0001", "T0002"]
-    assert snapshot.select_next_development_task().id == "T0001"  # type: ignore[union-attr]
+    selected_task = snapshot.select_next_development_task()
+    assert selected_task is not None
+    assert selected_task.id == "T0001"
 
 
 def test_workspace_review_selector_uses_all_active_task_files(tmp_path: Path) -> None:

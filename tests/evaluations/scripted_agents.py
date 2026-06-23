@@ -365,7 +365,10 @@ class SpecReconciliationScriptedAgent:
             )
             return
         if self.role_counts["architect"] == 3:
-            assert "DevLab archived the previous active planning graph" in invocation.session_prompt
+            assert (
+                "DevLab archived the previous active planning graph"
+                in invocation.session_prompt
+            )
             _design_plan(invocation.root).write_text(
                 "# Design Plan\n\nBuild a tiny greeter CLI.\n"
             )

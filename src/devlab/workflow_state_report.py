@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
-from devlab.findings import FindingStatus
+from devlab.findings import Finding, FindingStatus
 from devlab.generations import (
     GENERATION_MANIFEST,
     active_generation,
@@ -13,9 +14,9 @@ from devlab.generations import (
     load_generation_manifest,
 )
 from devlab.git import VersionControlError
-from devlab.milestones import MilestoneStatus
+from devlab.milestones import Milestone, MilestoneStatus
 from devlab.spec_reconciliation import inspect_spec_reconciliation
-from devlab.task_tracker import TaskStatus
+from devlab.task_tracker import Task, TaskStatus
 from devlab.workflow_events import (
     WorkflowEvent,
     count_events,
@@ -300,7 +301,7 @@ def _lifecycle_phase(
     planning: PlanningReport,
     next_role: str | None,
     current_work: CurrentWorkReport,
-    milestones: object,
+    milestones: Iterable[Milestone],
     planning_complete: bool,
 ) -> str:
     if not planning.design_plan_present and next_role == "architect":
@@ -328,7 +329,7 @@ def _lifecycle_phase(
     return "awaiting planning" if next_role == "planner" else "implementation"
 
 
-def _has_pending_integration(milestones: object) -> bool:
+def _has_pending_integration(milestones: Iterable[Milestone]) -> bool:
     return any(
         milestone.status
         in {
@@ -340,14 +341,19 @@ def _has_pending_integration(milestones: object) -> bool:
     )
 
 
-def _current_work_report(tasks: object, milestones: object, findings: object) -> CurrentWorkReport:
+def _current_work_report(
+    tasks: Iterable[Task],
+    milestones: Iterable[Milestone],
+    findings: Iterable[Finding],
+) -> CurrentWorkReport:
     task_list = list(tasks)
+    milestone_list = list(milestones)
     finding_list = list(findings)
     return CurrentWorkReport(
         tasks_total=len(task_list),
         tasks_closed=sum(1 for task in task_list if task.status == TaskStatus.CLOSED),
         tasks_active=sum(1 for task in task_list if task.status != TaskStatus.CLOSED),
-        milestones_total=len(list(milestones)),
+        milestones_total=len(milestone_list),
         findings_open=sum(1 for finding in finding_list if finding.status == FindingStatus.OPEN),
         findings_planned=sum(
             1 for finding in finding_list if finding.status == FindingStatus.PLANNED

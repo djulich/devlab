@@ -140,7 +140,7 @@ def test_malformed_workflow_state_surfaces_error(tmp_path: Path) -> None:
         "version = 1\n\n[planning]\ncomplete = \"no\"\n"
     )
 
-    with pytest.raises(ValueError, match="planning.complete must be a boolean"):
+    with pytest.raises(ValueError, match=r"planning\.complete must be a boolean"):
         build_workflow_state_report(tmp_path)
 
 

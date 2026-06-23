@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from devlab.generations import (
+    ACTIVE_GENERATION_SKELETON_DIRS,
     active_generation,
     archive_active_generation,
     archived_generation_numbers,
-    ACTIVE_GENERATION_SKELETON_DIRS,
     has_active_plan,
     load_generation_manifest,
     previous_generation,

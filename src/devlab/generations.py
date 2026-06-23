@@ -5,7 +5,7 @@ import shutil
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from devlab._toml import format_toml_value
 
@@ -89,9 +89,9 @@ def has_active_plan(root: Path) -> bool:
     ):
         if any(path.is_file() for path in devlab.glob(relative)):
             return True
-    if any(path.is_file() and path.name != ".gitkeep" for path in devlab.glob("history/*")):
-        return True
-    return False
+    return any(
+        path.is_file() and path.name != ".gitkeep" for path in devlab.glob("history/*")
+    )
 
 
 def archive_active_generation(
@@ -158,7 +158,7 @@ def format_generation_manifest(manifest: GenerationManifest) -> str:
 def parse_generation_manifest(data: object) -> GenerationManifest:
     if not isinstance(data, dict):
         raise ValueError("generation manifest must be a TOML table")
-    config = data
+    config = cast(dict[str, Any], data)
     version = config.get("version")
     if version != 1:
         raise ValueError("generation manifest version must be 1")

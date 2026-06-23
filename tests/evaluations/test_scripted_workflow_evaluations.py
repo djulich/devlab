@@ -60,8 +60,8 @@ from tests.evaluations.scripted_agents import (
     ComposeDeploymentScriptedAgent,
     DeploymentWebApiScriptedAgent,
     HttpApiScriptedAgent,
-    StatefulWebApiScriptedAgent,
     SpecReconciliationScriptedAgent,
+    StatefulWebApiScriptedAgent,
     StaticFrontendScriptedAgent,
 )
 

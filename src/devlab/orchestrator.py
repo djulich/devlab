@@ -704,7 +704,6 @@ def run_loop(
         )
     sessions_run = 0
     spec_status: SpecReconciliationStatus | None = None
-    workflow_state: WorkflowState
     active_plan_exists = has_active_plan(root)
     if planning_only and adopt_existing and active_plan_exists:
         return RunResult(
@@ -735,7 +734,7 @@ def run_loop(
     if automatic_version_control:
         try:
             ensure_git_repository(root)
-            workflow_state, spec_status = _load_workflow_and_spec_status(root)
+            _workflow_state, spec_status = _load_workflow_and_spec_status(root)
             if planning_only and spec_status.dirty_spec_paths:
                 error = _dirty_spec_error(spec_status.dirty_spec_paths)
                 logger.error("%s. Stopping.", error.message)
@@ -753,7 +752,7 @@ def run_loop(
             return RunResult(0, False, error.exit_code, (error,))
     else:
         try:
-            workflow_state = load_workflow_state(root)
+            _workflow_state = load_workflow_state(root)
         except (OSError, ValueError) as exc:
             logger.error("%s. Stopping.", exc)
             return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
@@ -1088,7 +1087,7 @@ def run_loop(
                 planning_update=planner_generation_update,
             )
             if role_name == "planner" and spec_status is not None:
-                workflow_state, spec_status = _load_workflow_and_spec_status(root)
+                _workflow_state, spec_status = _load_workflow_and_spec_status(root)
             planner_task_error = _validate_planner_preserved_active_tasks(
                 start_snapshot,
                 workspace.snapshot,

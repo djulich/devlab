@@ -1667,7 +1667,9 @@ class TestRunLoop:
         assert result.exit_code == 0
         task_text = (tmp_path / TASKS_DIR / "T0002_current-work.md").read_text()
         assert "planning_generation" not in task_text
-        assert Workspace(tmp_path).snapshot.select_next_development_task().id == "T0002"
+        selected_task = Workspace(tmp_path).snapshot.select_next_development_task()
+        assert selected_task is not None
+        assert selected_task.id == "T0002"
 
     def test_planner_addressed_findings_requires_task_mapping(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
