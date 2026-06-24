@@ -334,6 +334,63 @@ def react_vite_frontend_check(root: Path) -> CheckResult:
     return CheckResult("react vite frontend", not missing_snippets, message)
 
 
+def react_vite_container_build_check(
+    root: Path,
+    *,
+    runtime: str = "podman",
+    image: str = "node:22-alpine",
+    timeout: int = 240,
+) -> CheckResult:
+    if shutil.which(runtime) is None:
+        return CheckResult(
+            "react vite container build",
+            False,
+            f"{runtime!r} is not on PATH; install/configure {runtime} to run this live check",
+        )
+    if not (root / "package.json").exists():
+        return CheckResult("react vite container build", False, "missing package.json")
+
+    script = (
+        "set -eu; "
+        "mkdir -p /tmp/work; "
+        "cp -R /workspace/. /tmp/work; "
+        "cd /tmp/work; "
+        "if [ -f package-lock.json ]; then npm ci; else npm install; fi; "
+        "npm run build"
+    )
+    command = [
+        runtime,
+        "run",
+        "--rm",
+        "--pull=missing",
+        "-v",
+        f"{root.resolve()}:/workspace:ro",
+        image,
+        "sh",
+        "-lc",
+        script,
+    ]
+    result = subprocess.run(
+        command,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        check=False,
+    )
+    passed = result.returncode == 0
+    return CheckResult(
+        "react vite container build",
+        passed,
+        ""
+        if passed
+        else (
+            f"{runtime} build exited {result.returncode}; target was mounted read-only "
+            "and copied to container-local /tmp/work before npm install/build; "
+            f"stdout={result.stdout[-1000:]!r} stderr={result.stderr[-1000:]!r}"
+        ),
+    )
+
+
 def compose_deployment_artifacts_check(root: Path) -> CheckResult:
     required = {
         "compose.yaml": ["services:", "todo-api", "build:", "ports:"],

@@ -91,7 +91,7 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_static_frontend_todo_app_happy_path_evaluation -s
 ```
 
-The React/Vite frontend live evaluation extends the stateful API scenario with a framework-based browser UI. It verifies the API behavior, then structurally checks `package.json`, Vite scripts, React/Vite dependencies including `@vitejs/plugin-react`, `index.html`, React entrypoint/component files under `src/`, direct todo API calls, error handling, and README instructions for `npm run dev` and `npm run build`. It does not install npm dependencies. It is skipped unless explicitly enabled:
+The React/Vite frontend live evaluation extends the stateful API scenario with a framework-based browser UI. It verifies the API behavior, structurally checks `package.json`, Vite scripts, React/Vite dependencies including `@vitejs/plugin-react`, `index.html`, React entrypoint/component files under `src/`, direct todo API calls, error handling, and README instructions for `npm run dev` and `npm run build`, then builds the generated frontend inside a disposable Podman Node container. The target repository is mounted read-only, copied to container-local `/tmp/work`, and `npm ci` or `npm install` plus `npm run build` run there so target dependencies are not installed into the host checkout or temporary target repo. It is skipped unless explicitly enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \

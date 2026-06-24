@@ -18,6 +18,7 @@ from tests.evaluations.checks import (
     command_fails_check,
     deployment_artifacts_check,
     file_contains_check,
+    react_vite_container_build_check,
     react_vite_frontend_check,
     stateful_todo_api_check,
     static_frontend_check,
@@ -382,14 +383,6 @@ def test_live_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
     reason="stateful live web API evaluation requires DEVLAB_LIVE_STATEFUL_WEB_API=1",
 )
 def test_live_stateful_web_api_happy_path_evaluation(tmp_path: Path) -> None:
-    """
-    Example command line to run this test:
-
-        DEVLAB_LIVE_EVALS=1 \
-        DEVLAB_LIVE_STATEFUL_WEB_API=1 \
-        DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/agents.toml \
-        uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_stateful_web_api_happy_path_evaluation -s
-    """
     scenario = EvaluationScenario(
         id="live-stateful-web-api-happy-path",
         title="Live stateful web API happy path",
@@ -497,6 +490,7 @@ def test_live_react_vite_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
         checks=(
             stateful_todo_api_check,
             react_vite_frontend_check,
+            react_vite_container_build_check,
             file_contains_check("project run command", "Makefile", "run:"),
             file_contains_check("project test command", "Makefile", "test:"),
             file_contains_check("usage docs", "README.md", "npm run dev"),

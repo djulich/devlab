@@ -43,6 +43,7 @@ from tests.evaluations.checks import (
     file_contains_check,
     optional_docker_compose_config_check,
     optional_make_target_check,
+    react_vite_container_build_check,
     react_vite_frontend_check,
     stateful_todo_api_check,
     static_frontend_check,
@@ -704,6 +705,55 @@ def test_react_vite_frontend_check_requires_vite_build_script(tmp_path: Path) ->
 
     assert result.passed is False
     assert "scripts.build" in result.message
+
+
+def test_react_vite_container_build_check_runs_podman_copy_in_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "vite build"}}\n')
+    captured_args: list[str] = []
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_args[:] = args
+        captured_kwargs.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, "built\n", "")
+
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+
+    result = react_vite_container_build_check(tmp_path)
+
+    assert result.passed is True
+    assert captured_args[:4] == ["podman", "run", "--rm", "--pull=missing"]
+    assert f"{tmp_path.resolve()}:/workspace:ro" in captured_args
+    script = captured_args[-1]
+    assert isinstance(script, str)
+    assert "cp -R /workspace/. /tmp/work" in script
+    assert "if [ -f package-lock.json ]; then npm ci; else npm install; fi" in script
+    assert "npm run build" in script
+    assert captured_kwargs["capture_output"] is True
+    assert captured_kwargs["check"] is False
+
+
+def test_react_vite_container_build_check_reports_container_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "vite build"}}\n')
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 1, "stdout", "vite failed")
+
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+
+    result = react_vite_container_build_check(tmp_path)
+
+    assert result.passed is False
+    assert "container-local /tmp/work" in result.message
+    assert "vite failed" in result.message
 
 
 def test_integrator_rework_summary_counts_integrator_findings(tmp_path: Path) -> None:
