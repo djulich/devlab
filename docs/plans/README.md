@@ -6,6 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
+- [react-vite-browser-live-evaluation.md](react-vite-browser-live-evaluation.md) — add a Podman-isolated browser/dev-server/API integration check to the React/Vite live evaluation
 - [workflow-state-reporting.md](workflow-state-reporting.md) — add an operator-facing lifecycle state command backed by durable workflow events and inference for older target workspaces
 
 ## Implemented
