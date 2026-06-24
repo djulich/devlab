@@ -1,6 +1,6 @@
 # Stateful Web API Workflow Evaluation Plan
 
-Status: scripted evaluation implemented as `stateful-web-api-happy-path`; opt-in live-agent evaluation implemented as `live-stateful-web-api-happy-path`; provider baseline collection remains follow-up work.
+Status: scripted evaluation implemented as `stateful-web-api-happy-path`; opt-in live-agent evaluation implemented as `live-stateful-web-api-happy-path`; an initial live baseline is recorded in `docs/plans/stateful-web-api-live-baseline-2026-06-24.md`; additional provider baseline collection remains follow-up work.
 
 ## Goal
 
@@ -88,4 +88,4 @@ Task expectations:
 
 ## Follow-up Live Evaluation
 
-The opt-in live-agent version is enabled with `DEVLAB_LIVE_EVALS=1 DEVLAB_LIVE_STATEFUL_WEB_API=1`. Its checks remain black-box and provider-independent, with quality diagnostics initially warning rather than failing on hygiene issues unless correctness breaks. Remaining work is to collect baseline outcomes across local provider environments.
+The opt-in live-agent version is enabled with `DEVLAB_LIVE_EVALS=1 DEVLAB_LIVE_STATEFUL_WEB_API=1`. Its checks remain black-box and provider-independent, with quality diagnostics initially warning rather than failing on hygiene issues unless correctness breaks. An initial passing baseline was collected on 2026-06-24; remaining work is to collect additional baseline outcomes across local provider environments.
