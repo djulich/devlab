@@ -381,6 +381,14 @@ def test_live_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
     reason="stateful live web API evaluation requires DEVLAB_LIVE_STATEFUL_WEB_API=1",
 )
 def test_live_stateful_web_api_happy_path_evaluation(tmp_path: Path) -> None:
+    """
+    Example command line to run this test:
+
+        DEVLAB_LIVE_EVALS=1 \
+        DEVLAB_LIVE_STATEFUL_WEB_API=1 \
+        DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/agents.toml \
+        uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_stateful_web_api_happy_path_evaluation -s
+    """
     scenario = EvaluationScenario(
         id="live-stateful-web-api-happy-path",
         title="Live stateful web API happy path",
