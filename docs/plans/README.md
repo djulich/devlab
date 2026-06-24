@@ -6,10 +6,11 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [workflow-state-reporting.md](workflow-state-reporting.md) — add an operator-facing lifecycle state command backed by durable workflow events and inference for older target workspaces
+- None.
 
 ## Implemented
 
+- [workflow-state-reporting.md](workflow-state-reporting.md) — added an operator-facing lifecycle state command backed by durable workflow events and inference for older target workspaces
 - [react-vite-browser-live-evaluation.md](react-vite-browser-live-evaluation.md) — added a Podman-isolated browser/dev-server/API integration check to the React/Vite live evaluation
 - [generational-archive-reconciliation.md](generational-archive-reconciliation.md) — replaced in-place planning-generation filtering with archived generation bundles for spec reconciliation and existing-project adoption
 - [spec-change-reconciliation.md](spec-change-reconciliation.md) — detect system/deployment spec changes after planning and require `devlab plan` reconciliation before implementation

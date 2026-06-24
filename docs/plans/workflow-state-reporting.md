@@ -1,5 +1,7 @@
 # Workflow State Reporting
 
+Status: implemented.
+
 ## Problem
 
 Operators need a quick answer to "what state is this DevLab target project in?"
