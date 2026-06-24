@@ -39,7 +39,23 @@ pytestmark = pytest.mark.skipif(
 
 def _live_agent_config() -> Path | None:
     agent_config = os.environ.get("DEVLAB_LIVE_AGENTS_TOML")
-    return Path(agent_config) if agent_config else None
+    if not agent_config:
+        return None
+    path = Path(agent_config)
+    if not path.exists():
+        pytest.fail(
+            "DEVLAB_LIVE_AGENTS_TOML points to a missing file: "
+            f"{path}. Set it to an existing agents.toml file or unset it to use the "
+            "target's default generated agent configuration.",
+            pytrace=False,
+        )
+    if not path.is_file():
+        pytest.fail(
+            "DEVLAB_LIVE_AGENTS_TOML must point to a file, not a directory or special "
+            f"path: {path}",
+            pytrace=False,
+        )
+    return path
 
 
 def _run_live_scenario(tmp_path: Path, scenario: EvaluationScenario) -> EvaluationDiagnostics:

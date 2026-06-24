@@ -1234,6 +1234,19 @@ def test_copy_live_agent_config_copies_and_commits(tmp_path: Path) -> None:
     assert _git(tmp_path, "status", "--porcelain").stdout.strip() == "?? live.agents.toml"
 
 
+def test_live_agent_config_env_failure_has_no_pytest_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.evaluations import test_live_workflow_evaluations as live_tests
+
+    monkeypatch.setenv("DEVLAB_LIVE_AGENTS_TOML", "missing.agents.toml")
+
+    with pytest.raises(pytest.fail.Exception) as exc_info:
+        live_tests._live_agent_config()
+
+    assert "DEVLAB_LIVE_AGENTS_TOML points to a missing file" in str(exc_info.value)
+
+
 def _write_minimal_task(
     path: Path,
     task_id: str,
