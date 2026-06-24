@@ -54,6 +54,7 @@ from tests.evaluations.generated_products import write_stateful_todo_api
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
     EvaluationScenario,
+    copy_live_agent_config,
     init_target_workspace,
     run_scripted_evaluation,
 )
@@ -1193,6 +1194,44 @@ def test_evaluation_init_commits_existing_git_repo_setup(tmp_path: Path) -> None
     after = int(_git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip())
     assert after > before
     assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
+
+
+def test_copy_live_agent_config_reports_missing_path(tmp_path: Path) -> None:
+    init_target_workspace(tmp_path, "Build something small.")
+    missing = tmp_path / "missing.agents.toml"
+
+    with pytest.raises(ValueError, match="DEVLAB_LIVE_AGENTS_TOML points to a missing file"):
+        copy_live_agent_config(tmp_path, missing)
+
+
+def test_copy_live_agent_config_requires_file(tmp_path: Path) -> None:
+    init_target_workspace(tmp_path, "Build something small.")
+    directory = tmp_path / "agent-config-dir"
+    directory.mkdir()
+
+    with pytest.raises(ValueError, match="DEVLAB_LIVE_AGENTS_TOML must point to a file"):
+        copy_live_agent_config(tmp_path, directory)
+
+
+def test_copy_live_agent_config_copies_and_commits(tmp_path: Path) -> None:
+    init_target_workspace(tmp_path, "Build something small.")
+    agent_config = tmp_path / "live.agents.toml"
+    agent_config.write_text(
+        "[providers.mock]\n"
+        'command = "mock-agent"\n'
+        "\n"
+        "[roles.default]\n"
+        'provider = "mock"\n'
+    )
+    before = int(_git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip())
+
+    copy_live_agent_config(tmp_path, agent_config)
+
+    copied = tmp_path / ".devlab/config/agents.toml"
+    assert copied.read_text() == agent_config.read_text()
+    after = int(_git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip())
+    assert after == before + 1
+    assert _git(tmp_path, "status", "--porcelain").stdout.strip() == "?? live.agents.toml"
 
 
 def _write_minimal_task(

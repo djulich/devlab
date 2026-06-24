@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -27,6 +26,7 @@ from tests.evaluations.checks import (
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
     EvaluationScenario,
+    copy_live_agent_config,
     init_target_workspace,
     run_live_evaluation,
 )
@@ -58,9 +58,7 @@ def _configure_live_agents(root: Path) -> None:
     agent_config = _live_agent_config()
     if agent_config is None:
         return
-    shutil.copyfile(agent_config, root / ".devlab/config/agents.toml")
-    run_git(root, "add", ".devlab/config/agents.toml")
-    run_git(root, "commit", "-m", "Configure live evaluation agents")
+    copy_live_agent_config(root, agent_config)
 
 
 def _run_live_loop(

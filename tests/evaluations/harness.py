@@ -48,6 +48,7 @@ __all__ = [
     "EvaluationDiagnostics",
     "EvaluationScenario",
     "ScriptedAgent",
+    "copy_live_agent_config",
     "init_target_workspace",
     "run_live_evaluation",
     "run_scripted_evaluation",
@@ -235,9 +236,7 @@ def run_live_evaluation(
 ) -> EvaluationDiagnostics:
     init_target_workspace(root, scenario.system_spec, deployment_spec=scenario.deployment_spec)
     if agent_config is not None:
-        shutil.copyfile(agent_config, root / ".devlab/config/agents.toml")
-        run_git(root, "add", ".devlab/config/agents.toml")
-        run_git(root, "commit", "-m", "Configure live evaluation agents")
+        copy_live_agent_config(root, agent_config)
     configure_logging(logging.INFO)
     baseline_commit_count = _commit_count(root)
     result, duration = _run_evaluation_loop(
@@ -267,6 +266,23 @@ def run_live_evaluation(
     path = diagnostics.write(root)
     assert path.exists()
     return diagnostics
+
+
+def copy_live_agent_config(root: Path, agent_config: Path) -> None:
+    if not agent_config.exists():
+        raise ValueError(
+            "DEVLAB_LIVE_AGENTS_TOML points to a missing file: "
+            f"{agent_config}. Set it to an existing agents.toml file or unset it to use "
+            "the target's default generated agent configuration."
+        )
+    if not agent_config.is_file():
+        raise ValueError(
+            "DEVLAB_LIVE_AGENTS_TOML must point to a file, not a directory or special path: "
+            f"{agent_config}"
+        )
+    shutil.copyfile(agent_config, root / ".devlab/config/agents.toml")
+    run_git(root, "add", ".devlab/config/agents.toml")
+    run_git(root, "commit", "-m", "Configure live evaluation agents")
 
 
 def _run_evaluation_loop(
