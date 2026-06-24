@@ -1,6 +1,6 @@
 # Stateful Web API Workflow Evaluation Plan
 
-Status: scripted evaluation implemented as `stateful-web-api-happy-path`; opt-in live-agent evaluation implemented as `live-stateful-web-api-happy-path`; an initial live baseline is recorded in `docs/plans/stateful-web-api-live-baseline-2026-06-24.md`; additional provider baseline collection remains follow-up work.
+Status: scripted evaluation implemented as `stateful-web-api-happy-path`; opt-in live-agent evaluation implemented as `live-stateful-web-api-happy-path`; Claude and Codex live baselines are recorded in `docs/plans/stateful-web-api-live-baseline-2026-06-24.md`; additional provider baseline collection remains follow-up work.
 
 ## Goal
 
@@ -88,4 +88,37 @@ Task expectations:
 
 ## Follow-up Live Evaluation
 
-The opt-in live-agent version is enabled with `DEVLAB_LIVE_EVALS=1 DEVLAB_LIVE_STATEFUL_WEB_API=1`. Its checks remain black-box and provider-independent, with quality diagnostics initially warning rather than failing on hygiene issues unless correctness breaks. An initial passing baseline was collected on 2026-06-24; remaining work is to collect additional baseline outcomes across local provider environments.
+The opt-in live-agent version is enabled with `DEVLAB_LIVE_EVALS=1 DEVLAB_LIVE_STATEFUL_WEB_API=1`. Its checks remain black-box and provider-independent, with quality diagnostics initially warning rather than failing on hygiene issues unless correctness breaks. Passing Claude and Codex baselines were collected on 2026-06-24; remaining work is to collect additional baseline outcomes across local provider environments if available.
+
+## Appendix: Qualitative Provider Assessment
+
+The Claude and Codex live baselines both passed the deterministic scenario checks,
+but the generated target projects differed in project shape and validation
+strength.
+
+For this small stateful API scenario, the Codex target is qualitatively stronger
+overall. It delivered the product in one compact implementation task, kept the
+API implementation cohesive, documented explicit behavior choices, and made the
+target-owned `make test` command run the full validation set: `ruff check`,
+`ruff format --check`, whole-repo `ty check`, and `pytest`. Its tests cover API
+behavior, invalid inputs, delete behavior, unknown routes, and the actual module
+startup path. The injected store/handler design also avoids awkward global state
+in tests.
+
+The Claude target is also correct and clean, but it is more workflow-shaped than
+product-shaped for this scope: it created a separate profile task, scaffold task,
+implementation task, separate store module, separate store tests, and a generated
+profile that type-checks only `src/`. That structure could be useful if the API
+grew, and the separate `store.py` improves extensibility, but it adds ceremony
+for a tiny standard-library API. A whole-repo `uv run ty check` also reports a
+test fixture annotation issue in the Claude target, even though the configured
+profile validation passes.
+
+Summary assessment:
+
+- Correctness: tie; both pass the black-box evaluation.
+- Target validation quality: Codex is stronger.
+- Implementation simplicity for this scope: Codex is stronger.
+- Extensibility: Claude has a slight advantage from the separated store module.
+- Workflow efficiency: Codex is stronger.
+- Overall target quality for this scenario: Codex is stronger.
