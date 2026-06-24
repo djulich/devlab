@@ -43,6 +43,7 @@ from tests.evaluations.checks import (
     file_contains_check,
     optional_docker_compose_config_check,
     optional_make_target_check,
+    react_vite_browser_integration_check,
     react_vite_container_build_check,
     react_vite_frontend_check,
     stateful_todo_api_check,
@@ -754,6 +755,81 @@ def test_react_vite_container_build_check_reports_container_failure(
     assert result.passed is False
     assert "container-local /tmp/work" in result.message
     assert "vite failed" in result.message
+
+
+def test_react_vite_browser_integration_check_requires_podman(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda _name: None)
+
+    result = react_vite_browser_integration_check(tmp_path)
+
+    assert result.passed is False
+    assert "podman" in result.message
+    assert "PATH" in result.message
+
+
+def test_react_vite_browser_integration_check_runs_read_only_container_flow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "vite build"}}\n')
+    captured_args: list[str] = []
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_args[:] = args
+        captured_kwargs.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, "ok", "")
+
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+
+    result = react_vite_browser_integration_check(tmp_path)
+
+    assert result.passed is True
+    assert captured_args[:4] == ["podman", "run", "--rm", "--pull=missing"]
+    assert f"{tmp_path.resolve()}:/workspace:ro" in captured_args
+    assert "mcr.microsoft.com/playwright:v1.53.1-jammy" in captured_args
+    script = captured_args[-1]
+    assert isinstance(script, str)
+    assert "cp -R /workspace/. /tmp/work" in script
+    assert "if [ -f package-lock.json ]; then npm ci; else npm install; fi" in script
+    assert "npm run build" in script
+    assert "src.todo_api.server --port" in script
+    assert "npm run dev -- --host 127.0.0.1 --port" in script
+    assert "require('playwright')" in script
+    assert "write browser eval" in script
+    assert captured_kwargs == {
+        "text": True,
+        "capture_output": True,
+        "timeout": 360,
+        "check": False,
+    }
+
+
+def test_react_vite_browser_integration_check_reports_container_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "vite build"}}\n')
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 9, "browser flow failed", "console error")
+
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+
+    result = react_vite_browser_integration_check(tmp_path)
+
+    assert result.passed is False
+    assert "podman browser integration exited 9" in result.message
+    assert "/workspace" in result.message
+    assert "/tmp/work" in result.message
+    assert "API startup, Vite startup, and browser flow" in result.message
+    assert "browser flow failed" in result.message
+    assert "console error" in result.message
 
 
 def test_integrator_rework_summary_counts_integrator_findings(tmp_path: Path) -> None:

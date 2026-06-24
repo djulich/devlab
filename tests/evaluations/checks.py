@@ -391,6 +391,242 @@ def react_vite_container_build_check(
     )
 
 
+def react_vite_browser_integration_check(
+    root: Path,
+    *,
+    runtime: str = "podman",
+    image: str = "mcr.microsoft.com/playwright:v1.53.1-jammy",
+    timeout: int = 360,
+) -> CheckResult:
+    if shutil.which(runtime) is None:
+        return CheckResult(
+            "react vite browser integration",
+            False,
+            f"{runtime!r} is not on PATH; install/configure {runtime} to run this live check",
+        )
+    if not (root / "package.json").exists():
+        return CheckResult("react vite browser integration", False, "missing package.json")
+
+    script = _react_vite_browser_integration_script()
+    command = [
+        runtime,
+        "run",
+        "--rm",
+        "--pull=missing",
+        "-v",
+        f"{root.resolve()}:/workspace:ro",
+        image,
+        "bash",
+        "-lc",
+        script,
+    ]
+    result = subprocess.run(
+        command,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        check=False,
+    )
+    passed = result.returncode == 0
+    return CheckResult(
+        "react vite browser integration",
+        passed,
+        ""
+        if passed
+        else (
+            f"{runtime} browser integration exited {result.returncode}; target was mounted "
+            "read-only at /workspace and copied to container-local /tmp/work before npm "
+            "install, API startup, Vite startup, and browser flow; "
+            f"stdout={result.stdout[-2000:]!r} stderr={result.stderr[-2000:]!r}"
+        ),
+    )
+
+
+def _react_vite_browser_integration_script() -> str:
+    return r"""
+set -eu
+mkdir -p /tmp/work
+cp -R /workspace/. /tmp/work
+cd /tmp/work
+dump_diagnostics() {
+  status=$?
+  echo "devlab browser integration failed during container command; exit=$status"
+  for file in /tmp/devlab-api.out /tmp/devlab-api.err /tmp/devlab-vite.out /tmp/devlab-vite.err; do
+    if [ -f "$file" ]; then
+      echo "--- $file tail ---"
+      tail -n 80 "$file" || true
+    fi
+  done
+}
+trap dump_diagnostics ERR
+if [ -f package-lock.json ]; then npm ci; else npm install; fi
+npm run build
+PYTHON_BIN="$(command -v python3 || command -v python)"
+API_PORT=8765
+VITE_PORT=5173
+"$PYTHON_BIN" -m src.todo_api.server --port "$API_PORT" \
+  > /tmp/devlab-api.out 2> /tmp/devlab-api.err &
+API_PID=$!
+VITE_PID=
+cleanup() {
+  if [ -n "${VITE_PID:-}" ]; then kill "$VITE_PID" 2>/dev/null || true; fi
+  kill "$API_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
+node <<'NODE'
+const http = require('http');
+const waitFor = (url, label) => new Promise((resolve, reject) => {
+  const deadline = Date.now() + 10000;
+  const poll = () => {
+    http.get(url, (res) => {
+      res.resume();
+      if (res.statusCode >= 200 && res.statusCode < 500) {
+        resolve();
+      } else if (Date.now() > deadline) {
+        reject(new Error(`${label} returned ${res.statusCode}`));
+      } else {
+        setTimeout(poll, 100);
+      }
+    }).on('error', (error) => {
+      if (Date.now() > deadline) reject(new Error(`${label} did not start: ${error.message}`));
+      else setTimeout(poll, 100);
+    });
+  };
+  poll();
+});
+waitFor('http://127.0.0.1:8765/health', 'API').catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});
+NODE
+API_BASE_URL="http://127.0.0.1:$API_PORT" \
+  VITE_API_BASE_URL="http://127.0.0.1:$API_PORT" \
+  npm run dev -- --host 127.0.0.1 --port "$VITE_PORT" \
+  > /tmp/devlab-vite.out 2> /tmp/devlab-vite.err &
+VITE_PID=$!
+node <<'NODE'
+const http = require('http');
+const waitFor = (url, label) => new Promise((resolve, reject) => {
+  const deadline = Date.now() + 15000;
+  const poll = () => {
+    http.get(url, (res) => {
+      res.resume();
+      if (res.statusCode >= 200 && res.statusCode < 500) {
+        resolve();
+      } else if (Date.now() > deadline) {
+        reject(new Error(`${label} returned ${res.statusCode}`));
+      } else {
+        setTimeout(poll, 100);
+      }
+    }).on('error', (error) => {
+      if (Date.now() > deadline) reject(new Error(`${label} did not start: ${error.message}`));
+      else setTimeout(poll, 100);
+    });
+  };
+  poll();
+});
+waitFor('http://127.0.0.1:5173/', 'Vite').catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});
+NODE
+node <<'NODE'
+const { chromium } = require('playwright');
+
+const diagnostics = {
+  console: [],
+  pageErrors: [],
+  step: 'launch',
+};
+
+async function visibleText(page) {
+  return (await page.locator('body').innerText({ timeout: 3000 })).trim();
+}
+
+async function todoInput(page) {
+  const named = page.getByRole('textbox', { name: /todo|title/i }).first();
+  if (await named.count()) return named;
+  return page.locator('input, textarea').first();
+}
+
+async function submitButton(page) {
+  const named = page.getByRole('button', { name: /add|submit|create/i }).first();
+  if (await named.count()) return named;
+  return page.locator('button, input[type=submit]').first();
+}
+
+async function main() {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      diagnostics.console.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  page.on('pageerror', (error) => diagnostics.pageErrors.push(error.message));
+  try {
+    diagnostics.step = 'open app';
+    await page.goto('http://127.0.0.1:5173/', { waitUntil: 'networkidle' });
+    await page.locator('body').waitFor({ state: 'visible', timeout: 5000 });
+
+    diagnostics.step = 'find form controls';
+    const input = await todoInput(page);
+    const add = await submitButton(page);
+    await input.waitFor({ state: 'visible', timeout: 5000 });
+    await add.waitFor({ state: 'visible', timeout: 5000 });
+
+    diagnostics.step = 'empty submit validation';
+    const beforeEmptySubmit = await visibleText(page);
+    await add.click();
+    await page.waitForTimeout(500);
+    const afterEmptySubmit = await visibleText(page);
+    if (
+      afterEmptySubmit === beforeEmptySubmit ||
+      !/error|required|invalid|empty|blank|title|enter|provide/i.test(afterEmptySubmit)
+    ) {
+      throw new Error(
+        `empty submit did not show a visible validation error; body=${afterEmptySubmit}`
+      );
+    }
+
+    diagnostics.step = 'add todo';
+    await input.fill('write browser eval');
+    await add.click();
+    await page.getByText('write browser eval', { exact: false }).waitFor({
+      state: 'visible',
+      timeout: 5000,
+    });
+
+    diagnostics.step = 'delete todo';
+    const item = page.getByText('write browser eval', { exact: false }).first();
+    const deleteButton = page.getByRole('button', { name: /delete|remove/i }).first();
+    if (!(await deleteButton.count())) {
+      throw new Error('no visible delete/remove button found for todo item');
+    }
+    await deleteButton.click();
+    await item.waitFor({ state: 'hidden', timeout: 5000 });
+
+    diagnostics.step = 'runtime errors';
+    if (diagnostics.pageErrors.length) {
+      throw new Error(`browser page errors: ${diagnostics.pageErrors.join(' | ')}`);
+    }
+    const severeConsole = diagnostics.console.filter((line) => !/favicon/i.test(line));
+    if (severeConsole.length) {
+      throw new Error(`browser console errors: ${severeConsole.join(' | ')}`);
+    }
+  } catch (error) {
+    console.error(JSON.stringify({ ...diagnostics, error: error.message }, null, 2));
+    throw error;
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch(() => process.exit(1));
+NODE
+"""
+
+
 def compose_deployment_artifacts_check(root: Path) -> CheckResult:
     required = {
         "compose.yaml": ["services:", "todo-api", "build:", "ports:"],

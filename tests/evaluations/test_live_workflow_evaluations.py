@@ -18,6 +18,7 @@ from tests.evaluations.checks import (
     command_fails_check,
     deployment_artifacts_check,
     file_contains_check,
+    react_vite_browser_integration_check,
     react_vite_container_build_check,
     react_vite_frontend_check,
     stateful_todo_api_check,
@@ -481,16 +482,23 @@ def test_live_react_vite_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
             "@vitejs/plugin-react in package.json. Provide index.html, a src/main "
             "React entrypoint, a src/App component, and CSS under src/. The React UI "
             "must list todos, add todos, delete todos, display validation errors, and "
-            "call the API routes directly. Provide a Makefile with run and test targets "
-            "and README instructions for running the API and the React app with "
-            "npm run dev and npm run build. Do not require the evaluation harness to "
-            "install npm dependencies."
+            "work in a browser when the API runs on a separate localhost port during "
+            "development. The UI must expose a todo title input with an accessible name "
+            "containing todo or title, an add/submit button, delete/remove buttons for "
+            "rendered todos, and a visible validation error for empty submissions. It "
+            "may call same-origin /todos routes through a Vite dev-server proxy, or use "
+            "a Vite-exposed API base URL such as VITE_API_BASE_URL. The Vite app must "
+            "run with npm run dev -- --host 127.0.0.1 --port <port>. Provide a "
+            "Makefile with run and test targets and README instructions for running the "
+            "API and the React app with npm run dev and npm run build. Do not require "
+            "the evaluation harness to install npm dependencies on the host."
         ),
         max_sessions=int(os.environ.get("DEVLAB_LIVE_REACT_VITE_FRONTEND_MAX_SESSIONS", "24")),
         checks=(
             stateful_todo_api_check,
             react_vite_frontend_check,
             react_vite_container_build_check,
+            react_vite_browser_integration_check,
             file_contains_check("project run command", "Makefile", "run:"),
             file_contains_check("project test command", "Makefile", "test:"),
             file_contains_check("usage docs", "README.md", "npm run dev"),

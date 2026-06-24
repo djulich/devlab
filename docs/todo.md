@@ -23,7 +23,7 @@ Recommended evaluation roadmap:
 3. **Stateful JSON web API** — implemented as a scripted scenario; exercises multi-file source, project-owned commands, docs, `.gitignore`, and black-box HTTP state transitions without third-party dependencies.
 4. **Web API plus deployment artifacts** — local-container scripted/live scenarios and a scripted Compose scenario are implemented; add kind/RPM/systemd-style scenarios only when those deployment families become active priorities.
 5. **Static frontend** — scripted and opt-in live scenarios are implemented for vanilla HTML/CSS/JS without Node/React dependency or browser-tooling volatility; next collect live baselines.
-6. **React/Vite frontend** — opt-in live scenario is implemented for a framework-based frontend with a Podman-isolated npm install/build check; collect live baselines before adding browser automation or full-stack scenarios.
+6. **React/Vite frontend** — opt-in live scenario is implemented for a framework-based frontend with Podman-isolated npm install/build and browser/API/Vite integration checks; collect live baselines before expanding into visual quality or production deployment checks.
 
 Open work:
 
