@@ -200,6 +200,12 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
 ```
 
+Some live evaluations require additional host tooling. In particular, the
+React/Vite frontend live evaluation requires Podman and access to the Node and
+Playwright container images used by the evaluation harness. These are
+development/live-evaluation prerequisites, not DevLab runtime package
+dependencies.
+
 Keep environment-specific live-agent configs under `.local/live-eval/` and out of version control. See [`docs/evaluations.md`](docs/evaluations.md).
 
 ## Development validation
