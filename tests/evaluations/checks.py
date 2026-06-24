@@ -253,6 +253,87 @@ def static_frontend_check(root: Path) -> CheckResult:
     return CheckResult("static frontend", not missing_snippets, message)
 
 
+def react_vite_frontend_check(root: Path) -> CheckResult:
+    required_files = ["package.json", "index.html"]
+    missing = [relative for relative in required_files if not (root / relative).exists()]
+    if missing:
+        return CheckResult("react vite frontend", False, "missing " + ", ".join(missing))
+
+    main_path = _first_existing(
+        root,
+        ("src/main.jsx", "src/main.tsx", "src/main.js", "src/main.ts"),
+    )
+    app_path = _first_existing(
+        root,
+        ("src/App.jsx", "src/App.tsx", "src/App.js", "src/App.ts"),
+    )
+    css_path = _first_existing(root, ("src/App.css", "src/index.css", "src/style.css"))
+
+    missing_snippets: list[str] = []
+    if main_path is None:
+        missing_snippets.append("missing src/main React entrypoint")
+    if app_path is None:
+        missing_snippets.append("missing src/App component")
+    if css_path is None:
+        missing_snippets.append("missing src CSS file")
+
+    package_path = root / "package.json"
+    try:
+        package = json.loads(package_path.read_text())
+    except json.JSONDecodeError as exc:
+        return CheckResult("react vite frontend", False, f"package.json is invalid JSON: {exc}")
+    if not isinstance(package, dict):
+        return CheckResult("react vite frontend", False, "package.json must be a JSON object")
+
+    scripts = package.get("scripts")
+    if not isinstance(scripts, dict):
+        missing_snippets.append("package.json lacks scripts")
+    else:
+        for script_name in ("dev", "build"):
+            value = scripts.get(script_name)
+            if not isinstance(value, str) or "vite" not in value:
+                missing_snippets.append(f"package.json scripts.{script_name} must run vite")
+
+    dependencies: dict[str, object] = {}
+    for key in ("dependencies", "devDependencies"):
+        value = package.get(key)
+        if isinstance(value, dict):
+            dependencies.update(value)
+    for package_name in ("@vitejs/plugin-react", "vite", "react", "react-dom"):
+        if package_name not in dependencies:
+            missing_snippets.append(f"package.json lacks dependency {package_name!r}")
+
+    index = (root / "index.html").read_text()
+    if "/src/main" not in index and "src/main" not in index:
+        missing_snippets.append("index.html lacks script reference to src/main")
+    if "id=\"root\"" not in index and "id='root'" not in index:
+        missing_snippets.append("index.html lacks root mount element")
+
+    source_text = _frontend_source_text(root, (main_path, app_path, css_path))
+    if "createRoot" not in source_text:
+        missing_snippets.append("React entrypoint lacks createRoot")
+    for snippet in ("/todos", "POST", "DELETE"):
+        if snippet not in source_text:
+            missing_snippets.append(f"React source lacks {snippet!r}")
+    if "error" not in source_text.lower():
+        missing_snippets.append("React source lacks error display/handling")
+    if "form" not in source_text.lower() or "input" not in source_text.lower():
+        missing_snippets.append("React source lacks todo form/input")
+    documentation = _documentation_text(root)
+    if "npm run dev" not in documentation or "npm run build" not in documentation:
+        missing_snippets.append("documentation lacks npm run dev/build instructions")
+
+    message = "; ".join(missing_snippets)
+    if missing_snippets:
+        message += (
+            "; expected React/Vite frontend contract: package.json with Vite scripts "
+            "and React/Vite dependencies, index.html root mount, src/main entrypoint, "
+            "src/App component, CSS, direct GET/POST/DELETE /todos calls, error "
+            "handling, and README usage instructions"
+        )
+    return CheckResult("react vite frontend", not missing_snippets, message)
+
+
 def compose_deployment_artifacts_check(root: Path) -> CheckResult:
     required = {
         "compose.yaml": ["services:", "todo-api", "build:", "ports:"],
@@ -325,6 +406,26 @@ def _documentation_text(root: Path) -> str:
     if docs_dir.exists():
         paths.extend(sorted(docs_dir.rglob("*.md")))
     return "\n\n".join(path.read_text() for path in paths if path.exists())
+
+
+def _first_existing(root: Path, relative_paths: Sequence[str]) -> Path | None:
+    for relative_path in relative_paths:
+        path = root / relative_path
+        if path.exists():
+            return path
+    return None
+
+
+def _frontend_source_text(root: Path, paths: Sequence[Path | None]) -> str:
+    source = [path.read_text() for path in paths if path is not None and path.exists()]
+    src_dir = root / "src"
+    if src_dir.exists():
+        source.extend(
+            path.read_text()
+            for path in sorted(src_dir.rglob("*"))
+            if path.is_file() and path.suffix in {".js", ".jsx", ".ts", ".tsx", ".css"}
+        )
+    return "\n".join(source)
 
 
 def stateful_todo_api_check(root: Path) -> CheckResult:

@@ -18,6 +18,7 @@ from tests.evaluations.checks import (
     command_fails_check,
     deployment_artifacts_check,
     file_contains_check,
+    react_vite_frontend_check,
     stateful_todo_api_check,
     static_frontend_check,
 )
@@ -456,6 +457,49 @@ def test_live_static_frontend_todo_app_happy_path_evaluation(tmp_path: Path) -> 
             file_contains_check("project run command", "Makefile", "run:"),
             file_contains_check("project test command", "Makefile", "test:"),
             file_contains_check("usage docs", "README.md", "static"),
+        ),
+    )
+
+    diagnostics = _run_live_scenario(tmp_path, scenario)
+
+    _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+
+
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_REACT_VITE_FRONTEND") != "1",
+    reason="React/Vite frontend live evaluation requires DEVLAB_LIVE_REACT_VITE_FRONTEND=1",
+)
+def test_live_react_vite_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="live-react-vite-todo-app-happy-path",
+        title="Live React/Vite todo app happy path",
+        system_spec=(
+            "Build a small Python standard-library JSON HTTP API for todo items plus a "
+            "React frontend using Vite. Implement the API in src/todo_api/server.py and "
+            "make it runnable from the repository root with python -m src.todo_api.server "
+            "--port <port>. It must expose GET /health returning JSON "
+            "{\"status\": \"ok\"}, POST /todos with JSON {\"title\": \"...\"} to "
+            "create an in-memory item and return a top-level JSON object with integer "
+            "id and title fields, GET /todos to return JSON {\"todos\": [<items>]}, "
+            "DELETE /todos/{id} to delete an item and return JSON {\"deleted\": <id>}. "
+            "POST /todos must return a 4xx client error for invalid JSON, missing "
+            "title, empty title, or blank title. Return 404 for unknown routes. Use "
+            "Vite with React for the browser UI; include react, react-dom, vite, and "
+            "@vitejs/plugin-react in package.json. Provide index.html, a src/main "
+            "React entrypoint, a src/App component, and CSS under src/. The React UI "
+            "must list todos, add todos, delete todos, display validation errors, and "
+            "call the API routes directly. Provide a Makefile with run and test targets "
+            "and README instructions for running the API and the React app with "
+            "npm run dev and npm run build. Do not require the evaluation harness to "
+            "install npm dependencies."
+        ),
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_REACT_VITE_FRONTEND_MAX_SESSIONS", "24")),
+        checks=(
+            stateful_todo_api_check,
+            react_vite_frontend_check,
+            file_contains_check("project run command", "Makefile", "run:"),
+            file_contains_check("project test command", "Makefile", "test:"),
+            file_contains_check("usage docs", "README.md", "npm run dev"),
         ),
     )
 

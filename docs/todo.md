@@ -23,12 +23,13 @@ Recommended evaluation roadmap:
 3. **Stateful JSON web API** — implemented as a scripted scenario; exercises multi-file source, project-owned commands, docs, `.gitignore`, and black-box HTTP state transitions without third-party dependencies.
 4. **Web API plus deployment artifacts** — local-container scripted/live scenarios and a scripted Compose scenario are implemented; add kind/RPM/systemd-style scenarios only when those deployment families become active priorities.
 5. **Static frontend** — scripted and opt-in live scenarios are implemented for vanilla HTML/CSS/JS without Node/React dependency or browser-tooling volatility; next collect live baselines.
-6. **React/Vite or full-stack frontend** — later, once dependency/profile handling and live-agent baselines are stable enough to justify the extra moving parts.
+6. **React/Vite frontend** — opt-in live scenario is implemented for a framework-based frontend without npm dependency installation; collect live baselines before adding browser automation or full-stack scenarios.
 
 Open work:
 
 - Run the opt-in `live-stateful-web-api-happy-path` evaluation across any remaining local provider environments. Passing Claude and Codex baselines: `docs/plans/stateful-web-api-live-baseline-2026-06-24.md`.
 - Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect additional baseline outcomes, especially `live-static-frontend-todo-app-happy-path` and additional `live-deployable-web-api-happy-path` runs across provider environments. Initial deployment baseline: `docs/plans/deployment-live-baseline-2026-06-06.md`.
+- Collect initial outcomes for `live-react-vite-todo-app-happy-path` once at least one local provider environment is ready for a Node-project generation run.
 - Calibrate quality-warning thresholds after more live baselines, especially high sessions per closed task, same-task rework warnings, integrator finding warnings, and large ignored artifact footprints.
 - Decide from live baselines whether developer/reviewer task attribution from changed `.devlab/tasks/TXXXX_*.md` artifacts is sufficient, or whether fallback handoff parsing is needed.
 

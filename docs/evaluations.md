@@ -91,6 +91,15 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_static_frontend_todo_app_happy_path_evaluation -s
 ```
 
+The React/Vite frontend live evaluation extends the stateful API scenario with a framework-based browser UI. It verifies the API behavior, then structurally checks `package.json`, Vite scripts, React/Vite dependencies including `@vitejs/plugin-react`, `index.html`, React entrypoint/component files under `src/`, direct todo API calls, error handling, and README instructions for `npm run dev` and `npm run build`. It does not install npm dependencies. It is skipped unless explicitly enabled:
+
+```bash
+DEVLAB_LIVE_EVALS=1 \
+DEVLAB_LIVE_REACT_VITE_FRONTEND=1 \
+DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_react_vite_todo_app_happy_path_evaluation -s
+```
+
 The deployable web API live evaluation extends the stateful API scenario with project-owned local container deployment artifacts. It checks for the API behavior plus `Containerfile`, exact Makefile targets named `image` and `deployment-check`, and deployment instructions that reference both commands. API create responses may use any successful `2xx` status unless the scenario spec says otherwise. The deployment-section check is case-insensitive and may be satisfied by `README.md` or `docs/**/*.md`. It is skipped unless explicitly enabled:
 
 ```bash
@@ -138,6 +147,8 @@ Useful environment variables:
 - `DEVLAB_LIVE_STATEFUL_MAX_SESSIONS`: optional session cap for the stateful JSON web API live run; defaults to `18`.
 - `DEVLAB_LIVE_STATIC_FRONTEND=1`: enable the static frontend todo app live evaluation.
 - `DEVLAB_LIVE_STATIC_FRONTEND_MAX_SESSIONS`: optional session cap for the static frontend live run; defaults to `20`.
+- `DEVLAB_LIVE_REACT_VITE_FRONTEND=1`: enable the React/Vite frontend todo app live evaluation.
+- `DEVLAB_LIVE_REACT_VITE_FRONTEND_MAX_SESSIONS`: optional session cap for the React/Vite frontend live run; defaults to `24`.
 - `DEVLAB_LIVE_DEPLOYMENT=1`: enable the deployable web API live evaluation.
 - `DEVLAB_LIVE_DEPLOYMENT_MAX_SESSIONS`: optional session cap for the deployable web API live run; defaults to `22`.
 - `DEVLAB_LIVE_SPEC_RECONCILIATION=1`: enable the spec reconciliation live evaluation.

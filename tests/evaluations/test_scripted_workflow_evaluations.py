@@ -43,6 +43,7 @@ from tests.evaluations.checks import (
     file_contains_check,
     optional_docker_compose_config_check,
     optional_make_target_check,
+    react_vite_frontend_check,
     stateful_todo_api_check,
     static_frontend_check,
     stdlib_http_api_check,
@@ -655,6 +656,54 @@ def test_static_frontend_check_rejects_frontend_build_artifacts(tmp_path: Path) 
 
     assert result.passed is False
     assert "package.json" in result.message
+
+
+def test_react_vite_frontend_check_accepts_react_vite_contract(tmp_path: Path) -> None:
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (tmp_path / "package.json").write_text(
+        "{\n"
+        '  "scripts": {"dev": "vite", "build": "vite build"},\n'
+        '  "dependencies": {"@vitejs/plugin-react": "^latest", "vite": "^latest", '
+        '"react": "^latest", "react-dom": "^latest"}\n'
+        "}\n"
+    )
+    (tmp_path / "index.html").write_text(
+        '<div id="root"></div><script type="module" src="/src/main.jsx"></script>\n'
+    )
+    (src_dir / "main.jsx").write_text(
+        "import { createRoot } from 'react-dom/client';\n"
+        "import App from './App.jsx';\n"
+        "createRoot(document.getElementById('root')).render(<App />);\n"
+    )
+    (src_dir / "App.jsx").write_text(
+        "export default function App(){\n"
+        "  return <form onSubmit={async () => fetch('/todos', {method: 'POST'})}>\n"
+        "    <input aria-label=\"todo\" />\n"
+        "    <button onClick={() => fetch('/todos/1', {method: 'DELETE'})}>Delete</button>\n"
+        "    <p role=\"alert\">error</p>\n"
+        "  </form>;\n"
+        "}\n"
+        "fetch('/todos');\n"
+    )
+    (src_dir / "App.css").write_text(".app { display: grid; }\n")
+    (tmp_path / "README.md").write_text("Run `npm run dev`; verify with `npm run build`.\n")
+
+    result = react_vite_frontend_check(tmp_path)
+
+    assert result.passed is True
+
+
+def test_react_vite_frontend_check_requires_vite_build_script(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        '{"scripts": {"dev": "vite"}, "dependencies": {"react": "latest"}}\n'
+    )
+    (tmp_path / "index.html").write_text('<div id="root"></div>\n')
+
+    result = react_vite_frontend_check(tmp_path)
+
+    assert result.passed is False
+    assert "scripts.build" in result.message
 
 
 def test_integrator_rework_summary_counts_integrator_findings(tmp_path: Path) -> None:
