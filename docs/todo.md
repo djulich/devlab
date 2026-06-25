@@ -11,6 +11,8 @@ Status: **initial hardening implemented**. DevLab now validates handoff section 
 Open work:
 
 - Consider post-reviewer structural validation: the orchestrator runs profile-driven validation commands after the reviewer session and treats failure as a rejection regardless of the reviewer's approval. This moves mechanical correctness checking (tests pass, linter clean, types check) from prompt-dependent reviewer behavior to structural enforcement. The reviewer still owns subjective code quality judgment. Tradeoff: the reviewer can no longer deliberately approve with a known failing test, which is sometimes valid during incremental development.
+- Add a pre-execution task quality gate before developer sessions. Inspired by GSD's plan-checking loop, DevLab could structurally validate that planned tasks have concrete acceptance criteria, valid dependencies, coherent milestone/profile metadata, and no vague "align/improve/handle properly" work statements before they become actionable. This should start as code-level validation over `.devlab/tasks/`, not as a new role. Reference: GSD [Plan a phase](https://github.com/open-gsd/gsd-core/blob/next/docs/how-to/plan-a-phase.md).
+- Strengthen integrator and architecture-review outputs into a structured milestone verification record. The record should distinguish validation commands run, acceptance criteria checked, requirements/decisions covered, behavior that is claimed but untested, and findings opened for gaps. This is the DevLab-shaped version of GSD's post-execution verification idea, without adding a separate verifier role. References: GSD [The phase loop](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/the-phase-loop.md) and [Planning artifacts](https://github.com/open-gsd/gsd-core/blob/next/docs/reference/planning-artifacts.md).
 
 ## 2. DevLab Workflow Evaluations
 
@@ -42,6 +44,7 @@ Status: **trust guidance documented**. README and operator docs now warn that De
 Open work:
 
 - Add `doctor` warnings for obviously dangerous profile commands or permission-skip flags where practical.
+- Consider dependency-introduction warnings for tasks or plans that add new package-manager dependencies, especially when the package name comes from agent output rather than an existing target convention. This should be lighter than GSD's full package-legitimacy gate at first: report unverified dependency additions and point operators at registry/source review rather than trying to install new host security tooling. Reference: GSD [Security model](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/security-model.md).
 - Consider a future workspace trust marker or explicit `--allow-exec-config` mode before running target-owned executable config.
 
 ## 4. Prompt Context Size Monitoring and Reduction
@@ -85,6 +88,8 @@ Priority: medium. DevLab should support bounded user clarification when a role s
 
 Usefulness: high, but only if tightly constrained. Clarification prevents agents from inventing requirements, but unconstrained back-and-forth would weaken bounded sessions and durable workflow state.
 
+GSD's `Discuss` step is a useful nearby pattern: capture implementation decisions before planning so the planner does not guess about libraries, error handling, UI behavior, or edge cases. DevLab should integrate that idea as bounded durable clarifications and planning decisions, not as an open-ended conversational phase. Reference: GSD [The phase loop](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/the-phase-loop.md).
+
 Expected behavior:
 
 - A role session may request operator clarification instead of making an unsafe assumption.
@@ -93,6 +98,7 @@ Expected behavior:
 - The operator can answer through a CLI command or by editing a documented file.
 - Once answered, DevLab resumes with the answer included in the next relevant role prompt.
 - Clarifications become durable project knowledge when they affect requirements, scope, architecture, task definitions, or deployment expectations.
+- Answered clarifications that constrain future implementation should get stable references so tasks, findings, and milestone verification can point at them without duplicating prose.
 
 Open design questions:
 
@@ -100,6 +106,7 @@ Open design questions:
 - What is the storage model: `.devlab/questions/`, findings, workflow state, or a new tracker?
 - How should DevLab prevent vague or excessive questions: max question count per session, required answer options, severity, or validation rules?
 - Should unanswered questions block all workflow progress or only the affected task/milestone?
+- Should DevLab add optional requirement/decision traceability metadata to tasks, such as `addresses_requirements` and `decision_refs`, so milestone verification can check coverage structurally?
 
 ## 8. Add Workflow Attention Notifications
 
@@ -153,6 +160,7 @@ Open work:
 
 - Consider failed-attempt lifecycle events if successful-transition provenance
   proves insufficient.
+- Consider a compact Markdown workflow digest generated from existing source-of-truth state, either as `devlab workflow-state --markdown` or an explicitly generated report. It should summarize current generation, lifecycle phase, last session, next action, blocking reason, open tasks/findings, and validation state without becoming a second mutable state file. This borrows the useful glanceability of GSD's `STATE.md` while preserving DevLab's orchestrator-owned `workflow.toml` and `workflow-events.jsonl` boundaries. Reference: GSD [STATE.md schema](https://github.com/open-gsd/gsd-core/blob/next/docs/reference/state-md.md).
 
 ## Later / Non-goals for Now
 
