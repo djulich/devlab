@@ -14,6 +14,81 @@ Key outcomes:
 - Reviewer approval/rejection cannot be confused by stale review text.
 - Planner `Addressed Findings` parsing shares the same handoff contract.
 
+## Next Slice: Orchestrator-Owned Validation Enforcement
+
+The remaining hardening work should keep DevLab's normal design pressure: agents should write the minimum structure needed for recovery and review, while DevLab infers deterministic facts from durable state whenever it can.
+
+The goal is not to replace reviewer or integrator judgment with checkboxes. The goal is to separate agent claims from facts the orchestrator can enforce:
+
+- task, milestone, profile, dependency, handoff, and finding state is structurally coherent;
+- configured validation commands exist, run, and have recorded exit-code outcomes;
+- workflow transitions only happen when the current repository state satisfies the relevant gate;
+- gaps in mechanical validation are visible as workflow facts instead of hidden in prose.
+
+### Task-Level Validation: Flexible and Observable
+
+Task-level validation should be useful without making every task a hard integration point.
+
+The orchestrator can infer the required validation source without asking the developer for a rich structured report:
+
+- if task metadata has `validation = ["..."]`, use those task-specific commands;
+- if task metadata omits `validation`, use the resolved profile's default validation;
+- if task metadata has `validation = []` and the profile contributes no required command, classify the task as having no mechanical validation requirement.
+
+Initial task-level behavior should be conservative:
+
+- after reviewer approval, run known task/profile validation commands when configured;
+- record the outcome in durable session/workflow metadata for diagnostics;
+- if validation passes, allow the task to close normally;
+- if no validation is configured, allow the task to close but emit/report a diagnostics warning;
+- if validation fails, prefer a configurable policy rather than one universal rule.
+
+The default policy should probably start as warning or soft rejection while the workflow collects live baselines. A later strict mode can turn failed task validation into `changes_requested`. This avoids prematurely rejecting useful incremental states where a reviewer intentionally approved a coherent task even though the whole repository is temporarily not green.
+
+Developer and reviewer prompts should still make the expectation explicit: implementation tasks should add or update automated validation for their acceptance criteria when practical. The orchestrator should not require a structured acceptance-criteria-to-test map at first. Add that only if diagnostics show repeated failures where agents claim coverage that cannot be audited.
+
+### Milestone-Level Validation: Strict Repository Gate
+
+Milestone validation should be stricter than task validation.
+
+Before marking a milestone integrated, the orchestrator should require configured validation to pass from the milestone repository state. This is the right place for a hard gate because the milestone represents an accepted increment, not an intermediate task boundary.
+
+Recommended behavior:
+
+- resolve the milestone's relevant validation commands from closed tasks and profiles;
+- deduplicate commands while preserving a stable order;
+- run the commands before or as part of integrator processing;
+- if validation passes and the integrator reports no open issues, mark the milestone integrated;
+- if validation fails, do not mark the milestone integrated; create or require an integration finding that records the failing command and routes remediation through planner/developer work;
+- if no mechanical validation is available for meaningful product work, allow integration only with an explicit warning/finding depending on project strictness.
+
+This preserves task-level flexibility while making milestone acceptance a real repository-state fact.
+
+Tradeoffs:
+
+- bugs caught only at milestone integration may be harder to attribute to one task;
+- integration sessions can become heavier if milestones contain many tasks;
+- strict milestone gates require reliable target-owned validation commands and clear missing-tool behavior;
+- the benefit is a stronger audit boundary: closed tasks can be "reviewed work", while integrated milestones are "validated repository increments".
+
+### Minimal Exception Handling
+
+Avoid adding a broad validation-decision schema up front.
+
+Use existing task/profile metadata as the primary contract. Treat `validation = []` plus absent profile defaults as the deterministic signal that no mechanical validation is configured. Surface that in status/diagnostics rather than requiring every developer to fill out a special exception object.
+
+If live runs show this is too ambiguous, add one narrow exception section only for non-default cases, such as intentionally deferred or manual validation. Any such exception should require a reason, be visible to the reviewer and integrator, and be counted in diagnostics. It should not become routine output for normal tasks.
+
+### Implementation Order
+
+1. Add a validation-resolution helper that determines effective task validation from task metadata and resolved profile defaults without mutating state.
+2. Add durable validation outcome records for command, exit status, role/session context, task or milestone id, and a short output summary.
+3. Run and record task-level validation after reviewer approval using a soft policy first: pass closes, missing validation warns, failure records a warning or configurable rejection.
+4. Add diagnostics/status reporting for tasks closed without mechanical validation and tasks with failed recorded validation.
+5. Add milestone-level validation before marking milestones integrated, with a stricter default: failing configured validation blocks integration and creates or requires an integration finding.
+6. Update developer/reviewer/integrator prompts to state the minimum contract: acceptance criteria should be mechanically validated where practical, but DevLab infers validation commands from task/profile metadata.
+7. Add strict task-validation mode only after live baselines show the soft policy is too weak.
+
 ## Phase 1: Centralize Handoff Parsing
 
 Add a focused handoff parser, preferably in:
