@@ -13,6 +13,8 @@ Key outcomes:
 - Developer completion is scoped to task acceptance criteria.
 - Reviewer approval/rejection cannot be confused by stale review text.
 - Planner `Addressed Findings` parsing shares the same handoff contract.
+- Planned tasks are structurally valid before developer sessions consume them.
+- Milestone validation and architecture-review outcomes are recorded as auditable verification state.
 
 ## Next Slice: Orchestrator-Owned Validation Enforcement
 
@@ -47,6 +49,26 @@ The default policy should probably start as warning or soft rejection while the 
 
 Developer and reviewer prompts should still make the expectation explicit: implementation tasks should add or update automated validation for their acceptance criteria when practical. The orchestrator should not require a structured acceptance-criteria-to-test map at first. Add that only if diagnostics show repeated failures where agents claim coverage that cannot be audited.
 
+### Pre-Execution Task Quality Gate
+
+Before a developer session consumes a task, DevLab should validate that the task is a coherent work packet. This gate should be code-level validation over `.devlab/tasks/`, not a new planning role and not a new routine agent-authored report.
+
+Recommended checks:
+
+- task status is actionable for developer selection;
+- milestone metadata references a known milestone;
+- profile metadata references a known profile or cleanly resolves to `default`;
+- dependency metadata references known tasks and does not create cycles;
+- `addresses_findings` references known open or planned findings when present;
+- the task has a `## Goal` section with concrete work, not only broad verbs such as "improve", "align", or "handle properly";
+- the task has a `## Acceptance Criteria` section with at least one observable checkbox;
+- acceptance criteria are specific enough to be checked by a reviewer and, when practical, by validation commands;
+- task validation metadata is syntactically valid and command entries are strings.
+
+Initial behavior should reject malformed metadata and missing acceptance criteria. Vague-work detection should probably start as a warning because reliable semantic detection is harder and false positives would block useful work.
+
+This gate protects expensive developer sessions from planner output that is too ambiguous to execute safely. It also keeps the structure burden in task files, where planning already happens, instead of requiring every downstream role to compensate in handoffs.
+
 ### Milestone-Level Validation: Strict Repository Gate
 
 Milestone validation should be stricter than task validation.
@@ -71,6 +93,51 @@ Tradeoffs:
 - strict milestone gates require reliable target-owned validation commands and clear missing-tool behavior;
 - the benefit is a stronger audit boundary: closed tasks can be "reviewed work", while integrated milestones are "validated repository increments".
 
+### Structured Milestone Verification Record
+
+DevLab should create a compact durable verification record for each milestone. This should be the orchestrator-owned structured form of milestone acceptance, not a separate verifier role and not a large form that integrator or architect sessions fill out by hand.
+
+Recommended location:
+
+```text
+.devlab/verification/milestones/<milestone-id>.toml
+```
+
+This keeps milestone tracker files focused on lifecycle state while storing verification as an audit artifact.
+
+The record should distinguish orchestrator-observed facts from role judgment:
+
+- validation commands resolved and run by DevLab, with pass/fail/missing outcomes;
+- closed tasks included in the milestone;
+- findings opened, planned, or resolved at the milestone boundary;
+- semantic integration concerns reported by the integrator;
+- untested behavior claims reported by the integrator;
+- design, spec, ADR, or plan drift reported by the architect;
+- follow-up gaps that became findings.
+
+The orchestrator should write the record. Integrator and architect sessions should not decide which facts DevLab can infer, and they should not duplicate task ids, milestone ids, command strings, command exit status, handoff paths, or finding state. DevLab defines the small judgment-only handoff sections it needs from each role, parses those sections, and combines them with facts it owns.
+
+Example integrator sections:
+
+```md
+## Semantic Integration Concerns
+- None
+
+## Untested Claims
+- T0002: README usability was reviewed manually; no automated documentation check exists.
+```
+
+Example architecture-review section:
+
+```md
+## Design Drift
+- None
+```
+
+These sections are intentionally narrow. They are not a request for the agent to enumerate every task or restate validation output. They are a way to capture the judgment that remains after DevLab has already supplied deterministic milestone context.
+
+Milestone integration should consume the validation result strictly. Architecture review should remain a review/synchronization step rather than an approval gate: if architecture review finds gaps, DevLab records findings and still marks the milestone architecture-reviewed according to the existing workflow rule.
+
 ### Minimal Exception Handling
 
 Avoid adding a broad validation-decision schema up front.
@@ -85,9 +152,12 @@ If live runs show this is too ambiguous, add one narrow exception section only f
 2. Add durable validation outcome records for command, exit status, role/session context, task or milestone id, and a short output summary.
 3. Run and record task-level validation after reviewer approval using a soft policy first: pass closes, missing validation warns, failure records a warning or configurable rejection.
 4. Add diagnostics/status reporting for tasks closed without mechanical validation and tasks with failed recorded validation.
-5. Add milestone-level validation before marking milestones integrated, with a stricter default: failing configured validation blocks integration and creates or requires an integration finding.
-6. Update developer/reviewer/integrator prompts to state the minimum contract: acceptance criteria should be mechanically validated where practical, but DevLab infers validation commands from task/profile metadata.
-7. Add strict task-validation mode only after live baselines show the soft policy is too weak.
+5. Add the pre-execution task quality gate for metadata, dependencies, milestone/profile references, and acceptance-criteria shape.
+6. Add milestone-level validation before marking milestones integrated, with a stricter default: failing configured validation blocks integration and creates or requires an integration finding.
+7. Add the milestone verification record as an orchestrator-owned generated artifact under `.devlab/verification/milestones/`.
+8. Add narrow judgment-only integrator and architect handoff sections, such as `Semantic Integration Concerns`, `Untested Claims`, and `Design Drift`, and have the orchestrator parse those into the generated record.
+9. Update developer/reviewer/integrator/architect prompts to state the minimum contract: acceptance criteria should be mechanically validated where practical, milestone verification should identify untested claims and spec/design drift, and DevLab infers validation commands from task/profile metadata.
+10. Add strict task-validation mode only after live baselines show the soft policy is too weak.
 
 ## Phase 1: Centralize Handoff Parsing
 
