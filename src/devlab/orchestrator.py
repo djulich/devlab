@@ -548,6 +548,7 @@ def _agent_error_message(
     if result.timeout_seconds is not None:
         details.append(f"timeout_seconds={result.timeout_seconds}")
     details.extend(_log_path_details(ctx.stdout_log, ctx.stderr_log, config_log))
+    details.extend(_log_command_details(ctx.stdout_log, ctx.stderr_log, config_log))
     return "; ".join(details)
 
 
@@ -556,6 +557,7 @@ def _handoff_error_message(
 ) -> str:
     details = [error]
     details.extend(_log_path_details(ctx.stdout_log, ctx.stderr_log, config_log))
+    details.extend(_log_command_details(ctx.stdout_log, ctx.stderr_log, config_log))
     return "; ".join(details)
 
 
@@ -569,6 +571,19 @@ def _log_path_details(
         details.append(f"stderr_log={stderr_log.as_posix()}")
     if config_log is not None:
         details.append(f"config_log={config_log.as_posix()}")
+    return details
+
+
+def _log_command_details(
+    stdout_log: Path | None, stderr_log: Path | None, config_log: Path | None
+) -> list[str]:
+    details: list[str] = []
+    if stdout_log is not None:
+        details.append(f"stdout_command=cat {stdout_log.as_posix()}")
+    if stderr_log is not None:
+        details.append(f"stderr_command=cat {stderr_log.as_posix()}")
+    if config_log is not None:
+        details.append(f"config_command=cat {config_log.as_posix()}")
     return details
 
 

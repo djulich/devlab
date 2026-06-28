@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -102,13 +103,7 @@ def _assert_live_diagnostics(
     scenario: EvaluationScenario,
     diagnostics: EvaluationDiagnostics,
 ) -> None:
-    diagnostics_path = tmp_path / ".devlab/evaluations" / f"{scenario.id}.json"
-    failure_context = (
-        f"target_root={tmp_path}\n"
-        f"diagnostics={diagnostics_path}\n"
-        f"agent_logs={tmp_path / '.devlab/logs/agents'}\n"
-        f"diagnostics_json={diagnostics_path.read_text()}"
-    )
+    failure_context = _live_failure_context(tmp_path, scenario, diagnostics)
     assert diagnostics.completed is True, failure_context
     assert diagnostics.exit_code == 0, failure_context
     assert all(check.passed for check in diagnostics.checks), failure_context
@@ -120,6 +115,55 @@ def _assert_live_diagnostics(
     assert diagnostics.git.commit_count > diagnostics.git.baseline_commit_count, failure_context
     assert diagnostics.git.session_commit_count >= diagnostics.sessions_run, failure_context
     assert not diagnostics.git.missing_milestone_tags, failure_context
+
+
+def _live_failure_context(
+    tmp_path: Path,
+    scenario: EvaluationScenario,
+    diagnostics: EvaluationDiagnostics,
+) -> str:
+    diagnostics_path = tmp_path / ".devlab/evaluations" / f"{scenario.id}.json"
+    lines = [
+        f"target_root={tmp_path}",
+        f"diagnostics={diagnostics_path}",
+        f"agent_logs={tmp_path / '.devlab/logs/agents'}",
+        f"full_diagnostics_command=cat {diagnostics_path}",
+        f"agent_logs_command=ls -1 {tmp_path / '.devlab/logs/agents'}",
+        f"completed={diagnostics.completed} exit_code={diagnostics.exit_code} "
+        f"sessions_run={diagnostics.sessions_run} roles={diagnostics.roles!r}",
+    ]
+    if diagnostics.errors:
+        lines.append("errors:")
+        for error in diagnostics.errors:
+            lines.append(
+                f"- {error.phase} exit={error.exit_code}: {_shorten(error.message, 1200)}"
+            )
+        log_commands = _agent_log_commands(diagnostics)
+        if log_commands:
+            lines.append("agent_log_commands:")
+            lines.extend(log_commands)
+    failed_checks = [check for check in diagnostics.checks if not check.passed]
+    if failed_checks:
+        lines.append("failed_checks:")
+        for check in failed_checks:
+            lines.append(f"- {check.name}: {_shorten(check.message, 500)}")
+    if diagnostics.git.missing_milestone_tags:
+        lines.append(f"missing_milestone_tags={diagnostics.git.missing_milestone_tags!r}")
+    return "\n".join(lines)
+
+
+def _shorten(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _agent_log_commands(diagnostics: EvaluationDiagnostics) -> list[str]:
+    commands: list[str] = []
+    for error in diagnostics.errors:
+        for key in ("stdout_log", "stderr_log", "config_log"):
+            match = re.search(rf"{key}=([^;]+)", error.message)
+            if match is not None:
+                commands.append(f"- {key}: cat {match.group(1).strip()}")
+    return commands
 
 
 def _target_command_check(

@@ -96,6 +96,13 @@ class GitMetrics:
 
 
 @dataclasses.dataclass
+class EvaluationError:
+    phase: str
+    message: str
+    exit_code: int
+
+
+@dataclasses.dataclass
 class EvaluationDiagnostics:
     scenario_id: str
     provider_mode: str
@@ -113,6 +120,7 @@ class EvaluationDiagnostics:
     timestamp: str
     target_root: str
     agent_log_dir: str
+    errors: list[EvaluationError] = dataclasses.field(default_factory=list)
     git_commit: str = ""
     git: GitMetrics = dataclasses.field(
         default_factory=lambda: GitMetrics(
@@ -354,6 +362,10 @@ def diagnostics_for(
         timestamp=datetime.now(UTC).isoformat(),
         target_root=root.as_posix(),
         agent_log_dir=(root / ".devlab/logs/agents").as_posix(),
+        errors=[
+            EvaluationError(error.phase, error.message, error.exit_code)
+            for error in result.errors
+        ],
         git_commit=_git_commit(root),
         git=collect_git_metrics(
             root,

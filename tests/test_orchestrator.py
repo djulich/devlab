@@ -1933,6 +1933,23 @@ class TestRunLoop:
         assert "stdout_log" in result.errors[0].message
         assert "stderr_log" in result.errors[0].message
 
+    def test_agent_failure_message_includes_full_log_commands(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider(return_code=1)
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.completed is False
+        assert result.errors[0].phase == "agent_invocation"
+        assert "stdout_command=cat" in result.errors[0].message
+        assert "stderr_command=cat" in result.errors[0].message
+
     def test_agent_timeout_is_structured_failure(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")

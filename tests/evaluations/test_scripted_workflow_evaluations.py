@@ -53,6 +53,7 @@ from tests.evaluations.checks import (
 from tests.evaluations.generated_products import write_stateful_todo_api
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
+    EvaluationError,
     EvaluationScenario,
     copy_live_agent_config,
     init_target_workspace,
@@ -1245,6 +1246,58 @@ def test_live_agent_config_env_failure_has_no_pytest_traceback(
         live_tests._live_agent_config()
 
     assert "DEVLAB_LIVE_AGENTS_TOML points to a missing file" in str(exc_info.value)
+
+
+def test_live_failure_context_summarizes_errors_without_full_json(tmp_path: Path) -> None:
+    from tests.evaluations import test_live_workflow_evaluations as live_tests
+
+    scenario = EvaluationScenario(
+        id="live-failure",
+        title="Live failure",
+        system_spec="Build something small.",
+        max_sessions=1,
+        checks=(),
+    )
+    diagnostics = EvaluationDiagnostics(
+        scenario_id=scenario.id,
+        provider_mode="live",
+        sessions_run=3,
+        completed=False,
+        exit_code=1,
+        roles=["architect", "planner", "developer"],
+        findings_created=0,
+        findings_resolved=0,
+        review_rejections=0,
+        duration_seconds=1.0,
+        max_prompt_chars=0,
+        checks=[CheckResult("api", False, "missing server")],
+        artifacts=[],
+        timestamp="2026-06-25T00:00:00+00:00",
+        target_root=tmp_path.as_posix(),
+        agent_log_dir=(tmp_path / ".devlab/logs/agents").as_posix(),
+        errors=[
+            EvaluationError(
+                "agent_invocation",
+                "agent exited with code 1; "
+                f"stdout_log={tmp_path / '.devlab/logs/agents/reviewer.stdout.log'}; "
+                f"stderr_log={tmp_path / '.devlab/logs/agents/reviewer.stderr.log'}",
+                1,
+            )
+        ],
+    )
+
+    context = live_tests._live_failure_context(tmp_path, scenario, diagnostics)
+
+    assert "errors:" in context
+    assert "full_diagnostics_command=cat" in context
+    assert "agent_logs_command=ls -1" in context
+    assert "agent_log_commands:" in context
+    assert f"stdout_log: cat {tmp_path / '.devlab/logs/agents/reviewer.stdout.log'}" in context
+    assert f"stderr_log: cat {tmp_path / '.devlab/logs/agents/reviewer.stderr.log'}" in context
+    assert "agent_invocation exit=1" in context
+    assert "failed_checks:" in context
+    assert "api: missing server" in context
+    assert "diagnostics_json={" not in context
 
 
 def _write_minimal_task(
