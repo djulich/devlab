@@ -118,13 +118,13 @@ def test_cli_workflow_state_json_reports_lifecycle_state(
     assert payload["next_role"] == "architect"
 
 
-def test_cli_workflow_state_markdown_reports_digest(
+def test_cli_workflow_state_digest_reports_markdown_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
 
-    _run_cli(monkeypatch, "workflow-state", "--markdown", "--root", str(tmp_path))
+    _run_cli(monkeypatch, "workflow-state", "--digest", "--root", str(tmp_path))
 
     output = capsys.readouterr().out
     assert output.startswith("# Workflow State")
@@ -132,23 +132,20 @@ def test_cli_workflow_state_markdown_reports_digest(
     assert "Run `devlab plan` to continue design or planning." in output
 
 
-def test_cli_workflow_state_rejects_json_and_markdown(
+def test_cli_workflow_state_digest_json_reports_structured_digest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    with pytest.raises(SystemExit) as exc:
-        _run_cli(
-            monkeypatch,
-            "workflow-state",
-            "--json",
-            "--markdown",
-            "--root",
-            str(tmp_path),
-        )
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
 
-    assert exc.value.code == 2
-    assert "not allowed with argument" in capsys.readouterr().err
+    _run_cli(monkeypatch, "workflow-state", "--digest", "--json", "--root", str(tmp_path))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"]["lifecycle_phase"] == "awaiting design"
+    assert payload["next_action"] == "Run `devlab plan` to continue design or planning."
+    assert payload["validation"]["state"] == "not_reported"
 
 
 def test_cli_diagnostics_reports_workflow_diagnostics(

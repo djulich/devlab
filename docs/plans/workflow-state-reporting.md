@@ -43,7 +43,7 @@ Do not overload `devlab status`. `status` remains "what happens next?" while
 ## Command
 
 ```bash
-devlab workflow-state [--root PATH] [--json]
+devlab workflow-state [--root PATH] [--digest] [--json]
 ```
 
 Text output should be compact and operator-facing:
@@ -205,20 +205,23 @@ If a command fails before completing, keep either no completion event or an
 explicit failed event only if it proves useful later. The first implementation
 should avoid noisy failed-event semantics.
 
-## Markdown Digest
+## Workflow Digest
 
 Status: implemented.
 
-DevLab includes a compact Markdown rendering of the existing workflow-state
-report:
+DevLab includes a compact digest projection derived from the existing
+workflow-state report:
 
 ```bash
-devlab workflow-state --markdown
+devlab workflow-state --digest
+devlab workflow-state --digest --json
 ```
 
-This is a read-only formatter, not a generated durable `STATE.md` file. It must
-use the same `WorkflowStateReport` source object as text and JSON output so the
-digest cannot drift into a second workflow-state model.
+This is a read-only derived view, not a generated durable `STATE.md` file. It
+uses the same `WorkflowStateReport` source object as full text and JSON output,
+then builds a smaller `WorkflowStateDigest` object for Markdown or JSON
+rendering. The digest must not introduce independent state or facts that cannot
+be derived from the full report.
 
 The digest should optimize for operator glanceability:
 
@@ -272,11 +275,13 @@ Do not include:
 
 Implemented scope:
 
-- `--markdown` is mutually exclusive with `--json`;
-- `format_workflow_state_markdown(report)` renders the digest from the same
-  report object as text/JSON output;
+- `--digest` selects the compact operator projection;
+- `--json` serializes whichever projection was selected;
+- `WorkflowStateDigest` captures the compact projection structurally;
+- `format_workflow_state_digest(digest)` renders the digest as Markdown;
 - next action is derived locally from existing report fields;
-- README and the operator guide document `devlab workflow-state --markdown`;
+- README and the operator guide document `devlab workflow-state --digest` and
+  `devlab workflow-state --digest --json`;
 - no durable `STATE.md` file is created.
 
 ## Documentation Updates
@@ -309,9 +314,9 @@ Focused tests:
 - Reporting commands do not mutate `.devlab/` state.
 - Malformed workflow state surfaces a clear reporting error rather than silently
   producing misleading lifecycle output.
-- `devlab workflow-state --markdown` emits a compact Markdown digest from the
-  same report object as text/JSON output.
-- `devlab workflow-state --json --markdown` fails with a clear CLI usage error.
+- `devlab workflow-state --digest` emits a compact Markdown digest derived from
+  the same report object as full text/JSON output.
+- `devlab workflow-state --digest --json` emits the structured digest.
 - Markdown reporting remains read-only and does not create or update a durable
   `STATE.md` file.
 
@@ -330,5 +335,5 @@ Focused tests:
   workflow timeline rather than the active planning graph.
   -> ANSWER: Keep them cross-generation
 - Should the Markdown digest be generated as a durable report file?
-  -> ANSWER: No. Keep it as `devlab workflow-state --markdown`, a read-only
-  rendering of current source-of-truth state.
+  -> ANSWER: No. Keep it as `devlab workflow-state --digest`, a read-only
+  projection of current source-of-truth state.

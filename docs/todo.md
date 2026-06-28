@@ -128,10 +128,10 @@ Open design questions:
 
 Status: **initial implementation complete**. DevLab now writes a small
 orchestrator-owned `.devlab/workflow-events.jsonl` lifecycle log, exposes
-`devlab workflow-state [--json]`, reports lifecycle phase, planning/project
-mode, generations, spec reconciliation, planning-history counters, and current
-work counts, and falls back to generation manifests/session history for older
-workspaces without events.
+`devlab workflow-state [--digest] [--json]`, reports lifecycle phase,
+planning/project mode, generations, spec reconciliation, planning-history
+counters, and current work counts, and falls back to generation manifests/session
+history for older workspaces without events.
 
 Priority: medium-high. Operators should be able to inspect a target project's
 workflow lifecycle state without manually reading `.devlab/` artifacts, project

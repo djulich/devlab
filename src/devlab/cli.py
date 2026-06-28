@@ -18,8 +18,9 @@ from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
 from devlab.workflow_state_report import (
+    build_workflow_state_digest,
     build_workflow_state_report,
-    format_workflow_state_markdown,
+    format_workflow_state_digest,
     format_workflow_state_report,
 )
 
@@ -209,16 +210,15 @@ def main() -> None:
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to inspect (default: current working directory).",
     )
-    workflow_state_output = workflow_state_parser.add_mutually_exclusive_group()
-    workflow_state_output.add_argument(
+    workflow_state_parser.add_argument(
+        "--digest",
+        action="store_true",
+        help="Emit a compact operator digest instead of the full workflow report.",
+    )
+    workflow_state_parser.add_argument(
         "--json",
         action="store_true",
-        help="Emit workflow lifecycle state as JSON.",
-    )
-    workflow_state_output.add_argument(
-        "--markdown",
-        action="store_true",
-        help="Emit workflow lifecycle state as a compact Markdown digest.",
+        help="Emit the selected workflow-state view as JSON.",
     )
 
     diagnostics_parser = subparsers.add_parser(
@@ -396,10 +396,14 @@ def main() -> None:
         print(format_status(root, verbose=args.verbose))
     elif args.command == "workflow-state":
         report = build_workflow_state_report(root)
-        if args.json:
+        if args.digest:
+            digest = build_workflow_state_digest(report)
+            if args.json:
+                print(digest.to_json())
+            else:
+                print(format_workflow_state_digest(digest))
+        elif args.json:
             print(report.to_json())
-        elif args.markdown:
-            print(format_workflow_state_markdown(report))
         else:
             print(format_workflow_state_report(report))
     elif args.command == "diagnostics":

@@ -12,8 +12,9 @@ from devlab.task_tracker import FileTaskTracker
 from devlab.workflow_events import append_workflow_event
 from devlab.workflow_state import initial_workflow_state_text
 from devlab.workflow_state_report import (
+    build_workflow_state_digest,
     build_workflow_state_report,
-    format_workflow_state_markdown,
+    format_workflow_state_digest,
     format_workflow_state_report,
 )
 from tests.helpers import write_task
@@ -135,10 +136,11 @@ def test_format_workflow_state_report_is_compact(tmp_path: Path) -> None:
     assert "Current work:" in output
 
 
-def test_format_workflow_state_markdown_includes_digest_sections(tmp_path: Path) -> None:
+def test_format_workflow_state_digest_includes_digest_sections(tmp_path: Path) -> None:
     init_workspace(tmp_path)
+    digest = build_workflow_state_digest(build_workflow_state_report(tmp_path))
 
-    output = format_workflow_state_markdown(build_workflow_state_report(tmp_path))
+    output = format_workflow_state_digest(digest)
 
     assert output.startswith("# Workflow State")
     assert "- Lifecycle phase: awaiting design" in output
@@ -149,6 +151,28 @@ def test_format_workflow_state_markdown_includes_digest_sections(tmp_path: Path)
     assert "## Specs" in output
     assert "## Validation" in output
     assert "Validation state: not reported." in output
+
+
+def test_workflow_state_digest_json_is_compact_projection(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+
+    payload = json.loads(
+        build_workflow_state_digest(build_workflow_state_report(tmp_path)).to_json()
+    )
+
+    assert set(payload) == {
+        "current_work",
+        "next_action",
+        "notes",
+        "planning_history",
+        "specs",
+        "summary",
+        "validation",
+    }
+    assert payload["summary"]["lifecycle_phase"] == "awaiting design"
+    assert payload["summary"]["active_generation"] == 1
+    assert payload["next_action"] == "Run `devlab plan` to continue design or planning."
+    assert payload["validation"]["state"] == "not_reported"
 
 
 def test_malformed_workflow_state_surfaces_error(tmp_path: Path) -> None:
@@ -170,11 +194,13 @@ def test_workflow_state_report_does_not_mutate_devlab_state(tmp_path: Path) -> N
     assert _devlab_files(tmp_path) == before
 
 
-def test_workflow_state_markdown_does_not_create_state_file(tmp_path: Path) -> None:
+def test_workflow_state_digest_does_not_create_state_file(tmp_path: Path) -> None:
     init_workspace(tmp_path)
     before = _devlab_files(tmp_path)
 
-    format_workflow_state_markdown(build_workflow_state_report(tmp_path))
+    format_workflow_state_digest(
+        build_workflow_state_digest(build_workflow_state_report(tmp_path))
+    )
 
     assert _devlab_files(tmp_path) == before
     assert not (tmp_path / "STATE.md").exists()

@@ -90,6 +90,37 @@ class WorkflowStateReport:
         return json.dumps(self.as_dict(), indent=2, sort_keys=True)
 
 
+@dataclasses.dataclass(frozen=True)
+class DigestSummary:
+    lifecycle_phase: str
+    project_mode: str
+    next_role: str | None
+    active_generation: int
+    archived_generations: int
+
+
+@dataclasses.dataclass(frozen=True)
+class ValidationDigest:
+    state: str
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkflowStateDigest:
+    summary: DigestSummary
+    next_action: str
+    current_work: CurrentWorkReport
+    specs: SpecReport
+    planning_history: PlanningHistoryReport
+    validation: ValidationDigest
+    notes: list[str]
+
+    def as_dict(self) -> dict[str, object]:
+        return dataclasses.asdict(self)
+
+    def to_json(self) -> str:
+        return json.dumps(self.as_dict(), indent=2, sort_keys=True)
+
+
 def build_workflow_state_report(root: Path) -> WorkflowStateReport:
     events = load_workflow_events(root)
     if not (root / ".devlab").exists() or not (root / ".devlab/manifest.toml").exists():
@@ -186,71 +217,90 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     return "\n".join(lines)
 
 
-def format_workflow_state_markdown(report: WorkflowStateReport) -> str:
+def build_workflow_state_digest(report: WorkflowStateReport) -> WorkflowStateDigest:
+    return WorkflowStateDigest(
+        summary=DigestSummary(
+            lifecycle_phase=report.lifecycle_phase,
+            project_mode=report.project_mode,
+            next_role=report.next_role,
+            active_generation=report.generations.active,
+            archived_generations=len(report.generations.archived),
+        ),
+        next_action=_next_action(report),
+        current_work=report.current_work,
+        specs=report.specs,
+        planning_history=report.history,
+        validation=ValidationDigest(state="not_reported"),
+        notes=_digest_notes(report),
+    )
+
+
+def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
     lines = ["# Workflow State", ""]
-    lines.append(f"- Lifecycle phase: {report.lifecycle_phase}")
-    lines.append(f"- Project mode: {report.project_mode}")
-    lines.append(f"- Next role: {report.next_role or 'none'}")
-    lines.append(f"- Active generation: {report.generations.active}")
-    lines.append(f"- Archived generations: {len(report.generations.archived)}")
+    lines.append(f"- Lifecycle phase: {digest.summary.lifecycle_phase}")
+    lines.append(f"- Project mode: {digest.summary.project_mode}")
+    lines.append(f"- Next role: {digest.summary.next_role or 'none'}")
+    lines.append(f"- Active generation: {digest.summary.active_generation}")
+    lines.append(f"- Archived generations: {digest.summary.archived_generations}")
     lines.append("")
     lines.append("## Next Action")
     lines.append("")
-    lines.append(_next_action(report))
+    lines.append(digest.next_action)
     lines.append("")
     lines.append("## Current Work")
     lines.append("")
     lines.append(
         "- Tasks: "
-        f"{report.current_work.tasks_total} total, "
-        f"{report.current_work.tasks_closed} closed, "
-        f"{report.current_work.tasks_active} active"
+        f"{digest.current_work.tasks_total} total, "
+        f"{digest.current_work.tasks_closed} closed, "
+        f"{digest.current_work.tasks_active} active"
     )
     lines.append(
         "- Findings: "
-        f"{report.current_work.findings_open} open, "
-        f"{report.current_work.findings_planned} planned, "
-        f"{report.current_work.findings_resolved} resolved"
+        f"{digest.current_work.findings_open} open, "
+        f"{digest.current_work.findings_planned} planned, "
+        f"{digest.current_work.findings_resolved} resolved"
     )
-    lines.append(f"- Milestones: {report.current_work.milestones_total} total")
+    lines.append(f"- Milestones: {digest.current_work.milestones_total} total")
     lines.append("")
     lines.append("## Specs")
     lines.append("")
-    lines.append(f"- Baseline commit: {report.specs.baseline_commit or 'none'}")
+    lines.append(f"- Baseline commit: {digest.specs.baseline_commit or 'none'}")
     lines.append(
         "- Changed since baseline: "
-        + _unknown_bool_text(report.specs.specs_changed_since_baseline)
+        + _unknown_bool_text(digest.specs.specs_changed_since_baseline)
     )
-    dirty = ", ".join(report.specs.dirty_spec_paths) or "none"
+    dirty = ", ".join(digest.specs.dirty_spec_paths) or "none"
     lines.append(f"- Dirty spec paths: {dirty}")
-    lines.append(f"- Reconciliations: {report.specs.reconciliations}")
-    lines.append(f"- Plan replacements: {report.specs.plan_replacements}")
+    lines.append(f"- Reconciliations: {digest.specs.reconciliations}")
+    lines.append(f"- Plan replacements: {digest.specs.plan_replacements}")
     lines.append("")
     lines.append("## Planning History")
     lines.append("")
-    lines.append(f"- Architect sessions: {report.history.architect_sessions}")
-    lines.append(f"- Planner sessions: {report.history.planner_sessions}")
+    lines.append(f"- Architect sessions: {digest.planning_history.architect_sessions}")
+    lines.append(f"- Planner sessions: {digest.planning_history.planner_sessions}")
     lines.append(
         "- Greenfield planning runs: "
-        + _unknown_int_text(report.history.greenfield_planning_runs)
+        + _unknown_int_text(digest.planning_history.greenfield_planning_runs)
     )
     lines.append(
         "- Adoption planning runs: "
-        + _unknown_int_text(report.history.adoption_planning_runs)
+        + _unknown_int_text(digest.planning_history.adoption_planning_runs)
     )
-    lines.append(f"- Plan revisions: {_unknown_int_text(report.history.plan_revisions)}")
-    lines.append(f"- Reconciliations: {report.history.reconciliations}")
-    lines.append(f"- Plan replacements: {report.history.plan_replacements}")
+    lines.append(
+        f"- Plan revisions: {_unknown_int_text(digest.planning_history.plan_revisions)}"
+    )
+    lines.append(f"- Reconciliations: {digest.planning_history.reconciliations}")
+    lines.append(f"- Plan replacements: {digest.planning_history.plan_replacements}")
     lines.append("")
     lines.append("## Validation")
     lines.append("")
-    lines.append("Validation state: not reported.")
-    notes = _markdown_notes(report)
-    if notes:
+    lines.append(f"Validation state: {_validation_state_text(digest.validation.state)}.")
+    if digest.notes:
         lines.append("")
         lines.append("## Notes")
         lines.append("")
-        lines.extend(f"- {note}" for note in notes)
+        lines.extend(f"- {note}" for note in digest.notes)
     return "\n".join(lines)
 
 
@@ -272,7 +322,7 @@ def _next_action(report: WorkflowStateReport) -> str:
     return "Inspect `devlab status --verbose` for the next workflow action."
 
 
-def _markdown_notes(report: WorkflowStateReport) -> list[str]:
+def _digest_notes(report: WorkflowStateReport) -> list[str]:
     notes: list[str] = []
     if report.project_mode == "unknown":
         notes.append(
@@ -289,6 +339,10 @@ def _markdown_notes(report: WorkflowStateReport) -> list[str]:
     if report.specs.specs_changed_since_baseline is None:
         notes.append("Spec reconciliation status could not be verified from Git state.")
     return notes
+
+
+def _validation_state_text(value: str) -> str:
+    return value.replace("_", " ")
 
 
 def _uninitialized_report(root: Path, events: list[WorkflowEvent]) -> WorkflowStateReport:

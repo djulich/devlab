@@ -264,8 +264,9 @@ Useful inspection commands:
   approximate prompt sizes.
 - `devlab workflow-state`: lifecycle/provenance summary, planning generation
   counts, spec reconciliation state, and current work counts. Use
-  `devlab workflow-state --json` for tooling or
-  `devlab workflow-state --markdown` for a compact operator digest.
+  `devlab workflow-state --json` for the full report as JSON,
+  `devlab workflow-state --digest` for a compact operator digest, or
+  `devlab workflow-state --digest --json` for the digest as JSON.
 - `devlab diagnostics --verbose`: workflow-history diagnostics and quality
   warnings.
 - `devlab doctor`: workspace configuration and workflow-state validation.

@@ -149,7 +149,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab plan [--root PATH] [--revise] [--mark-specs-planned] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
 - `devlab implement [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
-- `devlab workflow-state [--root PATH] [--json] [--markdown]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state. Use `--markdown` for a compact operator digest.
+- `devlab workflow-state [--root PATH] [--digest] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state. Use `--digest` for a compact operator summary; add `--json` to serialize the selected view.
 - `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
