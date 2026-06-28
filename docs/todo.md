@@ -69,17 +69,7 @@ Open work:
 - Avoid overloading implementation tasks for pre-planning work; if design slices are needed, store them as architecture-planning artifacts rather than normal developer tasks.
 - Add tests/evaluations with an intentionally large spec that requires multiple architecture passes.
 
-## 6. Reconcile Spec Changes with Workflow State
-
-Priority: medium-high. DevLab should support target workspaces where the system spec or deployment spec changes after architecture, planning, or implementation work already exists.
-
-Status: **implemented with generation archives and explicit bypass**. DevLab records committed spec baselines in `.devlab/workflow.toml`, archives the active workflow bundle under `.devlab/generations/NNNN/` during spec reconciliation, starts a fresh active planning graph, and blocks `devlab implement` when committed specs are unreconciled. `devlab plan --mark-specs-planned` supports operator-confirmed plan-neutral spec commits by updating the committed spec baseline without running architect/planner reconciliation. See `docs/plans/generational-archive-reconciliation.md`.
-
-Usefulness: high. This is a normal real-world workflow: requirements drift after plans and code exist. Without explicit support, DevLab may either keep executing stale tasks or require users to manually reset workflow state.
-
-No open work. Reconciliation does not produce a separate durable summary artifact; archived generations, workflow events, architect/planner handoffs, and the edited active plans/tasks are the durable evidence. If glanceability becomes painful, prefer a generated read-only report over another mutable state file.
-
-## 7. Add Durable Operator Clarifications
+## 6. Add Durable Operator Clarifications
 
 Priority: medium. DevLab should support bounded user clarification when a role session encounters an ambiguity, contradiction, missing prerequisite, or scope decision that cannot be resolved safely from repository state.
 
@@ -105,7 +95,7 @@ Open design questions:
 - Should unanswered questions block all workflow progress or only the affected task/milestone?
 - Should DevLab add optional requirement/decision traceability metadata to tasks, such as `addresses_requirements` and `decision_refs`, so milestone verification can check coverage structurally?
 
-## 8. Add Workflow Attention Notifications
+## 7. Add Workflow Attention Notifications
 
 Priority: medium-low. DevLab should optionally notify operators about workflow events that require attention or indicate completion, especially for long-running unattended `devlab plan` / `devlab implement` workflows.
 
@@ -134,7 +124,7 @@ Open design questions:
 - Should notifications be sent synchronously at the end of the command or queued/best-effort?
 - How should notification failures be reported without obscuring the primary workflow result?
 
-## 9. Add Workflow State Reporting
+## 8. Add Workflow State Reporting
 
 Status: **initial implementation complete**. DevLab now writes a small
 orchestrator-owned `.devlab/workflow-events.jsonl` lifecycle log, exposes
