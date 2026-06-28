@@ -207,7 +207,10 @@ should avoid noisy failed-event semantics.
 
 ## Markdown Digest
 
-Add a compact Markdown rendering of the existing workflow-state report:
+Status: implemented.
+
+DevLab includes a compact Markdown rendering of the existing workflow-state
+report:
 
 ```bash
 devlab workflow-state --markdown
@@ -267,19 +270,14 @@ Do not include:
   orchestrator-owned validation records exist, the digest may say validation
   state is "not reported".
 
-Implementation steps:
+Implemented scope:
 
-1. Add `--markdown` to the `workflow-state` CLI command and reject combining it
-   with `--json`.
-2. Add `format_workflow_state_markdown(report)` to
-   `workflow_state_report.py`.
-3. Add a small helper for deriving a next-action sentence from existing report
-   fields. Keep it local to the reporting module unless another command needs
-   it later.
-4. Update README and the operator guide to document
-   `devlab workflow-state --markdown`.
-5. Update this TODO item after implementation so the remaining open work is only
-   failed-attempt lifecycle events, if still desired.
+- `--markdown` is mutually exclusive with `--json`;
+- `format_workflow_state_markdown(report)` renders the digest from the same
+  report object as text/JSON output;
+- next action is derived locally from existing report fields;
+- README and the operator guide document `devlab workflow-state --markdown`;
+- no durable `STATE.md` file is created.
 
 ## Documentation Updates
 

@@ -13,6 +13,7 @@ from devlab.workflow_events import append_workflow_event
 from devlab.workflow_state import initial_workflow_state_text
 from devlab.workflow_state_report import (
     build_workflow_state_report,
+    format_workflow_state_markdown,
     format_workflow_state_report,
 )
 from tests.helpers import write_task
@@ -134,6 +135,22 @@ def test_format_workflow_state_report_is_compact(tmp_path: Path) -> None:
     assert "Current work:" in output
 
 
+def test_format_workflow_state_markdown_includes_digest_sections(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+
+    output = format_workflow_state_markdown(build_workflow_state_report(tmp_path))
+
+    assert output.startswith("# Workflow State")
+    assert "- Lifecycle phase: awaiting design" in output
+    assert "## Next Action" in output
+    assert "Run `devlab plan` to continue design or planning." in output
+    assert "## Current Work" in output
+    assert "- Tasks: 0 total, 0 closed, 0 active" in output
+    assert "## Specs" in output
+    assert "## Validation" in output
+    assert "Validation state: not reported." in output
+
+
 def test_malformed_workflow_state_surfaces_error(tmp_path: Path) -> None:
     init_workspace(tmp_path)
     (tmp_path / ".devlab/workflow.toml").write_text(
@@ -151,6 +168,16 @@ def test_workflow_state_report_does_not_mutate_devlab_state(tmp_path: Path) -> N
     build_workflow_state_report(tmp_path)
 
     assert _devlab_files(tmp_path) == before
+
+
+def test_workflow_state_markdown_does_not_create_state_file(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    before = _devlab_files(tmp_path)
+
+    format_workflow_state_markdown(build_workflow_state_report(tmp_path))
+
+    assert _devlab_files(tmp_path) == before
+    assert not (tmp_path / "STATE.md").exists()
 
 
 def test_init_records_workflow_event(tmp_path: Path) -> None:

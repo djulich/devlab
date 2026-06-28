@@ -186,6 +186,111 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     return "\n".join(lines)
 
 
+def format_workflow_state_markdown(report: WorkflowStateReport) -> str:
+    lines = ["# Workflow State", ""]
+    lines.append(f"- Lifecycle phase: {report.lifecycle_phase}")
+    lines.append(f"- Project mode: {report.project_mode}")
+    lines.append(f"- Next role: {report.next_role or 'none'}")
+    lines.append(f"- Active generation: {report.generations.active}")
+    lines.append(f"- Archived generations: {len(report.generations.archived)}")
+    lines.append("")
+    lines.append("## Next Action")
+    lines.append("")
+    lines.append(_next_action(report))
+    lines.append("")
+    lines.append("## Current Work")
+    lines.append("")
+    lines.append(
+        "- Tasks: "
+        f"{report.current_work.tasks_total} total, "
+        f"{report.current_work.tasks_closed} closed, "
+        f"{report.current_work.tasks_active} active"
+    )
+    lines.append(
+        "- Findings: "
+        f"{report.current_work.findings_open} open, "
+        f"{report.current_work.findings_planned} planned, "
+        f"{report.current_work.findings_resolved} resolved"
+    )
+    lines.append(f"- Milestones: {report.current_work.milestones_total} total")
+    lines.append("")
+    lines.append("## Specs")
+    lines.append("")
+    lines.append(f"- Baseline commit: {report.specs.baseline_commit or 'none'}")
+    lines.append(
+        "- Changed since baseline: "
+        + _unknown_bool_text(report.specs.specs_changed_since_baseline)
+    )
+    dirty = ", ".join(report.specs.dirty_spec_paths) or "none"
+    lines.append(f"- Dirty spec paths: {dirty}")
+    lines.append(f"- Reconciliations: {report.specs.reconciliations}")
+    lines.append(f"- Plan replacements: {report.specs.plan_replacements}")
+    lines.append("")
+    lines.append("## Planning History")
+    lines.append("")
+    lines.append(f"- Architect sessions: {report.history.architect_sessions}")
+    lines.append(f"- Planner sessions: {report.history.planner_sessions}")
+    lines.append(
+        "- Greenfield planning runs: "
+        + _unknown_int_text(report.history.greenfield_planning_runs)
+    )
+    lines.append(
+        "- Adoption planning runs: "
+        + _unknown_int_text(report.history.adoption_planning_runs)
+    )
+    lines.append(f"- Plan revisions: {_unknown_int_text(report.history.plan_revisions)}")
+    lines.append(f"- Reconciliations: {report.history.reconciliations}")
+    lines.append(f"- Plan replacements: {report.history.plan_replacements}")
+    lines.append("")
+    lines.append("## Validation")
+    lines.append("")
+    lines.append("Validation state: not reported.")
+    notes = _markdown_notes(report)
+    if notes:
+        lines.append("")
+        lines.append("## Notes")
+        lines.append("")
+        lines.extend(f"- {note}" for note in notes)
+    return "\n".join(lines)
+
+
+def _next_action(report: WorkflowStateReport) -> str:
+    if report.lifecycle_phase == "uninitialized":
+        return "Run `devlab init` to initialize DevLab workflow state."
+    if report.specs.dirty_spec_paths:
+        return "Commit or revert dirty spec paths, then run `devlab plan` to reconcile specs."
+    if report.specs.specs_changed_since_baseline is True:
+        return "Run `devlab plan` to reconcile committed spec changes."
+    if report.next_role in {"architect", "planner"}:
+        return "Run `devlab plan` to continue design or planning."
+    if report.next_role in {"developer", "reviewer", "integrator"}:
+        return "Run `devlab implement` to continue the next eligible workflow session."
+    if report.lifecycle_phase == "complete":
+        return "No workflow action is currently required."
+    if report.lifecycle_phase == "blocked or inconsistent":
+        return "Run `devlab status --verbose` and `devlab doctor` to inspect the blockage."
+    return "Inspect `devlab status --verbose` for the next workflow action."
+
+
+def _markdown_notes(report: WorkflowStateReport) -> list[str]:
+    notes: list[str] = []
+    if report.project_mode == "unknown":
+        notes.append(
+            "Project mode is unknown because no initial planning mode event is available."
+        )
+    if (
+        report.history.greenfield_planning_runs is None
+        or report.history.adoption_planning_runs is None
+        or report.history.plan_revisions is None
+    ):
+        notes.append(
+            "Some planning history is unknown for older workspaces without lifecycle events."
+        )
+    if report.specs.specs_changed_since_baseline is None:
+        notes.append("Spec reconciliation status could not be verified from Git state.")
+    return notes
+
+
 def _uninitialized_report(root: Path, events: list[WorkflowEvent]) -> WorkflowStateReport:
     specs = _spec_report(root, "", events)
     history = _planning_history_report(root, events, specs)

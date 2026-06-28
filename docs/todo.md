@@ -145,11 +145,6 @@ Plan: `docs/plans/workflow-state-reporting.md`.
 
 Open work:
 
-- Implement `devlab workflow-state --markdown` as a compact read-only digest of
-  the existing workflow-state report. It should summarize current generation,
-  lifecycle phase, next action, current work counts, spec reconciliation, and
-  known/inferred provenance without generating a second mutable state file. See
-  `docs/plans/workflow-state-reporting.md`.
 - Defer failed-attempt lifecycle events until successful-transition provenance
   proves insufficient in real workflow use.
 
