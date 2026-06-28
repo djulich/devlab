@@ -145,9 +145,13 @@ Plan: `docs/plans/workflow-state-reporting.md`.
 
 Open work:
 
-- Consider failed-attempt lifecycle events if successful-transition provenance
-  proves insufficient.
-- Consider a compact Markdown workflow digest generated from existing source-of-truth state, either as `devlab workflow-state --markdown` or an explicitly generated report. It should summarize current generation, lifecycle phase, last session, next action, blocking reason, open tasks/findings, and validation state without becoming a second mutable state file. This borrows the useful glanceability of GSD's `STATE.md` while preserving DevLab's orchestrator-owned `workflow.toml` and `workflow-events.jsonl` boundaries. Reference: GSD [STATE.md schema](https://github.com/open-gsd/gsd-core/blob/next/docs/reference/state-md.md).
+- Implement `devlab workflow-state --markdown` as a compact read-only digest of
+  the existing workflow-state report. It should summarize current generation,
+  lifecycle phase, next action, current work counts, spec reconciliation, and
+  known/inferred provenance without generating a second mutable state file. See
+  `docs/plans/workflow-state-reporting.md`.
+- Defer failed-attempt lifecycle events until successful-transition provenance
+  proves insufficient in real workflow use.
 
 ## Later / Non-goals for Now
 

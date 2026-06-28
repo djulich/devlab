@@ -205,6 +205,82 @@ If a command fails before completing, keep either no completion event or an
 explicit failed event only if it proves useful later. The first implementation
 should avoid noisy failed-event semantics.
 
+## Markdown Digest
+
+Add a compact Markdown rendering of the existing workflow-state report:
+
+```bash
+devlab workflow-state --markdown
+```
+
+This is a read-only formatter, not a generated durable `STATE.md` file. It must
+use the same `WorkflowStateReport` source object as text and JSON output so the
+digest cannot drift into a second workflow-state model.
+
+The digest should optimize for operator glanceability:
+
+```markdown
+# Workflow State
+
+- Lifecycle phase: implementation
+- Project mode: adopted existing project
+- Next role: developer
+- Active generation: 2
+- Archived generations: 1
+
+## Next Action
+
+Run `devlab implement` to continue the next eligible task.
+
+## Current Work
+
+- Tasks: 7 total, 3 closed, 4 active
+- Findings: 1 open, 2 planned, 2 resolved
+- Milestones: 2 total
+
+## Specs
+
+- Baseline commit: abc1234
+- Changed since baseline: no
+- Dirty spec paths: none
+- Reconciliations: 1
+- Plan replacements: 0
+```
+
+The first version should include:
+
+- lifecycle phase, project mode, next role, active generation, and archived
+  generation count;
+- a derived "next action" sentence based on `next_role`, lifecycle phase,
+  planning completeness, and spec reconciliation status;
+- current work counts for tasks, findings, and milestones;
+- spec reconciliation summary;
+- planning history counters already exposed in JSON/text output;
+- a short uncertainty note when report fields are inferred or unknown, such as
+  older workspaces without lifecycle events.
+
+Do not include:
+
+- prompt text, handoff prose, session logs, or large summaries;
+- a full task/finding listing in the first version;
+- validation claims that DevLab does not yet own structurally. Until
+  orchestrator-owned validation records exist, the digest may say validation
+  state is "not reported".
+
+Implementation steps:
+
+1. Add `--markdown` to the `workflow-state` CLI command and reject combining it
+   with `--json`.
+2. Add `format_workflow_state_markdown(report)` to
+   `workflow_state_report.py`.
+3. Add a small helper for deriving a next-action sentence from existing report
+   fields. Keep it local to the reporting module unless another command needs
+   it later.
+4. Update README and the operator guide to document
+   `devlab workflow-state --markdown`.
+5. Update this TODO item after implementation so the remaining open work is only
+   failed-attempt lifecycle events, if still desired.
+
 ## Documentation Updates
 
 Update:
@@ -235,6 +311,11 @@ Focused tests:
 - Reporting commands do not mutate `.devlab/` state.
 - Malformed workflow state surfaces a clear reporting error rather than silently
   producing misleading lifecycle output.
+- `devlab workflow-state --markdown` emits a compact Markdown digest from the
+  same report object as text/JSON output.
+- `devlab workflow-state --json --markdown` fails with a clear CLI usage error.
+- Markdown reporting remains read-only and does not create or update a durable
+  `STATE.md` file.
 
 ## Open Questions
 
@@ -243,9 +324,13 @@ Focused tests:
   -> ANSWER: Keep `workflow-state` for the first implementation.
 - Should failed plan/implement attempts be represented in the event log, or should this
   command focus only on successful lifecycle transitions?
-  -> ANSWER: I would prefer to have the failed attempts in the event log as well, if their addition doesn't cause too much "noise" or add too much code complexity.
+  -> ANSWER: Defer failed-attempt lifecycle events for now. Add them later only
+  if successful-transition provenance proves insufficient in real workflow use.
 - Should lifecycle events be archived with active generations during spec
   reconciliation, or stay cross-generation at `.devlab/workflow-events.jsonl`?
   Recommendation: keep them cross-generation, because they describe the target
   workflow timeline rather than the active planning graph.
   -> ANSWER: Keep them cross-generation
+- Should the Markdown digest be generated as a durable report file?
+  -> ANSWER: No. Keep it as `devlab workflow-state --markdown`, a read-only
+  rendering of current source-of-truth state.
