@@ -124,30 +124,6 @@ Open design questions:
 - Should notifications be sent synchronously at the end of the command or queued/best-effort?
 - How should notification failures be reported without obscuring the primary workflow result?
 
-## 8. Add Workflow State Reporting
-
-Status: **initial implementation complete**. DevLab now writes a small
-orchestrator-owned `.devlab/workflow-events.jsonl` lifecycle log, exposes
-`devlab workflow-state [--digest] [--json]`, reports lifecycle phase,
-planning/project mode, generations, spec reconciliation, planning-history
-counters, and current work counts, and falls back to generation manifests/session
-history for older workspaces without events.
-
-Priority: medium-high. Operators should be able to inspect a target project's
-workflow lifecycle state without manually reading `.devlab/` artifacts, project
-files, generation archives, or Git history.
-
-Usefulness: high. This answers whether a target is greenfield or adopted,
-whether design and planning have happened, whether specs are reconciled, how many
-planning generations exist, and how often plan revision/reconciliation happened.
-
-Plan: `docs/plans/workflow-state-reporting.md`.
-
-Open work:
-
-- Defer failed-attempt lifecycle events until successful-transition provenance
-  proves insufficient in real workflow use.
-
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).
