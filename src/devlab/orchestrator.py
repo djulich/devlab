@@ -653,8 +653,11 @@ def _planning_event_mode(
     revise_plan: bool,
     replace_plan: bool,
     adopt_existing: bool,
+    mark_specs_planned: bool,
     reconcile_plan: bool,
 ) -> str:
+    if mark_specs_planned:
+        return "mark_specs_planned"
     if reconcile_plan:
         return "spec_reconciliation"
     if replace_plan:
@@ -695,6 +698,7 @@ def run_loop(
     revise_plan: bool = False,
     replace_plan: bool = False,
     adopt_existing: bool = False,
+    mark_specs_planned: bool = False,
     session_progress: SessionProgressCallback | None = None,
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
@@ -704,6 +708,8 @@ def run_loop(
         raise ValueError("replace_plan requires planning_only")
     if adopt_existing and not planning_only:
         raise ValueError("adopt_existing requires planning_only")
+    if mark_specs_planned and not planning_only:
+        raise ValueError("mark_specs_planned requires planning_only")
     if replace_plan and adopt_existing:
         return RunResult(
             0,
@@ -713,6 +719,20 @@ def run_loop(
                 SessionError(
                     "planning_mode",
                     "devlab plan cannot combine --replace-plan and --adopt-existing",
+                    2,
+                ),
+            ),
+        )
+    if mark_specs_planned and (revise_plan or replace_plan or adopt_existing):
+        return RunResult(
+            0,
+            False,
+            2,
+            (
+                SessionError(
+                    "planning_mode",
+                    "devlab plan cannot combine --mark-specs-planned with "
+                    "--revise, --replace-plan, or --adopt-existing",
                     2,
                 ),
             ),
@@ -772,6 +792,49 @@ def run_loop(
             logger.error("%s. Stopping.", exc)
             return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
 
+    if mark_specs_planned:
+        if spec_status is None:
+            return RunResult(
+                0,
+                False,
+                1,
+                (
+                    SessionError(
+                        "spec_reconciliation",
+                        "--mark-specs-planned requires automatic version control",
+                        1,
+                    ),
+                ),
+            )
+        logger.warning(
+            "Marking current committed specs as planned without architect/planner "
+            "reconciliation. This bypasses the spec reconciliation guardrail."
+        )
+        try:
+            update_workflow_state(
+                root,
+                last_planned_spec_commit=spec_status.latest_spec_commit,
+            )
+            append_workflow_event(
+                root,
+                "specs_marked_planned",
+                generation=active_generation(root),
+                spec_baseline=spec_status.latest_spec_commit,
+                previous_spec_baseline=spec_status.baseline_spec_commit,
+            )
+            if automatic_version_control:
+                committed = commit_all(root, "Mark DevLab specs planned")
+                if committed:
+                    logger.info("Committed DevLab spec planning baseline")
+        except VersionControlError as exc:
+            logger.error("%s. Stopping.", exc)
+            return RunResult(0, False, 1, (SessionError("version_control", str(exc), 1),))
+        except OSError as exc:
+            logger.error("%s. Stopping.", exc)
+            return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
+        logger.info("Specs marked planned; no planning sessions were run.")
+        return RunResult(0, True, 0, ())
+
     workspace = Workspace(root)
     resolved_agent_configs = None
     if agent_providers is None:
@@ -800,6 +863,7 @@ def run_loop(
         revise_plan=revise_plan,
         replace_plan=replace_plan,
         adopt_existing=adopt_existing,
+        mark_specs_planned=mark_specs_planned,
         reconcile_plan=reconcile_plan,
     )
     fresh_generation_plan = planning_only and (replace_plan or reconcile_plan)

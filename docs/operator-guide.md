@@ -85,6 +85,11 @@ Use:
 - `devlab plan --adopt-existing`: first planning run for an already-started
   repository.
 - `devlab plan --replace-plan`: archive the active plan and create a fresh one.
+- `devlab plan --mark-specs-planned`: for operator-confirmed typo-only,
+  format-only, or otherwise plan-neutral spec commits, update the recorded spec
+  baseline without running architect or planner sessions. This bypasses the
+  reconciliation guardrail and requires a clean worktree with committed spec
+  changes.
 
 ## Profiles
 

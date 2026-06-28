@@ -127,7 +127,7 @@ devlab plan
 devlab doctor
 ```
 
-`devlab plan` reconciles committed system/deployment specs with durable workflow state. It creates missing design and project planning state, records the committed spec revision it planned against, and stops before implementation. Later, if committed files under `.devlab/specs/system/` or `.devlab/specs/deployment/` change, run `devlab plan` again so architect and planner sessions can carry still-valid work into the current planning generation. Use `devlab plan --revise` when you explicitly want architect and planner sessions to review and update existing plans even without a spec change.
+`devlab plan` reconciles committed system/deployment specs with durable workflow state. It creates missing design and project planning state, records the committed spec revision it planned against, and stops before implementation. Later, if committed files under `.devlab/specs/system/` or `.devlab/specs/deployment/` change, run `devlab plan` again so architect and planner sessions can carry still-valid work into the current planning generation. Use `devlab plan --revise` when you explicitly want architect and planner sessions to review and update existing plans even without a spec change. Use `devlab plan --mark-specs-planned` only for operator-confirmed typo-only, format-only, or otherwise plan-neutral spec commits; it updates the recorded spec baseline without running architect or planner sessions and warns that it bypasses the reconciliation guardrail.
 
 Implement the planned workflow. `devlab implement` carries out already-reconciled workflow state. It requires a Git repository with a clean working tree, stops if committed specs changed since the last `devlab plan` baseline, and commits all non-ignored changes after every valid session. Re-running it continues where the last `devlab plan` or `devlab implement` stopped:
 
@@ -146,7 +146,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 ## CLI commands
 
 - `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
-- `devlab plan [--root PATH] [--revise] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
+- `devlab plan [--root PATH] [--revise] [--mark-specs-planned] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
 - `devlab implement [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab workflow-state [--root PATH] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state.

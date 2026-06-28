@@ -157,10 +157,10 @@ plan because the operator considers the current plan stale or unsuitable.
 
 ### `devlab plan --mark-specs-planned`
 
-Future escape hatch for typo-only, formatting-only, or otherwise plan-neutral spec
-commits. It should update the recorded spec baseline without archiving, invoking
-agents, or changing the active plan. This is intentionally separate from incremental
-reconciliation.
+Implemented escape hatch for typo-only, formatting-only, or otherwise plan-neutral
+spec commits. It updates the recorded spec baseline without archiving, invoking
+agents, or changing the active plan, and warns that it bypasses the reconciliation
+guardrail. This is intentionally separate from incremental reconciliation.
 
 Do not implement incremental reconciliation until real usage proves fresh-generation
 planning too noisy.

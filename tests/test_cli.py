@@ -218,6 +218,7 @@ def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path
         monkeypatch,
         "plan",
         "--revise",
+        "--mark-specs-planned",
         "--retain-prompts",
         "--root",
         str(tmp_path),
@@ -226,6 +227,7 @@ def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert "auto" not in seen
     assert seen["planning_only"] is True
     assert seen["revise_plan"] is True
+    assert seen["mark_specs_planned"] is True
     assert seen["retain_prompts"] is True
     assert seen["max_sessions"] == 2
 

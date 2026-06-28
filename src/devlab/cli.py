@@ -139,6 +139,14 @@ def main() -> None:
         help="Archive the active DevLab plan and create a fresh current plan.",
     )
     plan_parser.add_argument(
+        "--mark-specs-planned",
+        action="store_true",
+        help=(
+            "Mark the current committed specs as planned without running "
+            "architect/planner reconciliation."
+        ),
+    )
+    plan_parser.add_argument(
         "--provider",
         default=None,
         help="Override the configured provider for this plan run.",
@@ -373,6 +381,7 @@ def main() -> None:
             revise_plan=args.revise,
             adopt_existing=args.adopt_existing,
             replace_plan=args.replace_plan,
+            mark_specs_planned=args.mark_specs_planned,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)

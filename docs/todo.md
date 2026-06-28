@@ -73,14 +73,11 @@ Open work:
 
 Priority: medium-high. DevLab should support target workspaces where the system spec or deployment spec changes after architecture, planning, or implementation work already exists.
 
-Status: **implemented with generation archives**. DevLab records committed spec baselines in `.devlab/workflow.toml`, archives the active workflow bundle under `.devlab/generations/NNNN/` during spec reconciliation, starts a fresh active planning graph, and blocks `devlab implement` when committed specs are unreconciled. See `docs/plans/generational-archive-reconciliation.md`.
+Status: **implemented with generation archives and explicit bypass**. DevLab records committed spec baselines in `.devlab/workflow.toml`, archives the active workflow bundle under `.devlab/generations/NNNN/` during spec reconciliation, starts a fresh active planning graph, and blocks `devlab implement` when committed specs are unreconciled. `devlab plan --mark-specs-planned` supports operator-confirmed plan-neutral spec commits by updating the committed spec baseline without running architect/planner reconciliation. See `docs/plans/generational-archive-reconciliation.md`.
 
 Usefulness: high. This is a normal real-world workflow: requirements drift after plans and code exist. Without explicit support, DevLab may either keep executing stale tasks or require users to manually reset workflow state.
 
-Open work:
-
-- Consider a future explicit bypass command such as `devlab plan --mark-specs-planned` for operator-confirmed format-only, typo-only, or otherwise plan-neutral spec commits. The command would require a clean worktree, refuse uncommitted spec changes, update `[specs].last_planned_spec_commit` to the current latest committed spec commit without running architect/planner, and clearly warn that it bypasses the reconciliation guardrail. Do not add this to the first implementation unless real usage shows false-positive reconciliation is painful.
-- Decide whether reconciliation should produce a separate durable summary artifact, or whether architect/planner handoffs plus edited plans/tasks are sufficient.
+No open work. Reconciliation does not produce a separate durable summary artifact; archived generations, workflow events, architect/planner handoffs, and the edited active plans/tasks are the durable evidence. If glanceability becomes painful, prefer a generated read-only report over another mutable state file.
 
 ## 7. Add Durable Operator Clarifications
 

@@ -866,6 +866,26 @@ class TestRunLoop:
         assert result.errors[0].phase == "planning_mode"
         assert provider.calls == []
 
+    def test_mark_specs_planned_is_mutually_exclusive_with_planning_modes(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            revise_plan=True,
+            mark_specs_planned=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 2
+        assert result.errors[0].phase == "planning_mode"
+        assert "--mark-specs-planned" in result.errors[0].message
+        assert provider.calls == []
+
     def test_adopt_existing_runs_first_planning_with_adoption_prompt(
         self, tmp_path: Path
     ) -> None:
@@ -892,6 +912,79 @@ class TestRunLoop:
         assert "target-owned validation path" in provider.calls[-1].session_prompt
         assert "Do not silently rely on host-global" in provider.calls[-1].session_prompt
         assert not (tmp_path / ".devlab/generations").exists()
+
+    def test_mark_specs_planned_updates_baseline_without_agent_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        _write_task(tmp_path, "T0001", "First")
+        _write_system_spec(tmp_path, "# Spec\n")
+        _init_git_repo(tmp_path)
+        baseline = _commit_all(tmp_path, "init")
+        _write_workflow_state(tmp_path, baseline=baseline)
+        _commit_all(tmp_path, "record baseline")
+        _write_system_spec(tmp_path, "# Format-only spec change\n")
+        latest = _commit_all(tmp_path, "format spec")
+        provider = MockProvider()
+        warnings: list[str] = []
+
+        def record_warning(message: str, *args: object, **_kwargs: object) -> None:
+            warnings.append(message % args if args else message)
+
+        monkeypatch.setattr(logger, "warning", record_warning)
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            mark_specs_planned=True,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 0
+        assert result.sessions_run == 0
+        assert provider.calls == []
+        assert f'last_planned_spec_commit = "{latest}"' in (
+            tmp_path / ".devlab/workflow.toml"
+        ).read_text()
+        assert any("bypasses the spec reconciliation guardrail" in item for item in warnings)
+        events = load_workflow_events(tmp_path)
+        assert events[-1].type == "specs_marked_planned"
+        assert events[-1].data["spec_baseline"] == latest
+        assert not subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+
+    def test_mark_specs_planned_refuses_dirty_spec_paths(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_system_spec(tmp_path, "# Spec\n")
+        _init_git_repo(tmp_path)
+        baseline = _commit_all(tmp_path, "init")
+        _write_workflow_state(tmp_path, baseline=baseline)
+        _commit_all(tmp_path, "record baseline")
+        _write_system_spec(tmp_path, "# Dirty spec\n")
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            planning_only=True,
+            mark_specs_planned=True,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+        )
+
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "spec_reconciliation"
+        assert "commit them before running devlab plan" in result.errors[0].message
+        assert provider.calls == []
 
     def test_planning_only_dirty_spec_paths_fail_before_agent_session(
         self, tmp_path: Path
