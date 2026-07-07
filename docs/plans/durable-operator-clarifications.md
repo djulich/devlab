@@ -10,7 +10,7 @@ Key outcomes:
 
 - Role sessions can request clarification through a structured artifact contract.
 - DevLab stops in a durable "needs clarification" state.
-- Operators can answer through the CLI or by editing repository files.
+- Operators can answer through the CLI, by editing repository files, or through future operator-interface adapters.
 - DevLab records how the interrupted workflow should resume, so operators do not need to remember whether `devlab plan` or `devlab implement` is the correct next command.
 - Answered clarifications become stable workflow references.
 - Relevant answers are included in later role prompts.
@@ -33,6 +33,38 @@ This should be two related mechanisms:
 
 - **Proactive planning clarifications**: architect or planner can request operator decisions before finalizing design or task plans.
 - **Reactive blocking clarifications**: any role can stop when continuing would mean inventing requirements, ignoring a contradiction, or making a risky scope/tooling decision.
+
+## Operator Interface Boundary
+
+Clarifications should be designed as a workflow capability, not as a terminal-only feature. The first implementation should expose CLI commands because that is DevLab's current interface, but core workflow code should not assume that the operator is answering through a terminal.
+
+Architectural rule:
+
+```text
+The repository-backed clarification record and resume pointer are the source of truth.
+CLI, editor, HTTP API, email, webhooks, or a future web UI are adapters over the same operations.
+```
+
+Keep these operations reusable outside the CLI:
+
+```python
+create_clarification(...)
+answer_clarification(...)
+validate_clarification_answer(...)
+supersede_clarification(...)
+resume_workflow(...)
+```
+
+The exact function/module names can follow the implementation shape, but the boundary matters:
+
+- trackers own clarification file parsing and mutation;
+- workflow-state helpers own resume pointer parsing and mutation;
+- orchestration owns workflow transitions and resume validation;
+- CLI/editor/API/webhook adapters may present questions, collect answers, notify operators, and request resume;
+- adapters must not bypass trackers or mutate `.devlab/workflow.toml` ad hoc;
+- reporting paths remain read-only.
+
+This keeps open the future possibility of running DevLab as a server that exposes workflow-start, workflow-status, clarification-answer, and resume APIs. Do not build that server now. The near-term requirement is simply to keep core workflow operations callable without requiring stdin/stdout interactivity.
 
 ## Storage Model
 
@@ -351,11 +383,56 @@ If the operator manually edits the clarification file and then runs `devlab resu
 Future UX options:
 
 - `devlab clarify answer CL0001 --use-default`
+- `devlab plan --interactive-clarifications`
+- `devlab implement --interactive-clarifications`
 - `devlab plan --auto-clarify-defaults`
 - `devlab implement --auto-clarify-defaults`
 - `devlab clarify export --pending`
 
 Do not implement auto-answering in the first slice. The first slice should prove the durable state and stop/resume behavior.
+
+## Interactive And External Interfaces
+
+The default clarification behavior should remain durable stop-and-resume. Unexpectedly launching an editor or waiting on a network callback would be bad for unattended workflows, CI, scripted runs, or remote sessions.
+
+After the core clarification operations are stable, add operator-interface adapters as optional UX layers.
+
+### Editor Adapter
+
+An attended terminal run may opt into editor-based clarification:
+
+```bash
+devlab implement --interactive-clarifications
+devlab plan --interactive-clarifications
+```
+
+When a clarification is requested:
+
+1. DevLab writes the clarification file and resume pointer.
+2. DevLab opens `$VISUAL`, then `$EDITOR`, on the clarification file.
+3. The operator fills `## Answer` and exits the editor.
+4. DevLab validates the answer through the same clarification validation operation used by the CLI.
+5. If valid, DevLab marks the clarification answered and resumes through the stored resume intent.
+6. If invalid or still pending, DevLab prints the validation issue and either reopens the editor or stops with normal resume instructions.
+
+If neither `$VISUAL` nor `$EDITOR` is set, DevLab should print the clarification path and stop. It must not install or assume an editor.
+
+### Future API, Webhook, Or Email Adapters
+
+Later interfaces can use the same underlying operations:
+
+- an HTTP API could expose pending clarifications, answer submission, and resume endpoints;
+- a webhook adapter could notify an external system when a clarification is created;
+- an email adapter could send the question and accept a structured reply;
+- a web UI could render the clarification file and call the answer/resume operations.
+
+All of these should preserve the same invariants:
+
+- durable repository files remain authoritative;
+- answer validation is shared;
+- resume semantics are shared;
+- command boundaries between planning and implementation remain explicit;
+- external adapters cannot silently advance workflow state outside the orchestrator.
 
 ## Prompt Integration
 
@@ -514,7 +591,26 @@ Tests:
 - developer resume stops if the task no longer exists or is no longer developable;
 - pending clarification is committed through normal version-control flow.
 
-### Phase 4: CLI Commands
+### Phase 4: Operator Interface Boundary
+
+Extract any CLI-facing answer/resume behavior into reusable application operations before adding richer UX.
+
+Implement:
+
+- core answer operation callable by CLI and future adapters;
+- core answer validation operation;
+- core resume operation or dispatch helper callable by CLI and future adapters;
+- structured results for answered, pending, invalid, wrong-command, and resumed outcomes;
+- no direct terminal prompts inside tracker or orchestration core.
+
+Tests:
+
+- core answer operation updates the clarification without CLI parsing;
+- core validation rejects malformed manual edits;
+- core resume dispatch reports structured wrong-command guidance;
+- CLI commands delegate to the shared operations.
+
+### Phase 5: CLI Commands
 
 Add `devlab clarify` and `devlab resume`.
 
@@ -525,7 +621,7 @@ Implement:
 - `answer CLXXXX --choice ... --note ...`;
 - `answer CLXXXX --choice ... --resume`;
 - `answer CLXXXX --text ...`;
-- `supersede CLXXXX --reason ...`.
+- `supersede CLXXXX --reason ...`;
 - `resume`;
 
 Tests:
@@ -542,7 +638,7 @@ Tests:
 - unknown clarification ID;
 - command output for pending and answered states.
 
-### Phase 5: Prompt Context
+### Phase 6: Prompt Context
 
 Update `prompts.py` and role prompt resources.
 
@@ -560,7 +656,7 @@ Tests:
 - unrelated answered clarifications are omitted or summarized according to the chosen relevance rule;
 - pending blockers are visible in status but should normally prevent prompt invocation.
 
-### Phase 6: Reporting And Validation
+### Phase 7: Reporting And Validation
 
 Update `status`, `workflow-state`, `doctor`, and diagnostics.
 
@@ -578,7 +674,26 @@ Tests:
 - doctor rejects invalid status/shape and missing answer on answered records;
 - diagnostics counts clarification stops.
 
-### Phase 7: Traceability Extensions
+### Phase 8: Optional Editor Adapter
+
+Add interactive editor support only after durable stop/resume and shared operations are stable.
+
+Implement:
+
+- `--interactive-clarifications` for `devlab plan` and `devlab implement`;
+- editor command resolution using `$VISUAL`, then `$EDITOR`;
+- answer validation after editor exit;
+- resume through stored resume intent when valid;
+- stop with ordinary resume guidance when no editor exists or the answer remains invalid.
+
+Tests:
+
+- editor mode opens the configured editor command in a controlled test double;
+- valid edited answer resumes;
+- invalid edited answer stops or reopens according to the chosen UX;
+- missing editor stops with the clarification path and resume instructions.
+
+### Phase 9: Traceability Extensions
 
 Add optional `decision_refs` only after the core workflow is stable.
 
@@ -600,11 +715,14 @@ This phase should be deferred until there is enough real usage to know whether s
 - Whether `blocks = "none"` should be allowed in first implementation. Recommendation: yes for future-proofing, but it should be rare and visible.
 - Whether `[resume]` should support only one active pointer or a list. Recommendation: one active pointer for the first slice, because bounded sessions produce one clarification at a time.
 - Exactly when to clear `[resume]`. Recommendation: clear only after the matching command successfully gets past the interrupted blocker, not merely when the answer is written.
+- Whether editor mode should offer to reopen after invalid answers or stop immediately. Recommendation: allow one reopen prompt only in explicitly interactive mode; otherwise stop.
+- What structured result types the future server/API surface should consume. Recommendation: define only what CLI needs now, but avoid print-only core APIs.
 
 ## Non-Goals
 
 - Do not add a new clarification role.
 - Do not add open-ended interactive chat to the workflow loop.
+- Do not implement a DevLab server, REST API, email integration, webhook integration, or web UI in the first clarification slice.
 - Do not turn every planner uncertainty into an operator question.
 - Do not store clarification state only in logs or conversation memory.
 - Do not use findings as the primary clarification storage.
