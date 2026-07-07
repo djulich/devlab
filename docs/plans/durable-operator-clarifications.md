@@ -11,6 +11,7 @@ Key outcomes:
 - Role sessions can request clarification through a structured artifact contract.
 - DevLab stops in a durable "needs clarification" state.
 - Operators can answer through the CLI or by editing repository files.
+- DevLab records how the interrupted workflow should resume, so operators do not need to remember whether `devlab plan` or `devlab implement` is the correct next command.
 - Answered clarifications become stable workflow references.
 - Relevant answers are included in later role prompts.
 - Clarifications that affect project meaning, architecture, task scope, deployment expectations, or validation expectations are promoted into durable project knowledge when appropriate.
@@ -169,6 +170,67 @@ snapshot.pending_clarifications()
 snapshot.blocking_clarifications()
 ```
 
+## Resume State
+
+Clarification records store the question and answer. Workflow resume intent should be stored as orchestrator-owned workflow-control state, not inferred later from handoff prose.
+
+Extend `.devlab/workflow.toml` with a compact optional resume pointer:
+
+```toml
+[resume]
+blocked_by = "CL0001"
+command = "implement"
+role = "developer"
+task = "T0003"
+milestone = ""
+```
+
+Semantics:
+
+- `blocked_by` names the clarification that stopped the workflow.
+- `command` is the command family that may resume the interrupted work: `plan` or `implement`.
+- `role` is the interrupted role.
+- `task` is set for developer/reviewer task work.
+- `milestone` is set for integrator or architecture-review milestone work.
+- Empty `task` or `milestone` means the field does not apply.
+
+The resume pointer is a convenience and safety guard. It is not the source of the clarification answer; the clarification file remains the source for operator intent.
+
+When a clarification is answered, DevLab should not require the operator to use a special resume command. The stored resume intent lets DevLab handle all reasonable next commands consistently:
+
+- `devlab resume` resumes the stored command family.
+- `devlab clarify answer CL0001 ... --resume` answers and immediately resumes through the stored command family.
+- `devlab plan` may resume only when `command = "plan"`.
+- `devlab implement` may resume only when `command = "implement"`.
+- The wrong plain command stops with precise guidance rather than silently crossing the planning/implementation boundary.
+
+Example wrong-command message:
+
+```text
+Workflow is waiting to resume after CL0007.
+This clarification blocked implementation task T0003.
+
+Run:
+  devlab resume
+
+Or explicitly:
+  devlab implement
+```
+
+Plain `devlab plan` should not consume an implementation resume pointer. DevLab intentionally allows planning after implementation has started, but after a developer clarification the operator's plain planning command is ambiguous: it does not resume the interrupted task, and it may or may not be intended as a planning revision. Stop and ask for an explicit command instead.
+
+`devlab plan --revise` is different. It should be allowed to override an implementation resume pointer because the operator is explicitly choosing to revise planning. If the revision supersedes or changes the interrupted task, DevLab should preserve auditability by referencing or superseding the clarification and clearing the stale resume pointer only after the planning revision succeeds.
+
+For interrupted developer sessions, resume should target the same task. A developer clarification must not move the task to `in_review`; the task stays in its previous developable status, usually `open` or `changes_requested`. On resume, DevLab should verify:
+
+- the blocking clarification is answered;
+- the interrupted task still exists;
+- the task is still in a developable status;
+- dependencies are still satisfied;
+- no spec reconciliation blocker has appeared.
+
+If those checks pass, DevLab invokes the developer for the same task with the answered clarification in prompt context. If the task is no longer eligible, DevLab stops with a clear reconciliation message instead of selecting another task.
+
 ## Handoff Contract
 
 Extend handoffs with an optional `## Clarification Request` section.
@@ -219,14 +281,19 @@ When processing a valid handoff with a clarification request:
 
 1. Archive the handoff normally.
 2. Create a clarification file under `.devlab/clarifications/`.
-3. Do not advance the role's normal workflow state transition.
-4. Commit the clarification record through the existing automatic version-control path.
-5. Stop the run with a clear completed-but-blocked result:
+3. Write the `.devlab/workflow.toml` resume pointer for the interrupted command, role, task, or milestone.
+4. Do not advance the role's normal workflow state transition.
+5. Commit the clarification record and resume pointer through the existing automatic version-control path.
+6. Stop the run with a clear completed-but-blocked result:
 
 ```text
 Workflow stopped: operator clarification required.
 CL0001 Auth session timeout
-Answer with: devlab clarify answer CL0001 --choice A
+Answer and resume with: devlab clarify answer CL0001 --choice A --resume
+
+Or answer now and resume later:
+  devlab clarify answer CL0001 --choice A
+  devlab resume
 ```
 
 This should not be treated as an agent failure. The role made a valid bounded stop.
@@ -241,16 +308,27 @@ Before selecting the next role, DevLab should check blocking pending clarificati
 
 Initial implementation can conservatively block the whole command for any pending clarification except `blocks = "none"`. Add narrower task/milestone scoping after the basic tracker and CLI are stable.
 
+When an answered clarification has an active resume pointer:
+
+- matching `devlab plan` or `devlab implement` resumes normally;
+- `devlab resume` dispatches to the stored command family;
+- wrong plain commands stop with exact guidance;
+- explicit `devlab plan --revise` may override an implementation resume pointer and should clear or replace it only after successful planning reconciliation.
+
+Clear the resume pointer only after the resumed workflow gets past the interrupted blocker safely. For a developer clarification, that means the next developer session for the same task is invoked and processed without requesting the same clarification again. If the resumed session requests a new clarification, update the pointer to the new clarification.
+
 ## CLI UX
 
-Add a `clarify` command group:
+Add a `clarify` command group and a top-level `resume` command:
 
 ```bash
 devlab clarify list
 devlab clarify show CL0001
 devlab clarify answer CL0001 --choice A --note "Use 24h idle timeout for MVP."
+devlab clarify answer CL0001 --choice A --resume
 devlab clarify answer CL0001 --text "Use a 24h idle timeout and a 30d absolute timeout."
 devlab clarify supersede CL0001 --reason "Spec was edited to remove auth."
+devlab resume
 ```
 
 Recommended behavior:
@@ -260,10 +338,15 @@ Recommended behavior:
 - `answer --choice` validates the selected option exists in the body.
 - `answer --text` records free text under `## Answer`.
 - `answer` sets `status = "answered"` and `answered_at`.
+- `answer --resume` answers, validates the stored resume pointer, then dispatches to the correct workflow command.
 - `supersede` sets `status = "superseded"` and appends a short reason.
-- Commands mutate only clarification files; they do not resume workflow automatically.
+- `resume` resumes the answered clarification named by `.devlab/workflow.toml [resume]`.
+- `resume CL0001` may be added if multiple answered resume candidates become possible later.
+- Commands mutate only clarification files unless the operator explicitly passes `--resume` or runs `devlab resume`.
 
 Operators may also answer by editing the file directly. `doctor` should validate that edited answered clarifications satisfy the required shape.
+
+If the operator manually edits the clarification file and then runs `devlab resume`, DevLab should validate the edited answer before invoking any role. Invalid or empty answered records remain blocking and should produce a repair-oriented message.
 
 Future UX options:
 
@@ -406,9 +489,14 @@ Integrate clarification requests into `process_handoff()` and `run_loop()`.
 Implement:
 
 - create clarification from archived handoff;
+- write and parse `.devlab/workflow.toml [resume]`;
 - stop without normal workflow transition;
 - return an outcome that CLI can report as blocked rather than failed;
 - pre-role blocking check for pending blocking clarifications;
+- matching-command resume for `devlab plan` and `devlab implement`;
+- wrong-command guidance when the active resume pointer belongs to the other command family;
+- top-level `devlab resume` dispatch semantics in orchestration or CLI glue;
+- same-task resume validation for interrupted developer and reviewer sessions;
 - events for `clarification_requested` and `clarification_answered` if workflow events are already suitable.
 
 Tests:
@@ -417,19 +505,28 @@ Tests:
 - developer clarification does not move task to review;
 - reviewer clarification does not close or reject task;
 - answered clarification allows the next run to continue;
+- `devlab resume` dispatches to the stored command family;
+- matching `devlab plan` resumes planning clarification;
+- matching `devlab implement` resumes implementation clarification;
+- wrong plain command stops with exact resume guidance;
+- `devlab plan --revise` may override an implementation resume pointer;
+- developer resume selects the same task;
+- developer resume stops if the task no longer exists or is no longer developable;
 - pending clarification is committed through normal version-control flow.
 
 ### Phase 4: CLI Commands
 
-Add `devlab clarify`.
+Add `devlab clarify` and `devlab resume`.
 
 Implement:
 
 - `list`;
 - `show CLXXXX`;
 - `answer CLXXXX --choice ... --note ...`;
+- `answer CLXXXX --choice ... --resume`;
 - `answer CLXXXX --text ...`;
 - `supersede CLXXXX --reason ...`.
+- `resume`;
 
 Tests:
 
@@ -437,7 +534,11 @@ Tests:
 - show output;
 - answer choice validation;
 - answer text mutation;
+- answer with resume dispatch;
 - supersede mutation;
+- resume with answered clarification;
+- resume with pending clarification;
+- resume with no active resume pointer;
 - unknown clarification ID;
 - command output for pending and answered states.
 
@@ -497,6 +598,8 @@ This phase should be deferred until there is enough real usage to know whether s
 - Whether CLI `answer` should require `--note` for choice answers or allow the chosen option text to be the whole answer.
 - Whether a clarification request should be allowed alongside normal role state transitions. Recommendation: no for the first slice.
 - Whether `blocks = "none"` should be allowed in first implementation. Recommendation: yes for future-proofing, but it should be rare and visible.
+- Whether `[resume]` should support only one active pointer or a list. Recommendation: one active pointer for the first slice, because bounded sessions produce one clarification at a time.
+- Exactly when to clear `[resume]`. Recommendation: clear only after the matching command successfully gets past the interrupted blocker, not merely when the answer is written.
 
 ## Non-Goals
 
