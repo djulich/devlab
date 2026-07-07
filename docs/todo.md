@@ -124,6 +124,20 @@ Open design questions:
 - Should notifications be sent synchronously at the end of the command or queued/best-effort?
 - How should notification failures be reported without obscuring the primary workflow result?
 
+## 8. Server/API Operator Interface
+
+Priority: low. DevLab may eventually run as a long-lived service exposing APIs for starting workflows, inspecting state, answering clarifications, receiving notifications, and resuming blocked workflows.
+
+Do not implement this until the CLI workflow surface is stable. Near-term work should only preserve the architectural boundary: core workflow operations must remain callable without assuming an interactive terminal, and operator interfaces such as CLI, editor, REST API, webhooks, email, or a web UI should be adapters over durable repository-backed workflow state.
+
+Design pressure:
+
+- Keep the repository-backed workflow model authoritative.
+- Keep workflow mutations behind trackers, `Workspace` handles, and orchestrator-owned state transitions.
+- Return structured operation results from reusable workflow functions instead of relying only on terminal output.
+- Keep CLI commands thin enough that future server/API handlers can call the same operations.
+- Do not let external adapters bypass clarification validation, resume semantics, spec reconciliation guards, or planning/implementation command boundaries.
+
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).
