@@ -6,7 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- None.
+- [durable-operator-clarifications.md](durable-operator-clarifications.md) — add bounded, repository-backed operator clarification requests and answers for ambiguous or unsafe workflow decisions
 
 ## Implemented
 
