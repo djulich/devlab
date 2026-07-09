@@ -92,7 +92,6 @@ answer_shape = "choice"
 recommended_option = "A"
 decision_refs = []
 created_at = "2026-07-07T10:15:00Z"
-answered_at = ""
 +++
 ```
 
@@ -102,6 +101,8 @@ Allowed values:
 - `answer_shape`: `choice`, `text`, `file-edit`
 - `scope`: `workspace`, `planning`, `milestone:<id>`, `task:<id>`, `finding:<id>`
 - `blocks`: `planning`, `implementation`, `milestone:<id>`, `task:<id>`, `none`
+
+`answered_at` is omitted while a clarification is pending and added only when the clarification is answered.
 
 Recommended body:
 
@@ -367,7 +368,8 @@ Recommended behavior:
 
 - `list` shows pending items first, with id, title, asking role, scope, and blocks.
 - `show` prints the full clarification file.
-- `answer --choice` validates the selected option exists in the body.
+- `answer --choice` validates the selected option exists in the body and records the chosen option text as the answer.
+- `answer --choice` does not require `--note`; an optional note may add operator rationale.
 - `answer --text` records free text under `## Answer`.
 - `answer` sets `status = "answered"` and `answered_at`.
 - `answer --resume` answers, validates the stored resume pointer, then dispatches to the correct workflow command.
@@ -618,6 +620,7 @@ Implement:
 
 - `list`;
 - `show CLXXXX`;
+- `answer CLXXXX --choice ...`;
 - `answer CLXXXX --choice ... --note ...`;
 - `answer CLXXXX --choice ... --resume`;
 - `answer CLXXXX --text ...`;
@@ -706,17 +709,25 @@ Candidate extensions:
 
 This phase should be deferred until there is enough real usage to know whether scope-based prompt selection is insufficient.
 
-## Open Design Choices To Set During Implementation
+## Resolved Design Choices
 
-- Whether initial blocking should be global for all pending clarifications or honor task/milestone scope immediately.
-- Whether clarification files should use `answered_at = ""` or omit `answered_at` until answered.
-- Whether CLI `answer` should require `--note` for choice answers or allow the chosen option text to be the whole answer.
-- Whether a clarification request should be allowed alongside normal role state transitions. Recommendation: no for the first slice.
-- Whether `blocks = "none"` should be allowed in first implementation. Recommendation: yes for future-proofing, but it should be rare and visible.
-- Whether `[resume]` should support only one active pointer or a list. Recommendation: one active pointer for the first slice, because bounded sessions produce one clarification at a time.
-- Exactly when to clear `[resume]`. Recommendation: clear only after the matching command successfully gets past the interrupted blocker, not merely when the answer is written.
-- Whether editor mode should offer to reopen after invalid answers or stop immediately. Recommendation: allow one reopen prompt only in explicitly interactive mode; otherwise stop.
-- What structured result types the future server/API surface should consume. Recommendation: define only what CLI needs now, but avoid print-only core APIs.
+Initial blocking should be global for the first implementation. Any pending clarification with `blocks` other than `none` blocks the matching top-level command family instead of trying to route around task- or milestone-specific blockers. This keeps the first orchestration change small and avoids accidentally continuing through an unresolved operator decision. The tracker should still validate and preserve precise `blocks` values so narrower task/milestone scoping can be added later without changing the file format.
+
+Clarification files omit `answered_at` while pending and add it only when answered. This keeps front matter meaningful and matches the existing tracker style of omitting optional metadata until it applies.
+
+CLI choice answers should not require `--note`. Selecting a valid option is enough to answer the clarification; `--note` is optional operator rationale.
+
+A clarification request must not be allowed alongside normal role state transitions in the first slice. A role either completes its ordinary transition or asks for clarification and stops. Mixing both would make rollback, auditability, and resume semantics ambiguous.
+
+`blocks = "none"` is allowed in the first implementation for non-blocking decisions that should still be durable and visible. It should be rare, appear in status/reporting, and must not block workflow progress.
+
+`[resume]` supports one active pointer in the first slice. Bounded sessions produce one clarification at a time, so a list would add complexity before there is a real workflow need.
+
+Clear `[resume]` only after the matching command successfully gets past the interrupted blocker, not merely when the answer is written.
+
+Editor mode should allow one reopen prompt after an invalid answer only in explicitly interactive mode. Otherwise DevLab stops, prints the clarification path, and prints exact resume instructions.
+
+Future server/API structured result types should be limited to what the CLI needs now, but core operations must return structured results rather than only printing so later adapters can reuse the same semantics.
 
 ## Non-Goals
 
