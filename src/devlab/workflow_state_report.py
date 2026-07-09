@@ -5,6 +5,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from devlab.clarifications import Clarification
 from devlab.findings import Finding, FindingStatus
 from devlab.generations import (
     GENERATION_MANIFEST,
@@ -72,6 +73,30 @@ class CurrentWorkReport:
 
 
 @dataclasses.dataclass(frozen=True)
+class ClarificationBlockerReport:
+    id: str
+    title: str
+    asking_role: str
+    scope: str
+    blocks: str
+
+
+@dataclasses.dataclass(frozen=True)
+class ResumePointerReport:
+    blocked_by: str
+    command: str
+    role: str
+    task: str
+    milestone: str
+
+
+@dataclasses.dataclass(frozen=True)
+class ClarificationReport:
+    pending_blockers: list[ClarificationBlockerReport]
+    resume: ResumePointerReport | None
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkflowStateReport:
     project_mode: str
     lifecycle_phase: str
@@ -81,6 +106,7 @@ class WorkflowStateReport:
     specs: SpecReport
     history: PlanningHistoryReport
     current_work: CurrentWorkReport
+    clarifications: ClarificationReport
     lifecycle_events: int
 
     def as_dict(self) -> dict[str, object]:
@@ -109,6 +135,7 @@ class WorkflowStateDigest:
     summary: DigestSummary
     next_action: str
     current_work: CurrentWorkReport
+    clarifications: ClarificationReport
     specs: SpecReport
     planning_history: PlanningHistoryReport
     validation: ValidationDigest
@@ -133,6 +160,7 @@ def build_workflow_state_report(root: Path) -> WorkflowStateReport:
     tasks = snapshot.list_tasks()
     milestones = snapshot.list_milestones()
     findings = snapshot.list_findings()
+    clarifications = _clarification_report(snapshot.blocking_clarifications(), workflow_state)
     current_work = _current_work_report(tasks, milestones, findings)
     planning = PlanningReport(
         complete=workflow_state.planning.complete,
@@ -159,6 +187,7 @@ def build_workflow_state_report(root: Path) -> WorkflowStateReport:
         specs=specs,
         history=history,
         current_work=current_work,
+        clarifications=clarifications,
         lifecycle_events=len(events),
     )
 
@@ -171,6 +200,29 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     lines.append(f"Planning: {_bool_text(report.planning.complete)}")
     lines.append(f"Design plan: {_present_text(report.planning.design_plan_present)}")
     lines.append(f"Project plan: {_present_text(report.planning.project_plan_present)}")
+    if report.clarifications.pending_blockers:
+        lines.append(
+            "Pending clarification blockers: "
+            + str(len(report.clarifications.pending_blockers))
+        )
+        for blocker in report.clarifications.pending_blockers[:5]:
+            lines.append(
+                f"- {blocker.id}: {blocker.title} "
+                f"(scope={blocker.scope}, blocks={blocker.blocks}, role={blocker.asking_role})"
+            )
+    else:
+        lines.append("Pending clarification blockers: 0")
+    if report.clarifications.resume is not None:
+        resume = report.clarifications.resume
+        lines.append(
+            "Resume pointer: "
+            f"{resume.blocked_by} -> devlab {resume.command}"
+            + (f" {resume.role}" if resume.role else "")
+            + (f" task {resume.task}" if resume.task else "")
+            + (f" milestone {resume.milestone}" if resume.milestone else "")
+        )
+    else:
+        lines.append("Resume pointer: none")
     lines.append(f"Active generation: {report.generations.active}")
     lines.append(f"Archived generations: {len(report.generations.archived)}")
     lines.append("")
@@ -228,6 +280,7 @@ def build_workflow_state_digest(report: WorkflowStateReport) -> WorkflowStateDig
         ),
         next_action=_next_action(report),
         current_work=report.current_work,
+        clarifications=report.clarifications,
         specs=report.specs,
         planning_history=report.history,
         validation=ValidationDigest(state="not_reported"),
@@ -262,6 +315,28 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
         f"{digest.current_work.findings_resolved} resolved"
     )
     lines.append(f"- Milestones: {digest.current_work.milestones_total} total")
+    lines.append("")
+    lines.append("## Clarifications")
+    lines.append("")
+    lines.append(
+        f"- Pending blockers: {len(digest.clarifications.pending_blockers)}"
+    )
+    for blocker in digest.clarifications.pending_blockers[:5]:
+        lines.append(
+            f"- {blocker.id}: {blocker.title} "
+            f"(scope={blocker.scope}, blocks={blocker.blocks}, role={blocker.asking_role})"
+        )
+    if digest.clarifications.resume is not None:
+        resume = digest.clarifications.resume
+        lines.append(
+            "- Resume pointer: "
+            f"{resume.blocked_by} -> devlab {resume.command}"
+            + (f" {resume.role}" if resume.role else "")
+            + (f" task {resume.task}" if resume.task else "")
+            + (f" milestone {resume.milestone}" if resume.milestone else "")
+        )
+    else:
+        lines.append("- Resume pointer: none")
     lines.append("")
     lines.append("## Specs")
     lines.append("")
@@ -307,6 +382,18 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
 def _next_action(report: WorkflowStateReport) -> str:
     if report.lifecycle_phase == "uninitialized":
         return "Run `devlab init` to initialize DevLab workflow state."
+    if report.clarifications.resume is not None:
+        resume = report.clarifications.resume
+        return (
+            f"Answer clarification {resume.blocked_by} if needed, then run "
+            "`devlab resume`."
+        )
+    if report.clarifications.pending_blockers:
+        first = report.clarifications.pending_blockers[0]
+        return (
+            f"Answer clarification {first.id} with `devlab clarify answer {first.id} ...`, "
+            "then run `devlab resume`."
+        )
     if report.specs.dirty_spec_paths:
         return "Commit or revert dirty spec paths, then run `devlab plan` to reconcile specs."
     if report.specs.specs_changed_since_baseline is True:
@@ -369,7 +456,38 @@ def _uninitialized_report(root: Path, events: list[WorkflowEvent]) -> WorkflowSt
             findings_planned=0,
             findings_resolved=0,
         ),
+        clarifications=ClarificationReport(pending_blockers=[], resume=None),
         lifecycle_events=len(events),
+    )
+
+
+def _clarification_report(
+    blockers: Iterable[Clarification],
+    workflow_state: object,
+) -> ClarificationReport:
+    resume_state = getattr(workflow_state, "resume", None)
+    return ClarificationReport(
+        pending_blockers=[
+            ClarificationBlockerReport(
+                id=clarification.id,
+                title=clarification.title,
+                asking_role=clarification.asking_role,
+                scope=clarification.scope,
+                blocks=clarification.blocks,
+            )
+            for clarification in blockers
+        ],
+        resume=(
+            ResumePointerReport(
+                blocked_by=resume_state.blocked_by,
+                command=resume_state.command,
+                role=resume_state.role,
+                task=resume_state.task,
+                milestone=resume_state.milestone,
+            )
+            if resume_state is not None
+            else None
+        ),
     )
 
 

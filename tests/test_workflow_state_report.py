@@ -5,12 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from devlab.clarifications import FileClarificationTracker
 from devlab.findings import FileFindingTracker
 from devlab.generations import archive_active_generation
 from devlab.init import init_workspace
 from devlab.task_tracker import FileTaskTracker
 from devlab.workflow_events import append_workflow_event
-from devlab.workflow_state import initial_workflow_state_text
+from devlab.workflow_state import ResumeState, initial_workflow_state_text, set_resume_state
 from devlab.workflow_state_report import (
     build_workflow_state_digest,
     build_workflow_state_report,
@@ -42,6 +43,7 @@ def test_workflow_state_report_json_has_stable_sections(tmp_path: Path) -> None:
 
     assert set(payload) == {
         "current_work",
+        "clarifications",
         "generations",
         "history",
         "lifecycle_events",
@@ -54,6 +56,8 @@ def test_workflow_state_report_json_has_stable_sections(tmp_path: Path) -> None:
     assert payload["planning"]["complete"] is False
     assert payload["specs"]["baseline_commit"] == ""
     assert payload["current_work"]["tasks_total"] == 0
+    assert payload["clarifications"]["pending_blockers"] == []
+    assert payload["clarifications"]["resume"] is None
 
 
 def test_current_work_counts_tasks_milestones_and_findings(tmp_path: Path) -> None:
@@ -133,6 +137,8 @@ def test_format_workflow_state_report_is_compact(tmp_path: Path) -> None:
     assert "Workflow state:" in output
     assert "Project mode: unknown" in output
     assert "Lifecycle phase: awaiting design" in output
+    assert "Pending clarification blockers: 0" in output
+    assert "Resume pointer: none" in output
     assert "Current work:" in output
 
 
@@ -162,6 +168,7 @@ def test_workflow_state_digest_json_is_compact_projection(tmp_path: Path) -> Non
 
     assert set(payload) == {
         "current_work",
+        "clarifications",
         "next_action",
         "notes",
         "planning_history",
@@ -173,6 +180,84 @@ def test_workflow_state_digest_json_is_compact_projection(tmp_path: Path) -> Non
     assert payload["summary"]["active_generation"] == 1
     assert payload["next_action"] == "Run `devlab plan` to continue design or planning."
     assert payload["validation"]["state"] == "not_reported"
+    assert payload["clarifications"]["pending_blockers"] == []
+
+
+def test_workflow_state_report_includes_clarification_blockers(
+    tmp_path: Path,
+) -> None:
+    init_workspace(tmp_path)
+    clarification = _create_pending_clarification(tmp_path)
+
+    report = build_workflow_state_report(tmp_path)
+
+    assert len(report.clarifications.pending_blockers) == 1
+    blocker = report.clarifications.pending_blockers[0]
+    assert blocker.id == clarification
+    assert blocker.title == "Auth session timeout"
+    assert blocker.scope == "planning"
+    assert blocker.blocks == "planning"
+
+
+def test_workflow_state_report_includes_resume_pointer(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    clarification = _create_pending_clarification(tmp_path)
+    set_resume_state(
+        tmp_path,
+        ResumeState(
+            blocked_by=clarification,
+            command="plan",
+            role="planner",
+            task="",
+            milestone="",
+        ),
+    )
+
+    payload = json.loads(build_workflow_state_report(tmp_path).to_json())
+
+    assert payload["clarifications"]["pending_blockers"][0]["id"] == clarification
+    assert payload["clarifications"]["resume"] == {
+        "blocked_by": clarification,
+        "command": "plan",
+        "role": "planner",
+        "task": "",
+        "milestone": "",
+    }
+
+
+def test_workflow_state_digest_prioritizes_clarification_next_action(
+    tmp_path: Path,
+) -> None:
+    init_workspace(tmp_path)
+    clarification = _create_pending_clarification(tmp_path)
+
+    digest = build_workflow_state_digest(build_workflow_state_report(tmp_path))
+
+    assert digest.next_action == (
+        f"Answer clarification {clarification} with "
+        f"`devlab clarify answer {clarification} ...`, then run `devlab resume`."
+    )
+
+
+def test_workflow_state_digest_prioritizes_resume_pointer(
+    tmp_path: Path,
+) -> None:
+    init_workspace(tmp_path)
+    clarification = _create_pending_clarification(tmp_path)
+    set_resume_state(
+        tmp_path,
+        ResumeState(blocked_by=clarification, command="plan", role="planner"),
+    )
+
+    digest = build_workflow_state_digest(build_workflow_state_report(tmp_path))
+    output = format_workflow_state_digest(digest)
+
+    assert digest.next_action == (
+        f"Answer clarification {clarification} if needed, then run `devlab resume`."
+    )
+    assert "## Clarifications" in output
+    assert f"- {clarification}: Auth session timeout" in output
+    assert f"- Resume pointer: {clarification} -> devlab plan planner" in output
 
 
 def test_malformed_workflow_state_surfaces_error(tmp_path: Path) -> None:
@@ -233,6 +318,27 @@ def _write_required_dirs(root: Path) -> None:
         ".devlab/logs/agents",
     ):
         (root / relative).mkdir(parents=True, exist_ok=True)
+
+
+def _create_pending_clarification(root: Path) -> str:
+    clarification = FileClarificationTracker(root).create(
+        title="Auth session timeout",
+        asking_role="planner",
+        session_id="s1",
+        scope="planning",
+        blocks="planning",
+        answer_shape="choice",
+        recommended_option="A",
+        body=(
+            "# Auth session timeout\n\n"
+            "## Context\nC\n\n"
+            "## Question\nQ\n\n"
+            "## Options\n"
+            "- A: 24-hour idle timeout.\n"
+            "- B: No expiry for MVP.\n"
+        ),
+    )
+    return clarification.id
 
 
 def _devlab_files(root: Path) -> dict[str, str]:

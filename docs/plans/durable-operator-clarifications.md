@@ -34,7 +34,7 @@ The remaining work is refinement and extension rather than the first durable pat
 - keep scoped clarification blocking deferred; precise `blocks` values are preserved, but pending blocking clarifications still stop conservatively until real usage justifies task/milestone routing complexity;
 - finish strengthening resume validation so developer/reviewer resume cannot silently switch tasks and stops clearly when the interrupted task is missing, closed, dependency-blocked, or superseded by higher-priority reconciliation work;
 - continue tightening wrong-command guidance across command paths;
-- add clarification blockers to `devlab workflow-state` text and JSON output;
+- continue reporting refinements as needed; `devlab workflow-state` now includes clarification blockers and resume pointers in text, digest, and JSON output;
 - add diagnostics for clarification stops, answer latency/session distance, and repeated clarification requests;
 - continue improving repair guidance where needed; reusable manual-edit answer validation now distinguishes pending, empty answered, malformed, superseded, and choice-mismatch records, and `devlab resume` validates answers before invoking a role;
 - optionally add the editor adapter after shared operations are stable;
@@ -711,7 +711,7 @@ Tests:
 
 ### Phase 7: Reporting And Validation
 
-Status: partially implemented. `status` and `doctor` have clarification coverage, and doctor reuses shared answer validation for answered records. Remaining work is workflow-state text/JSON integration, diagnostics counters, answer latency/session-distance reporting, and repeated-request smell detection.
+Status: partially implemented. `status`, `doctor`, and `workflow-state` have clarification coverage. Doctor reuses shared answer validation for answered records, and workflow-state reports blockers plus resume pointers in text, digest, and JSON output. Remaining work is diagnostics counters, answer latency/session-distance reporting, and repeated-request smell detection.
 
 Update `status`, `workflow-state`, `doctor`, and diagnostics.
 
