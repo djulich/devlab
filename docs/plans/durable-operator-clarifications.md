@@ -36,7 +36,7 @@ The remaining work is refinement and extension rather than the first durable pat
 - continue tightening wrong-command guidance across command paths;
 - add clarification blockers to `devlab workflow-state` text and JSON output;
 - add diagnostics for clarification stops, answer latency/session distance, and repeated clarification requests;
-- improve manual-edit answer validation and make `devlab resume` validate edited answers before invoking a role;
+- continue improving repair guidance where needed; reusable manual-edit answer validation now distinguishes pending, empty answered, malformed, superseded, and choice-mismatch records, and `devlab resume` validates answers before invoking a role;
 - optionally add the editor adapter after shared operations are stable;
 - defer `decision_refs` traceability extensions until real usage shows scope-based prompt selection is insufficient.
 
@@ -639,7 +639,7 @@ Tests:
 
 ### Phase 4: Operator Interface Boundary
 
-Status: partially implemented. Shared clarification operations exist in `clarification_ops.py`; remaining work is richer reusable manual-edit validation and structured repair guidance for invalid answered records.
+Status: implemented for current adapter needs. Shared clarification operations exist in `clarification_ops.py`, including reusable manual-edit answer validation and structured resume dispatch results. Future adapters may add more result variants as their UX requires them.
 
 Extract any CLI-facing answer/resume behavior into reusable application operations before adding richer UX.
 
@@ -660,7 +660,7 @@ Tests:
 
 ### Phase 5: CLI Commands
 
-Status: implemented for the durable stop/answer/resume flow. Remaining CLI work is improved wrong-command copy, manual-edit validation before resume, and optional future commands such as `--use-default`.
+Status: implemented for the durable stop/answer/resume flow. `devlab resume` validates manually edited answers before invoking a role. Remaining CLI work is improved wrong-command copy and optional future commands such as `--use-default`.
 
 Add `devlab clarify` and `devlab resume`.
 
@@ -711,7 +711,7 @@ Tests:
 
 ### Phase 7: Reporting And Validation
 
-Status: partially implemented. `status` and `doctor` have initial clarification coverage. Remaining work is workflow-state text/JSON integration, diagnostics counters, answer latency/session-distance reporting, repeated-request smell detection, and more precise repair guidance for malformed manual edits.
+Status: partially implemented. `status` and `doctor` have clarification coverage, and doctor reuses shared answer validation for answered records. Remaining work is workflow-state text/JSON integration, diagnostics counters, answer latency/session-distance reporting, and repeated-request smell detection.
 
 Update `status`, `workflow-state`, `doctor`, and diagnostics.
 

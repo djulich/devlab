@@ -285,13 +285,21 @@ class FileClarificationTracker:
 
 
 def option_text(body: str, choice: str) -> str | None:
-    options = _markdown_section(body, "Options")
     choice = choice.strip()
-    for line in options.splitlines():
-        match = re.match(rf"^\s*[-*]\s+{re.escape(choice)}:\s*(.+?)\s*$", line)
-        if match is not None:
-            return f"{choice}: {match.group(1).strip()}"
+    for option in choice_option_texts(body):
+        if option.startswith(f"{choice}:"):
+            return option
     return None
+
+
+def choice_option_texts(body: str) -> tuple[str, ...]:
+    options = _markdown_section(body, "Options")
+    parsed: list[str] = []
+    for line in options.splitlines():
+        match = re.match(r"^\s*[-*]\s+([A-Za-z0-9_.-]+):\s*(.+?)\s*$", line)
+        if match is not None:
+            parsed.append(f"{match.group(1).strip()}: {match.group(2).strip()}")
+    return tuple(parsed)
 
 
 def _split_front_matter(text: str) -> tuple[dict[str, Any], str]:

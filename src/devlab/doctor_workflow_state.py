@@ -3,6 +3,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+from devlab.clarification_ops import validate_clarification_answer
 from devlab.clarifications import CLARIFICATIONS_DIR, FileClarificationTracker
 from devlab.doctor_common import DoctorProblem, display_path
 from devlab.findings import FindingStatus
@@ -98,6 +99,10 @@ def check_clarifications(root: Path) -> list[DoctorProblem]:
                         "pending clarification is missing ## Question",
                     )
                 )
+        else:
+            validation = validate_clarification_answer(root, clarification.id)
+            if not validation.valid:
+                problems.append(DoctorProblem(display_path(path, root), validation.message))
     return problems
 
 

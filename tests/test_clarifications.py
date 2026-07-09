@@ -4,12 +4,14 @@ from pathlib import Path
 
 import pytest
 
+from devlab.clarification_ops import resume_workflow, validate_clarification_answer
 from devlab.clarifications import (
     CLARIFICATIONS_DIR,
     ClarificationAnswerShape,
     ClarificationStatus,
     FileClarificationTracker,
 )
+from devlab.workflow_state import ResumeState, set_resume_state
 
 
 def _setup_clarifications_dir(root: Path) -> None:
@@ -280,3 +282,153 @@ def test_rejects_choice_answer_when_option_is_unknown(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unknown clarification option"):
         tracker.answer_choice(clarification.id, "C")
+
+
+def test_validate_clarification_answer_rejects_pending_record(tmp_path: Path) -> None:
+    _setup_clarifications_dir(tmp_path)
+    clarification = FileClarificationTracker(tmp_path).create(
+        title="Auth session timeout",
+        asking_role="planner",
+        session_id="s1",
+        scope="planning",
+        blocks="planning",
+        answer_shape="choice",
+        recommended_option="A",
+        body=_body(),
+    )
+
+    result = validate_clarification_answer(tmp_path, clarification.id)
+
+    assert result.valid is False
+    assert "still pending" in result.message
+
+
+def test_validate_clarification_answer_rejects_empty_manual_answer(
+    tmp_path: Path,
+) -> None:
+    _setup_clarifications_dir(tmp_path)
+    path = tmp_path / CLARIFICATIONS_DIR / "CL0001_empty.md"
+    path.write_text(
+        "+++\n"
+        'id = "CL0001"\n'
+        'title = "Empty"\n'
+        'status = "answered"\n'
+        'asking_role = "planner"\n'
+        'session_id = "s1"\n'
+        'scope = "planning"\n'
+        'blocks = "planning"\n'
+        'answer_shape = "text"\n'
+        'recommended_option = ""\n'
+        "decision_refs = []\n"
+        'created_at = "2026-07-07T10:00:00Z"\n'
+        'answered_at = "2026-07-07T10:20:00Z"\n'
+        "+++\n\n"
+        "# Empty\n\n"
+        "## Context\nC\n\n"
+        "## Question\nQ\n\n"
+        "## Answer\n"
+    )
+
+    result = validate_clarification_answer(tmp_path, "CL0001")
+
+    assert result.valid is False
+    assert "empty ## Answer section" in result.message
+
+
+def test_validate_clarification_answer_rejects_choice_mismatch(
+    tmp_path: Path,
+) -> None:
+    _setup_clarifications_dir(tmp_path)
+    path = tmp_path / CLARIFICATIONS_DIR / "CL0001_choice.md"
+    path.write_text(
+        "+++\n"
+        'id = "CL0001"\n'
+        'title = "Choice"\n'
+        'status = "answered"\n'
+        'asking_role = "planner"\n'
+        'session_id = "s1"\n'
+        'scope = "planning"\n'
+        'blocks = "planning"\n'
+        'answer_shape = "choice"\n'
+        'recommended_option = "A"\n'
+        "decision_refs = []\n"
+        'created_at = "2026-07-07T10:00:00Z"\n'
+        'answered_at = "2026-07-07T10:20:00Z"\n'
+        "+++\n\n"
+        "# Choice\n\n"
+        "## Context\nC\n\n"
+        "## Question\nQ\n\n"
+        "## Options\n"
+        "- A: 24-hour idle timeout.\n"
+        "- B: No expiry for MVP.\n\n"
+        "## Answer\n"
+        "C: Something else.\n"
+    )
+
+    result = validate_clarification_answer(tmp_path, "CL0001")
+
+    assert result.valid is False
+    assert "choice answer must match one listed option" in result.message
+
+
+def test_validate_clarification_answer_accepts_manual_choice_answer(
+    tmp_path: Path,
+) -> None:
+    _setup_clarifications_dir(tmp_path)
+    path = tmp_path / CLARIFICATIONS_DIR / "CL0001_choice.md"
+    path.write_text(
+        "+++\n"
+        'id = "CL0001"\n'
+        'title = "Choice"\n'
+        'status = "answered"\n'
+        'asking_role = "planner"\n'
+        'session_id = "s1"\n'
+        'scope = "planning"\n'
+        'blocks = "planning"\n'
+        'answer_shape = "choice"\n'
+        'recommended_option = "A"\n'
+        "decision_refs = []\n"
+        'created_at = "2026-07-07T10:00:00Z"\n'
+        'answered_at = "2026-07-07T10:20:00Z"\n'
+        "+++\n\n"
+        "# Choice\n\n"
+        "## Context\nC\n\n"
+        "## Question\nQ\n\n"
+        "## Options\n"
+        "- A: 24-hour idle timeout.\n"
+        "- B: No expiry for MVP.\n\n"
+        "## Answer\n"
+        "A: 24-hour idle timeout.\n\n"
+        "Operator note: Use this for MVP.\n"
+    )
+
+    result = validate_clarification_answer(tmp_path, "CL0001")
+
+    assert result.valid is True
+
+
+def test_resume_workflow_validates_answer_before_invoking_role(tmp_path: Path) -> None:
+    _setup_clarifications_dir(tmp_path)
+    clarification = FileClarificationTracker(tmp_path).create(
+        title="Auth session timeout",
+        asking_role="planner",
+        session_id="s1",
+        scope="planning",
+        blocks="planning",
+        answer_shape="choice",
+        recommended_option="A",
+        body=_body(),
+    )
+    set_resume_state(
+        tmp_path,
+        ResumeState(
+            blocked_by=clarification.id,
+            command="plan",
+            role="planner",
+        ),
+    )
+
+    result = resume_workflow(tmp_path)
+
+    assert result.resumed is False
+    assert "still pending" in result.message

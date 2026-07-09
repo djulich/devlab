@@ -174,6 +174,40 @@ def test_doctor_reports_invalid_clarification_record(tmp_path: Path) -> None:
     assert "answered clarification requires answered_at" in messages
 
 
+def test_doctor_reports_choice_clarification_answer_mismatch(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    path = tmp_path / ".devlab/clarifications/CL0001_choice.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "+++\n"
+        'id = "CL0001"\n'
+        'title = "Choice"\n'
+        'status = "answered"\n'
+        'asking_role = "planner"\n'
+        'session_id = "s1"\n'
+        'scope = "planning"\n'
+        'blocks = "planning"\n'
+        'answer_shape = "choice"\n'
+        'recommended_option = "A"\n'
+        "decision_refs = []\n"
+        'created_at = "2026-07-07T10:00:00Z"\n'
+        'answered_at = "2026-07-07T10:20:00Z"\n'
+        "+++\n\n"
+        "# Choice\n\n"
+        "## Context\nC\n\n"
+        "## Question\nQ\n\n"
+        "## Options\n"
+        "- A: 24-hour idle timeout.\n"
+        "- B: No expiry for MVP.\n\n"
+        "## Answer\n"
+        "C: Something else.\n"
+    )
+
+    messages = _messages(tmp_path)
+
+    assert any("choice answer must match one listed option" in message for message in messages)
+
+
 def test_doctor_reports_dirty_git_worktree(tmp_path: Path) -> None:
     init_workspace(
         tmp_path,
