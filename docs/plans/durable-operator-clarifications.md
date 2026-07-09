@@ -35,7 +35,7 @@ The remaining work is refinement and extension rather than the first durable pat
 - finish strengthening resume validation so developer/reviewer resume cannot silently switch tasks and stops clearly when the interrupted task is missing, closed, dependency-blocked, or superseded by higher-priority reconciliation work;
 - continue tightening wrong-command guidance across command paths;
 - continue reporting refinements as needed; `devlab workflow-state` now includes clarification blockers and resume pointers in text, digest, and JSON output;
-- add diagnostics for clarification stops, answer latency/session distance, and repeated clarification requests;
+- continue diagnostics refinements as needed; diagnostics now report clarification stops by role, record counts, average answer latency when timestamps are available, and repeated role/scope request warnings;
 - continue improving repair guidance where needed; reusable manual-edit answer validation now distinguishes pending, empty answered, malformed, superseded, and choice-mismatch records, and `devlab resume` validates answers before invoking a role;
 - optionally add the editor adapter after shared operations are stable;
 - defer `decision_refs` traceability extensions until real usage shows scope-based prompt selection is insufficient.
@@ -711,7 +711,7 @@ Tests:
 
 ### Phase 7: Reporting And Validation
 
-Status: partially implemented. `status`, `doctor`, and `workflow-state` have clarification coverage. Doctor reuses shared answer validation for answered records, and workflow-state reports blockers plus resume pointers in text, digest, and JSON output. Remaining work is diagnostics counters, answer latency/session-distance reporting, and repeated-request smell detection.
+Status: implemented for current reporting needs. `status`, `doctor`, `workflow-state`, and diagnostics have clarification coverage. Doctor reuses shared answer validation for answered records; workflow-state reports blockers plus resume pointers in text, digest, and JSON output; diagnostics report clarification stops by role, record counts, average answer latency when timestamps are available, and repeated role/scope request warnings. Future work can refine session-distance metrics if needed.
 
 Update `status`, `workflow-state`, `doctor`, and diagnostics.
 

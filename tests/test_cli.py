@@ -267,6 +267,8 @@ def test_cli_diagnostics_json_reports_structured_workflow_diagnostics(
     payload = json.loads(capsys.readouterr().out)
     assert payload["roles"] == []
     assert payload["tasks"]["total"] == 0
+    assert payload["clarifications"]["stops_total"] == 0
+    assert payload["clarifications"]["stops_by_role"] == {}
     assert payload["profiles"]["ids"] == ["default"]
     assert payload["quality"]["correctness_checked"] is False
     assert payload["quality"]["correctness_passed"] is None

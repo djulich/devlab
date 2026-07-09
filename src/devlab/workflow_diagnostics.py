@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -20,10 +21,12 @@ from devlab.artifact_hygiene import (
     collect_artifact_hygiene,
     has_large_ignored_artifacts,
 )
+from devlab.clarifications import ClarificationStatus
 from devlab.findings import FindingStatus
 from devlab.generations import active_generation, archived_generation_numbers
 from devlab.profiles import DEFAULT_PROFILE, PROFILES_DIR, load_profile
 from devlab.task_tracker import TaskStatus
+from devlab.workflow_events import WorkflowEvent, load_workflow_events
 from devlab.workflow_history import (
     IntegratorReworkSummary,
     SessionRecord,
@@ -102,6 +105,18 @@ class GenerationMetrics:
 
 
 @dataclasses.dataclass(frozen=True)
+class ClarificationMetrics:
+    stops_total: int
+    stops_by_role: dict[str, int]
+    pending: int
+    answered: int
+    superseded: int
+    answered_latency_seconds_avg: float | None
+    repeated_roles: list[str]
+    repeated_scopes: list[str]
+
+
+@dataclasses.dataclass(frozen=True)
 class QualitySummary:
     correctness_checked: bool
     correctness_passed: bool | None
@@ -124,6 +139,7 @@ class WorkflowDiagnostics:
     integrator_rework: IntegratorReworkSummary
     profiles: ProfileMetrics
     generations: GenerationMetrics
+    clarifications: ClarificationMetrics
     artifact_hygiene: ArtifactHygiene
     agent_logs: AgentLogMetrics
     prompt_logs: PromptLogMetrics
@@ -139,12 +155,14 @@ class WorkflowDiagnostics:
 def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
     snapshot = Workspace(root).snapshot
     findings = snapshot.list_findings()
+    events = load_workflow_events(root)
     sessions = derive_session_records(root)
     task_metrics = collect_task_metrics(root, snapshot=snapshot)
     artifact_hygiene = collect_artifact_hygiene(root)
     task_cycles = derive_task_cycle_metrics(root, sessions, snapshot=snapshot)
     task_rework = derive_task_rework_summary(task_cycles)
     integrator_rework = derive_integrator_rework_summary(findings)
+    clarification_metrics = collect_clarification_metrics(root, snapshot=snapshot, events=events)
     return WorkflowDiagnostics(
         sessions=sessions,
         roles=[session.role for session in sessions],
@@ -159,6 +177,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
         integrator_rework=integrator_rework,
         profiles=collect_profile_metrics(root, snapshot=snapshot),
         generations=collect_generation_metrics(root),
+        clarifications=clarification_metrics,
         artifact_hygiene=artifact_hygiene,
         agent_logs=collect_agent_log_metrics(root),
         prompt_logs=collect_prompt_log_metrics(root),
@@ -169,6 +188,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
             sessions_run=len(sessions),
             task_rework=task_rework,
             integrator_rework=integrator_rework,
+            clarification_metrics=clarification_metrics,
         ),
     )
 
@@ -177,6 +197,52 @@ def collect_generation_metrics(root: Path) -> GenerationMetrics:
     return GenerationMetrics(
         active=active_generation(root),
         archived=list(archived_generation_numbers(root)),
+    )
+
+
+def collect_clarification_metrics(
+    root: Path,
+    *,
+    snapshot: WorkspaceSnapshot | None = None,
+    events: list[WorkflowEvent] | None = None,
+) -> ClarificationMetrics:
+    snapshot = snapshot or Workspace(root).snapshot
+    events = events if events is not None else load_workflow_events(root)
+    requested_events = [event for event in events if event.type == "clarification_requested"]
+    stops_by_role: dict[str, int] = {}
+    for event in requested_events:
+        role = str(event.data.get("role") or "unknown")
+        stops_by_role[role] = stops_by_role.get(role, 0) + 1
+
+    clarifications = snapshot.list_clarifications()
+    scope_counts: dict[str, int] = {}
+    for clarification in clarifications:
+        scope_counts[clarification.scope] = scope_counts.get(clarification.scope, 0) + 1
+    latencies: list[float] = []
+    for clarification in clarifications:
+        if clarification.status != ClarificationStatus.ANSWERED:
+            continue
+        if clarification.answered_at is None:
+            continue
+        created = _parse_timestamp(clarification.created_at)
+        answered = _parse_timestamp(clarification.answered_at)
+        if created is None or answered is None:
+            continue
+        latencies.append((answered - created).total_seconds())
+
+    return ClarificationMetrics(
+        stops_total=len(requested_events),
+        stops_by_role=dict(sorted(stops_by_role.items())),
+        pending=sum(1 for item in clarifications if item.status == ClarificationStatus.PENDING),
+        answered=sum(1 for item in clarifications if item.status == ClarificationStatus.ANSWERED),
+        superseded=sum(
+            1 for item in clarifications if item.status == ClarificationStatus.SUPERSEDED
+        ),
+        answered_latency_seconds_avg=(
+            sum(latencies) / len(latencies) if latencies else None
+        ),
+        repeated_roles=sorted(role for role, count in stops_by_role.items() if count > 1),
+        repeated_scopes=sorted(scope for scope, count in scope_counts.items() if count > 1),
     )
 
 
@@ -285,6 +351,7 @@ def quality_summary(
     sessions_run: int,
     task_rework: TaskReworkSummary | None = None,
     integrator_rework: IntegratorReworkSummary | None = None,
+    clarification_metrics: ClarificationMetrics | None = None,
 ) -> QualitySummary:
     closed = task_metrics.by_status.get(TaskStatus.CLOSED.value, 0)
     all_tasks_closed = task_metrics.total == closed
@@ -295,6 +362,15 @@ def quality_summary(
         )
     if integrator_rework is not None and integrator_rework.findings_created:
         warnings.append(f"integrator findings created: {integrator_rework.findings_created}")
+    if clarification_metrics is not None:
+        warnings.extend(
+            f"repeated clarification requests by role: {role}"
+            for role in clarification_metrics.repeated_roles
+        )
+        warnings.extend(
+            f"repeated clarification requests for scope: {scope}"
+            for scope in clarification_metrics.repeated_scopes
+        )
     if closed and sessions_run / closed > HIGH_SESSIONS_PER_CLOSED_TASK_WARNING:
         warnings.append(f"high session count per closed task: {sessions_run}/{closed}")
     if artifact_hygiene.ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING:
@@ -327,6 +403,7 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
     lines.append(_format_task_summary(diagnostics.tasks))
     lines.append(_format_rework_summary(diagnostics.task_rework))
     lines.append(_format_integrator_summary(diagnostics.integrator_rework))
+    lines.append(_format_clarification_summary(diagnostics.clarifications))
     lines.append(_format_profile_summary(diagnostics.profiles))
     lines.append(_format_generation_summary(diagnostics.generations))
     lines.append(_format_artifact_hygiene_summary(diagnostics.artifact_hygiene))
@@ -369,6 +446,30 @@ def _format_integrator_summary(integrator_rework: IntegratorReworkSummary) -> st
         f"{integrator_rework.findings_resolved} resolved, "
         f"{integrator_rework.findings_open} open, "
         f"{integrator_rework.findings_planned} planned"
+    )
+
+
+def _format_clarification_summary(clarifications: ClarificationMetrics) -> str:
+    latency = (
+        f"{clarifications.answered_latency_seconds_avg:.0f}s"
+        if clarifications.answered_latency_seconds_avg is not None
+        else "unknown"
+    )
+    roles = (
+        ", ".join(
+            f"{role}={count}" for role, count in clarifications.stops_by_role.items()
+        )
+        if clarifications.stops_by_role
+        else "none"
+    )
+    return (
+        "Clarifications: "
+        f"{clarifications.stops_total} stops, "
+        f"{clarifications.pending} pending, "
+        f"{clarifications.answered} answered, "
+        f"{clarifications.superseded} superseded, "
+        f"avg answer latency {latency}, "
+        f"by role: {roles}"
     )
 
 
@@ -455,6 +556,26 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     )
 
     lines.append("")
+    lines.append("Clarifications:")
+    lines.append(f"- stops: {diagnostics.clarifications.stops_total}")
+    lines.append(f"- by_role: {diagnostics.clarifications.stops_by_role or {}}")
+    lines.append(
+        "- records: "
+        f"pending={diagnostics.clarifications.pending} "
+        f"answered={diagnostics.clarifications.answered} "
+        f"superseded={diagnostics.clarifications.superseded}"
+    )
+    latency = diagnostics.clarifications.answered_latency_seconds_avg
+    lines.append(
+        "- avg_answer_latency_seconds: "
+        + (f"{latency:.0f}" if latency is not None else "unknown")
+    )
+    repeated_roles = ", ".join(diagnostics.clarifications.repeated_roles) or "none"
+    repeated_scopes = ", ".join(diagnostics.clarifications.repeated_scopes) or "none"
+    lines.append(f"- repeated_roles: {repeated_roles}")
+    lines.append(f"- repeated_scopes: {repeated_scopes}")
+
+    lines.append("")
     lines.append("Artifact contributors:")
     lines.extend(
         _format_artifact_contributor_group(
@@ -488,3 +609,10 @@ def _format_artifact_contributor_group(
 
 def _bool_text(value: bool) -> str:
     return "true" if value else "false"
+
+
+def _parse_timestamp(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
