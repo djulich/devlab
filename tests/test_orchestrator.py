@@ -336,8 +336,13 @@ def test_run_loop_rejects_wrong_plain_command_for_active_resume_pointer(
 
     assert result.exit_code == 1
     assert result.errors[0].phase == "clarification_resume"
-    assert "devlab resume" in result.errors[0].message
-    assert "devlab implement" in result.errors[0].message
+    assert "Workflow is waiting to resume after CL0001" in result.errors[0].message
+    assert "command=devlab implement" in result.errors[0].message
+    assert "role=developer" in result.errors[0].message
+    assert "task=T0001" in result.errors[0].message
+    assert "Run `devlab resume`" in result.errors[0].message
+    assert "explicitly run `devlab implement`" in result.errors[0].message
+    assert "devlab plan --revise" in result.errors[0].message
 
 
 def test_run_loop_clears_matching_resume_pointer_after_session(
@@ -482,6 +487,8 @@ def test_run_loop_resume_fails_when_interrupted_task_is_missing(
 
     assert result.exit_code == 1
     assert "Interrupted task T0001 no longer exists" in result.errors[0].message
+    assert "command=devlab implement" in result.errors[0].message
+    assert "devlab clarify supersede CL0001 --reason ..." in result.errors[0].message
     assert load_workflow_state(tmp_path).resume is not None
 
 

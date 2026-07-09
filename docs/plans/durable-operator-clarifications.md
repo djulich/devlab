@@ -33,7 +33,7 @@ The remaining work is refinement and extension rather than the first durable pat
 
 - keep scoped clarification blocking deferred; precise `blocks` values are preserved, but pending blocking clarifications still stop conservatively until real usage justifies task/milestone routing complexity;
 - finish strengthening resume validation so developer/reviewer resume cannot silently switch tasks and stops clearly when the interrupted task is missing, closed, dependency-blocked, or superseded by higher-priority reconciliation work;
-- continue tightening wrong-command guidance across command paths;
+- continue UX refinements as needed; wrong-command and resume guidance now include the stored route, exact answer/resume commands, and repair guidance for stale interrupted work;
 - continue reporting refinements as needed; `devlab workflow-state` now includes clarification blockers and resume pointers in text, digest, and JSON output;
 - continue diagnostics refinements as needed; diagnostics now report clarification stops by role, record counts, average answer latency when timestamps are available, and repeated role/scope request warnings;
 - continue improving repair guidance where needed; reusable manual-edit answer validation now distinguishes pending, empty answered, malformed, superseded, and choice-mismatch records, and `devlab resume` validates answers before invoking a role;
@@ -605,7 +605,7 @@ Implement:
 
 ### Phase 3: Orchestrator Stop/Resume
 
-Status: partially implemented. The durable stop, answer, resume pointer, wrong-command guard, conservative pending-blocker path, and same-task/same-route resume validation exist. Scoped task/milestone blocker routing is intentionally deferred pending real usage evidence.
+Status: partially implemented. The durable stop, answer, resume pointer, wrong-command guard, conservative pending-blocker path, same-task/same-route resume validation, and normalized wrong-command guidance exist. Scoped task/milestone blocker routing is intentionally deferred pending real usage evidence.
 
 Integrate clarification requests into `process_handoff()` and `run_loop()`.
 
@@ -660,7 +660,7 @@ Tests:
 
 ### Phase 5: CLI Commands
 
-Status: implemented for the durable stop/answer/resume flow. `devlab resume` validates manually edited answers before invoking a role. Remaining CLI work is improved wrong-command copy and optional future commands such as `--use-default`.
+Status: implemented for the durable stop/answer/resume flow. `devlab resume` validates manually edited answers before invoking a role and prints normalized guidance for missing, pending, invalid, or stale resume state. Remaining CLI work is optional future commands such as `--use-default`.
 
 Add `devlab clarify` and `devlab resume`.
 

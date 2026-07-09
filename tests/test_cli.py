@@ -10,6 +10,7 @@ import pytest
 
 from devlab.clarifications import FileClarificationTracker
 from devlab.cli import main
+from devlab.workflow_state import ResumeState, set_resume_state
 
 
 def _run_cli(monkeypatch: pytest.MonkeyPatch, *args: str) -> None:
@@ -194,6 +195,39 @@ def test_cli_clarify_supersede_updates_record(
     assert "Superseded CL0001" in output
     clarification = FileClarificationTracker(tmp_path).get(clarification_id)
     assert clarification.status.value == "superseded"
+
+
+def test_cli_resume_without_pointer_prints_next_inspection_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "resume", "--root", str(tmp_path))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "No active clarification resume pointer" in output
+    assert "devlab workflow-state" in output
+
+
+def test_cli_resume_pending_clarification_prints_answer_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clarification_id = _create_clarification(tmp_path)
+    set_resume_state(
+        tmp_path,
+        ResumeState(blocked_by=clarification_id, command="plan", role="planner"),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "resume", "--root", str(tmp_path))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert f"Workflow is waiting to resume after {clarification_id}" in output
+    assert "command=devlab plan" in output
+    assert "role=planner" in output
+    assert f"devlab clarify answer {clarification_id} ..." in output
+    assert "devlab resume" in output
 
 
 def test_cli_workflow_state_json_reports_lifecycle_state(

@@ -12,7 +12,7 @@ from devlab.clarifications import (
     choice_option_texts,
 )
 from devlab.orchestrator import RunResult, run_loop
-from devlab.workflow_state import clear_resume_state, load_workflow_state
+from devlab.workflow_state import ResumeState, clear_resume_state, load_workflow_state
 
 
 @dataclasses.dataclass(frozen=True)
@@ -147,10 +147,17 @@ def supersede_clarification(root: Path, clarification_id: str, reason: str) -> C
 def resume_workflow(root: Path, *, max_sessions: int = 20) -> ResumeDispatchResult:
     state = load_workflow_state(root)
     if state.resume is None:
-        return ResumeDispatchResult(False, "No active clarification resume pointer.")
+        return ResumeDispatchResult(
+            False,
+            "No active clarification resume pointer. Run `devlab workflow-state` "
+            "to inspect the next workflow action.",
+        )
     validation = validate_clarification_answer(root, state.resume.blocked_by)
     if not validation.valid:
-        return ResumeDispatchResult(False, validation.message)
+        return ResumeDispatchResult(
+            False,
+            _resume_validation_message(state.resume, validation.message),
+        )
     result = run_loop(
         root,
         max_sessions=max_sessions,
@@ -167,6 +174,26 @@ def resume_workflow(root: Path, *, max_sessions: int = 20) -> ResumeDispatchResu
     if result.exit_code == 0 and result.sessions_run > 0:
         clear_resume_state(root)
     return ResumeDispatchResult(True, "Resumed workflow.", result)
+
+
+def _resume_validation_message(resume: ResumeState, validation_message: str) -> str:
+    return (
+        f"Workflow is waiting to resume after {resume.blocked_by} "
+        f"({_resume_context(resume)}). {validation_message} "
+        f"Answer it with `devlab clarify answer {resume.blocked_by} ...`, "
+        "then run `devlab resume`."
+    )
+
+
+def _resume_context(resume: ResumeState) -> str:
+    details = [f"command=devlab {resume.command}"]
+    if resume.role:
+        details.append(f"role={resume.role}")
+    if resume.task:
+        details.append(f"task={resume.task}")
+    if resume.milestone:
+        details.append(f"milestone={resume.milestone}")
+    return ", ".join(details)
 
 
 def format_clarification_list(clarifications: list[Clarification]) -> str:

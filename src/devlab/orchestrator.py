@@ -732,14 +732,44 @@ def _wrong_resume_command_error(
         return None
     if requested_command == "plan" and revise_plan:
         return None
-    message = (
-        f"Workflow is waiting to resume after {resume.blocked_by}. "
-        f"This clarification blocked {resume.command}"
-        + (f" task {resume.task}" if resume.task else "")
-        + ". Run `devlab resume` or explicitly run "
-        + f"`devlab {resume.command}`."
+    message = _resume_guidance(
+        resume,
+        "The requested plain command is "
+        f"`devlab {requested_command}`, but the stored resume route is "
+        f"`devlab {resume.command}`.",
+        include_wrong_command_repair=True,
     )
     return SessionError("clarification_resume", message, 1)
+
+
+def _resume_context(resume: ResumeState) -> str:
+    details = [f"command=devlab {resume.command}"]
+    if resume.role:
+        details.append(f"role={resume.role}")
+    if resume.task:
+        details.append(f"task={resume.task}")
+    if resume.milestone:
+        details.append(f"milestone={resume.milestone}")
+    return ", ".join(details)
+
+
+def _resume_guidance(
+    resume: ResumeState,
+    reason: str,
+    *,
+    include_wrong_command_repair: bool = False,
+) -> str:
+    message = (
+        f"Workflow is waiting to resume after {resume.blocked_by} "
+        f"({_resume_context(resume)}). {reason} "
+        "Run `devlab resume` to continue the stored route."
+    )
+    if include_wrong_command_repair:
+        message += (
+            f" Or explicitly run `devlab {resume.command}`. "
+            "If you intended to revise planning instead, run `devlab plan --revise`."
+        )
+    return message
 
 
 def _task_by_id(snapshot: WorkspaceSnapshot, task_id: str) -> Task | None:
@@ -761,18 +791,15 @@ def _resume_validation_error(
     if resume is None or resume.command != requested_command:
         return None
 
-    context = (
-        f"Resume after {resume.blocked_by} expected {resume.command}"
-        + (f" {resume.role}" if resume.role else "")
-        + (f" task {resume.task}" if resume.task else "")
-        + (f" milestone {resume.milestone}" if resume.milestone else "")
-        + "."
-    )
-
     def error(reason: str) -> SessionError:
+        repair = (
+            f"{reason} Run `devlab plan --revise` to reconcile workflow state, "
+            f"or supersede the clarification with `devlab clarify supersede "
+            f"{resume.blocked_by} --reason ...` if the interrupted work is obsolete."
+        )
         return SessionError(
             "clarification_resume",
-            f"{context} {reason} Run `devlab plan --revise` to reconcile workflow state.",
+            _resume_guidance(resume, repair),
             1,
         )
 

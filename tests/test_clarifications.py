@@ -432,3 +432,8 @@ def test_resume_workflow_validates_answer_before_invoking_role(tmp_path: Path) -
 
     assert result.resumed is False
     assert "still pending" in result.message
+    assert "Workflow is waiting to resume after CL0001" in result.message
+    assert "command=devlab plan" in result.message
+    assert "role=planner" in result.message
+    assert "devlab clarify answer CL0001 ..." in result.message
+    assert "devlab resume" in result.message
