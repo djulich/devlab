@@ -2,6 +2,44 @@
 
 This plan implements TODO #6 from `docs/todo.md`: support bounded operator clarification when a role session encounters an ambiguity, contradiction, missing prerequisite, or scope decision that cannot be resolved safely from repository state.
 
+## Current Progress
+
+The initial durable clarification workflow slice is implemented. DevLab now has repository-backed clarification records, a single active resume pointer, handoff parsing for bounded clarification requests, CLI answer/supersede/resume commands, prompt context for answered clarifications, and initial status/doctor integration.
+
+Completed implementation:
+
+- `src/devlab/clarifications.py`: file-backed tracker for `.devlab/clarifications/CLXXXX_slug.md`.
+- `src/devlab/clarification_ops.py`: shared answer, supersede, validation, and resume operations for CLI and future adapters.
+- `src/devlab/handoffs.py`: optional `## Clarification Request` parsing and validation.
+- `src/devlab/workflow_state.py`: optional `.devlab/workflow.toml [resume]` pointer support.
+- `src/devlab/workspace.py`: clarification access through `Workspace` and `WorkspaceSnapshot`.
+- `src/devlab/orchestrator.py`: clarification request handling, conservative pending-blocker checks, resume pointer creation, wrong-command guard, and resume pointer clearing after matching continuation.
+- `src/devlab/cli.py`: `devlab clarify list/show/answer/supersede` and `devlab resume`.
+- `src/devlab/prompts.py`: concise answered clarification context in role prompts.
+- `src/devlab/status.py` and `src/devlab/doctor_workflow_state.py`: initial read-only reporting and validation.
+- Documentation and packaged prompt conventions for clarification artifacts and answer/resume flow.
+- Focused tests, including tracker, handoff, orchestration, CLI, status, doctor, and prompt coverage.
+
+Validation from the completed slice:
+
+```bash
+uv --cache-dir /tmp/uv-cache run ruff check src tests
+uv --cache-dir /tmp/uv-cache run pytest
+```
+
+Observed result: ruff passed and pytest reported `490 passed, 7 skipped`.
+
+The remaining work is refinement and extension rather than the first durable path:
+
+- add task/milestone-scoped blocking instead of the current conservative global blocking for pending blocking clarifications;
+- strengthen resume validation so developer/reviewer resume cannot silently switch tasks and stops clearly when the interrupted task is missing, closed, dependency-blocked, or superseded by higher-priority reconciliation work;
+- complete wrong-command guidance across command paths;
+- add clarification blockers to `devlab workflow-state` text and JSON output;
+- add diagnostics for clarification stops, answer latency/session distance, and repeated clarification requests;
+- improve manual-edit answer validation and make `devlab resume` validate edited answers before invoking a role;
+- optionally add the editor adapter after shared operations are stable;
+- defer `decision_refs` traceability extensions until real usage shows scope-based prompt selection is insufficient.
+
 ## Goal
 
 DevLab should remain as autonomous as possible while giving agents a durable, auditable way to stop instead of inventing requirements.
@@ -538,6 +576,8 @@ Clarifications should not be used for:
 
 ### Phase 1: Clarification Tracker
 
+Status: implemented in the initial slice.
+
 Add `src/devlab/clarifications.py` and `tests/test_clarifications.py`.
 
 Implement:
@@ -552,6 +592,8 @@ Add `Workspace.clarifications()` and `WorkspaceSnapshot` read helpers.
 
 ### Phase 2: Handoff Parsing
 
+Status: implemented in the initial slice.
+
 Extend `src/devlab/handoffs.py`.
 
 Implement:
@@ -562,6 +604,8 @@ Implement:
 - tests for valid choice, valid text, valid file-edit, malformed TOML, missing context, missing question, missing options, and invalid enum values.
 
 ### Phase 3: Orchestrator Stop/Resume
+
+Status: partially implemented. The durable stop, answer, resume pointer, wrong-command guard, and conservative pending-blocker path exist. Remaining work is narrower task/milestone blocker routing and stronger same-task/same-route resume validation.
 
 Integrate clarification requests into `process_handoff()` and `run_loop()`.
 
@@ -595,6 +639,8 @@ Tests:
 
 ### Phase 4: Operator Interface Boundary
 
+Status: partially implemented. Shared clarification operations exist in `clarification_ops.py`; remaining work is richer reusable manual-edit validation and structured repair guidance for invalid answered records.
+
 Extract any CLI-facing answer/resume behavior into reusable application operations before adding richer UX.
 
 Implement:
@@ -613,6 +659,8 @@ Tests:
 - CLI commands delegate to the shared operations.
 
 ### Phase 5: CLI Commands
+
+Status: implemented for the durable stop/answer/resume flow. Remaining CLI work is improved wrong-command copy, manual-edit validation before resume, and optional future commands such as `--use-default`.
 
 Add `devlab clarify` and `devlab resume`.
 
@@ -643,6 +691,8 @@ Tests:
 
 ### Phase 6: Prompt Context
 
+Status: implemented for concise answered clarification context and role prompt conventions. Relevance can be refined later if task/finding `decision_refs` are added.
+
 Update `prompts.py` and role prompt resources.
 
 Implement:
@@ -660,6 +710,8 @@ Tests:
 - pending blockers are visible in status but should normally prevent prompt invocation.
 
 ### Phase 7: Reporting And Validation
+
+Status: partially implemented. `status` and `doctor` have initial clarification coverage. Remaining work is workflow-state text/JSON integration, diagnostics counters, answer latency/session-distance reporting, repeated-request smell detection, and more precise repair guidance for malformed manual edits.
 
 Update `status`, `workflow-state`, `doctor`, and diagnostics.
 
@@ -679,6 +731,8 @@ Tests:
 
 ### Phase 8: Optional Editor Adapter
 
+Status: remaining and optional.
+
 Add interactive editor support only after durable stop/resume and shared operations are stable.
 
 Implement:
@@ -697,6 +751,8 @@ Tests:
 - missing editor stops with the clarification path and resume instructions.
 
 ### Phase 9: Traceability Extensions
+
+Status: deferred.
 
 Add optional `decision_refs` only after the core workflow is stable.
 
