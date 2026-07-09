@@ -742,6 +742,119 @@ def _wrong_resume_command_error(
     return SessionError("clarification_resume", message, 1)
 
 
+def _task_by_id(snapshot: WorkspaceSnapshot, task_id: str) -> Task | None:
+    for task in snapshot.list_tasks():
+        if task.id == task_id:
+            return task
+    return None
+
+
+def _resume_validation_error(
+    snapshot: WorkspaceSnapshot,
+    resume: ResumeState | None,
+    *,
+    requested_command: str,
+    role_name: str | None,
+    task_id: str | None,
+    milestone_id: str | None,
+) -> SessionError | None:
+    if resume is None or resume.command != requested_command:
+        return None
+
+    context = (
+        f"Resume after {resume.blocked_by} expected {resume.command}"
+        + (f" {resume.role}" if resume.role else "")
+        + (f" task {resume.task}" if resume.task else "")
+        + (f" milestone {resume.milestone}" if resume.milestone else "")
+        + "."
+    )
+
+    def error(reason: str) -> SessionError:
+        return SessionError(
+            "clarification_resume",
+            f"{context} {reason} Run `devlab plan --revise` to reconcile workflow state.",
+            1,
+        )
+
+    if resume.role == "developer":
+        if not resume.task:
+            return error("The resume pointer is missing the interrupted task.")
+        task = _task_by_id(snapshot, resume.task)
+        if task is None:
+            return error(f"Interrupted task {resume.task} no longer exists.")
+        if task.status not in {TaskStatus.OPEN, TaskStatus.CHANGES_REQUESTED}:
+            return error(
+                f"Interrupted task {resume.task} is {task.status.value}, not developable."
+            )
+        closed_ids = {
+            candidate.id
+            for candidate in snapshot.list_tasks()
+            if candidate.status == TaskStatus.CLOSED
+        }
+        missing_dependencies = sorted(set(task.depends_on) - closed_ids)
+        if missing_dependencies:
+            return error(
+                f"Interrupted task {resume.task} has unsatisfied dependencies: "
+                f"{', '.join(missing_dependencies)}."
+            )
+        if role_name != resume.role:
+            selected = role_name or "no role"
+            return error(
+                f"Current workflow selection is {selected}, so DevLab will not "
+                "resume a different route."
+            )
+        if task_id != resume.task:
+            selected = task_id or "none"
+            return error(
+                f"Next development task is {selected}, not interrupted task {resume.task}."
+            )
+
+    elif resume.role == "reviewer":
+        if not resume.task:
+            return error("The resume pointer is missing the interrupted task.")
+        task = _task_by_id(snapshot, resume.task)
+        if task is None:
+            return error(f"Interrupted task {resume.task} no longer exists.")
+        if task.status != TaskStatus.IN_REVIEW:
+            return error(
+                f"Interrupted task {resume.task} is {task.status.value}, not in_review."
+            )
+        if role_name != resume.role:
+            selected = role_name or "no role"
+            return error(
+                f"Current workflow selection is {selected}, so DevLab will not "
+                "resume a different route."
+            )
+        if task_id != resume.task:
+            selected = task_id or "none"
+            return error(
+                f"Next review task is {selected}, not interrupted task {resume.task}."
+            )
+
+    elif resume.role in {"integrator", "architect"} and resume.milestone:
+        if role_name != resume.role:
+            selected = role_name or "no role"
+            return error(
+                f"Current workflow selection is {selected}, so DevLab will not "
+                "resume a different route."
+            )
+        if milestone_id != resume.milestone:
+            selected = milestone_id or "none"
+            return error(
+                f"Selected milestone is {selected}, not interrupted milestone "
+                f"{resume.milestone}."
+            )
+
+    elif role_name != resume.role:
+        selected = role_name or "no role"
+        return error(
+            f"Current workflow selection is {selected}, so DevLab will not resume "
+            "a different route."
+        )
+
+    return None
+
+
 def _load_workflow_and_spec_status(
     root: Path,
 ) -> tuple[WorkflowState, SpecReconciliationStatus]:
@@ -1051,6 +1164,31 @@ def run_loop(
                 forced_planning_roles[sessions_run]
                 if sessions_run < len(forced_planning_roles)
                 else workspace.snapshot.assess_state()
+            )
+        selected_task = _task_for_role(workspace.snapshot, role_name) if role_name else None
+        selected_task_id = selected_task.id if selected_task is not None else None
+        selected_milestone_id = (
+            workspace.snapshot.select_integration_milestone()
+            if role_name == "integrator"
+            else workspace.snapshot.select_architecture_review_milestone()
+            if role_name == "architect"
+            else None
+        )
+        resume_validation_error = _resume_validation_error(
+            workspace.snapshot,
+            active_resume,
+            requested_command=requested_command,
+            role_name=role_name,
+            task_id=selected_task_id,
+            milestone_id=selected_milestone_id,
+        )
+        if resume_validation_error is not None:
+            logger.error("%s. Stopping.", resume_validation_error.message)
+            return RunResult(
+                sessions_run,
+                False,
+                resume_validation_error.exit_code,
+                (resume_validation_error,),
             )
         if role_name is None:
             if workspace.snapshot.blocked_tasks():

@@ -83,6 +83,13 @@ def resume_workflow(root: Path, *, max_sessions: int = 20) -> ResumeDispatchResu
         automatic_version_control=True,
         planning_only=state.resume.command == "plan",
     )
+    if result.exit_code != 0:
+        message = (
+            result.errors[0].message
+            if result.errors
+            else "Resume failed before workflow could continue."
+        )
+        return ResumeDispatchResult(False, message, result)
     if result.exit_code == 0 and result.sessions_run > 0:
         clear_resume_state(root)
     return ResumeDispatchResult(True, "Resumed workflow.", result)

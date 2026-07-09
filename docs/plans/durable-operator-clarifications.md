@@ -31,9 +31,9 @@ Observed result: ruff passed and pytest reported `490 passed, 7 skipped`.
 
 The remaining work is refinement and extension rather than the first durable path:
 
-- add task/milestone-scoped blocking instead of the current conservative global blocking for pending blocking clarifications;
-- strengthen resume validation so developer/reviewer resume cannot silently switch tasks and stops clearly when the interrupted task is missing, closed, dependency-blocked, or superseded by higher-priority reconciliation work;
-- complete wrong-command guidance across command paths;
+- keep scoped clarification blocking deferred; precise `blocks` values are preserved, but pending blocking clarifications still stop conservatively until real usage justifies task/milestone routing complexity;
+- finish strengthening resume validation so developer/reviewer resume cannot silently switch tasks and stops clearly when the interrupted task is missing, closed, dependency-blocked, or superseded by higher-priority reconciliation work;
+- continue tightening wrong-command guidance across command paths;
 - add clarification blockers to `devlab workflow-state` text and JSON output;
 - add diagnostics for clarification stops, answer latency/session distance, and repeated clarification requests;
 - improve manual-edit answer validation and make `devlab resume` validate edited answers before invoking a role;
@@ -605,7 +605,7 @@ Implement:
 
 ### Phase 3: Orchestrator Stop/Resume
 
-Status: partially implemented. The durable stop, answer, resume pointer, wrong-command guard, and conservative pending-blocker path exist. Remaining work is narrower task/milestone blocker routing and stronger same-task/same-route resume validation.
+Status: partially implemented. The durable stop, answer, resume pointer, wrong-command guard, conservative pending-blocker path, and same-task/same-route resume validation exist. Scoped task/milestone blocker routing is intentionally deferred pending real usage evidence.
 
 Integrate clarification requests into `process_handoff()` and `run_loop()`.
 
@@ -767,7 +767,9 @@ This phase should be deferred until there is enough real usage to know whether s
 
 ## Resolved Design Choices
 
-Initial blocking should be global for the first implementation. Any pending clarification with `blocks` other than `none` blocks the matching top-level command family instead of trying to route around task- or milestone-specific blockers. This keeps the first orchestration change small and avoids accidentally continuing through an unresolved operator decision. The tracker should still validate and preserve precise `blocks` values so narrower task/milestone scoping can be added later without changing the file format.
+Blocking should remain conservative for now. Any pending clarification with `blocks` other than `none` blocks the matching top-level command family instead of trying to route around task- or milestone-specific blockers. This avoids workflow routing complexity and avoids accidentally continuing through unresolved operator intent. The tracker still validates and preserves precise `blocks` values so narrower task/milestone scoping can be added later without changing the file format, but that behavior should wait for concrete usage pain.
+
+Resume validation is worth implementing before scoped blocking. A stored resume pointer must not silently switch to another task, role, or milestone after the operator answers. If the interrupted work no longer exists, is no longer eligible for the interrupted role, has unsatisfied dependencies, or is no longer the selected route, DevLab stops with repair-oriented guidance and preserves the resume pointer for reconciliation.
 
 Clarification files omit `answered_at` while pending and add it only when answered. This keeps front matter meaningful and matches the existing tracker style of omitting optional metadata until it applies.
 

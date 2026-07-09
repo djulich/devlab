@@ -17,7 +17,7 @@ from devlab.orchestrator import _timestamp, close_task, process_handoff, run_loo
 from devlab.prompts import build_base_prompt, build_session_prompt
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workflow_events import load_workflow_events
-from devlab.workflow_state import load_workflow_state
+from devlab.workflow_state import ResumeState, load_workflow_state, set_resume_state
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -400,6 +400,157 @@ def test_run_loop_clears_matching_resume_pointer_after_session(
 
     assert result.exit_code == 0
     assert load_workflow_state(tmp_path).resume is None
+
+
+def _create_answered_clarification(root: Path) -> str:
+    clarification = Workspace(root).clarifications().create(
+        title="Auth session timeout",
+        asking_role="developer",
+        session_id="s1",
+        scope="task:T0001",
+        blocks="implementation",
+        answer_shape="text",
+        body=(
+            "# Auth session timeout\n\n"
+            "## Context\nC\n\n"
+            "## Question\nQ\n\n"
+            "## Expected Answer\nA\n"
+        ),
+    )
+    Workspace(root).clarifications().get(clarification.id).answer("Use 24h.")
+    return clarification.id
+
+
+def _set_resume(
+    root: Path,
+    clarification_id: str,
+    *,
+    role: str = "developer",
+    task: str = "T0001",
+    milestone: str = "",
+) -> None:
+    set_resume_state(
+        root,
+        ResumeState(
+            blocked_by=clarification_id,
+            command="implement",
+            role=role,
+            task=task,
+            milestone=milestone,
+        ),
+    )
+
+
+def test_run_loop_resume_refuses_to_switch_development_tasks(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_workflow_state(tmp_path)
+    clarification_id = _create_answered_clarification(tmp_path)
+    _write_task(tmp_path, "T0001", status="open", depends_on=["T9999"])
+    _write_task(tmp_path, "T0002", status="open")
+    _set_resume(tmp_path, clarification_id)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": MockProvider()},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 1
+    assert result.errors[0].phase == "clarification_resume"
+    assert "unsatisfied dependencies: T9999" in result.errors[0].message
+    assert load_workflow_state(tmp_path).resume is not None
+
+
+def test_run_loop_resume_fails_when_interrupted_task_is_missing(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_workflow_state(tmp_path)
+    clarification_id = _create_answered_clarification(tmp_path)
+    _write_task(tmp_path, "T0002", status="open")
+    _set_resume(tmp_path, clarification_id)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": MockProvider()},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 1
+    assert "Interrupted task T0001 no longer exists" in result.errors[0].message
+    assert load_workflow_state(tmp_path).resume is not None
+
+
+def test_run_loop_resume_fails_when_interrupted_task_is_closed(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_workflow_state(tmp_path)
+    clarification_id = _create_answered_clarification(tmp_path)
+    _write_task(tmp_path, "T0001", status="closed")
+    _write_task(tmp_path, "T0002", status="open")
+    _set_resume(tmp_path, clarification_id)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": MockProvider()},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 1
+    assert "Interrupted task T0001 is closed" in result.errors[0].message
+    assert load_workflow_state(tmp_path).resume is not None
+
+
+def test_run_loop_resume_fails_when_next_development_task_differs(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_workflow_state(tmp_path)
+    clarification_id = _create_answered_clarification(tmp_path)
+    _write_task(tmp_path, "T0000", status="open")
+    _write_task(tmp_path, "T0001", status="open")
+    _set_resume(tmp_path, clarification_id)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": MockProvider()},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 1
+    assert "Next development task is T0000" in result.errors[0].message
+    assert load_workflow_state(tmp_path).resume is not None
+
+
+def test_run_loop_resume_fails_when_review_task_is_no_longer_in_review(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_workflow_state(tmp_path)
+    clarification_id = _create_answered_clarification(tmp_path)
+    _write_task(tmp_path, "T0001", status="changes_requested")
+    _set_resume(tmp_path, clarification_id, role="reviewer")
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": MockProvider()},
+        role_agent_providers={"reviewer": "mock"},
+    )
+
+    assert result.exit_code == 1
+    assert "Interrupted task T0001 is changes_requested" in result.errors[0].message
+    assert load_workflow_state(tmp_path).resume is not None
 
 
 class TestAssessState:
