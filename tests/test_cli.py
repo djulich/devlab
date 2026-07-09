@@ -8,6 +8,7 @@ from typing import cast
 
 import pytest
 
+from devlab.clarifications import FileClarificationTracker
 from devlab.cli import main
 
 
@@ -27,6 +28,27 @@ def _git_output(root: Path, *args: str) -> str:
         capture_output=True,
         check=True,
     ).stdout.strip()
+
+
+def _create_clarification(root: Path) -> str:
+    clarification = FileClarificationTracker(root).create(
+        title="Auth session timeout",
+        asking_role="planner",
+        session_id="s1",
+        scope="planning",
+        blocks="planning",
+        answer_shape="choice",
+        recommended_option="A",
+        body=(
+            "# Auth session timeout\n\n"
+            "## Context\nC\n\n"
+            "## Question\nQ\n\n"
+            "## Options\n"
+            "- A: 24-hour idle timeout.\n"
+            "- B: No expiry for MVP.\n"
+        ),
+    )
+    return clarification.id
 
 
 def test_cli_init_creates_devlab_tree_and_git_baseline(
@@ -102,6 +124,76 @@ def test_cli_help_includes_workflow_state(
 
     assert exc.value.code == 0
     assert "workflow-state" in capsys.readouterr().out
+
+
+def test_cli_clarify_list_shows_pending_clarifications(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _create_clarification(tmp_path)
+
+    _run_cli(monkeypatch, "clarify", "--root", str(tmp_path), "list")
+
+    output = capsys.readouterr().out
+    assert "CL0001" in output
+    assert "pending" in output
+    assert "Auth session timeout" in output
+
+
+def test_cli_clarify_show_prints_clarification_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clarification_id = _create_clarification(tmp_path)
+
+    _run_cli(monkeypatch, "clarify", "--root", str(tmp_path), "show", clarification_id)
+
+    output = capsys.readouterr().out
+    assert 'id = "CL0001"' in output
+    assert "## Question" in output
+
+
+def test_cli_clarify_answer_choice_updates_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clarification_id = _create_clarification(tmp_path)
+
+    _run_cli(
+        monkeypatch,
+        "clarify",
+        "--root",
+        str(tmp_path),
+        "answer",
+        clarification_id,
+        "--choice",
+        "A",
+    )
+
+    output = capsys.readouterr().out
+    assert "Answered CL0001" in output
+    clarification = FileClarificationTracker(tmp_path).get(clarification_id)
+    assert clarification.status.value == "answered"
+    assert "A: 24-hour idle timeout." in clarification.answer_text
+
+
+def test_cli_clarify_supersede_updates_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clarification_id = _create_clarification(tmp_path)
+
+    _run_cli(
+        monkeypatch,
+        "clarify",
+        "--root",
+        str(tmp_path),
+        "supersede",
+        clarification_id,
+        "--reason",
+        "Spec changed.",
+    )
+
+    output = capsys.readouterr().out
+    assert "Superseded CL0001" in output
+    clarification = FileClarificationTracker(tmp_path).get(clarification_id)
+    assert clarification.status.value == "superseded"
 
 
 def test_cli_workflow_state_json_reports_lifecycle_state(

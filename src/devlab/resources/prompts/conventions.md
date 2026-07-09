@@ -126,4 +126,26 @@ For planner handoffs, use `- FXXXX: TXXXX[, TXXXX]` in `## Addressed Findings` t
 
 Planner handoffs must append `## Planning State` with exactly `planning_complete = true` or `planning_complete = false`. Non-planner handoffs must omit it.
 
+If continuing would require inventing operator intent, append one `## Clarification Request` section instead of completing the normal workflow transition. The section starts with TOML, then Markdown details:
+
+    ## Clarification Request
+    clarification_required = true
+    title = "Specific decision title"
+    scope = "planning"
+    blocks = "planning"
+    answer_shape = "choice"
+    recommended_option = "A"
+
+    ### Context
+    <why repository state is insufficient>
+
+    ### Question
+    <specific operator decision needed>
+
+    ### Options
+    - A: <recommended option and rationale>
+    - B: <alternative>
+
+Allowed `answer_shape` values are `choice`, `text`, and `file-edit`. Use `### Expected Answer` for text answers and `### Expected File Edits` for file-edit answers. Ask only one specific, bounded clarification.
+
 In `## Commit Message`, write a concise one-line summary of what your session changed. Do not include the task ID or role prefix; the orchestrator adds that prefix when creating the commit.

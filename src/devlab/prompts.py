@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from devlab.clarifications import Clarification, ClarificationStatus
 from devlab.findings import FindingStatus
 from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
 from devlab.profiles import Profile, load_profile
@@ -249,6 +250,9 @@ def _build_architect_prompt(snapshot: WorkspaceSnapshot) -> str:
         parts.append(f"## Latest Architect Handoff\n\n{handoff}")
     if not parts:
         parts.append("No design plan exists yet. Create one from the system specification.")
+    clarifications = _format_operator_clarifications(snapshot, "architect")
+    if clarifications:
+        parts.append(clarifications)
     return "\n\n".join(parts)
 
 
@@ -409,6 +413,9 @@ def _build_planner_prompt(snapshot: WorkspaceSnapshot) -> str:
     handoff = _latest_handoff(root, "planner")
     if handoff:
         parts.append(f"## Latest Planner Handoff\n\n{handoff}")
+    clarifications = _format_operator_clarifications(snapshot, "planner")
+    if clarifications:
+        parts.append(clarifications)
     return "\n\n".join(parts)
 
 
@@ -431,6 +438,13 @@ def _build_developer_prompt(snapshot: WorkspaceSnapshot) -> str:
     reviewer_handoff = _latest_handoff(root, "reviewer")
     if reviewer_handoff:
         parts.append(f"## Latest Reviewer Handoff\n\n{reviewer_handoff}")
+    clarifications = _format_operator_clarifications(
+        snapshot,
+        "developer",
+        task_id=task.id if task else None,
+    )
+    if clarifications:
+        parts.append(clarifications)
     return "\n\n".join(parts)
 
 
@@ -463,6 +477,13 @@ def _build_integrator_prompt(snapshot: WorkspaceSnapshot) -> str:
         handoff = _latest_handoff(root, role_name)
         if handoff:
             parts.append(f"## Latest {role_name.title()} Handoff\n\n{handoff}")
+    clarifications = _format_operator_clarifications(
+        snapshot,
+        "integrator",
+        milestone_id=milestone,
+    )
+    if clarifications:
+        parts.append(clarifications)
     return "\n\n".join(parts)
 
 
@@ -485,4 +506,56 @@ def _build_reviewer_prompt(snapshot: WorkspaceSnapshot) -> str:
     reviewer_handoff = _latest_handoff(root, "reviewer")
     if reviewer_handoff:
         parts.append(f"## Latest Reviewer Handoff\n\n{reviewer_handoff}")
+    clarifications = _format_operator_clarifications(
+        snapshot,
+        "reviewer",
+        task_id=task.id if task else None,
+    )
+    if clarifications:
+        parts.append(clarifications)
     return "\n\n".join(parts)
+
+
+def _format_operator_clarifications(
+    snapshot: WorkspaceSnapshot,
+    role_name: str,
+    *,
+    task_id: str | None = None,
+    milestone_id: str | None = None,
+) -> str:
+    clarifications = [
+        clarification
+        for clarification in snapshot.list_clarifications()
+        if _clarification_relevant_to_role(
+            clarification,
+            role_name,
+            task_id=task_id,
+            milestone_id=milestone_id,
+        )
+    ]
+    if not clarifications:
+        return ""
+    lines = ["## Operator Clarifications"]
+    for clarification in clarifications:
+        answer = " ".join(clarification.answer_text.split())
+        if answer:
+            lines.append(f"- {clarification.id} {clarification.title}: {answer}")
+    return "\n".join(lines)
+
+
+def _clarification_relevant_to_role(
+    clarification: Clarification,
+    role_name: str,
+    *,
+    task_id: str | None,
+    milestone_id: str | None,
+) -> bool:
+    if clarification.status != ClarificationStatus.ANSWERED:
+        return False
+    if clarification.scope == "workspace":
+        return True
+    if role_name in {"architect", "planner"} and clarification.scope == "planning":
+        return True
+    if task_id is not None and clarification.scope == f"task:{task_id}":
+        return True
+    return milestone_id is not None and clarification.scope == f"milestone:{milestone_id}"

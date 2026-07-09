@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from devlab.clarifications import FileClarificationTracker
 from devlab.status import format_status
 
 
@@ -90,6 +91,53 @@ def test_status_verbose_reports_no_milestones(tmp_path: Path) -> None:
     text = format_status(tmp_path, verbose=True)
 
     assert "Milestones: none" in text
+
+
+def test_status_reports_pending_clarification_blockers(tmp_path: Path) -> None:
+    _setup_minimal_workspace(tmp_path)
+    FileClarificationTracker(tmp_path).create(
+        title="Auth session timeout",
+        asking_role="planner",
+        session_id="s1",
+        scope="planning",
+        blocks="planning",
+        answer_shape="text",
+        body=(
+            "# Auth session timeout\n\n"
+            "## Context\nC\n\n"
+            "## Question\nQ\n\n"
+            "## Expected Answer\nA\n"
+        ),
+    )
+
+    text = format_status(tmp_path)
+
+    assert "Pending clarification blockers: 1" in text
+    assert "- CL0001: Auth session timeout" in text
+
+
+def test_status_verbose_includes_clarification_state(tmp_path: Path) -> None:
+    _setup_minimal_workspace(tmp_path)
+    FileClarificationTracker(tmp_path).create(
+        title="Auth session timeout",
+        asking_role="planner",
+        session_id="s1",
+        scope="planning",
+        blocks="none",
+        answer_shape="text",
+        body=(
+            "# Auth session timeout\n\n"
+            "## Context\nC\n\n"
+            "## Question\nQ\n\n"
+            "## Expected Answer\nA\n"
+        ),
+    )
+
+    text = format_status(tmp_path, verbose=True)
+
+    assert "Clarifications:" in text
+    assert "- CL0001: Auth session timeout" in text
+    assert "  blocks: none" in text
 
 
 def test_status_verbose_reports_missing_milestone_without_creating_it(tmp_path: Path) -> None:

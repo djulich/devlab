@@ -8,6 +8,7 @@ from devlab.doctor_common import DoctorProblem
 from devlab.doctor_deployment import check_deployment_spec
 from devlab.doctor_project_knowledge import check_project_knowledge
 from devlab.doctor_workflow_state import (
+    check_clarifications,
     check_git_worktree,
     check_milestones,
     check_task_domains,
@@ -27,6 +28,7 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     snapshot = Workspace(root).snapshot
     if not agent_problems and not workflow_problems:
         problems.extend(_check_prompt_context_sizes(snapshot))
+    problems.extend(check_clarifications(root))
     problems.extend(check_milestones(root, snapshot))
     problems.extend(check_task_domains(snapshot))
     problems.extend(check_deployment_spec(root))

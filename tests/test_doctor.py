@@ -145,6 +145,35 @@ def test_doctor_reports_invalid_workflow_state(tmp_path: Path) -> None:
     assert ".devlab/workflow.toml.planning.complete must be a boolean" in messages
 
 
+def test_doctor_reports_invalid_clarification_record(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    path = tmp_path / ".devlab/clarifications/CL0001_bad.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "+++\n"
+        'id = "CL0001"\n'
+        'title = "Bad"\n'
+        'status = "answered"\n'
+        'asking_role = "planner"\n'
+        'session_id = "s1"\n'
+        'scope = "planning"\n'
+        'blocks = "planning"\n'
+        'answer_shape = "text"\n'
+        'recommended_option = ""\n'
+        "decision_refs = []\n"
+        'created_at = "2026-07-07T10:00:00Z"\n'
+        "+++\n\n"
+        "# Bad\n\n"
+        "## Context\nC\n\n"
+        "## Question\nQ\n\n"
+        "## Answer\n"
+    )
+
+    messages = _messages(tmp_path)
+
+    assert "answered clarification requires answered_at" in messages
+
+
 def test_doctor_reports_dirty_git_worktree(tmp_path: Path) -> None:
     init_workspace(
         tmp_path,

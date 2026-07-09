@@ -96,6 +96,162 @@ def test_parse_handoff_reads_optional_commit_message(tmp_path: Path) -> None:
     assert handoff.commit_message == "Implement calculator CLI"
 
 
+def test_parse_handoff_reads_choice_clarification_request(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        open_issues="- Blocked pending operator clarification.",
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = true\n"
+            'title = "Auth session timeout"\n'
+            'scope = "milestone:M1"\n'
+            'blocks = "planning"\n'
+            'answer_shape = "choice"\n'
+            'recommended_option = "A"\n\n'
+            "### Context\n"
+            "The spec requires sessions but not expiry.\n\n"
+            "### Question\n"
+            "Should sessions expire?\n\n"
+            "### Options\n"
+            "- A: 24-hour idle timeout.\n"
+            "- B: No expiry for MVP.\n"
+        ),
+    )
+
+    request = parse_handoff(path, "developer").clarification_request
+
+    assert request is not None
+    assert request.title == "Auth session timeout"
+    assert request.scope == "milestone:M1"
+    assert request.blocks == "planning"
+    assert request.answer_shape == "choice"
+    assert request.recommended_option == "A"
+    assert "### Options" in request.details
+
+
+def test_parse_handoff_reads_text_clarification_request(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = true\n"
+            'title = "Auth policy"\n'
+            'scope = "task:T0001"\n'
+            'blocks = "implementation"\n'
+            'answer_shape = "text"\n\n'
+            "### Context\nC\n\n"
+            "### Question\nQ\n\n"
+            "### Expected Answer\nA\n"
+        ),
+    )
+
+    request = parse_handoff(path, "developer").clarification_request
+
+    assert request is not None
+    assert request.answer_shape == "text"
+    assert request.recommended_option == ""
+
+
+def test_parse_handoff_reads_file_edit_clarification_request(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = true\n"
+            'title = "Deployment target"\n'
+            'scope = "planning"\n'
+            'blocks = "planning"\n'
+            'answer_shape = "file-edit"\n\n'
+            "### Context\nC\n\n"
+            "### Question\nQ\n\n"
+            "### Expected File Edits\n"
+            "- `.devlab/specs/system/deployment.md`: define the target.\n"
+        ),
+    )
+
+    request = parse_handoff(path, "developer").clarification_request
+
+    assert request is not None
+    assert request.answer_shape == "file-edit"
+
+
+def test_parse_handoff_rejects_malformed_clarification_toml(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = maybe\n\n"
+            "### Context\nC\n\n"
+            "### Question\nQ\n\n"
+            "### Expected Answer\nA\n"
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="must start with TOML"):
+        parse_handoff(path, "developer")
+
+
+def test_parse_handoff_rejects_clarification_missing_context(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = true\n"
+            'title = "Auth policy"\n'
+            'scope = "planning"\n'
+            'blocks = "planning"\n'
+            'answer_shape = "text"\n\n'
+            "### Question\nQ\n\n"
+            "### Expected Answer\nA\n"
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="missing ### Context"):
+        parse_handoff(path, "developer")
+
+
+def test_parse_handoff_rejects_choice_clarification_without_options(
+    tmp_path: Path,
+) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = true\n"
+            'title = "Auth policy"\n'
+            'scope = "planning"\n'
+            'blocks = "planning"\n'
+            'answer_shape = "choice"\n'
+            'recommended_option = "A"\n\n'
+            "### Context\nC\n\n"
+            "### Question\nQ\n"
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="missing ### Options"):
+        parse_handoff(path, "developer")
+
+
+def test_parse_handoff_rejects_invalid_clarification_enum(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = true\n"
+            'title = "Auth policy"\n'
+            'scope = "planning"\n'
+            'blocks = "planning"\n'
+            'answer_shape = "boolean"\n\n'
+            "### Context\nC\n\n"
+            "### Question\nQ\n\n"
+            "### Expected Answer\nA\n"
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="answer_shape must be one of"):
+        parse_handoff(path, "developer")
+
+
 def test_parse_planner_handoff_requires_planning_state(tmp_path: Path) -> None:
     path = _write_handoff(tmp_path)
 

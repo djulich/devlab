@@ -4,11 +4,14 @@ from pathlib import Path
 
 from devlab.workflow_state import (
     PlanningState,
+    ResumeState,
     SpecsState,
     WorkflowState,
+    clear_resume_state,
     format_workflow_state,
     load_workflow_state,
     set_planning_complete,
+    set_resume_state,
     update_workflow_state,
 )
 
@@ -86,6 +89,58 @@ def test_format_workflow_state_writes_spec_baseline() -> None:
     )
 
 
+def test_format_workflow_state_writes_resume_state() -> None:
+    state = WorkflowState(
+        version=1,
+        planning=PlanningState(complete=True),
+        resume=ResumeState(
+            blocked_by="CL0001",
+            command="implement",
+            role="developer",
+            task="T0003",
+            milestone="",
+        ),
+    )
+
+    assert format_workflow_state(state) == (
+        "version = 1\n\n"
+        "[planning]\n"
+        "complete = true\n\n"
+        "[resume]\n"
+        'blocked_by = "CL0001"\n'
+        'command = "implement"\n'
+        'role = "developer"\n'
+        'task = "T0003"\n'
+        'milestone = ""\n'
+    )
+
+
+def test_load_workflow_state_reads_resume_state(tmp_path: Path) -> None:
+    path = tmp_path / ".devlab/workflow.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "version = 1\n\n"
+        "[planning]\n"
+        "complete = true\n\n"
+        "[resume]\n"
+        'blocked_by = "CL0001"\n'
+        'command = "plan"\n'
+        'role = "planner"\n'
+        'task = ""\n'
+        'milestone = ""\n'
+    )
+
+    resume = load_workflow_state(tmp_path).resume
+
+    assert resume == ResumeState(
+        blocked_by="CL0001",
+        command="plan",
+        role="planner",
+        task="",
+        milestone="",
+    )
+
+
 def test_update_workflow_state_preserves_unknown_future_state(tmp_path: Path) -> None:
     path = tmp_path / ".devlab/workflow.toml"
     path.parent.mkdir(parents=True)
@@ -109,3 +164,59 @@ def test_update_workflow_state_preserves_unknown_future_state(tmp_path: Path) ->
     assert "future = \"kept\"" in path.read_text()
     assert "[custom]\nvalue = 1\n" in path.read_text()
     assert '[specs]\nlast_planned_spec_commit = "def456"\n' in path.read_text()
+
+
+def test_set_resume_state_preserves_unknown_future_state(tmp_path: Path) -> None:
+    path = tmp_path / ".devlab/workflow.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "version = 1\n\n"
+        "[planning]\n"
+        "complete = true\n"
+        "future = \"kept\"\n\n"
+        "[custom]\n"
+        "value = 1\n"
+    )
+
+    updated = set_resume_state(
+        tmp_path,
+        ResumeState(
+            blocked_by="CL0001",
+            command="implement",
+            role="developer",
+            task="T0003",
+            milestone="",
+        ),
+    )
+
+    assert updated.resume is not None
+    assert updated.resume.blocked_by == "CL0001"
+    text = path.read_text()
+    assert "future = \"kept\"" in text
+    assert "[custom]\nvalue = 1\n" in text
+    assert '[resume]\nblocked_by = "CL0001"\n' in text
+
+
+def test_clear_resume_state_removes_resume_table(tmp_path: Path) -> None:
+    path = tmp_path / ".devlab/workflow.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "version = 1\n\n"
+        "[planning]\n"
+        "complete = true\n\n"
+        "[resume]\n"
+        'blocked_by = "CL0001"\n'
+        'command = "implement"\n'
+        'role = "developer"\n'
+        'task = "T0003"\n'
+        'milestone = ""\n\n'
+        "[custom]\n"
+        "value = 1\n"
+    )
+
+    updated = clear_resume_state(tmp_path)
+
+    assert updated.resume is None
+    text = path.read_text()
+    assert "[resume]" not in text
+    assert "[custom]\nvalue = 1\n" in text

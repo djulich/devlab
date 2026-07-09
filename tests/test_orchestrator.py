@@ -17,6 +17,7 @@ from devlab.orchestrator import _timestamp, close_task, process_handoff, run_loo
 from devlab.prompts import build_base_prompt, build_session_prompt
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workflow_events import load_workflow_events
+from devlab.workflow_state import load_workflow_state
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -209,6 +210,198 @@ def _write_workflow_state(
     (root / ".devlab/workflow.toml").write_text(text)
 
 
+def _write_session_handoff(root: Path, role_name: str, text: str) -> Path:
+    path = root / ARTIFACTS_DIR / role_name / "handoff.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    return path
+
+
+def _clarification_handoff(role_name: str = "developer") -> str:
+    return (
+        f"# Handoff: {role_name}\n"
+        "## Done\n"
+        "- Reached a blocking ambiguity.\n"
+        "## Changed Artifacts\n"
+        "- None\n"
+        "## Open Issues\n"
+        "- Blocked pending operator clarification.\n"
+        "## Addressed Findings\n"
+        "- None\n"
+        "## Next Session Hint\n"
+        "Resume after clarification.\n"
+        "## Clarification Request\n"
+        "clarification_required = true\n"
+        'title = "Auth session timeout"\n'
+        'scope = "task:T0001"\n'
+        'blocks = "implementation"\n'
+        'answer_shape = "choice"\n'
+        'recommended_option = "A"\n\n'
+        "### Context\n"
+        "The task requires sessions but the spec does not define expiry.\n\n"
+        "### Question\n"
+        "Should sessions expire?\n\n"
+        "### Options\n"
+        "- A: 24-hour idle timeout.\n"
+        "- B: No expiry for MVP.\n"
+    )
+
+
+def test_process_handoff_creates_clarification_without_developer_transition(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    _write_task(
+        tmp_path,
+        "T0001",
+        body=(
+            "# T0001: Auth\n\n"
+            "## Acceptance Criteria\n"
+            "- [x] Implement auth sessions\n"
+        ),
+    )
+    path = _write_session_handoff(tmp_path, "developer", _clarification_handoff())
+    handoff = parse_handoff(path, "developer")
+
+    result = process_handoff(
+        handoff,
+        Workspace(tmp_path),
+        command="implement",
+        session_id="20260707T101500_001_developer",
+        task_id="T0001",
+    )
+
+    assert result.clarification_id == "CL0001"
+    task = FileTaskTracker(tmp_path).get("T0001")
+    assert task.status == TaskStatus.OPEN
+    clarification = Workspace(tmp_path).snapshot.list_clarifications()[0]
+    assert clarification.id == "CL0001"
+    assert clarification.asking_role == "developer"
+    assert clarification.blocks == "implementation"
+    resume = load_workflow_state(tmp_path).resume
+    assert resume is not None
+    assert resume.blocked_by == "CL0001"
+    assert resume.command == "implement"
+    assert resume.role == "developer"
+    assert resume.task == "T0001"
+
+
+def test_process_handoff_creates_clarification_without_planner_state_update(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / ".devlab/workflow.toml").write_text(
+        "version = 1\n\n[planning]\ncomplete = false\n"
+    )
+    handoff_text = (
+        _clarification_handoff("planner")
+        + "\n## Planning State\n"
+        "planning_complete = true\n"
+    )
+    path = _write_session_handoff(tmp_path, "planner", handoff_text)
+    handoff = parse_handoff(path, "planner")
+
+    result = process_handoff(
+        handoff,
+        Workspace(tmp_path),
+        command="plan",
+        session_id="20260707T101500_001_planner",
+    )
+
+    assert result.clarification_id == "CL0001"
+    state = load_workflow_state(tmp_path)
+    assert state.planning.complete is False
+    assert state.resume is not None
+    assert state.resume.command == "plan"
+
+
+def test_run_loop_rejects_wrong_plain_command_for_active_resume_pointer(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / ".devlab/workflow.toml").write_text(
+        "version = 1\n\n"
+        "[planning]\n"
+        "complete = true\n\n"
+        "[resume]\n"
+        'blocked_by = "CL0001"\n'
+        'command = "implement"\n'
+        'role = "developer"\n'
+        'task = "T0001"\n'
+        'milestone = ""\n'
+    )
+
+    result = run_loop(tmp_path, max_sessions=1, planning_only=True)
+
+    assert result.exit_code == 1
+    assert result.errors[0].phase == "clarification_resume"
+    assert "devlab resume" in result.errors[0].message
+    assert "devlab implement" in result.errors[0].message
+
+
+def test_run_loop_clears_matching_resume_pointer_after_session(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(
+        tmp_path,
+        "T0001",
+        body=(
+            "# T0001: First\n\n"
+            "## Acceptance Criteria\n"
+            "- [x] Done\n"
+        ),
+    )
+    clarification = Workspace(tmp_path).clarifications().create(
+        title="Auth session timeout",
+        asking_role="developer",
+        session_id="s1",
+        scope="task:T0001",
+        blocks="implementation",
+        answer_shape="text",
+        body=(
+            "# Auth session timeout\n\n"
+            "## Context\nC\n\n"
+            "## Question\nQ\n\n"
+            "## Expected Answer\nA\n"
+        ),
+    )
+    Workspace(tmp_path).clarifications().get(clarification.id).answer("Use 24h.")
+    (tmp_path / ".devlab/workflow.toml").write_text(
+        "version = 1\n\n"
+        "[planning]\n"
+        "complete = true\n\n"
+        "[resume]\n"
+        f'blocked_by = "{clarification.id}"\n'
+        'command = "implement"\n'
+        'role = "developer"\n'
+        'task = "T0001"\n'
+        'milestone = ""\n'
+    )
+    provider = MockProvider(
+        handoff_text=(
+            "# Handoff: developer\n"
+            "## Done\n- Completed task.\n"
+            "## Changed Artifacts\n- None\n"
+            "## Open Issues\n- None\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nReview.\n"
+        )
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": provider},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 0
+    assert load_workflow_state(tmp_path).resume is None
+
+
 class TestAssessState:
     def test_no_design_plan_returns_architect(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -373,6 +566,59 @@ class TestBuildSessionPrompt:
         assert "validation = []" in prompt
         assert "No validation commands are required" in prompt
         assert "whether any validation was run and why" in prompt
+
+    def test_developer_prompt_includes_answered_task_clarification(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "First")
+        clarification = Workspace(tmp_path).clarifications().create(
+            title="Auth session timeout",
+            asking_role="developer",
+            session_id="s1",
+            scope="task:T0001",
+            blocks="implementation",
+            answer_shape="text",
+            body=(
+                "# Auth session timeout\n\n"
+                "## Context\nC\n\n"
+                "## Question\nQ\n\n"
+                "## Expected Answer\nA\n"
+            ),
+        )
+        Workspace(tmp_path).clarifications().get(clarification.id).answer(
+            "Use a 24-hour idle timeout."
+        )
+
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "developer")
+
+        assert "## Operator Clarifications" in prompt
+        assert "CL0001 Auth session timeout: Use a 24-hour idle timeout." in prompt
+
+    def test_developer_prompt_omits_unrelated_answered_task_clarification(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "First")
+        clarification = Workspace(tmp_path).clarifications().create(
+            title="Other task policy",
+            asking_role="developer",
+            session_id="s1",
+            scope="task:T0002",
+            blocks="implementation",
+            answer_shape="text",
+            body=(
+                "# Other task policy\n\n"
+                "## Context\nC\n\n"
+                "## Question\nQ\n\n"
+                "## Expected Answer\nA\n"
+            ),
+        )
+        Workspace(tmp_path).clarifications().get(clarification.id).answer("Answer.")
+
+        prompt = build_session_prompt(Workspace(tmp_path).snapshot, "developer")
+
+        assert "## Operator Clarifications" not in prompt
 
 
 class TestBuildSystemPrompt:

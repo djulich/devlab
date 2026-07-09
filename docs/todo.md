@@ -73,6 +73,8 @@ Open work:
 
 Priority: medium. DevLab should support bounded user clarification when a role session encounters an ambiguity, contradiction, missing prerequisite, or scope decision that cannot be resolved safely from repository state.
 
+Status: **initial durable clarification workflow implemented**. DevLab now has `.devlab/clarifications/` records, handoff parsing for one bounded clarification request, `[resume]` workflow state, CLI list/show/answer/supersede/resume commands, prompt inclusion for answered clarifications, and read-only status/doctor coverage.
+
 Usefulness: high, but only if tightly constrained. Clarification prevents agents from inventing requirements, but unconstrained back-and-forth would weaken bounded sessions and durable workflow state.
 
 GSD's `Discuss` step is a useful nearby pattern: capture implementation decisions before planning so the planner does not guess about libraries, error handling, UI behavior, or edge cases. DevLab should integrate that idea as bounded durable clarifications and planning decisions, not as an open-ended conversational phase. Reference: GSD [The phase loop](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/the-phase-loop.md).
@@ -87,13 +89,13 @@ Expected behavior:
 - Clarifications become durable project knowledge when they affect requirements, scope, architecture, task definitions, or deployment expectations.
 - Answered clarifications that constrain future implementation should get stable references so tasks, findings, and milestone verification can point at them without duplicating prose.
 
-Open design questions:
+Open follow-up work:
 
-- Should only architect/planner sessions be allowed to ask scope questions, while developer/reviewer/integrator surface blockers through task or finding state?
-- What is the storage model: `.devlab/questions/`, findings, workflow state, or a new tracker?
-- How should DevLab prevent vague or excessive questions: max question count per session, required answer options, severity, or validation rules?
-- Should unanswered questions block all workflow progress or only the affected task/milestone?
-- Should DevLab add optional requirement/decision traceability metadata to tasks, such as `addresses_requirements` and `decision_refs`, so milestone verification can check coverage structurally?
+- Add narrower task/milestone-scoped blocking after more real usage; the initial behavior conservatively blocks top-level workflow continuation for pending blocking clarifications.
+- Add richer wrong-command guidance for active resume pointers.
+- Add optional editor-mode clarification answering.
+- Add diagnostics counters for clarification stops by role and time-to-answer.
+- Decide whether task/finding `decision_refs` metadata is needed for stronger traceability.
 
 ## 7. Add Workflow Attention Notifications
 

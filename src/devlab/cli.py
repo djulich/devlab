@@ -10,6 +10,13 @@ from devlab.agent_smoke import (
     format_agent_smoke_report,
     run_agent_smoke_test,
 )
+from devlab.clarification_ops import (
+    answer_clarification,
+    format_clarification_list,
+    resume_workflow,
+    supersede_clarification,
+)
+from devlab.clarifications import FileClarificationTracker
 from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
 from devlab.doctor import check_workspace, format_doctor_report
 from devlab.history import format_history
@@ -334,6 +341,54 @@ def main() -> None:
         help="Project root to clean (default: current working directory).",
     )
 
+    clarify_parser = subparsers.add_parser(
+        "clarify", help="Inspect and answer operator clarifications."
+    )
+    clarify_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to operate on (default: current working directory).",
+    )
+    clarify_subparsers = clarify_parser.add_subparsers(
+        dest="clarify_command", required=True
+    )
+    clarify_subparsers.add_parser("list", help="List clarifications.")
+    clarify_show = clarify_subparsers.add_parser("show", help="Show a clarification file.")
+    clarify_show.add_argument("clarification_id")
+    clarify_answer = clarify_subparsers.add_parser(
+        "answer", help="Answer a pending clarification."
+    )
+    clarify_answer.add_argument("clarification_id")
+    answer_value = clarify_answer.add_mutually_exclusive_group(required=True)
+    answer_value.add_argument("--choice", default=None)
+    answer_value.add_argument("--text", default=None)
+    clarify_answer.add_argument("--note", default="")
+    clarify_answer.add_argument("--operator", default="")
+    clarify_answer.add_argument("--resume", action="store_true")
+    clarify_answer.add_argument("--max-sessions", type=int, default=20)
+    clarify_supersede = clarify_subparsers.add_parser(
+        "supersede", help="Mark a clarification superseded."
+    )
+    clarify_supersede.add_argument("clarification_id")
+    clarify_supersede.add_argument("--reason", required=True)
+
+    resume_parser = subparsers.add_parser(
+        "resume", help="Resume the workflow blocked by an answered clarification."
+    )
+    resume_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to operate on (default: current working directory).",
+    )
+    resume_parser.add_argument(
+        "--max-sessions",
+        type=int,
+        default=20,
+        help="Maximum number of sessions to run (default: 20).",
+    )
+
     args = parser.parse_args()
     root = args.root.resolve()
     if args.command == "agent-smoke-test":
@@ -439,6 +494,47 @@ def main() -> None:
     elif args.command == "clean-failed-session":
         result = clean_failed_session_artifacts(root)
         print(format_cleanup_result(result))
+    elif args.command == "clarify":
+        tracker = FileClarificationTracker(root)
+        if args.clarify_command == "list":
+            print(format_clarification_list(tracker.list_clarifications()))
+        elif args.clarify_command == "show":
+            print(tracker.get(args.clarification_id).path.read_text(), end="")
+        elif args.clarify_command == "answer":
+            try:
+                result = answer_clarification(
+                    root,
+                    args.clarification_id,
+                    choice=args.choice,
+                    text=args.text,
+                    note=args.note,
+                    operator=args.operator,
+                    resume=args.resume,
+                    max_sessions=args.max_sessions,
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
+            print(f"Answered {result.clarification.id}: {result.clarification.title}")
+            if result.resumed is not None and result.resumed.exit_code != 0:
+                raise SystemExit(result.resumed.exit_code)
+        elif args.clarify_command == "supersede":
+            try:
+                clarification = supersede_clarification(
+                    root,
+                    args.clarification_id,
+                    args.reason,
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
+            print(f"Superseded {clarification.id}: {clarification.title}")
+    elif args.command == "resume":
+        configure_logging(logging.INFO, None)
+        result = resume_workflow(root, max_sessions=args.max_sessions)
+        print(result.message)
+        if not result.resumed:
+            raise SystemExit(1)
+        if result.run_result is not None and result.run_result.exit_code != 0:
+            raise SystemExit(result.run_result.exit_code)
 
 
 def _run_log_level(*, quiet: bool, verbose: bool) -> int:

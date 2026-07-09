@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import shutil
 import tomllib
 from collections.abc import Callable
@@ -43,7 +44,14 @@ from devlab.version_control import (
     tag as create_git_tag,
 )
 from devlab.workflow_events import append_workflow_event
-from devlab.workflow_state import WorkflowState, load_workflow_state, update_workflow_state
+from devlab.workflow_state import (
+    ResumeState,
+    WorkflowState,
+    clear_resume_state,
+    load_workflow_state,
+    set_resume_state,
+    update_workflow_state,
+)
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -322,11 +330,59 @@ def _apply_planner_workflow_state(
 @dataclasses.dataclass(frozen=True)
 class ProcessResult:
     integrated_milestone: str | None = None
+    clarification_id: str | None = None
 
 
-def process_handoff(handoff: Handoff, workspace: Workspace) -> ProcessResult:
+def process_handoff(
+    handoff: Handoff,
+    workspace: Workspace,
+    *,
+    command: str = "",
+    session_id: str = "",
+    task_id: str | None = None,
+    milestone_id: str | None = None,
+) -> ProcessResult:
     archived = archive_handoff(workspace.root, handoff.role_name)
     logger.info("Handoff archived to %s", archived.name)
+
+    clarification_request = handoff.clarification_request
+    if clarification_request is not None:
+        clarification = workspace.clarifications().create(
+            title=clarification_request.title,
+            asking_role=handoff.role_name,
+            session_id=session_id,
+            scope=clarification_request.scope,
+            blocks=clarification_request.blocks,
+            answer_shape=clarification_request.answer_shape,
+            recommended_option=clarification_request.recommended_option,
+            body=_clarification_body(clarification_request.title, clarification_request.details),
+        )
+        set_resume_state(
+            workspace.root,
+            ResumeState(
+                blocked_by=clarification.id,
+                command=command,
+                role=handoff.role_name,
+                task=task_id or "",
+                milestone=milestone_id or "",
+            ),
+        )
+        workspace.did_mutate()
+        append_workflow_event(
+            workspace.root,
+            "clarification_requested",
+            clarification=clarification.id,
+            role=handoff.role_name,
+            command=command,
+            task=task_id or "",
+            milestone=milestone_id or "",
+        )
+        logger.info(
+            "Workflow stopped: operator clarification required: %s %s",
+            clarification.id,
+            clarification.title,
+        )
+        return ProcessResult(clarification_id=clarification.id)
 
     if handoff.role_name == "architect":
         milestone = workspace.snapshot.select_architecture_review_milestone()
@@ -405,6 +461,11 @@ def process_handoff(handoff: Handoff, workspace: Workspace) -> ProcessResult:
             logger.info("Milestone %s marked integrated", milestone)
             return ProcessResult(integrated_milestone=milestone)
     return ProcessResult()
+
+
+def _clarification_body(title: str, details: str) -> str:
+    normalized = re.sub(r"^### ", "## ", details.strip(), flags=re.MULTILINE)
+    return f"# {title}\n\n{normalized}\n"
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +702,46 @@ def _stale_specs_error(status: SpecReconciliationStatus) -> SessionError:
     return SessionError("spec_reconciliation", message, 1)
 
 
+def _command_family(*, planning_only: bool) -> str:
+    return "plan" if planning_only else "implement"
+
+
+def _blocking_clarification_error(snapshot: WorkspaceSnapshot) -> SessionError | None:
+    blockers = snapshot.blocking_clarifications()
+    if not blockers:
+        return None
+    first = blockers[0]
+    message = (
+        "Workflow is blocked by pending operator clarification "
+        f"{first.id}: {first.title}. Answer it with "
+        f"`devlab clarify answer {first.id} ...` and then run `devlab resume`."
+    )
+    return SessionError("clarification_required", message, 0)
+
+
+def _wrong_resume_command_error(
+    workflow_state: WorkflowState,
+    *,
+    requested_command: str,
+    revise_plan: bool,
+) -> SessionError | None:
+    resume = workflow_state.resume
+    if resume is None:
+        return None
+    if resume.command == requested_command:
+        return None
+    if requested_command == "plan" and revise_plan:
+        return None
+    message = (
+        f"Workflow is waiting to resume after {resume.blocked_by}. "
+        f"This clarification blocked {resume.command}"
+        + (f" task {resume.task}" if resume.task else "")
+        + ". Run `devlab resume` or explicitly run "
+        + f"`devlab {resume.command}`."
+    )
+    return SessionError("clarification_resume", message, 1)
+
+
 def _load_workflow_and_spec_status(
     root: Path,
 ) -> tuple[WorkflowState, SpecReconciliationStatus]:
@@ -739,6 +840,7 @@ def run_loop(
         )
     sessions_run = 0
     spec_status: SpecReconciliationStatus | None = None
+    workflow_state: WorkflowState | None = None
     active_plan_exists = has_active_plan(root)
     if planning_only and adopt_existing and active_plan_exists:
         return RunResult(
@@ -769,7 +871,7 @@ def run_loop(
     if automatic_version_control:
         try:
             ensure_git_repository(root)
-            _workflow_state, spec_status = _load_workflow_and_spec_status(root)
+            workflow_state, spec_status = _load_workflow_and_spec_status(root)
             if planning_only and spec_status.dirty_spec_paths:
                 error = _dirty_spec_error(spec_status.dirty_spec_paths)
                 logger.error("%s. Stopping.", error.message)
@@ -787,7 +889,7 @@ def run_loop(
             return RunResult(0, False, error.exit_code, (error,))
     else:
         try:
-            _workflow_state = load_workflow_state(root)
+            workflow_state = load_workflow_state(root)
         except (OSError, ValueError) as exc:
             logger.error("%s. Stopping.", exc)
             return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
@@ -836,6 +938,23 @@ def run_loop(
         return RunResult(0, True, 0, ())
 
     workspace = Workspace(root)
+    if workflow_state is None:
+        workflow_state = load_workflow_state(root)
+    requested_command = _command_family(planning_only=planning_only)
+    resume_command_error = _wrong_resume_command_error(
+        workflow_state,
+        requested_command=requested_command,
+        revise_plan=revise_plan,
+    )
+    if resume_command_error is not None:
+        logger.error("%s. Stopping.", resume_command_error.message)
+        return RunResult(
+            0,
+            False,
+            resume_command_error.exit_code,
+            (resume_command_error,),
+        )
+    active_resume = workflow_state.resume
     resolved_agent_configs = None
     if agent_providers is None:
         try:
@@ -943,6 +1062,12 @@ def run_loop(
                 logger.info("All milestones complete or no task can proceed.")
             logger.info("Stopping.")
             break
+
+        clarification_error = _blocking_clarification_error(workspace.snapshot)
+        if clarification_error is not None:
+            logger.info("%s", clarification_error.message)
+            logger.info("Stopping.")
+            return RunResult(sessions_run, True, 0, ())
 
         if (
             not planning_only
@@ -1160,28 +1285,29 @@ def run_loop(
         try:
             handoff = parse_handoff(handoff_path, role_name)
             validate_handoff(handoff, workspace.snapshot)
-            _apply_planner_workflow_state(
-                workspace,
-                handoff,
-                planning_update=planner_generation_update,
-            )
-            if role_name == "planner" and spec_status is not None:
-                _workflow_state, spec_status = _load_workflow_and_spec_status(root)
-            planner_task_error = _validate_planner_preserved_active_tasks(
-                start_snapshot,
-                workspace.snapshot,
-                role_name,
-                fresh_generation_plan=fresh_generation_plan,
-            )
-            if planner_task_error is not None:
-                raise HandoffError(planner_task_error)
-            planner_noop_error = _validate_exhausted_backlog_planner_progress(
-                start_snapshot,
-                workspace.snapshot,
-                role_name,
-            )
-            if planner_noop_error is not None:
-                raise HandoffError(planner_noop_error)
+            if handoff.clarification_request is None:
+                _apply_planner_workflow_state(
+                    workspace,
+                    handoff,
+                    planning_update=planner_generation_update,
+                )
+                if role_name == "planner" and spec_status is not None:
+                    _workflow_state, spec_status = _load_workflow_and_spec_status(root)
+                planner_task_error = _validate_planner_preserved_active_tasks(
+                    start_snapshot,
+                    workspace.snapshot,
+                    role_name,
+                    fresh_generation_plan=fresh_generation_plan,
+                )
+                if planner_task_error is not None:
+                    raise HandoffError(planner_task_error)
+                planner_noop_error = _validate_exhausted_backlog_planner_progress(
+                    start_snapshot,
+                    workspace.snapshot,
+                    role_name,
+                )
+                if planner_noop_error is not None:
+                    raise HandoffError(planner_noop_error)
         except HandoffError as exc:
             message = _handoff_error_message(ctx, str(exc), config_log)
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
@@ -1195,7 +1321,14 @@ def run_loop(
             )
 
         commit_message = _commit_message(workspace.snapshot, handoff)
-        process_result = process_handoff(handoff, workspace)
+        process_result = process_handoff(
+            handoff,
+            workspace,
+            command=requested_command,
+            session_id=ctx.invocation_id,
+            task_id=session_task_id,
+            milestone_id=session_milestone_id,
+        )
         if planning_only and not plan_started_recorded and role_name in {"architect", "planner"}:
             append_workflow_event(
                 root,
@@ -1204,7 +1337,11 @@ def run_loop(
                 generation=active_generation(root),
             )
             plan_started_recorded = True
-        if planning_only and role_name == "planner":
+        if (
+            planning_only
+            and role_name == "planner"
+            and process_result.clarification_id is None
+        ):
             append_workflow_event(
                 root,
                 "plan_completed",
@@ -1216,6 +1353,14 @@ def run_loop(
             ctx, agent_result, resolved_agent_configs, session_task_id,
         )
         ctx.write_session_metadata(metadata)
+        if (
+            active_resume is not None
+            and active_resume.command == requested_command
+            and process_result.clarification_id is None
+        ):
+            clear_resume_state(root)
+            workspace.did_mutate()
+            active_resume = None
         if automatic_version_control:
             try:
                 workspace.sync()
@@ -1259,6 +1404,12 @@ def run_loop(
         )
         _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
+        if process_result.clarification_id is not None:
+            logger.info(
+                "Answer and resume with: devlab clarify answer %s --resume",
+                process_result.clarification_id,
+            )
+            return RunResult(sessions_run, True, 0, ())
 
         if (
             planning_only

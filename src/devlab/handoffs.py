@@ -12,7 +12,7 @@ REQUIRED_HANDOFF_HEADINGS = (
     "Addressed Findings",
     "Next Session Hint",
 )
-OPTIONAL_HANDOFF_HEADINGS = ("Planning State", "Commit Message")
+OPTIONAL_HANDOFF_HEADINGS = ("Planning State", "Commit Message", "Clarification Request")
 
 _HEADING_RE = re.compile(r"^## (?P<heading>.+?)[ \t]*$", re.MULTILINE)
 _NONE_LINES = {"none", "- none"}
@@ -20,6 +20,16 @@ _ADDRESSED_FINDING_LINE_RE = re.compile(
     r"^-\s+(?P<finding>F\d{4,5}):\s+"
     r"(?P<tasks>T\d{3,5}(?:\s*,\s*T\d{3,5})*)\s*$"
 )
+
+
+@dataclasses.dataclass(frozen=True)
+class ClarificationRequest:
+    title: str
+    scope: str
+    blocks: str
+    answer_shape: str
+    recommended_option: str
+    details: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -55,6 +65,13 @@ class Handoff:
         if not section:
             return None
         return parse_planning_state(section)
+
+    @property
+    def clarification_request(self) -> ClarificationRequest | None:
+        section = self.section("Clarification Request")
+        if not section:
+            return None
+        return parse_clarification_request(section)
 
     def addressed_finding_tasks(self) -> dict[str, tuple[str, ...]]:
         return addressed_finding_tasks(self.addressed_findings)
@@ -108,6 +125,59 @@ def parse_planning_state(section: str) -> bool:
             "handoff section ## Planning State planning_complete must be a boolean"
         )
     return planning_complete
+
+
+def parse_clarification_request(section: str) -> ClarificationRequest:
+    header, details = _split_clarification_request(section)
+    try:
+        data = tomllib.loads(header)
+    except tomllib.TOMLDecodeError as exc:
+        raise HandoffError(
+            "handoff section ## Clarification Request must start with TOML"
+        ) from exc
+    required = {"clarification_required", "title", "scope", "blocks", "answer_shape"}
+    missing = sorted(required - set(data))
+    if missing:
+        raise HandoffError(
+            "handoff section ## Clarification Request is missing required key(s): "
+            + ", ".join(missing)
+        )
+    if data.get("clarification_required") is not True:
+        raise HandoffError(
+            "handoff section ## Clarification Request clarification_required must be true"
+        )
+    title = _clarification_string(data, "title")
+    scope = _clarification_string(data, "scope")
+    blocks = _clarification_string(data, "blocks")
+    answer_shape = _clarification_string(data, "answer_shape")
+    recommended_option = str(data.get("recommended_option") or "")
+    if answer_shape == "choice" and not recommended_option:
+        raise HandoffError(
+            "handoff section ## Clarification Request choice requires recommended_option"
+        )
+    _validate_clarification_scope(scope)
+    _validate_clarification_blocks(blocks)
+    if answer_shape not in {"choice", "text", "file-edit"}:
+        raise HandoffError(
+            "handoff section ## Clarification Request answer_shape must be one of: "
+            "choice, text, file-edit"
+        )
+    _require_clarification_detail(details, "Context")
+    _require_clarification_detail(details, "Question")
+    if answer_shape == "choice":
+        _require_clarification_detail(details, "Options")
+    elif answer_shape == "file-edit":
+        _require_clarification_detail(details, "Expected File Edits")
+    else:
+        _require_clarification_detail(details, "Expected Answer")
+    return ClarificationRequest(
+        title=title,
+        scope=scope,
+        blocks=blocks,
+        answer_shape=answer_shape,
+        recommended_option=recommended_option,
+        details=details.strip(),
+    )
 
 
 def addressed_finding_tasks(section: str) -> dict[str, tuple[str, ...]]:
@@ -168,6 +238,8 @@ def _parse_sections(text: str, role_name: str) -> dict[str, str]:
     _validate_none_section(sections["Open Issues"], "Open Issues")
     _validate_addressed_findings_section(sections["Addressed Findings"])
     _validate_planning_state_section(sections, role_name)
+    if sections.get("Clarification Request"):
+        parse_clarification_request(sections["Clarification Request"])
     return sections
 
 
@@ -221,3 +293,50 @@ def _validate_addressed_findings_section(section: str) -> None:
 
 def _meaningful_lines(section: str) -> list[str]:
     return [line.strip() for line in section.splitlines() if line.strip()]
+
+
+def _split_clarification_request(section: str) -> tuple[str, str]:
+    match = re.search(r"^###\s+", section, flags=re.MULTILINE)
+    if match is None:
+        raise HandoffError(
+            "handoff section ## Clarification Request must contain Markdown details"
+        )
+    header = section[: match.start()].strip()
+    details = section[match.start() :].strip()
+    if not header:
+        raise HandoffError("handoff section ## Clarification Request is missing TOML")
+    return header, details
+
+
+def _clarification_string(data: dict[str, object], key: str) -> str:
+    value = data.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise HandoffError(
+            f"handoff section ## Clarification Request {key} must be a non-empty string"
+        )
+    return value
+
+
+def _validate_clarification_scope(scope: str) -> None:
+    if re.fullmatch(
+        r"workspace|planning|milestone:[A-Za-z0-9_.-]+|task:T\d{3,5}|finding:F\d{4,5}",
+        scope,
+    ) is None:
+        raise HandoffError(f"invalid clarification scope: {scope}")
+
+
+def _validate_clarification_blocks(blocks: str) -> None:
+    if re.fullmatch(
+        r"planning|implementation|milestone:[A-Za-z0-9_.-]+|task:T\d{3,5}|none",
+        blocks,
+    ) is None:
+        raise HandoffError(f"invalid clarification blocks: {blocks}")
+
+
+def _require_clarification_detail(details: str, heading: str) -> None:
+    pattern = rf"^### {re.escape(heading)}[ \t]*$([\s\S]*?)(?=^###\s|\Z)"
+    match = re.search(pattern, details, flags=re.MULTILINE)
+    if match is None or not match.group(1).strip():
+        raise HandoffError(
+            f"handoff section ## Clarification Request is missing ### {heading}"
+        )

@@ -70,6 +70,7 @@ target-project/
 │   ├── plans/
 │   ├── tasks/
 │   ├── findings/
+│   ├── clarifications/
 │   ├── history/
 │   ├── logs/
 │   └── session-artifacts/
@@ -101,7 +102,7 @@ The repository is the system of record. Agents should not depend on conversation
 
 Important workflow state is stored in files, for example:
 
-- `.devlab/workflow.toml` — small orchestrator-owned workflow-control state, currently planning completeness.
+- `.devlab/workflow.toml` — small orchestrator-owned workflow-control state, including planning completeness and an optional clarification resume pointer.
 - `.devlab/workflow-events.jsonl` — append-only orchestrator-owned lifecycle events used for provenance reporting, not workflow control.
 - `.devlab/specs/` — target-workspace system and deployment specifications.
 - `.devlab/config/` — target-workspace tooling, agent, profile, and environment lifecycle configuration.
@@ -109,11 +110,14 @@ Important workflow state is stored in files, for example:
 - `.devlab/tasks/` — task files, including each task's status.
 - `.devlab/milestones/` — milestone workflow state.
 - `.devlab/findings/` — file-backed integration and workflow findings.
+- `.devlab/clarifications/` — operator decision requests and answers for bounded workflow stops.
 - `.devlab/history/` — archived session handoffs and workflow markers.
 - `.devlab/logs/` — committed workflow logs.
 - `.devlab/session-artifacts/<role>/` — output from the current session before it is archived.
 
 This makes the workflow restartable. If an agent session fails or the process stops, the next run can reconstruct the state from the repository.
+
+Clarifications are distinct from findings. A finding means repository work is needed; a clarification means operator intent is needed. A valid role handoff may request one clarification instead of making its normal workflow transition. DevLab archives the handoff, writes `.devlab/clarifications/CLXXXX_*.md`, stores a `[resume]` pointer in `.devlab/workflow.toml`, and stops until the operator answers with `devlab clarify answer ...` or edits the clarification record and runs `devlab resume`.
 
 ### Sessions are small and bounded
 

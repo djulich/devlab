@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+from devlab.clarifications import Clarification, FileClarificationTracker
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.generations import active_generation
 from devlab.milestones import FileMilestoneTracker, Milestone
@@ -20,6 +21,7 @@ DESIGN_PLAN = ".devlab/plans/design-plan.md"
 PROJECT_PLAN = ".devlab/plans/project-plan.md"
 HISTORY_DIR = ".devlab/history"
 FINDINGS_DIR = ".devlab/findings"
+CLARIFICATIONS_DIR = ".devlab/clarifications"
 ARTIFACTS_DIR = ".devlab/session-artifacts"
 AGENT_LOG_DIR = ".devlab/logs/agents"
 
@@ -106,6 +108,9 @@ class Workspace:
     _milestones: FileMilestoneTracker | None = dataclasses.field(
         default=None, init=False, repr=False
     )
+    _clarifications: FileClarificationTracker | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
 
     def _task_tracker(self) -> FileTaskTracker:
         if self._tasks is None:
@@ -122,6 +127,11 @@ class Workspace:
             self._milestones = FileMilestoneTracker(self.root)
         return self._milestones
 
+    def _clarification_tracker(self) -> FileClarificationTracker:
+        if self._clarifications is None:
+            self._clarifications = FileClarificationTracker(self.root)
+        return self._clarifications
+
     @property
     def snapshot(self) -> WorkspaceSnapshot:
         if self._snapshot is None:
@@ -130,6 +140,7 @@ class Workspace:
                 _task_tracker=self._task_tracker(),
                 _finding_tracker=self._finding_tracker(),
                 _milestone_tracker=self._milestone_tracker(),
+                _clarification_tracker=self._clarification_tracker(),
             )
         return self._snapshot
 
@@ -149,6 +160,9 @@ class Workspace:
 
     def milestones(self) -> WorkspaceMilestones:
         return WorkspaceMilestones(self)
+
+    def clarifications(self) -> WorkspaceClarifications:
+        return WorkspaceClarifications(self)
 
     def did_mutate(self) -> None:
         self._snapshot = None
@@ -200,6 +214,43 @@ class WorkspaceMilestones:
 
     def get(self, milestone_id: str) -> WorkspaceMilestone:
         return WorkspaceMilestone(self.workspace, milestone_id)
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceClarifications:
+    """Clarification domain handle bound to a target workspace."""
+
+    workspace: Workspace
+
+    def get(self, clarification_id: str) -> WorkspaceClarification:
+        return WorkspaceClarification(self.workspace, clarification_id)
+
+    def create(
+        self,
+        *,
+        title: str,
+        asking_role: str,
+        session_id: str,
+        scope: str,
+        blocks: str,
+        answer_shape: str,
+        body: str,
+        recommended_option: str = "",
+        decision_refs: tuple[str, ...] = (),
+    ) -> Clarification:
+        clarification = self.workspace._clarification_tracker().create(
+            title=title,
+            asking_role=asking_role,
+            session_id=session_id,
+            scope=scope,
+            blocks=blocks,
+            answer_shape=answer_shape,
+            body=body,
+            recommended_option=recommended_option,
+            decision_refs=decision_refs,
+        )
+        self.workspace.did_mutate()
+        return clarification
 
 
 @dataclasses.dataclass(frozen=True)
@@ -303,6 +354,47 @@ class WorkspaceFinding:
             self.mark_resolved()
 
 
+@dataclasses.dataclass(frozen=True)
+class WorkspaceClarification:
+    """Mutable clarification handle bound to a target workspace."""
+
+    workspace: Workspace
+    id: str
+
+    def read(self) -> Clarification:
+        return self.workspace._clarification_tracker().get(self.id)
+
+    def answer(self, answer: str, *, operator: str = "") -> Clarification:
+        clarification = self.workspace._clarification_tracker().answer(
+            self.id,
+            answer,
+            operator=operator,
+        )
+        self.workspace.did_mutate()
+        return clarification
+
+    def answer_choice(
+        self,
+        choice: str,
+        *,
+        note: str = "",
+        operator: str = "",
+    ) -> Clarification:
+        clarification = self.workspace._clarification_tracker().answer_choice(
+            self.id,
+            choice,
+            note=note,
+            operator=operator,
+        )
+        self.workspace.did_mutate()
+        return clarification
+
+    def supersede(self, reason: str) -> Clarification:
+        clarification = self.workspace._clarification_tracker().supersede(self.id, reason)
+        self.workspace.did_mutate()
+        return clarification
+
+
 
 @dataclasses.dataclass
 class WorkspaceSnapshot:
@@ -318,9 +410,13 @@ class WorkspaceSnapshot:
     _task_tracker: FileTaskTracker = dataclasses.field(repr=False)
     _finding_tracker: FileFindingTracker = dataclasses.field(repr=False)
     _milestone_tracker: FileMilestoneTracker = dataclasses.field(repr=False)
+    _clarification_tracker: FileClarificationTracker = dataclasses.field(repr=False)
     _tasks: list[Task] | None = dataclasses.field(default=None, init=False, repr=False)
     _findings: list[Finding] | None = dataclasses.field(default=None, init=False, repr=False)
     _milestones: list[Milestone] | None = dataclasses.field(default=None, init=False, repr=False)
+    _clarifications: list[Clarification] | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
     _workflow_state: WorkflowState | None = dataclasses.field(
         default=None, init=False, repr=False
     )
@@ -342,6 +438,25 @@ class WorkspaceSnapshot:
         if self._milestones is None:
             self._milestones = self._milestone_tracker.list_milestones()
         return list(self._milestones)
+
+    def list_clarifications(self) -> list[Clarification]:
+        if self._clarifications is None:
+            self._clarifications = self._clarification_tracker.list_clarifications()
+        return list(self._clarifications)
+
+    def pending_clarifications(self) -> list[Clarification]:
+        return [
+            clarification
+            for clarification in self.list_clarifications()
+            if clarification.status.value == "pending"
+        ]
+
+    def blocking_clarifications(self) -> list[Clarification]:
+        return [
+            clarification
+            for clarification in self.pending_clarifications()
+            if clarification.blocks != "none"
+        ]
 
     def workflow_state(self) -> WorkflowState:
         if self._workflow_state is None:

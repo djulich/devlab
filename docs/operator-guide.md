@@ -49,6 +49,7 @@ DevLab and worker agents normally write:
 - `.devlab/tasks/`
 - `.devlab/milestones/`
 - `.devlab/findings/`
+- `.devlab/clarifications/`
 - `.devlab/history/`
 - `.devlab/session-artifacts/`
 - `.devlab/logs/`
@@ -58,6 +59,28 @@ DevLab and worker agents normally write:
 Manual edits to generated workflow state are sometimes useful for repair, but
 prefer `devlab doctor` before and after doing so. Reporting commands such as
 `status`, `diagnostics`, and `doctor` are read-only; they do not repair state.
+
+## Clarifications
+
+When a role session cannot safely continue without operator intent, DevLab may
+stop with a pending clarification under:
+
+```text
+.devlab/clarifications/
+```
+
+Inspect and answer with:
+
+- `devlab clarify list`
+- `devlab clarify show CL0001`
+- `devlab clarify answer CL0001 --choice A`
+- `devlab clarify answer CL0001 --text "Use a 24-hour idle timeout."`
+- `devlab clarify answer CL0001 --choice A --resume`
+- `devlab resume`
+
+Clarifications are workflow state, not findings. Answering records operator
+intent; resuming lets DevLab continue from the stored `[resume]` pointer in
+`.devlab/workflow.toml`.
 
 ## Specs and Planning
 

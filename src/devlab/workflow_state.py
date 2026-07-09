@@ -22,10 +22,20 @@ class SpecsState:
 
 
 @dataclasses.dataclass(frozen=True)
+class ResumeState:
+    blocked_by: str
+    command: str
+    role: str
+    task: str = ""
+    milestone: str = ""
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkflowState:
     version: int
     planning: PlanningState
     specs: SpecsState = dataclasses.field(default_factory=SpecsState)
+    resume: ResumeState | None = None
 
 
 def default_workflow_state(*, planning_complete: bool = True) -> WorkflowState:
@@ -77,6 +87,7 @@ def update_workflow_state(
                 else last_planned_spec_commit
             )
         ),
+        resume=current.resume,
     )
     if path.exists():
         text = path.read_text()
@@ -95,6 +106,41 @@ def update_workflow_state(
     return updated
 
 
+def set_resume_state(root: Path, resume: ResumeState) -> WorkflowState:
+    current = load_workflow_state(root)
+    updated = WorkflowState(
+        version=current.version,
+        planning=current.planning,
+        specs=current.specs,
+        resume=resume,
+    )
+    path = root / WORKFLOW_STATE
+    if path.exists():
+        text = _remove_table(path.read_text(), "resume")
+        suffix = "" if text.endswith("\n") or not text else "\n"
+        text = text + suffix + _format_resume_table(resume)
+        path.write_text(text)
+    else:
+        write_workflow_state(root, updated)
+    return updated
+
+
+def clear_resume_state(root: Path) -> WorkflowState:
+    current = load_workflow_state(root)
+    updated = WorkflowState(
+        version=current.version,
+        planning=current.planning,
+        specs=current.specs,
+        resume=None,
+    )
+    path = root / WORKFLOW_STATE
+    if path.exists():
+        path.write_text(_remove_table(path.read_text(), "resume"))
+    else:
+        write_workflow_state(root, updated)
+    return updated
+
+
 def format_workflow_state(state: WorkflowState) -> str:
     return (
         f"version = {format_toml_value(state.version)}\n\n"
@@ -105,6 +151,11 @@ def format_workflow_state(state: WorkflowState) -> str:
             f"last_planned_spec_commit = "
             f"{format_toml_value(state.specs.last_planned_spec_commit)}\n"
             if state.specs.last_planned_spec_commit is not None
+            else ""
+        )
+        + (
+            "\n" + _format_resume_table(state.resume)
+            if state.resume is not None
             else ""
         )
     )
@@ -141,6 +192,43 @@ def _replace_table_key(text: str, table: str, key: str, value: object) -> str:
     return "".join(lines)
 
 
+def _remove_table(text: str, table: str) -> str:
+    lines = text.splitlines(keepends=True)
+    start: int | None = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == f"[{table}]":
+            start = index
+            continue
+        if (
+            start is not None
+            and index > start
+            and stripped.startswith("[")
+            and stripped.endswith("]")
+        ):
+            end = index
+            break
+    if start is None:
+        return text
+    while start > 0 and not lines[start - 1].strip():
+        start -= 1
+    while end < len(lines) and not lines[end].strip():
+        end += 1
+    return "".join(lines[:start] + lines[end:])
+
+
+def _format_resume_table(resume: ResumeState) -> str:
+    return (
+        "[resume]\n"
+        f"blocked_by = {format_toml_value(resume.blocked_by)}\n"
+        f"command = {format_toml_value(resume.command)}\n"
+        f"role = {format_toml_value(resume.role)}\n"
+        f"task = {format_toml_value(resume.task)}\n"
+        f"milestone = {format_toml_value(resume.milestone)}\n"
+    )
+
+
 def parse_workflow_state(data: object) -> WorkflowState:
     if not isinstance(data, dict):
         raise ValueError(f"{WORKFLOW_STATE} must be a TOML table")
@@ -166,8 +254,45 @@ def parse_workflow_state(data: object) -> WorkflowState:
         raise ValueError(
             f"{WORKFLOW_STATE}.specs.last_planned_spec_commit must be a string"
         )
+    resume = config.get("resume")
+    parsed_resume = _parse_resume_state(resume) if resume is not None else None
     return WorkflowState(
         version=version,
         planning=PlanningState(complete=complete),
         specs=SpecsState(last_planned_spec_commit=last_planned_spec_commit),
+        resume=parsed_resume,
     )
+
+
+def _parse_resume_state(value: object) -> ResumeState:
+    if not isinstance(value, dict):
+        raise ValueError(f"{WORKFLOW_STATE}.resume must be a TOML table")
+    resume = cast("dict[str, Any]", value)
+    blocked_by = _resume_string(resume, "blocked_by")
+    command = _resume_string(resume, "command")
+    role = _resume_string(resume, "role")
+    task = _resume_optional_string(resume, "task")
+    milestone = _resume_optional_string(resume, "milestone")
+    if command not in {"plan", "implement"}:
+        raise ValueError(f"{WORKFLOW_STATE}.resume.command must be plan or implement")
+    return ResumeState(
+        blocked_by=blocked_by,
+        command=command,
+        role=role,
+        task=task,
+        milestone=milestone,
+    )
+
+
+def _resume_string(data: dict[str, Any], key: str) -> str:
+    value = data.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{WORKFLOW_STATE}.resume.{key} must be a non-empty string")
+    return value
+
+
+def _resume_optional_string(data: dict[str, Any], key: str) -> str:
+    value = data.get(key, "")
+    if not isinstance(value, str):
+        raise ValueError(f"{WORKFLOW_STATE}.resume.{key} must be a string")
+    return value

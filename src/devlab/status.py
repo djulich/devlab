@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
+from devlab.clarifications import Clarification
 from devlab.findings import Finding
 from devlab.generations import active_generation, archived_generation_numbers
 from devlab.milestones import Milestone
@@ -25,10 +26,16 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
         "Archived generations: "
         + (", ".join(str(number) for number in archived) if archived else "none")
     )
+    blockers = snapshot.blocking_clarifications()
+    if blockers:
+        lines.append(f"Pending clarification blockers: {len(blockers)}")
+        for clarification in blockers[:3]:
+            lines.append(f"- {clarification.id}: {clarification.title}")
 
     if verbose:
         lines.extend(["", *_format_agent_configuration(root)])
         lines.extend(["", *_format_prompt_context(snapshot)])
+        lines.extend(["", *_format_clarification_status(snapshot)])
         lines.extend(["", *_format_milestone_status(snapshot)])
         lines.extend(["", *_format_finding_status(snapshot)])
     return "\n".join(lines)
@@ -143,6 +150,26 @@ def _format_finding(finding: Finding, tasks: list[Task]) -> list[str]:
     else:
         lines.append("  addressing_tasks: none")
     return lines
+
+
+def _format_clarification_status(snapshot: WorkspaceSnapshot) -> list[str]:
+    clarifications = snapshot.list_clarifications()
+    if not clarifications:
+        return ["Clarifications: none"]
+    lines = ["Clarifications:"]
+    for clarification in clarifications:
+        lines.extend(_format_clarification(clarification))
+    return lines
+
+
+def _format_clarification(clarification: Clarification) -> list[str]:
+    return [
+        f"- {clarification.id}: {clarification.title}",
+        f"  status: {clarification.status.value}",
+        f"  blocks: {clarification.blocks}",
+        f"  scope: {clarification.scope}",
+        f"  asking_role: {clarification.asking_role}",
+    ]
 
 
 def _bool_text(value: bool) -> str:

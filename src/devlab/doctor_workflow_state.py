@@ -3,6 +3,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+from devlab.clarifications import CLARIFICATIONS_DIR, FileClarificationTracker
 from devlab.doctor_common import DoctorProblem, display_path
 from devlab.findings import FindingStatus
 from devlab.git import VersionControlError, run_git
@@ -67,6 +68,36 @@ def check_task_domains(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
                     "overlay will be used",
                 )
             )
+    return problems
+
+
+def check_clarifications(root: Path) -> list[DoctorProblem]:
+    clarifications_dir = root / CLARIFICATIONS_DIR
+    if not clarifications_dir.exists():
+        return []
+    problems: list[DoctorProblem] = []
+    tracker = FileClarificationTracker(root)
+    for path in sorted(clarifications_dir.glob("CL*.md")):
+        try:
+            clarification = tracker.read_path(path)
+        except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+            problems.append(DoctorProblem(display_path(path, root), str(exc)))
+            continue
+        if clarification.status.value == "pending":
+            if "## Context" not in clarification.body:
+                problems.append(
+                    DoctorProblem(
+                        display_path(path, root),
+                        "pending clarification is missing ## Context",
+                    )
+                )
+            if "## Question" not in clarification.body:
+                problems.append(
+                    DoctorProblem(
+                        display_path(path, root),
+                        "pending clarification is missing ## Question",
+                    )
+                )
     return problems
 
 

@@ -36,6 +36,10 @@ _Avoid_: release, sprint
 A repository-backed record of an integration or architecture-review issue that needs planner follow-up.
 _Avoid_: bug report, defect, ticket
 
+**Clarification**:
+A repository-backed operator decision request created when a role session cannot safely continue without explicit operator intent.
+_Avoid_: chat question, conversation, finding
+
 **Architecture-reviewed milestone**:
 An integrated milestone for which the architect performed project-state sync against design/spec/project direction. It is not an approval claim; remaining drift is represented as findings.
 _Avoid_: architecture-approved milestone
@@ -72,6 +76,7 @@ _Avoid_: project documentation
 
 - A **Target workspace** contains **Workflow state**.
 - A **Role session** produces a **Handoff**.
+- A **Handoff** may request one **Clarification**, which blocks the relevant workflow command until answered.
 - A **Task** may belong to one **Milestone** and use one **Profile**.
 - A **Finding** may belong to one **Milestone** and is converted into **Addressing tasks** by the planner.
 - A **Workspace** creates **WorkspaceSnapshots** for read-only decisions and exposes handles for workflow mutations.
