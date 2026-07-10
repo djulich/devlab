@@ -37,6 +37,7 @@ The remaining work is refinement and extension rather than the first durable pat
 - continue reporting refinements as needed; `devlab workflow-state` now includes clarification blockers and resume pointers in text, digest, and JSON output;
 - continue diagnostics refinements as needed; diagnostics now report clarification stops by role, record counts, average answer latency when timestamps are available, and repeated role/scope request warnings;
 - continue improving repair guidance where needed; reusable manual-edit answer validation now distinguishes pending, empty answered, malformed, superseded, and choice-mismatch records, and `devlab resume` validates answers before invoking a role;
+- add unattended clarification handling through a bounded resolver session that answers durable clarification records instead of disabling the clarification mechanism;
 - optionally add the editor adapter after shared operations are stable;
 - defer `decision_refs` traceability extensions until real usage shows scope-based prompt selection is insufficient.
 
@@ -49,6 +50,7 @@ Key outcomes:
 - Role sessions can request clarification through a structured artifact contract.
 - DevLab stops in a durable "needs clarification" state.
 - Operators can answer through the CLI, by editing repository files, or through future operator-interface adapters.
+- Unattended runs can continue by routing clarification records to a bounded resolver agent session instead of bypassing the clarification mechanism.
 - DevLab records how the interrupted workflow should resume, so operators do not need to remember whether `devlab plan` or `devlab implement` is the correct next command.
 - Answered clarifications become stable workflow references.
 - Relevant answers are included in later role prompts.
@@ -65,12 +67,14 @@ GSD discusses implementation decisions before planning so later roles do not gue
 - stop only for high-impact or unsafe ambiguity;
 - require every clarification request to include context, expected answer shape, and a recommended default unless no safe default exists;
 - store the question and answer as workflow state, not conversational memory;
+- preserve the same durable record when an unattended resolver agent answers on the operator's behalf;
 - reference stable clarification IDs from tasks, findings, and future milestone verification records instead of duplicating prose.
 
-This should be two related mechanisms:
+This should be three related mechanisms:
 
 - **Proactive planning clarifications**: architect or planner can request operator decisions before finalizing design or task plans.
 - **Reactive blocking clarifications**: any role can stop when continuing would mean inventing requirements, ignoring a contradiction, or making a risky scope/tooling decision.
+- **Unattended clarification resolution**: an explicitly requested unattended mode can invoke a separate resolver session to answer the durable clarification and resume the interrupted route.
 
 ## Operator Interface Boundary
 
@@ -425,11 +429,45 @@ Future UX options:
 - `devlab clarify answer CL0001 --use-default`
 - `devlab plan --interactive-clarifications`
 - `devlab implement --interactive-clarifications`
-- `devlab plan --auto-clarify-defaults`
-- `devlab implement --auto-clarify-defaults`
+- `devlab plan --clarification-mode=agent`
+- `devlab implement --clarification-mode=agent`
+- `devlab plan --unattended`
+- `devlab implement --unattended`
 - `devlab clarify export --pending`
 
-Do not implement auto-answering in the first slice. The first slice should prove the durable state and stop/resume behavior.
+Do not implement unattended answering in the first slice. The first slice should prove the durable state and stop/resume behavior.
+
+## Unattended Clarification Resolution
+
+Unattended mode must not disable durable clarifications. It should preserve the same clarification record, resume pointer, validation path, prompt context, and audit trail, but route the pending decision to a bounded resolver agent session instead of stopping for an operator.
+
+Recommended CLI shape:
+
+```bash
+devlab plan --clarification-mode=operator
+devlab plan --clarification-mode=agent
+devlab implement --clarification-mode=operator
+devlab implement --clarification-mode=agent
+devlab implement --unattended
+```
+
+`operator` is the current behavior: write the clarification and resume pointer, then stop with answer/resume instructions. `agent` means DevLab writes the clarification and resume pointer, invokes a separate resolver session, validates the resolver's answer through shared clarification validation, and resumes through the stored route. `--unattended` should be a convenience alias for the fully unattended policy once the surrounding command behavior is defined; at minimum it should select `--clarification-mode=agent`.
+
+Do not let the original blocked role silently answer its own clarification inline. The useful property of a clarification is that the role had to externalize a decision rather than continuing inside the same bounded session. In unattended mode, "external" means a separate resolver role/session with a narrow prompt contract.
+
+Resolver behavior:
+
+- The resolver receives the clarification record, relevant repository context, and the stored resume route.
+- For `answer_shape = "choice"`, it selects the recommended option unless durable project state clearly contradicts it.
+- For `answer_shape = "text"`, it writes the narrowest answer consistent with specs, plans, ADRs, `CONTEXT.md`, task scope, and existing repository conventions.
+- For `answer_shape = "file-edit"`, it makes the minimal durable file edits requested by `### Expected File Edits`, then answers with a concise summary of the edits and rationale.
+- If a choice has no valid recommended option, the resolver must stop as an invalid clarification request rather than guessing.
+- If text or file-edit intent remains genuinely unresolvable, the resolver should choose the most conservative reversible default that keeps the workflow moving and record the uncertainty in the answer. A future stricter mode may turn that case into a hard stop.
+- The resolver must not advance task, milestone, finding, planning, or integration state directly. Its only allowed workflow-state mutation is answering the clarification through shared operations, plus any requested durable file edits for `file-edit` clarifications.
+
+The answer should record provenance, for example `answered_by = "agent:clarification-resolver"` or a session-specific value. Prompt context and diagnostics should distinguish operator answers from agent-resolved answers when that metadata is present.
+
+The resolver is a workflow role for invocation and logging purposes, but it should not become a normal planning or implementation role. It exists only as a bounded adapter over pending clarification records. Keep provider-specific invocation in `agents.py`; orchestration decides when a resolver session is needed.
 
 ## Interactive And External Interfaces
 
@@ -729,7 +767,39 @@ Tests:
 - doctor rejects invalid status/shape and missing answer on answered records;
 - diagnostics counts clarification stops.
 
-### Phase 8: Optional Editor Adapter
+### Phase 8: Unattended Resolver Mode
+
+Status: planned.
+
+Add an explicit unattended clarification policy that preserves durable clarification records while allowing `devlab plan` and `devlab implement` to continue without operator input.
+
+Implement:
+
+- CLI option parsing for `--clarification-mode=operator|agent` on `devlab plan` and `devlab implement`;
+- a convenience `--unattended` flag if the broader unattended behavior is defined for the command;
+- a resolver role prompt resource with a narrow contract for choice, text, and file-edit clarification answers;
+- orchestration policy plumbing so a clarification request can be handled by operator stop or by resolver dispatch;
+- resolver invocation as a separate bounded session using the normal provider abstraction;
+- resolver handoff or output parsing that updates only the clarification answer through `clarification_ops.py`;
+- provenance metadata for agent-resolved answers;
+- validation of the resolver's answer through `validate_clarification_answer()`;
+- resume through the stored route only after the answer validates;
+- loop protection so repeated resolver failure or repeated clarification requests stop with repair guidance instead of spinning.
+
+Tests:
+
+- default `operator` mode remains unchanged and stops with resume instructions;
+- `agent` mode writes the clarification and resume pointer before invoking the resolver;
+- choice clarification selects the recommended option and resumes;
+- text clarification records a valid resolver answer and resumes;
+- file-edit clarification allows expected durable edits, records an answer, and resumes;
+- invalid recommended choice stops as a handoff/clarification error;
+- invalid resolver answer stops with validation guidance and preserves the resume pointer;
+- resolver invocation is logged as a bounded session but does not advance task or milestone state directly;
+- repeated resolver failure does not create an infinite loop;
+- CLI passes the selected clarification policy into `run_loop()`.
+
+### Phase 9: Optional Editor Adapter
 
 Status: remaining and optional.
 
@@ -750,7 +820,7 @@ Tests:
 - invalid edited answer stops or reopens according to the chosen UX;
 - missing editor stops with the clarification path and resume instructions.
 
-### Phase 9: Traceability Extensions
+### Phase 10: Traceability Extensions
 
 Status: deferred.
 
@@ -787,16 +857,21 @@ Editor mode should allow one reopen prompt after an invalid answer only in expli
 
 Future server/API structured result types should be limited to what the CLI needs now, but core operations must return structured results rather than only printing so later adapters can reuse the same semantics.
 
+Unattended mode should answer clarifications through a separate bounded resolver session, not by disabling clarification creation and not by letting the blocked role continue inline. This preserves the clarification as durable workflow state while allowing live evaluations and CI-like runs to complete without operator input.
+
+The first unattended resolver policy should prefer recommendations for choice clarifications, but it must also support text and file-edit clarifications. Text answers should choose the narrowest repository-supported interpretation. File-edit answers may make minimal durable edits requested by the clarification, then answer the record. Both cases should record uncertainty when no perfect answer exists, rather than hiding that uncertainty in conversational memory.
+
 ## Non-Goals
 
-- Do not add a new clarification role.
+- Do not add a general-purpose clarification role to the normal workflow loop; the unattended resolver is a narrow adapter session for one pending clarification.
 - Do not add open-ended interactive chat to the workflow loop.
 - Do not implement a DevLab server, REST API, email integration, webhook integration, or web UI in the first clarification slice.
 - Do not turn every planner uncertainty into an operator question.
 - Do not store clarification state only in logs or conversation memory.
 - Do not use findings as the primary clarification storage.
 - Do not automatically rewrite `CONTEXT.md` or ADRs from CLI answers.
-- Do not implement auto-answering defaults until the explicit answer path is stable.
+- Do not bypass clarification records in unattended mode.
+- Do not let the original blocked role silently resolve its own clarification inside the same session.
 
 ## Documentation Updates
 
