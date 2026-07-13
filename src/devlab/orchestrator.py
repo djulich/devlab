@@ -23,12 +23,24 @@ from devlab.agents import (
     ProviderError,
     provider_for_role,
 )
+from devlab.clarifications import (
+    Clarification,
+    ClarificationAnswerShape,
+    ClarificationStatus,
+    FileClarificationTracker,
+    choice_option_texts,
+)
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
 from devlab.git import VersionControlError
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.profiles import ProfileNotFoundError, load_profile
-from devlab.prompts import build_base_prompt, build_session_prompt
+from devlab.prompt_resources import read_prompt_resource
+from devlab.prompts import (
+    build_base_prompt,
+    build_clarification_resolver_prompt,
+    build_session_prompt,
+)
 from devlab.session_logging import session_finish_context, session_start_context
 from devlab.spec_reconciliation import (
     SpecReconciliationStatus,
@@ -62,6 +74,8 @@ from devlab.workspace import (
 )
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
+CLARIFICATION_RESOLVER_ROLE = "clarification-resolver"
+CLARIFICATION_MODES = {"operator", "agent"}
 
 SessionProgressCallback = Callable[[str, int, str], None]
 
@@ -676,6 +690,167 @@ def _build_session_metadata(
     )
 
 
+def _validate_answered_clarification(clarification: Clarification) -> str | None:
+    if clarification.status == ClarificationStatus.PENDING:
+        return f"Clarification {clarification.id} is still pending."
+    if clarification.status == ClarificationStatus.SUPERSEDED:
+        return f"Clarification {clarification.id} is superseded."
+    return _validate_clarification_answer_text(clarification, clarification.answer_text)
+
+
+def _validate_clarification_answer_text(
+    clarification: Clarification, answer_text: str
+) -> str | None:
+    answer = answer_text.strip()
+    if not answer:
+        return f"Clarification {clarification.id} has an empty answer."
+    if clarification.answer_shape == ClarificationAnswerShape.CHOICE:
+        first_answer_line = answer.splitlines()[0].strip()
+        options = choice_option_texts(clarification.body)
+        if first_answer_line not in options:
+            allowed = ", ".join(options) if options else "no listed options"
+            return (
+                f"Clarification {clarification.id} choice answer must match one listed "
+                f"option. Found {first_answer_line!r}; expected one of: {allowed}."
+            )
+    return None
+
+
+def _resolver_answer_path(root: Path) -> Path:
+    return root / ARTIFACTS_DIR / CLARIFICATION_RESOLVER_ROLE / "answer.toml"
+
+
+def _parse_resolver_answer(root: Path, path: Path, clarification_id: str) -> str:
+    if not path.exists():
+        raise HandoffError(
+            "clarification resolver did not write "
+            f"{path.relative_to(root).as_posix()}"
+        )
+    try:
+        data = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as exc:
+        raise HandoffError("clarification resolver answer.toml is invalid TOML") from exc
+    found_id = data.get("clarification_id")
+    if found_id != clarification_id:
+        raise HandoffError(
+            "clarification resolver answer.toml clarification_id must be "
+            f"{clarification_id!r}"
+        )
+    answer = data.get("answer")
+    if not isinstance(answer, str) or not answer.strip():
+        raise HandoffError("clarification resolver answer.toml requires non-empty answer")
+    return answer.strip()
+
+
+def _answer_clarification_from_resolver(
+    root: Path,
+    clarification_id: str,
+    answer: str,
+    *,
+    resolver_session_id: str,
+) -> Clarification:
+    tracker = FileClarificationTracker(root)
+    clarification = tracker.get(clarification_id)
+    validation_error = _validate_clarification_answer_text(clarification, answer)
+    if validation_error is not None:
+        raise HandoffError(validation_error)
+    clarification = tracker.answer(
+        clarification_id,
+        answer,
+        operator=f"agent:{CLARIFICATION_RESOLVER_ROLE}:{resolver_session_id}",
+    )
+    validation_error = _validate_answered_clarification(clarification)
+    if validation_error is not None:
+        raise HandoffError(validation_error)
+    return clarification
+
+
+def _invoke_clarification_resolver(
+    root: Path,
+    *,
+    clarification_id: str,
+    session_number: int,
+    agent_providers: dict[str, AgentProvider],
+    role_agent_providers: dict[str, str] | None,
+    blocked_role: str,
+    retain_prompts: bool,
+    session_progress: SessionProgressCallback | None,
+) -> tuple[SessionError | None, bool]:
+    workflow_state = load_workflow_state(root)
+    if workflow_state.resume is None:
+        return SessionError(
+            "clarification_resolver",
+            "Cannot resolve clarification without an active resume pointer.",
+            1,
+        ), False
+    try:
+        clarification = FileClarificationTracker(root).get(clarification_id)
+    except KeyError:
+        return SessionError(
+            "clarification_resolver",
+            f"Cannot resolve unknown clarification {clarification_id}.",
+            1,
+        ), False
+
+    artifacts_dir = root / ARTIFACTS_DIR / CLARIFICATION_RESOLVER_ROLE
+    if artifacts_dir.exists():
+        shutil.rmtree(artifacts_dir)
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    ctx = _build_session_context(
+        root,
+        session_number,
+        CLARIFICATION_RESOLVER_ROLE,
+        retain_prompts=retain_prompts,
+    )
+    base_prompt = read_prompt_resource("role-clarification-resolver.md")
+    session_prompt = build_clarification_resolver_prompt(
+        Workspace(root).snapshot,
+        clarification,
+        workflow_state.resume,
+    )
+    ctx.write_prompt_logs(base_prompt, session_prompt)
+    invocation = ctx.build_invocation(base_prompt, session_prompt)
+    agent_provider = provider_for_role(blocked_role, agent_providers, role_agent_providers)
+
+    logger.info("Starting session %s: %s", ctx.session_number, CLARIFICATION_RESOLVER_ROLE)
+    _notify_session_progress(
+        session_progress, "start", ctx.session_number, CLARIFICATION_RESOLVER_ROLE
+    )
+    try:
+        agent_result = invoke_session(invocation, agent_provider=agent_provider)
+    except ProviderError as exc:
+        agent_result = AgentResult(
+            return_code=1,
+            failure_kind="provider_error",
+            message=f"agent provider error: {exc}",
+        )
+    ctx.write_session_metadata(_build_session_metadata(ctx, agent_result, None, None))
+    if not agent_result.succeeded:
+        return SessionError(
+            "clarification_resolver",
+            _agent_error_message(ctx, agent_result, None),
+            agent_result.return_code or 1,
+        ), True
+
+    try:
+        answer = _parse_resolver_answer(root, _resolver_answer_path(root), clarification_id)
+        _answer_clarification_from_resolver(
+            root,
+            clarification_id,
+            answer,
+            resolver_session_id=ctx.invocation_id,
+        )
+    except HandoffError as exc:
+        return SessionError("clarification_resolver", str(exc), 1), True
+
+    _notify_session_progress(
+        session_progress, "finish", ctx.session_number, CLARIFICATION_RESOLVER_ROLE
+    )
+    logger.info("Finished session %s: %s", ctx.session_number, CLARIFICATION_RESOLVER_ROLE)
+    return None, True
+
+
 def _dirty_spec_error(paths: tuple[str, ...]) -> SessionError:
     joined = ", ".join(paths)
     return SessionError(
@@ -940,9 +1115,14 @@ def run_loop(
     replace_plan: bool = False,
     adopt_existing: bool = False,
     mark_specs_planned: bool = False,
+    clarification_mode: str = "operator",
     session_progress: SessionProgressCallback | None = None,
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
+    if clarification_mode not in CLARIFICATION_MODES:
+        raise ValueError(
+            "clarification_mode must be one of: " + ", ".join(sorted(CLARIFICATION_MODES))
+        )
     if revise_plan and not planning_only:
         raise ValueError("revise_plan requires planning_only")
     if replace_plan and not planning_only:
@@ -1570,11 +1750,62 @@ def run_loop(
         _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
         if process_result.clarification_id is not None:
-            logger.info(
-                "Answer and resume with: devlab clarify answer %s --resume",
-                process_result.clarification_id,
+            if clarification_mode == "operator":
+                logger.info(
+                    "Answer and resume with: devlab clarify answer %s --resume",
+                    process_result.clarification_id,
+                )
+                return RunResult(sessions_run, True, 0, ())
+            if sessions_run >= max_sessions:
+                error = SessionError(
+                    "clarification_resolver",
+                    "Clarification resolver could not run because max_sessions was reached.",
+                    1,
+                )
+                logger.error("%s. Stopping.", error.message)
+                return RunResult(sessions_run, False, error.exit_code, (error,))
+            resolver_error, counted = _invoke_clarification_resolver(
+                root,
+                clarification_id=process_result.clarification_id,
+                session_number=sessions_run + 1,
+                agent_providers=agent_providers,
+                role_agent_providers=role_agent_providers,
+                blocked_role=role_name,
+                retain_prompts=retain_prompts,
+                session_progress=session_progress,
             )
-            return RunResult(sessions_run, True, 0, ())
+            if counted:
+                sessions_run += 1
+            if resolver_error is not None:
+                logger.error("%s. Stopping.", resolver_error.message)
+                return RunResult(
+                    sessions_run,
+                    False,
+                    resolver_error.exit_code,
+                    (resolver_error,),
+                )
+            if automatic_version_control:
+                try:
+                    committed = commit_all(
+                        root,
+                        f"Answer DevLab clarification {process_result.clarification_id}",
+                    )
+                    if committed:
+                        logger.info(
+                            "Committed clarification answer: %s",
+                            process_result.clarification_id,
+                        )
+                except VersionControlError as exc:
+                    logger.error("%s. Stopping.", exc)
+                    return RunResult(
+                        sessions_run,
+                        False,
+                        1,
+                        (SessionError("version_control", str(exc), 1),),
+                    )
+            workspace = Workspace(root)
+            active_resume = load_workflow_state(root).resume
+            continue
 
         if (
             planning_only

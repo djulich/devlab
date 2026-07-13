@@ -14,6 +14,7 @@ from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
 from devlab.profiles import Profile, load_profile
 from devlab.prompt_resources import read_optional_prompt_resource, read_prompt_resource
 from devlab.task_tracker import Task
+from devlab.workflow_state import ResumeState
 from devlab.workspace import (
     DESIGN_PLAN,
     HISTORY_DIR,
@@ -73,6 +74,38 @@ def build_session_prompt(
             spec_reconciliation=spec_reconciliation,
         )
     return prompt + _handoff_reminder(role_name)
+
+
+def build_clarification_resolver_prompt(
+    snapshot: WorkspaceSnapshot,
+    clarification: Clarification,
+    resume: ResumeState,
+) -> str:
+    """Build a bounded prompt for one unattended clarification answer."""
+    parts = []
+    knowledge = _format_project_knowledge(discover_project_knowledge(snapshot.root))
+    if knowledge:
+        parts.append(knowledge)
+    parts.append(
+        "## Clarification To Resolve\n\n"
+        f"Path: {clarification.path.relative_to(snapshot.root).as_posix()}\n\n"
+        f"{clarification.path.read_text().strip()}"
+    )
+    route = [f"command=devlab {resume.command}", f"role={resume.role}"]
+    if resume.task:
+        route.append(f"task={resume.task}")
+    if resume.milestone:
+        route.append(f"milestone={resume.milestone}")
+    parts.append("## Stored Resume Route\n\n" + ", ".join(route))
+    parts.append(
+        "## Answer Artifact\n\n"
+        "Write only this TOML file when you are done:\n\n"
+        "`.devlab/session-artifacts/clarification-resolver/answer.toml`\n\n"
+        "Required fields:\n\n"
+        'clarification_id = "' + clarification.id + '"\n'
+        'answer = """<answer text>"""\n'
+    )
+    return "\n\n".join(parts)
 
 
 def _planning_revision_section(

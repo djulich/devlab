@@ -387,6 +387,7 @@ def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert seen["revise_plan"] is True
     assert seen["mark_specs_planned"] is True
     assert seen["retain_prompts"] is True
+    assert seen["clarification_mode"] == "operator"
     assert seen["max_sessions"] == 2
 
 
@@ -417,6 +418,60 @@ def test_cli_implement_passes_retain_prompts(
 
     assert "auto" not in seen
     assert seen["retain_prompts"] is True
+    assert seen["clarification_mode"] == "operator"
+
+
+def test_cli_unattended_sets_agent_clarification_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+
+    _run_cli(
+        monkeypatch,
+        "implement",
+        "--unattended",
+        "--root",
+        str(tmp_path),
+    )
+
+    assert seen["clarification_mode"] == "agent"
+
+
+def test_cli_plan_passes_agent_clarification_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+
+    _run_cli(
+        monkeypatch,
+        "plan",
+        "--clarification-mode",
+        "agent",
+        "--root",
+        str(tmp_path),
+    )
+
+    assert seen["clarification_mode"] == "agent"
 
 
 def test_cli_implement_quiet_suppresses_progress_logs(

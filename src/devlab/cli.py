@@ -116,6 +116,20 @@ def main() -> None:
         action="store_true",
         help="Write full base/session prompts to .devlab/logs/agents/ for debugging.",
     )
+    implement_parser.add_argument(
+        "--clarification-mode",
+        choices=("operator", "agent"),
+        default="operator",
+        help=(
+            "How to handle role-requested clarifications: stop for operator input "
+            "or use a bounded resolver agent (default: operator)."
+        ),
+    )
+    implement_parser.add_argument(
+        "--unattended",
+        action="store_true",
+        help="Run without operator clarification stops; implies --clarification-mode=agent.",
+    )
 
     plan_parser = subparsers.add_parser(
         "plan", help="Run planning sessions and stop before implementation."
@@ -193,6 +207,20 @@ def main() -> None:
         "--retain-prompts",
         action="store_true",
         help="Write full base/session prompts to .devlab/logs/agents/ for debugging.",
+    )
+    plan_parser.add_argument(
+        "--clarification-mode",
+        choices=("operator", "agent"),
+        default="operator",
+        help=(
+            "How to handle role-requested clarifications: stop for operator input "
+            "or use a bounded resolver agent (default: operator)."
+        ),
+    )
+    plan_parser.add_argument(
+        "--unattended",
+        action="store_true",
+        help="Run without operator clarification stops; implies --clarification-mode=agent.",
     )
 
     status_parser = subparsers.add_parser("status", help="Show workspace status.")
@@ -405,6 +433,8 @@ def main() -> None:
                 "agent-smoke-test --use-provider-defaults requires "
                 "--provider or --all-providers"
             )
+    if args.command in {"plan", "implement"} and args.unattended:
+        args.clarification_mode = "agent"
     if args.command == "init":
         result = init_workspace(
             root,
@@ -426,6 +456,7 @@ def main() -> None:
             effort=args.effort,
             retain_prompts=args.retain_prompts,
             automatic_version_control=True,
+            clarification_mode=args.clarification_mode,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
@@ -444,6 +475,7 @@ def main() -> None:
             adopt_existing=args.adopt_existing,
             replace_plan=args.replace_plan,
             mark_specs_planned=args.mark_specs_planned,
+            clarification_mode=args.clarification_mode,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)

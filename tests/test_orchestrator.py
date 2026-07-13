@@ -10,6 +10,7 @@ import pytest
 
 from devlab._logging import logger
 from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider, ProviderError
+from devlab.clarifications import FileClarificationTracker
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
@@ -27,6 +28,7 @@ from devlab.workspace import (
     ROLES,
     Workspace,
 )
+from tests.helpers import complete_acceptance
 
 
 def _setup_tree(root: Path) -> None:
@@ -405,6 +407,112 @@ def test_run_loop_clears_matching_resume_pointer_after_session(
 
     assert result.exit_code == 0
     assert load_workflow_state(tmp_path).resume is None
+
+
+def test_run_loop_agent_clarification_mode_invokes_resolver_and_resumes(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    task = _write_task(tmp_path, "T0001", "Auth")
+    developer_calls = 0
+
+    def handoff_for(call: AgentCall) -> str:
+        nonlocal developer_calls
+        if call.role_name == "developer":
+            developer_calls += 1
+        if call.role_name == "developer" and developer_calls == 1:
+            return _clarification_handoff("developer")
+        return (
+            "# Handoff: developer\n"
+            "## Done\n- Completed task.\n"
+            "## Changed Artifacts\n- None\n"
+            "## Open Issues\n- None\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nReview.\n"
+        )
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "clarification-resolver":
+            answer_path = (
+                call.root
+                / ARTIFACTS_DIR
+                / "clarification-resolver"
+                / "answer.toml"
+            )
+            answer_path.parent.mkdir(parents=True, exist_ok=True)
+            answer_path.write_text(
+                'clarification_id = "CL0001"\n'
+                'answer = """A: 24-hour idle timeout."""\n'
+            )
+            assert "## Clarification To Resolve" in call.session_prompt
+        if call.role_name == "developer" and developer_calls == 1:
+            complete_acceptance(call.root, "T0001")
+
+    provider = MockProvider(handoff_text=handoff_for, on_invoke=on_invoke)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=3,
+        agent_providers={"default": provider},
+        clarification_mode="agent",
+    )
+
+    assert result.exit_code == 0
+    assert [call.role_name for call in provider.calls] == [
+        "developer",
+        "clarification-resolver",
+        "developer",
+    ]
+    clarification = FileClarificationTracker(tmp_path).get("CL0001")
+    assert clarification.status.value == "answered"
+    assert clarification.metadata["answered_by"].startswith(
+        "agent:clarification-resolver:"
+    )
+    assert load_workflow_state(tmp_path).resume is None
+    assert 'status = "in_review"' in task.read_text()
+
+
+def test_run_loop_agent_clarification_mode_stops_on_invalid_resolver_answer(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "Auth")
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "clarification-resolver":
+            answer_path = (
+                call.root
+                / ARTIFACTS_DIR
+                / "clarification-resolver"
+                / "answer.toml"
+            )
+            answer_path.parent.mkdir(parents=True, exist_ok=True)
+            answer_path.write_text(
+                'clarification_id = "CL0001"\n'
+                'answer = """Use a 24-hour idle timeout."""\n'
+            )
+
+    provider = MockProvider(
+        handoff_text=_clarification_handoff("developer"),
+        on_invoke=on_invoke,
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=2,
+        agent_providers={"default": provider},
+        clarification_mode="agent",
+    )
+
+    assert result.exit_code == 1
+    assert result.errors[0].phase == "clarification_resolver"
+    assert "choice answer must match one listed option" in result.errors[0].message
+    assert FileClarificationTracker(tmp_path).get("CL0001").status.value == "pending"
+    assert load_workflow_state(tmp_path).resume is not None
 
 
 def _create_answered_clarification(root: Path) -> str:
