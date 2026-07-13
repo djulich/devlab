@@ -720,6 +720,14 @@ def _resolver_answer_path(root: Path) -> Path:
     return root / ARTIFACTS_DIR / CLARIFICATION_RESOLVER_ROLE / "answer.toml"
 
 
+def _resolver_repair_guidance(clarification_id: str, command: str) -> str:
+    return (
+        f"Clarification {clarification_id} remains pending with its resume pointer. "
+        f"Repair the resolver output and rerun `devlab {command} --unattended`, or "
+        f"answer it with `devlab clarify answer {clarification_id} --resume`."
+    )
+
+
 def _parse_resolver_answer(root: Path, path: Path, clarification_id: str) -> str:
     if not path.exists():
         raise HandoffError(
@@ -827,9 +835,13 @@ def _invoke_clarification_resolver(
         )
     ctx.write_session_metadata(_build_session_metadata(ctx, agent_result, None, None))
     if not agent_result.succeeded:
+        message = _agent_error_message(ctx, agent_result, None)
+        guidance = _resolver_repair_guidance(
+            clarification_id, workflow_state.resume.command
+        )
         return SessionError(
             "clarification_resolver",
-            _agent_error_message(ctx, agent_result, None),
+            f"{message} {guidance}",
             agent_result.return_code or 1,
         ), True
 
@@ -842,7 +854,10 @@ def _invoke_clarification_resolver(
             resolver_session_id=ctx.invocation_id,
         )
     except HandoffError as exc:
-        return SessionError("clarification_resolver", str(exc), 1), True
+        message = _resolver_repair_guidance(
+            clarification_id, workflow_state.resume.command
+        )
+        return SessionError("clarification_resolver", f"{exc}. {message}", 1), True
 
     _notify_session_progress(
         session_progress, "finish", ctx.session_number, CLARIFICATION_RESOLVER_ROLE

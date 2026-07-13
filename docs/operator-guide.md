@@ -330,6 +330,26 @@ generation archival. Role agents should not edit it directly.
 
 ## Before Running Unattended
 
+Both workflow commands support durable unattended clarification resolution:
+
+```text
+devlab plan --unattended
+devlab implement --unattended
+```
+
+`--unattended` is an alias for `--clarification-mode=agent`. When a role requests
+a blocking clarification, DevLab still writes the clarification and resume
+pointer, then starts a separate bounded resolver session. The resolver validates
+and records its answer with agent provenance before the interrupted route
+continues. The default `--clarification-mode=operator` behavior instead stops
+with instructions for answering and resuming.
+
+Choice clarifications normally use the recommended option. Text clarifications
+use the narrowest repository-supported answer. File-edit clarifications may make
+only the durable edits requested by the clarification and record a concise
+summary. Missing, malformed, mismatched, or invalid resolver answers stop the run
+without answering the clarification or clearing its resume pointer.
+
 Before running a longer workflow:
 
 - confirm `.gitignore` excludes secrets, caches, local credentials, and large

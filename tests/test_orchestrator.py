@@ -219,7 +219,28 @@ def _write_session_handoff(root: Path, role_name: str, text: str) -> Path:
     return path
 
 
-def _clarification_handoff(role_name: str = "developer") -> str:
+def _clarification_handoff(
+    role_name: str = "developer",
+    *,
+    answer_shape: str = "choice",
+) -> str:
+    shape_fields = (
+        'answer_shape = "choice"\nrecommended_option = "A"\n'
+        if answer_shape == "choice"
+        else f'answer_shape = "{answer_shape}"\n'
+    )
+    answer_details = (
+        "### Options\n"
+        "- A: 24-hour idle timeout.\n"
+        "- B: No expiry for MVP.\n"
+        if answer_shape == "choice"
+        else (
+            "### Expected File Edits\n"
+            "- `docs/session-policy.md`: record the selected timeout policy.\n"
+            if answer_shape == "file-edit"
+            else "### Expected Answer\nA concise timeout policy.\n"
+        )
+    )
     return (
         f"# Handoff: {role_name}\n"
         "## Done\n"
@@ -237,15 +258,12 @@ def _clarification_handoff(role_name: str = "developer") -> str:
         'title = "Auth session timeout"\n'
         'scope = "task:T0001"\n'
         'blocks = "implementation"\n'
-        'answer_shape = "choice"\n'
-        'recommended_option = "A"\n\n'
+        f"{shape_fields}\n"
         "### Context\n"
         "The task requires sessions but the spec does not define expiry.\n\n"
         "### Question\n"
         "Should sessions expire?\n\n"
-        "### Options\n"
-        "- A: 24-hour idle timeout.\n"
-        "- B: No expiry for MVP.\n"
+        f"{answer_details}"
     )
 
 
@@ -513,6 +531,118 @@ def test_run_loop_agent_clarification_mode_stops_on_invalid_resolver_answer(
     assert "choice answer must match one listed option" in result.errors[0].message
     assert FileClarificationTracker(tmp_path).get("CL0001").status.value == "pending"
     assert load_workflow_state(tmp_path).resume is not None
+
+
+@pytest.mark.parametrize("answer_shape", ["text", "file-edit"])
+def test_run_loop_agent_clarification_mode_resolves_non_choice_answers(
+    tmp_path: Path, answer_shape: str
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "Auth")
+    developer_calls = 0
+
+    def handoff_for(call: AgentCall) -> str:
+        nonlocal developer_calls
+        if call.role_name == "developer":
+            developer_calls += 1
+            if developer_calls == 1:
+                return _clarification_handoff(
+                    "developer", answer_shape=answer_shape
+                )
+        return (
+            "# Handoff: developer\n"
+            "## Done\n- Completed task.\n"
+            "## Changed Artifacts\n- None\n"
+            "## Open Issues\n- None\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nReview.\n"
+        )
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "developer" and developer_calls == 1:
+            complete_acceptance(call.root, "T0001")
+        if call.role_name != "clarification-resolver":
+            return
+        if answer_shape == "file-edit":
+            policy_path = call.root / "docs/session-policy.md"
+            policy_path.parent.mkdir(parents=True, exist_ok=True)
+            policy_path.write_text("# Session Policy\n\nUse a 24-hour idle timeout.\n")
+            answer = "Recorded a 24-hour idle timeout in docs/session-policy.md."
+        else:
+            answer = "Use a 24-hour idle timeout."
+        answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.toml"
+        answer_path.write_text(
+            'clarification_id = "CL0001"\n' f'answer = """{answer}"""\n'
+        )
+
+    provider = MockProvider(handoff_text=handoff_for, on_invoke=on_invoke)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=3,
+        agent_providers={"default": provider},
+        clarification_mode="agent",
+    )
+
+    assert result.exit_code == 0
+    clarification = FileClarificationTracker(tmp_path).get("CL0001")
+    assert clarification.status.value == "answered"
+    assert "24-hour idle timeout" in clarification.answer_text
+    if answer_shape == "file-edit":
+        assert (tmp_path / "docs/session-policy.md").read_text() == (
+            "# Session Policy\n\nUse a 24-hour idle timeout.\n"
+        )
+
+
+@pytest.mark.parametrize(
+    ("artifact", "expected_error"),
+    [
+        (None, "did not write"),
+        ("not = [valid", "invalid TOML"),
+        (
+            'clarification_id = "CL9999"\nanswer = """Use 24 hours."""\n',
+            "clarification_id must be 'CL0001'",
+        ),
+        ('clarification_id = "CL0001"\nanswer = ""\n', "requires non-empty answer"),
+    ],
+)
+def test_run_loop_resolver_artifact_failure_preserves_pending_resume(
+    tmp_path: Path, artifact: str | None, expected_error: str
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "Auth")
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "clarification-resolver" and artifact is not None:
+            answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.toml"
+            answer_path.write_text(artifact)
+
+    provider = MockProvider(
+        handoff_text=_clarification_handoff("developer"),
+        on_invoke=on_invoke,
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=2,
+        agent_providers={"default": provider},
+        clarification_mode="agent",
+    )
+
+    assert result.exit_code == 1
+    assert result.sessions_run == 2
+    assert len(provider.calls) == 2
+    assert expected_error in result.errors[0].message
+    assert "remains pending with its resume pointer" in result.errors[0].message
+    assert "devlab implement --unattended" in result.errors[0].message
+    assert FileClarificationTracker(tmp_path).get("CL0001").status.value == "pending"
+    resume = load_workflow_state(tmp_path).resume
+    assert resume is not None
+    assert resume.blocked_by == "CL0001"
 
 
 def _create_answered_clarification(root: Path) -> str:

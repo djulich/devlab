@@ -769,7 +769,7 @@ Tests:
 
 ### Phase 8: Unattended Resolver Mode
 
-Status: planned.
+Status: implemented.
 
 Add an explicit unattended clarification policy that preserves durable clarification records while allowing `devlab plan` and `devlab implement` to continue without operator input.
 

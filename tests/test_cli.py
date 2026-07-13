@@ -474,6 +474,26 @@ def test_cli_plan_passes_agent_clarification_mode(
     assert seen["clarification_mode"] == "agent"
 
 
+def test_cli_plan_unattended_sets_agent_clarification_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+
+    _run_cli(monkeypatch, "plan", "--unattended", "--root", str(tmp_path))
+
+    assert seen["clarification_mode"] == "agent"
+
+
 def test_cli_implement_quiet_suppresses_progress_logs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
