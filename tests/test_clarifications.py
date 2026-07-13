@@ -284,6 +284,22 @@ def test_rejects_choice_answer_when_option_is_unknown(tmp_path: Path) -> None:
         tracker.answer_choice(clarification.id, "C")
 
 
+def test_create_choice_rejects_invalid_recommended_option(tmp_path: Path) -> None:
+    _setup_clarifications_dir(tmp_path)
+
+    with pytest.raises(ValueError, match="must match one listed option"):
+        FileClarificationTracker(tmp_path).create(
+            title="Auth session timeout",
+            asking_role="planner",
+            session_id="s1",
+            scope="planning",
+            blocks="planning",
+            answer_shape="choice",
+            recommended_option="C",
+            body=_body(),
+        )
+
+
 def test_validate_clarification_answer_rejects_pending_record(tmp_path: Path) -> None:
     _setup_clarifications_dir(tmp_path)
     clarification = FileClarificationTracker(tmp_path).create(

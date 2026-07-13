@@ -23,12 +23,8 @@ from devlab.agents import (
     ProviderError,
     provider_for_role,
 )
-from devlab.clarifications import (
-    Clarification,
-    ClarificationAnswerShape,
-    ClarificationStatus,
-    FileClarificationTracker,
-    choice_option_texts,
+from devlab.clarification_ops import (
+    apply_validated_clarification_answer,
 )
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
@@ -690,32 +686,6 @@ def _build_session_metadata(
     )
 
 
-def _validate_answered_clarification(clarification: Clarification) -> str | None:
-    if clarification.status == ClarificationStatus.PENDING:
-        return f"Clarification {clarification.id} is still pending."
-    if clarification.status == ClarificationStatus.SUPERSEDED:
-        return f"Clarification {clarification.id} is superseded."
-    return _validate_clarification_answer_text(clarification, clarification.answer_text)
-
-
-def _validate_clarification_answer_text(
-    clarification: Clarification, answer_text: str
-) -> str | None:
-    answer = answer_text.strip()
-    if not answer:
-        return f"Clarification {clarification.id} has an empty answer."
-    if clarification.answer_shape == ClarificationAnswerShape.CHOICE:
-        first_answer_line = answer.splitlines()[0].strip()
-        options = choice_option_texts(clarification.body)
-        if first_answer_line not in options:
-            allowed = ", ".join(options) if options else "no listed options"
-            return (
-                f"Clarification {clarification.id} choice answer must match one listed "
-                f"option. Found {first_answer_line!r}; expected one of: {allowed}."
-            )
-    return None
-
-
 def _resolver_answer_path(root: Path) -> Path:
     return root / ARTIFACTS_DIR / CLARIFICATION_RESOLVER_ROLE / "answer.toml"
 
@@ -756,21 +726,16 @@ def _answer_clarification_from_resolver(
     answer: str,
     *,
     resolver_session_id: str,
-) -> Clarification:
-    tracker = FileClarificationTracker(root)
-    clarification = tracker.get(clarification_id)
-    validation_error = _validate_clarification_answer_text(clarification, answer)
-    if validation_error is not None:
-        raise HandoffError(validation_error)
-    clarification = tracker.answer(
-        clarification_id,
-        answer,
-        operator=f"agent:{CLARIFICATION_RESOLVER_ROLE}:{resolver_session_id}",
-    )
-    validation_error = _validate_answered_clarification(clarification)
-    if validation_error is not None:
-        raise HandoffError(validation_error)
-    return clarification
+) -> None:
+    try:
+        apply_validated_clarification_answer(
+            root,
+            clarification_id,
+            answer,
+            operator=f"agent:{CLARIFICATION_RESOLVER_ROLE}:{resolver_session_id}",
+        )
+    except ValueError as exc:
+        raise HandoffError(str(exc)) from exc
 
 
 def _invoke_clarification_resolver(
@@ -792,7 +757,7 @@ def _invoke_clarification_resolver(
             1,
         ), False
     try:
-        clarification = FileClarificationTracker(root).get(clarification_id)
+        clarification = Workspace(root).clarifications().get(clarification_id).read()
     except KeyError:
         return SessionError(
             "clarification_resolver",

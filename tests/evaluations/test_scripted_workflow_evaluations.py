@@ -7,6 +7,7 @@ import pytest
 
 from devlab.agents import MockProvider
 from devlab.artifact_hygiene import ArtifactHygiene, collect_artifact_hygiene
+from devlab.clarifications import FileClarificationTracker
 from devlab.findings import FileFindingTracker, FindingStatus
 from devlab.generations import (
     active_generation,
@@ -62,6 +63,7 @@ from tests.evaluations.harness import (
 from tests.evaluations.scripted_agents import (
     AdoptExistingScriptedAgent,
     CalculatorScriptedAgent,
+    ClarificationCalculatorScriptedAgent,
     ComposeDeploymentScriptedAgent,
     DeploymentWebApiScriptedAgent,
     HttpApiScriptedAgent,
@@ -88,6 +90,40 @@ def test_scripted_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
     diagnostics = run_scripted_evaluation(tmp_path, scenario)
 
     _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="calculator.py")
+
+
+def test_scripted_cli_calculator_unattended_clarification_evaluation(
+    tmp_path: Path,
+) -> None:
+    scenario = EvaluationScenario(
+        id="cli-calculator-unattended-clarification",
+        title="CLI calculator unattended clarification",
+        system_spec="Build a Python CLI calculator with add and subtract commands.",
+        max_sessions=10,
+        scripted_agent=ClarificationCalculatorScriptedAgent(),
+        checks=_calculator_checks(),
+        expected_roles=(
+            "architect",
+            "planner",
+            "developer",
+            "clarification-resolver",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
+        ),
+        expected_sessions=8,
+        clarification_mode="agent",
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="calculator.py")
+    clarification = FileClarificationTracker(tmp_path).get("CL0001")
+    assert clarification.status.value == "answered"
+    assert clarification.metadata["answered_by"].startswith(
+        "agent:clarification-resolver:"
+    )
 
 
 def test_scripted_cli_calculator_reviewer_rework_evaluation(tmp_path: Path) -> None:

@@ -232,6 +232,31 @@ def test_parse_handoff_rejects_choice_clarification_without_options(
         parse_handoff(path, "developer")
 
 
+def test_parse_handoff_rejects_choice_clarification_with_invalid_recommendation(
+    tmp_path: Path,
+) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = true\n"
+            'title = "Auth policy"\n'
+            'scope = "planning"\n'
+            'blocks = "planning"\n'
+            'answer_shape = "choice"\n'
+            'recommended_option = "C"\n\n'
+            "### Context\nC\n\n"
+            "### Question\nQ\n\n"
+            "### Options\n"
+            "- A: 24-hour idle timeout.\n"
+            "- B: No expiry for MVP.\n"
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="must match one listed option"):
+        parse_handoff(path, "developer")
+
+
 def test_parse_handoff_rejects_invalid_clarification_enum(tmp_path: Path) -> None:
     path = _write_handoff(
         tmp_path,

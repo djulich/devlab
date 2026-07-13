@@ -769,7 +769,13 @@ Tests:
 
 ### Phase 8: Unattended Resolver Mode
 
-Status: implemented.
+Status: implemented and consolidated. Resolver answers use the shared
+`clarification_ops.py` validation/application boundary and workspace mutation
+handles. Choice recommendations are validated against listed options before a
+record is created, and scripted evaluation covers unattended stop, resolution,
+provenance, and resume. The resolver intentionally inherits the blocked role's
+provider in the first policy; an explicit provider override remains deferred
+until usage demonstrates a need.
 
 Add an explicit unattended clarification policy that preserves durable clarification records while allowing `devlab plan` and `devlab implement` to continue without operator input.
 

@@ -166,6 +166,7 @@ def parse_clarification_request(section: str) -> ClarificationRequest:
     _require_clarification_detail(details, "Question")
     if answer_shape == "choice":
         _require_clarification_detail(details, "Options")
+        _validate_recommended_clarification_option(details, recommended_option)
     elif answer_shape == "file-edit":
         _require_clarification_detail(details, "Expected File Edits")
     else:
@@ -339,4 +340,17 @@ def _require_clarification_detail(details: str, heading: str) -> None:
     if match is None or not match.group(1).strip():
         raise HandoffError(
             f"handoff section ## Clarification Request is missing ### {heading}"
+        )
+
+
+def _validate_recommended_clarification_option(
+    details: str, recommended_option: str
+) -> None:
+    pattern = re.compile(
+        rf"^\s*[-*]\s+{re.escape(recommended_option)}:\s+.+$", re.MULTILINE
+    )
+    if pattern.search(details) is None:
+        raise HandoffError(
+            "handoff section ## Clarification Request recommended_option "
+            f"{recommended_option!r} must match one listed option"
         )

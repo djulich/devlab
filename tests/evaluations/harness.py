@@ -79,6 +79,7 @@ class EvaluationScenario:
     expected_rejections: int = 0
     expected_findings: int = 0
     expected_milestone_tags: tuple[str, ...] = ("devlab/milestone/M1",)
+    clarification_mode: str = "operator"
 
 
 @dataclasses.dataclass
@@ -213,6 +214,7 @@ def run_scripted_evaluation(root: Path, scenario: EvaluationScenario) -> Evaluat
         root,
         max_sessions=scenario.max_sessions,
         agent_providers={"default": provider},
+        clarification_mode=scenario.clarification_mode,
     )
     checks = [check(root) for check in scenario.checks]
     diagnostics = diagnostics_for(
@@ -254,6 +256,7 @@ def run_live_evaluation(
         model=model,
         effort=effort,
         retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
+        clarification_mode=scenario.clarification_mode,
     )
     checks = [check(root) for check in scenario.checks]
     diagnostics = diagnostics_for(
@@ -302,6 +305,7 @@ def _run_evaluation_loop(
     effort: str | None = None,
     retain_prompts: bool = False,
     agent_providers: dict[str, AgentProvider] | None = None,
+    clarification_mode: str = "operator",
 ) -> tuple[RunResult, float]:
     started = time.monotonic()
     result = run_loop(
@@ -313,6 +317,7 @@ def _run_evaluation_loop(
         retain_prompts=retain_prompts,
         agent_providers=agent_providers,
         automatic_version_control=True,
+        clarification_mode=clarification_mode,
     )
     return result, time.monotonic() - started
 

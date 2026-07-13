@@ -128,6 +128,8 @@ class FileClarificationTracker:
         _validate_blocks(blocks)
         if shape == ClarificationAnswerShape.CHOICE and not recommended_option:
             raise ValueError("choice clarification requires recommended_option")
+        if shape == ClarificationAnswerShape.CHOICE:
+            _validate_recommended_option(body, recommended_option)
         self.clarifications_path.mkdir(parents=True, exist_ok=True)
         clarification_id = self._next_clarification_id()
         path = self.clarifications_path / f"{clarification_id}_{_slugify(title)}.md"
@@ -243,6 +245,8 @@ class FileClarificationTracker:
         recommended_option = str(metadata.get("recommended_option") or "")
         if answer_shape == ClarificationAnswerShape.CHOICE and not recommended_option:
             raise ValueError("choice clarification requires recommended_option")
+        if answer_shape == ClarificationAnswerShape.CHOICE:
+            _validate_recommended_option(body, recommended_option)
         decision_refs = _parse_string_list(metadata.get("decision_refs", []), "decision_refs")
         created_at = _required_string(metadata, "created_at", path)
         answered_at_value = metadata.get("answered_at")
@@ -300,6 +304,14 @@ def choice_option_texts(body: str) -> tuple[str, ...]:
         if match is not None:
             parsed.append(f"{match.group(1).strip()}: {match.group(2).strip()}")
     return tuple(parsed)
+
+
+def _validate_recommended_option(body: str, recommended_option: str) -> None:
+    if option_text(body, recommended_option) is None:
+        raise ValueError(
+            f"choice clarification recommended_option {recommended_option!r} "
+            "must match one listed option"
+        )
 
 
 def _split_front_matter(text: str) -> tuple[dict[str, Any], str]:

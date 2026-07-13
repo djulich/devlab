@@ -533,6 +533,32 @@ def test_run_loop_agent_clarification_mode_stops_on_invalid_resolver_answer(
     assert load_workflow_state(tmp_path).resume is not None
 
 
+def test_run_loop_agent_mode_rejects_invalid_recommendation_before_resolver(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "Auth")
+    invalid_handoff = _clarification_handoff("developer").replace(
+        'recommended_option = "A"', 'recommended_option = "C"'
+    )
+    provider = MockProvider(handoff_text=invalid_handoff)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=2,
+        agent_providers={"default": provider},
+        clarification_mode="agent",
+    )
+
+    assert result.exit_code == 1
+    assert "must match one listed option" in result.errors[0].message
+    assert [call.role_name for call in provider.calls] == ["developer"]
+    assert Workspace(tmp_path).snapshot.list_clarifications() == []
+    assert load_workflow_state(tmp_path).resume is None
+
+
 @pytest.mark.parametrize("answer_shape", ["text", "file-edit"])
 def test_run_loop_agent_clarification_mode_resolves_non_choice_answers(
     tmp_path: Path, answer_shape: str

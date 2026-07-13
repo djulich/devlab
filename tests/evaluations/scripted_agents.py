@@ -119,6 +119,50 @@ class CalculatorScriptedAgent:
         )
 
 
+class ClarificationCalculatorScriptedAgent(CalculatorScriptedAgent):
+    """Exercise a durable developer clarification and unattended resolution."""
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        if invocation.role_name == "developer" and not self.role_counts.get("developer"):
+            self._record(invocation)
+            return
+        if invocation.role_name == "clarification-resolver":
+            self._record(invocation)
+            answer_path = (
+                invocation.root
+                / ".devlab/session-artifacts/clarification-resolver/answer.toml"
+            )
+            answer_path.write_text(
+                'clarification_id = "CL0001"\n'
+                'answer = """A: Use integer arithmetic."""\n'
+            )
+            return
+        super().on_invoke(invocation)
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        if invocation.role_name == "developer" and self.role_counts["developer"] == 1:
+            return handoff(
+                "developer",
+                open_issues="- Blocked pending operator clarification.",
+            ) + (
+                "## Clarification Request\n"
+                "clarification_required = true\n"
+                'title = "Calculator numeric policy"\n'
+                'scope = "task:T0001"\n'
+                'blocks = "implementation"\n'
+                'answer_shape = "choice"\n'
+                'recommended_option = "A"\n\n'
+                "### Context\n"
+                "The calculator needs one numeric representation.\n\n"
+                "### Question\n"
+                "Which numeric representation should the implementation use?\n\n"
+                "### Options\n"
+                "- A: Use integer arithmetic.\n"
+                "- B: Use decimal arithmetic.\n"
+            )
+        return super().handoff_for(invocation)
+
+
 class HttpApiScriptedAgent:
     def __init__(self) -> None:
         self.roles: list[str] = []

@@ -3,16 +3,19 @@ from __future__ import annotations
 import dataclasses
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from devlab.clarifications import (
     Clarification,
     ClarificationAnswerShape,
     ClarificationStatus,
-    FileClarificationTracker,
     choice_option_texts,
 )
-from devlab.orchestrator import RunResult, run_loop
 from devlab.workflow_state import ResumeState, clear_resume_state, load_workflow_state
+from devlab.workspace import Workspace
+
+if TYPE_CHECKING:
+    from devlab.orchestrator import RunResult
 
 
 @dataclasses.dataclass(frozen=True)
@@ -39,9 +42,8 @@ def validate_clarification_answer(
     root: Path,
     clarification_id: str,
 ) -> ClarificationAnswerValidation:
-    tracker = FileClarificationTracker(root)
     try:
-        clarification = tracker.get(clarification_id)
+        clarification = Workspace(root).clarifications().get(clarification_id).read()
     except KeyError:
         return ClarificationAnswerValidation(
             False,
@@ -78,31 +80,60 @@ def validate_clarification_answer(
             clarification,
         )
 
-    answer = clarification.answer_text.strip()
-    if not answer:
-        return ClarificationAnswerValidation(
-            False,
-            f"Clarification {clarification.id} is answered but has an empty ## Answer section.",
-            clarification,
-        )
-
-    if clarification.answer_shape == ClarificationAnswerShape.CHOICE:
-        options = choice_option_texts(clarification.body)
-        first_answer_line = answer.splitlines()[0].strip()
-        if first_answer_line not in options:
-            allowed = ", ".join(options) if options else "no listed options"
-            return ClarificationAnswerValidation(
-                False,
-                f"Clarification {clarification.id} choice answer must match one listed "
-                f"option. Found {first_answer_line!r}; expected one of: {allowed}.",
-                clarification,
-            )
+    validation_error = validate_clarification_answer_text(
+        clarification, clarification.answer_text
+    )
+    if validation_error is not None:
+        return ClarificationAnswerValidation(False, validation_error, clarification)
 
     return ClarificationAnswerValidation(
         True,
         f"Clarification {clarification.id} answer is valid.",
         clarification,
     )
+
+
+def validate_clarification_answer_text(
+    clarification: Clarification, answer_text: str
+) -> str | None:
+    """Validate answer content without mutating its clarification record."""
+    answer = answer_text.strip()
+    if not answer:
+        return (
+            f"Clarification {clarification.id} is answered but has an empty "
+            "## Answer section."
+        )
+    if clarification.answer_shape == ClarificationAnswerShape.CHOICE:
+        first_answer_line = answer.splitlines()[0].strip()
+        options = choice_option_texts(clarification.body)
+        if first_answer_line not in options:
+            allowed = ", ".join(options) if options else "no listed options"
+            return (
+                f"Clarification {clarification.id} choice answer must match one listed "
+                f"option. Found {first_answer_line!r}; expected one of: {allowed}."
+            )
+    return None
+
+
+def apply_validated_clarification_answer(
+    root: Path,
+    clarification_id: str,
+    answer: str,
+    *,
+    operator: str = "",
+) -> Clarification:
+    """Validate and apply one answer through the workspace mutation boundary."""
+    workspace = Workspace(root)
+    handle = workspace.clarifications().get(clarification_id)
+    clarification = handle.read()
+    validation_error = validate_clarification_answer_text(clarification, answer)
+    if validation_error is not None:
+        raise ValueError(validation_error)
+    answered = handle.answer(answer, operator=operator)
+    validation = validate_clarification_answer(root, clarification_id)
+    if not validation.valid:
+        raise ValueError(validation.message)
+    return answered
 
 
 def answer_clarification(
@@ -116,21 +147,23 @@ def answer_clarification(
     resume: bool = False,
     max_sessions: int = 20,
 ) -> ClarificationAnswerResult:
-    tracker = FileClarificationTracker(root)
+    workspace = Workspace(root)
+    clarification_handle = workspace.clarifications().get(clarification_id)
     if choice is not None and text is not None:
         raise ValueError("choose either --choice or --text, not both")
     if choice is None and text is None:
         raise ValueError("answer requires --choice or --text")
     if choice is not None:
-        clarification = tracker.answer_choice(
-            clarification_id,
+        clarification = clarification_handle.answer_choice(
             choice,
             note=note,
             operator=operator,
         )
     else:
         assert text is not None
-        clarification = tracker.answer(clarification_id, text, operator=operator)
+        clarification = apply_validated_clarification_answer(
+            root, clarification_id, text, operator=operator
+        )
     run_result = None
     if resume:
         dispatch = resume_workflow(root, max_sessions=max_sessions)
@@ -141,10 +174,12 @@ def answer_clarification(
 
 
 def supersede_clarification(root: Path, clarification_id: str, reason: str) -> Clarification:
-    return FileClarificationTracker(root).supersede(clarification_id, reason)
+    return Workspace(root).clarifications().get(clarification_id).supersede(reason)
 
 
 def resume_workflow(root: Path, *, max_sessions: int = 20) -> ResumeDispatchResult:
+    from devlab.orchestrator import run_loop
+
     state = load_workflow_state(root)
     if state.resume is None:
         return ResumeDispatchResult(
