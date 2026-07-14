@@ -147,8 +147,10 @@ Acceptance:
 Priority: medium.
 
 The handoff-specific portion now has a concrete implementation sequence in
-`resilient-session-handoffs.md`. Follow that plan when changing handoff recovery;
-retain this item for validation failures in other trackers and workflow paths.
+`resilient-session-handoffs.md`. It uses typed failures for an orchestrator-owned
+submission and acceptance protocol rather than parsing new agent-authored
+Markdown control artifacts. Retain this item for validation failures in other
+trackers and workflow paths.
 
 ### 6. Strengthen resolver edit isolation without scanning the whole workspace
 

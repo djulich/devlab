@@ -4,308 +4,447 @@ Status: active.
 
 ## Purpose
 
-Make an otherwise successful role session recoverable when its handoff does not
-satisfy DevLab's artifact contract, without rerunning task work, trusting invented
-workflow claims, or leaving partially applied handoff-driven state.
+Replace direct agent authorship of authoritative handoff files with an
+orchestrator-owned submission protocol. Agents propose a small structured session
+result; DevLab validates it during the same role session and publishes the
+canonical result and human-readable handoff only after acceptance.
 
-This plan is the implementation reference for handoff recovery. The broader
-cross-cutting concerns remain in `architectural-improvements.md`; in particular,
-atomic tracker writes and general concurrent-process policy are not expanded into
-this feature.
+This plan is the implementation reference for the handoff boundary. The broader
+cross-cutting concerns remain in `architectural-improvements.md`; atomic tracker
+writes and general concurrent-process policy are not expanded into this feature.
 
 ## Problem
 
-A role session can successfully edit the target workspace and still stop the
-workflow because `.devlab/session-artifacts/<role>/handoff.md` is missing,
-malformed, or inconsistent with durable workflow state. The handoff currently
-serves three purposes at once:
+The current handoff is simultaneously:
 
 - a human-readable account of the completed role session;
 - context for later role sessions;
 - a machine-readable source of workflow transition facts.
 
-Consequently, a representation error at the end of a session can discard the
-orchestrator's ability to accept otherwise useful work. A normal retry is unsafe:
-the original session may already have changed product files, task records, or
-other target-workspace state, and a fresh ordinary session may duplicate or
-reinterpret that work.
+A nondeterministic agent directly writes the authoritative Markdown artifact,
+then exits. The orchestrator subsequently recovers control facts by strictly
+parsing headings, embedded structured sections, identifiers, and prose
+conventions. A representation mistake can therefore stop an otherwise successful
+session after the agent best able to correct it has gone away.
 
-Recovery must also account for the current ordering in `run_loop()`: some
-planner handoff-driven workflow state can be applied before all later consistency
-checks have passed. Retrying on top of partially accepted state would make the
-repair evidence ambiguous.
+Repairing malformed final Markdown can reduce failures, but it preserves the
+wrong ownership boundary and requires additional classification, isolation,
+retry, and provenance machinery. DevLab should instead accept or reject a
+candidate while the original role session is active.
+
+The fundamental distinction is:
+
+```text
+Agent owns: proposed transition facts and narrative content.
+DevLab owns: session identity, validation, authoritative publication, and
+workflow transitions.
+```
+
+Structured syntax reduces transport and contract uncertainty. It does not prove
+that claims are true, so DevLab must continue validating accepted values against
+durable workspace state.
 
 ## Goals
 
-- Complete all handoff parsing and semantic validation before applying any
-  handoff-driven workflow mutation.
-- Give handoff failures stable, typed reason codes and an explicit recovery
-  classification.
-- Recover bounded representation failures without rerunning the original task.
-- Permit at most one constrained agent repair attempt per completed role session.
-- Enforce that repair changes only the failed handoff artifact.
-- Preserve the invalid artifact, repair attempt, validation outcome, and session
-  provenance for diagnosis.
-- Keep CLI exit-code behavior unchanged unless a separate policy is adopted.
-- Retain one role per ordinary session and one task per developer/reviewer
-  session.
+- Give every role session a small, versioned, role-aware result schema.
+- Let the original agent submit, receive complete actionable validation feedback,
+  correct the candidate, and resubmit before exiting.
+- Derive trusted identity and observable facts instead of asking the agent to
+  reproduce them.
+- Publish authoritative session results and Markdown handoffs only through
+  DevLab-owned code.
+- Complete all semantic validation before applying handoff-driven workflow
+  mutations.
+- Give failures stable typed reasons without branching on message text.
+- Preserve current downstream human and prompt access to readable handoffs.
+- Bound submission attempts operationally and measure their cost across
+  providers and roles.
+- Retain one role per session and one task per developer/reviewer session.
+- Provide one constrained correction session only when the original role exits
+  without an accepted result.
 
 ## Non-goals
 
-- Do not automatically retry an ordinary developer, reviewer, planner,
-  integrator, or architect session after a handoff failure.
-- Do not let a repair agent edit product files or durable workflow state.
-- Do not repair semantic contradictions by choosing whichever claim makes the
-  workflow continue.
-- Do not add unbounded retries or allow a repair session to request another
-  repair session.
-- Do not add concurrent agents, general workspace rollback, or a database.
-- Do not depend on provider-specific structured-output support.
-- Do not split narrative and machine-readable handoff artifacts in the first
-  recovery slice; that is a later protocol improvement described below.
+- Do not make a normal role retry the response to a missing or invalid result.
+- Do not initially introduce a `handoff-fixer` workflow role.
+- Do not trust schema-valid claims without semantic validation.
+- Do not let a correction session edit product files or durable workflow state.
+- Do not add unbounded submission or correction loops.
+- Do not require provider-specific structured-output support.
+- Do not add concurrent agents, broad workspace rollback, or a database.
+- Do not redesign task, finding, milestone, or clarification storage as part of
+  the submission protocol.
 
-## Recovery Policy
+## Target Flow
 
-Use the following lifecycle after an agent provider reports success:
+Use this lifecycle for each role session:
 
 ```text
-role session completes
-    -> refresh read-only workspace state
-    -> parse and validate the complete handoff
-    -> if recoverable, perform at most one constrained repair
-    -> parse and validate again from the beginning
-    -> apply handoff-driven workflow mutations
-    -> archive the accepted handoff and continue normal integration
+DevLab creates trusted session envelope and role-specific candidate template
+    -> agent performs ordinary role work
+    -> agent fills candidate and invokes submission command/tool
+    -> DevLab validates syntax, contract, and workspace semantics
+       -> rejected: return all actionable errors to the same agent
+       -> accepted: atomically publish canonical result and Markdown handoff
+    -> agent exits only after acceptance
+    -> outer orchestrator verifies the accepted result
+    -> apply workflow transitions, archive, and integrate version control
 ```
 
-No workflow mutation derived from the handoff may occur before the validation
-phase succeeds. Product and workflow edits made directly by the original role
-session remain present and are evidence for validation, but they must be frozen
-during repair.
+If the agent exits without acceptance, the outer orchestrator may invoke one
+opt-in constrained correction session. The correction must use the same
+submission operation and cannot directly publish or edit authoritative results.
 
-### Failure categories
+## Session Envelope
 
-Introduce a stable reason enum owned by `handoffs.py`, with human-readable
-messages carried separately. Exact names can be refined during implementation,
-but callers must not branch on message text.
+Before invoking a role, DevLab should create a trusted session envelope such as:
 
-Initial categories:
+```toml
+schema_version = 1
+session_id = "20260715T101500_002_developer"
+role = "developer"
+task = "T0041"
+milestone = "M0003"
+```
 
-| Category | Example reasons | Default policy |
+The envelope is orchestrator-owned. The candidate must not repeat fields that
+DevLab already knows, including role, session ID, active task, active milestone,
+or requested workflow command.
+
+The submission process must bind to the active envelope without trusting a path
+or identity supplied by the candidate. The implementation may use an invocation
+environment variable plus the envelope path, but correctness must not depend on
+security through obscurity. DevLab agents already have target-workspace access;
+the boundary protects protocol integrity rather than defending against a
+malicious local process.
+
+## Candidate Schema
+
+Start with TOML because DevLab already uses it and Python can parse it without a
+new dependency. Keep the schema deliberately small:
+
+```toml
+schema_version = 1
+outcome = "completed"
+commit_message = "Implement session timeout validation"
+
+done = [
+  "Added idle and absolute timeout validation.",
+  "Added timeout boundary tests.",
+]
+changed_artifacts = [
+  "src/auth/session.py",
+  "tests/test_session.py",
+]
+open_issues = []
+addressed_findings = []
+next_session_hint = "Review boundary behavior and error responses."
+```
+
+Common outcomes should initially be limited to:
+
+- `completed`;
+- `needs_clarification`;
+- `failed`.
+
+Add role-specific fields only where the orchestrator needs an explicit assertion:
+
+```toml
+# planner
+planning_complete = false
+
+# reviewer
+review_outcome = "approved"
+```
+
+Clarification requests should be native structured data rather than TOML embedded
+inside Markdown. Keep their existing domain semantics and stable choice IDs.
+
+Do not duplicate observable facts unnecessarily. DevLab should derive or verify:
+
+- changed paths from the session/workspace baseline;
+- eligible addressed findings from the active task and trackers;
+- allowed outcomes and role-specific fields from the active role;
+- task, milestone, role, session, and command identity from the envelope.
+
+The agent may summarize changed artifacts for narrative quality, but the
+orchestrator must use its own changed-path evidence for safety decisions.
+
+## Candidate Creation
+
+Provide a command that writes the correct role-specific template, for example:
+
+```bash
+devlab session handoff init
+```
+
+It should create or refresh only the active session's disposable candidate. The
+template should include allowed enum values or concise comments where TOML
+permits them. Agents fill values rather than reconstructing the schema from a
+prompt.
+
+Prompt instructions should be compact:
+
+```text
+Before exiting, submit the session result with:
+
+  devlab session handoff submit
+
+The session is complete only when DevLab reports Accepted. Correct any reported
+errors and resubmit. Do not edit the published result or handoff directly.
+```
+
+Provider-native typed tools may later invoke the same application operation, but
+the CLI is the portable baseline and the core operation must not depend on a
+specific provider.
+
+## Submission and Validation
+
+Add a reusable application operation behind a CLI adapter. Exact module and type
+names can follow the implementation shape, but responsibilities must remain:
+
+- `handoffs.py` owns candidate/result schemas, parsing, and contract validation;
+- `orchestrator.py` owns role-specific workflow policy and semantic acceptance;
+- `WorkspaceSnapshot` supplies cached read-only cross-domain state;
+- `Workspace` handles remain the mutation boundary after acceptance;
+- `agents.py` contains only provider-specific invocation mechanics;
+- `cli.py` adapts the in-session command without owning validation policy.
+
+The submit operation should:
+
+1. Load the trusted active envelope.
+2. Parse the candidate with explicit size limits.
+3. Validate its version and common schema.
+4. Validate role-specific fields and outcomes.
+5. Validate references and assertions against a fresh read-only snapshot.
+6. Return all independently detectable errors in one response.
+7. On success, publish the canonical structured result and rendered Markdown
+   handoff atomically.
+
+Rejection must not mutate workflow state or publish a partial result. Diagnostics
+should name the field, rejected value, allowed values where useful, and the
+authoritative state causing a conflict.
+
+Example:
+
+```text
+Handoff rejected:
+
+1. review_outcome
+   Expected one of: approved, changes_requested.
+   Received: passed.
+
+2. addressed_findings[0]
+   F0099 is not associated with active task T0041.
+   Allowed values: F0012, F0014.
+
+All other fields are valid. Correct the candidate and submit it again.
+```
+
+## Typed Failures
+
+Use stable reason codes internally and render human-readable messages only at
+adapter boundaries. Do not branch on exception text.
+
+Initial categories should cover:
+
+| Category | Examples | Same-session action |
 | --- | --- | --- |
-| Missing artifact | file absent or empty | constrained repair |
-| Representation | missing/duplicate/out-of-order heading, malformed structured section, invalid field shape | deterministic repair when provably lossless; otherwise constrained repair |
-| Semantic | unknown finding/task mapping, reviewer outcome mismatch, planner state contradiction, unsubstantiated completion state | stop; allow original-role repair only for explicitly classified cases with sufficient evidence |
-| Safety/limits | oversized artifact, repair changed forbidden paths, unreadable file | stop |
-| Reported failure | handoff declares an unrecoverable issue | stop |
+| Syntax | malformed TOML, unsupported encoding | correct candidate |
+| Contract | missing field, wrong type, invalid enum, forbidden role field | correct candidate |
+| Reference | unknown or ineligible task/finding/milestone | inspect authoritative state and correct |
+| Semantic conflict | reviewer/planner assertion contradicts workspace state | correct if evidence supports it; otherwise report failure or clarification |
+| Safety/limits | oversized candidate, invalid path, forbidden changed state | stop or produce a safe failure result |
+| Session protocol | missing/stale envelope, submission after acceptance | stop and report orchestrator error |
 
-Each raised validation failure should expose at least:
-
-```python
-class HandoffFailureReason(StrEnum): ...
-
-class HandoffError(ValueError):
-    reason: HandoffFailureReason
-    message: str
-    repairability: HandoffRepairability
-```
-
-`HandoffRepairability` should distinguish deterministic repair, constrained agent
-repair, and non-repairable failure. The reason-to-policy mapping belongs in code,
-not prompts.
-
-Start conservatively. A failure becomes repairable only when tests demonstrate
-that the repair does not require inventing role intent. Unknown failures stop.
+The result type should retain all failures so one submission does not produce a
+sequence of avoidable single-field retries.
 
 ## Validation Before Mutation
 
-Refactor post-session handling into two conceptual phases while keeping workflow
-policy visible in `orchestrator.py`:
+The submission operation is read-only until publication, and publication itself
+does not apply task, finding, milestone, clarification, or planner workflow
+transitions. The outer orchestrator applies those transitions only after it
+observes a fully accepted result.
 
-1. **Prepare**: parse the handoff and validate its contract, role-specific
-   assertions, clarification request, addressed findings, planner preservation,
-   planner progress, and any other preconditions against a read-only snapshot.
-2. **Apply**: update planner workflow state, create clarification/finding records,
-   transition tasks or milestones, archive the accepted handoff, and perform the
-   existing version-control integration.
+Refactor the current post-session path into:
 
-Preparation should return a small immutable value only if it avoids repeating
-expensive parsing or captures validated transition facts. It must not become a
-second orchestration layer or move tracker-owned parsing out of `handoffs.py`.
+1. **Accept**: validate candidate syntax, contract, and semantic preconditions;
+   publish canonical artifacts.
+2. **Apply**: consume the accepted result, update domain state, archive, and
+   perform version-control integration.
 
-Acceptance:
+Planner consistency checks must occur before `_apply_planner_workflow_state()`.
+Every rejected candidate and every missing-result stop must leave
+handoff-driven workflow state unchanged.
 
-- every `HandoffError` reachable during preparation leaves handoff-driven
-  workflow state unchanged;
-- planner consistency checks occur before `_apply_planner_workflow_state()`;
-- `process_handoff()` is called only with a fully validated handoff;
-- focused tests compare relevant workflow files before and after each failure.
+Publication should use a shared atomic replacement helper when available. Until
+that architectural slice lands, use the narrowest safe implementation without
+moving file-format ownership out of `handoffs.py`.
 
-## Deterministic Repair
+## Canonical Result and Markdown Handoff
 
-Add deterministic normalization only for transformations proven to preserve
-meaning. The initial implementation may deliberately support none if no existing
-failure can be repaired without interpretation.
+On acceptance, DevLab writes an authoritative structured result containing the
+trusted envelope identity plus validated candidate values. Agents must not edit
+this file directly.
 
-Permitted candidates include line-ending normalization or removal of an exact
-duplicate empty optional section. Reordering or synthesizing headings is allowed
-only when section boundaries and content are unambiguous.
+DevLab also renders the existing Markdown handoff shape from accepted data so
+operators and later prompts retain readable context. The orchestrator must not
+parse rendered Markdown for workflow decisions. During migration, compatibility
+readers may support older workspaces and history artifacts, but new sessions use
+the accepted structured result as their control interface.
 
-Rules:
+Archive both canonical result and rendered handoff with the same session
+identity. Diagnostics should make their relationship explicit.
 
-- never synthesize substantive section content;
-- never change identifiers, decisions, approval claims, planning completion,
-  clarification choices, or open-issue meaning;
-- preserve the original invalid bytes before replacement;
-- record which transformation was applied;
-- re-run the complete parser and semantic validator afterward;
-- use atomic replacement when the shared atomic-write helper is available.
+## Submission Budget and Efficiency
 
-## Constrained Agent Repair
+Submission validation is a local operation inside the existing role session, not
+a new model session. Still, repeated correction consumes tokens and time, so
+DevLab must measure rather than normalize retries.
 
-The first implementation should reuse the failed session's role/provider
-configuration with a repair-only prompt. This preserves ownership of semantic
-claims and avoids introducing a new configurable role before evaluations show a
-specialist is useful. The repair invocation is not an ordinary workflow role
-session and must not perform the role's task again.
+Record at least:
 
-The prompt should include:
+- number of candidate submissions;
+- rejection reasons per submission;
+- time from first submission to acceptance;
+- whether a candidate was accepted on the first attempt;
+- provider, role, and schema version;
+- whether an outer correction session was required.
 
-- the original role, session, task, and milestone identifiers;
-- the precise typed failure reason and human-readable diagnostic;
-- the invalid handoff content, clearly delimited as data;
-- the handoff contract or canonical template;
-- relevant read-only task/milestone/finding state;
-- a concise changed-path summary from the original role session;
-- instructions to inspect existing evidence, replace only the handoff, avoid
-  new claims, and leave all other files untouched.
+Initial design targets are:
 
-The orchestrator must enforce the prompt contract:
+- median submissions per successful role session: `1`;
+- 95th percentile submissions: no more than `2`;
+- mechanical syntax/shape rejection after template initialization: exceptional;
+- no ordinary session should make more than three submissions automatically;
+- one validation response should report all independently detectable problems.
 
-- snapshot target-workspace paths before repair using the existing resolver
-  isolation machinery where it fits;
-- permit only the failed role's `handoff.md` to change;
-- reject symlink/path escapes and changes to any workflow or product file;
-- do not run the role's ordinary environment lifecycle unless a later evidenced
-  requirement justifies it;
-- allow exactly one repair invocation;
-- validate the repaired handoff from the beginning;
-- never recursively repair a repair result.
+These are acceptance targets, not assumed model-performance claims. If live
+evaluation misses them, simplify the schema, derive more fields, improve
+diagnostics, or use native structured tool adapters. Do not merely raise the
+limit.
 
-If enforcement detects another changed path, stop and leave the unexpected edit
-for operator inspection. Do not perform broad rollback that could discard
-pre-existing operator changes.
+## Missing Accepted Result and Constrained Correction
 
-## Artifact Preservation and Observability
+The outer orchestrator decides success from an accepted canonical result, not
+provider exit code or candidate existence.
 
-Do not overwrite the only evidence of the failure. Before repair, copy the
-invalid artifact into session history or a repair-specific artifact directory
-with the original session identifier. Record:
+After a successful provider exit:
 
-- original session identifier and role;
-- failure reason and diagnostic;
-- repair kind (`deterministic` or `agent`);
-- repair invocation identifier when applicable;
-- repaired artifact path;
-- final validation result;
-- unexpected changed paths, if any.
+- accepted result exists: continue normally;
+- rejected candidate exists but no accepted result: optionally invoke one
+  constrained correction session with validation diagnostics;
+- no candidate or result exists: optionally invoke one constrained correction
+  session with the template, workspace evidence, and logs;
+- correction does not produce acceptance: stop and preserve diagnostics.
 
-Session metadata and diagnostics should distinguish:
+Correction is opt-in initially because it invokes another paid session. It should
+reuse the failed role/provider configuration before introducing a specialist.
+The correction prompt must prohibit rerunning task work and require use of the
+same submission operation.
 
-- initial handoff validation failure recovered successfully;
-- repair attempted and rejected;
-- non-repairable handoff failure;
-- repair invocation/provider failure.
+Enforce that correction changes only disposable candidate state. Accepted
+results, product files, and workflow state are forbidden. Allow exactly one
+correction invocation and never recursively correct a correction result.
 
-Do not report a repair attempt as another completed developer/reviewer task
-cycle. It may count toward the overall session budget only if that policy is made
-explicit alongside structured `RunResult` stop reasons. Until then, expose a
-separate repair-attempt count and preserve current CLI exit behavior.
+Do not add deterministic Markdown repair. Markdown is rendered from accepted
+structured data and is no longer an agent-authored control artifact.
 
-## Configuration
+## Compatibility and Migration
 
-Begin with conservative built-in defaults:
+Preserve existing handoff history and prompt context. The migration should:
 
-```toml
-[handoff_repair]
-enabled = false
-max_attempts = 1
-```
+- continue reading archived Markdown from older sessions;
+- use canonical results for new workflow decisions;
+- render new Markdown in a familiar shape;
+- avoid rewriting historical artifacts;
+- keep current CLI exit-code behavior unless structured `RunResult` policy is
+  changed separately;
+- version the candidate and canonical result schemas from the first release.
 
-The exact configuration location should follow the existing agent/workflow
-configuration boundary. Enabling repair must be an explicit operator choice in
-the first release because repair invokes another paid agent session. A future
-default change should be based on evaluation evidence.
-
-Do not initially add a `handoff-fixer` workflow role. If evaluations demonstrate
-that a specialized configuration materially improves repair success, add an
-optional repair-agent configuration in `agent_config.py` and keep its invocation
-mechanics in `agents.py`. Repair selection and policy remain in
-`orchestrator.py`.
+Decide explicitly whether an in-progress workspace created by an older DevLab
+version may finish its active session through the legacy handoff path or must
+restart that session with a new envelope. Prefer a clear diagnostic over silent
+mixed-protocol inference.
 
 ## Implementation Slices
 
-### 1. Typed failures and read-only preparation
+### 1. Read-only acceptance boundary and typed failures
 
-- Add typed handoff failure reasons and repairability.
-- Convert parser and orchestrator semantic validation without string matching.
-- Reorder planner and other checks so all validation precedes handoff-driven
-  mutation.
-- Add focused no-mutation tests for failed preparation.
+- Add typed validation reasons and aggregate diagnostics.
+- Reorder current semantic checks so all validation precedes handoff-driven
+  mutation, especially planner workflow-state application.
+- Add focused no-mutation tests for every failure path.
+- Preserve valid legacy handoff behavior in this preparatory slice.
 
-This slice is independently valuable and is a prerequisite for every retry
-policy.
+### 2. Versioned candidate, envelope, and canonical result
 
-### 2. Repair artifacts and deterministic framework
+- Define minimal common and role-specific schemas in `handoffs.py`.
+- Create trusted session envelopes before role invocation.
+- Add role-specific candidate template generation.
+- Add parsing, size limits, canonical result rendering, and Markdown rendering.
+- Unit test schema boundaries and round trips independently of orchestration.
 
-- Preserve invalid artifacts and add repair metadata.
-- Add the bounded repair dispatcher and deterministic-repair interface.
-- Implement only proven lossless repairs.
-- Revalidate completely and test preservation on failed repair.
+### 3. In-session submission operation
 
-### 3. One constrained repair invocation
+- Add reusable submit/validate application logic and CLI adapter.
+- Bind submission to the active envelope.
+- Validate against a fresh `WorkspaceSnapshot` without domain mutation.
+- Aggregate actionable errors and atomically publish only accepted results.
+- Update packaged role prompts to require acceptance before exit.
 
-- Add opt-in configuration and repair-only prompt assembly.
-- Invoke the failed role's provider configuration without ordinary task or
-  environment execution.
-- Enforce handoff-only edits and a single attempt.
-- Add successful, still-invalid, provider-failure, and forbidden-edit tests.
+### 4. Orchestrator consumption and compatibility
 
-### 4. Evaluation and specialist decision
+- Make `run_loop()` require an accepted result for new-protocol sessions.
+- Apply transitions only after acceptance.
+- Archive structured and rendered artifacts together.
+- Retain legacy history display and prompt assembly.
+- Add end-to-end tests for each role and outcome.
 
-- Add scripted malformed-handoff scenarios for representative roles.
-- Record repair success by reason, added invocation cost, and false-repair or
-  forbidden-edit rates.
-- Decide from evidence whether to add a configurable specialist handoff repair
-  agent.
+### 5. Efficiency evaluation and refinement
 
-### 5. Structured transition manifest exploration
+- Add scripted rejection/correction scenarios.
+- Run representative live sessions across configured providers and roles.
+- Report first-attempt acceptance, submission counts, rejection categories,
+  latency, and semantic conflicts.
+- Simplify or derive fields until the submission-budget targets are met.
 
-After recovery is stable, evaluate splitting the current artifact into:
+### 6. One constrained correction invocation
 
-- a small structured transition manifest used for orchestration decisions;
-- a Markdown narrative retained for humans and later role context.
+- Add opt-in configuration for one correction session.
+- Reuse original role/provider configuration with a correction-only prompt.
+- Enforce candidate-only changes and require normal submission acceptance.
+- Test missing candidate, rejected candidate, provider failure, forbidden edits,
+  still-invalid correction, and no recursive retry.
 
-The manifest should be provider-neutral, bounded in size, atomically written,
-and semantically validated against tracker state. This is not required for the
-initial recovery implementation because structured syntax alone cannot make
-agent claims true.
+### 7. Optional native tool adapters
+
+If provider capabilities and evaluation evidence justify it, expose the same
+submission operation as a provider-native typed tool. Keep schema and semantic
+acceptance provider-neutral and retain the CLI baseline.
+
+Only consider a separately configurable handoff specialist if correction-session
+evaluations demonstrate a material advantage.
 
 ## Testing
 
 Focused tests should cover:
 
-- every typed failure reason and its recovery classification;
-- validation failures causing no handoff-driven mutation;
-- a valid handoff preserving all existing behavior;
-- one successful constrained repair followed by normal processing;
-- a repaired artifact that remains invalid;
-- a repair agent that fails or times out;
-- a repair attempt that edits an unauthorized path;
-- no second repair attempt after any repair outcome;
-- preservation and attribution of original and repaired artifacts;
-- unchanged CLI exit behavior for unrecovered failures;
-- diagnostics that do not count repair as an ordinary task cycle.
+- every typed failure category and aggregate diagnostics;
+- rejected candidates causing no workflow-domain mutation;
+- role-specific template generation and schema enforcement;
+- trusted identity coming from the envelope rather than candidate content;
+- semantic conflicts against tasks, findings, milestones, and planner state;
+- successful acceptance and atomic canonical publication;
+- canonical Markdown rendering without reparsing for decisions;
+- valid accepted results preserving existing role transitions;
+- legacy history and prompt compatibility;
+- provider success without an accepted result;
+- submission metrics and attempt bounds;
+- one successful constrained correction;
+- correction provider failure, forbidden edits, and no second correction;
+- unchanged CLI exit behavior for unrecovered failures.
 
 Run after each slice:
 
@@ -316,8 +455,10 @@ uv --cache-dir /tmp/uv-cache run pytest
 
 ## Completion Criteria
 
-The initial feature is complete when an explicitly enabled DevLab run can recover
-from a representative malformed handoff through one enforced handoff-only repair
-invocation, while semantic contradictions stop safely, all rejected paths leave
-handoff-driven workflow state unchanged, and the complete failure/repair history
-remains available for operator diagnosis.
+The initial feature is complete when new role sessions initialize a versioned
+candidate, receive actionable same-session validation feedback, and cause DevLab
+to publish canonical structured and Markdown artifacts only after semantic
+acceptance; rejected or missing results leave handoff-driven workflow state
+unchanged; representative evaluations meet the submission-budget targets; and
+one opt-in correction session safely handles the exceptional missing-acceptance
+case.
