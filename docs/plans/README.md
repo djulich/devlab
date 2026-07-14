@@ -6,6 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
+- [resilient-session-handoffs.md](resilient-session-handoffs.md) — validate handoffs before workflow mutation and recover bounded representation failures through one constrained, handoff-only repair attempt
 - [architectural-improvements.md](architectural-improvements.md) — cross-cutting backlog for run-result semantics, blocker ordering, atomic mutations, concurrency policy, typed validation failures, resolver isolation, and artifact bounds
 - [durable-operator-clarifications.md](durable-operator-clarifications.md) — add bounded, repository-backed operator clarification requests and answers for ambiguous or unsafe workflow decisions
 
