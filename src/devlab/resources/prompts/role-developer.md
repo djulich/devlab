@@ -23,7 +23,7 @@ The developer implements exactly one eligible task per session.
 6. If this task creates or changes a profile, ensure the profile follows `.devlab/config/tooling.md` policy, preserves backward compatibility for existing planned tasks unless the task explicitly creates a new profile or requests a breaking migration, and validate the updated lifecycle as part of the task.
 7. Mark all acceptance criteria as checked in the task file.
 8. Do not change the task status; the orchestrator sets it to `in_review` after the session.
-9. Write handoff to `.devlab/session-artifacts/developer/handoff.md`.
+9. Fill the initialized handoff candidate and run `devlab session handoff submit`; correct reported errors until DevLab accepts it.
 
 ## Tool Usage
 
@@ -42,7 +42,7 @@ The developer implements exactly one eligible task per session.
 
 ## Validation Checklist
 
-Before writing the handoff, confirm:
+Before submitting the handoff candidate, confirm:
 - [ ] If task `validation` is present and non-empty, all listed commands pass.
 - [ ] If task `validation` is omitted, default validation from the resolved task profile passes.
 - [ ] If task `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.

@@ -15,7 +15,14 @@ from devlab.clarifications import FileClarificationTracker
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
-from devlab.orchestrator import _timestamp, close_task, process_handoff, run_loop, validate_handoff
+from devlab.orchestrator import (
+    _timestamp,
+    close_task,
+    process_handoff,
+    run_loop,
+    submit_session_handoff,
+    validate_handoff,
+)
 from devlab.prompts import build_base_prompt, build_session_prompt
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workflow_events import load_workflow_events
@@ -3235,6 +3242,64 @@ class TestSessionMetadata:
         meta = _find_metadata(tmp_path)
         assert meta["return_code"] == 0
         assert meta["failure_kind"] == "none"
+
+
+def test_run_loop_can_use_one_opt_in_handoff_correction(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    invocations = 0
+
+    def on_invoke(call: AgentCall) -> None:
+        nonlocal invocations
+        invocations += 1
+        if invocations != 2:
+            return
+        envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
+        envelope_path.with_name("handoff-candidate.toml").write_text(
+            'schema_version = 1\noutcome = "completed"\n'
+            'commit_message = "Describe architecture"\n'
+            'done = ["Described the architecture"]\nchanged_artifacts = []\n'
+            'open_issues = []\naddressed_findings = []\n'
+            'next_session_hint = "Create the project plan."\n'
+        )
+        submit_session_handoff(call.root, envelope_path=envelope_path)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+        handoff_correction=True,
+    )
+
+    assert result.exit_code == 0
+    assert invocations == 2
+    assert list((tmp_path / HISTORY_DIR).glob("*_architect_result.toml"))
+
+
+def test_handoff_correction_rejects_product_file_changes(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    invocations = 0
+
+    def on_invoke(call: AgentCall) -> None:
+        nonlocal invocations
+        invocations += 1
+        if invocations == 2:
+            (call.root / "unexpected.txt").write_text("not allowed\n")
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+        handoff_correction=True,
+    )
+
+    assert result.exit_code == 1
+    assert result.errors[0].phase == "handoff_correction"
+    assert "unexpected.txt" in result.errors[0].message
+    assert invocations == 2
 
 
 class TestTimestamp:

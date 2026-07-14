@@ -2,6 +2,42 @@
 
 Status: active.
 
+## Current Progress
+
+The initial provider-neutral submission protocol is implemented:
+
+- DevLab creates a trusted, versioned session envelope and role-aware TOML
+  candidate before each ordinary role invocation.
+- `devlab session handoff submit` aggregates contract and semantic diagnostics,
+  records attempts, and publishes `result.toml` plus rendered `handoff.md` only
+  after acceptance.
+- Agent invocations receive the active envelope path through their process
+  environment, and packaged prompts require same-session submission.
+- The outer orchestrator consumes the structured result, verifies its session
+  identity, and applies planner and other workflow transitions only after all
+  validation succeeds.
+- Canonical structured results, rendered Markdown, and submission-attempt logs
+  are archived together.
+- Submission attempts are capped at three.
+- `--handoff-correction` permits one correction-only invocation when the original
+  role exits without acceptance; changes outside disposable handoff artifacts
+  reject the correction.
+- Legacy Markdown remains readable as history, but a new session cannot use
+  agent-authored Markdown as its accepted control result.
+
+Focused tests cover template generation, aggregate rejection feedback,
+publication round trips, CLI reject/correct/accept behavior, successful bounded
+correction, forbidden correction edits, and validation-before-mutation behavior.
+
+Remaining work is evaluation rather than another required control path:
+
+- run representative live sessions across configured providers and roles;
+- measure first-attempt acceptance, submission counts, rejection categories,
+  latency, and correction frequency against the targets below;
+- simplify or derive additional fields if those targets are missed;
+- consider provider-native typed tool adapters only if evaluation evidence shows
+  a material benefit over the CLI baseline.
+
 ## Purpose
 
 Replace direct agent authorship of authoritative handoff files with an

@@ -4,7 +4,74 @@ from pathlib import Path
 
 import pytest
 
-from devlab.handoffs import HandoffError, parse_handoff, section_is_none
+from devlab.handoffs import (
+    HANDOFF_CANDIDATE_FILE,
+    SESSION_RESULT_FILE,
+    HandoffError,
+    HandoffSubmissionError,
+    SessionEnvelope,
+    load_session_result,
+    parse_handoff,
+    parse_handoff_candidate,
+    publish_session_result,
+    section_is_none,
+    write_session_envelope,
+)
+
+
+def test_session_envelope_initializes_role_aware_candidate(tmp_path: Path) -> None:
+    envelope_path = tmp_path / "planner" / "session.toml"
+
+    write_session_envelope(
+        envelope_path,
+        SessionEnvelope(1, "s1", "planner", task="", milestone="M0001"),
+    )
+
+    candidate = envelope_path.with_name(HANDOFF_CANDIDATE_FILE).read_text()
+    assert 'outcome = "completed"' in candidate
+    assert "planning_complete = false" in candidate
+    assert "session_id" not in candidate
+
+
+def test_candidate_validation_reports_all_independent_errors(tmp_path: Path) -> None:
+    path = tmp_path / HANDOFF_CANDIDATE_FILE
+    path.write_text(
+        'schema_version = 1\noutcome = "unknown"\ncommit_message = "ok"\n'
+        'done = []\nchanged_artifacts = []\nopen_issues = []\n'
+        'addressed_findings = []\nnext_session_hint = ""\nextra = true\n'
+    )
+
+    with pytest.raises(HandoffSubmissionError) as exc:
+        parse_handoff_candidate(path, "developer")
+
+    assert any("unexpected field" in issue for issue in exc.value.issues)
+    assert any("outcome must be one of" in issue for issue in exc.value.issues)
+    assert any("done must contain" in issue for issue in exc.value.issues)
+    assert any("next_session_hint must be non-empty" in issue for issue in exc.value.issues)
+
+
+def test_publish_and_load_session_result_round_trip(tmp_path: Path) -> None:
+    envelope_path = tmp_path / "developer" / "session.toml"
+    envelope = SessionEnvelope(1, "s1", "developer", task="T0001")
+    write_session_envelope(envelope_path, envelope)
+    candidate_path = envelope_path.with_name(HANDOFF_CANDIDATE_FILE)
+    candidate_path.write_text(
+        'schema_version = 1\noutcome = "completed"\n'
+        'commit_message = "Implement behavior"\n'
+        'done = ["Implemented behavior"]\nchanged_artifacts = ["src/app.py"]\n'
+        'open_issues = []\naddressed_findings = []\n'
+        'next_session_hint = "Review the behavior."\n'
+    )
+    candidate = parse_handoff_candidate(candidate_path, "developer")
+
+    publish_session_result(envelope_path, envelope, candidate)
+    result = load_session_result(envelope_path.with_name(SESSION_RESULT_FILE))
+    handoff = result.as_handoff(envelope_path.with_name("handoff.md"))
+
+    assert result.envelope.task == "T0001"
+    assert handoff.commit_message == "Implement behavior"
+    assert handoff.has_open_issues is False
+    assert "## Done\n- Implemented behavior" in handoff.path.read_text()
 
 
 def test_parse_valid_handoff(tmp_path: Path) -> None:

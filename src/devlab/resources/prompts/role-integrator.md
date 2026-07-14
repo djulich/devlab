@@ -22,7 +22,7 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 4. If integration passes, write a handoff with Open Issues set to `None`.
 5. If implementation contradicts existing `CONTEXT.md` terminology or ADR decisions, document the issue in the handoff's Open Issues.
 6. If integration fails or required integration/end-to-end coverage is missing, document the issue in the handoff's Open Issues; the orchestrator will create a finding for planner follow-up.
-7. Write handoff to `.devlab/session-artifacts/integrator/handoff.md`.
+7. Fill the initialized handoff candidate and run `devlab session handoff submit`; correct reported errors until DevLab accepts it.
 
 ## Constraints
 

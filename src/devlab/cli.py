@@ -19,9 +19,14 @@ from devlab.clarification_ops import (
 from devlab.clarifications import FileClarificationTracker
 from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
 from devlab.doctor import check_workspace, format_doctor_report
+from devlab.handoffs import (
+    HandoffError,
+    HandoffSubmissionError,
+    initialize_handoff_candidate,
+)
 from devlab.history import format_history
 from devlab.init import format_init_next_steps, format_init_result, init_workspace
-from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop
+from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop, submit_session_handoff
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
 from devlab.workflow_state_report import (
@@ -130,6 +135,14 @@ def main() -> None:
         action="store_true",
         help="Run without operator clarification stops; implies --clarification-mode=agent.",
     )
+    implement_parser.add_argument(
+        "--handoff-correction",
+        action="store_true",
+        help=(
+            "Allow one correction-only agent invocation when a session exits "
+            "without an accepted result."
+        ),
+    )
 
     plan_parser = subparsers.add_parser(
         "plan", help="Run planning sessions and stop before implementation."
@@ -221,6 +234,14 @@ def main() -> None:
         "--unattended",
         action="store_true",
         help="Run without operator clarification stops; implies --clarification-mode=agent.",
+    )
+    plan_parser.add_argument(
+        "--handoff-correction",
+        action="store_true",
+        help=(
+            "Allow one correction-only agent invocation when a session exits "
+            "without an accepted result."
+        ),
     )
 
     status_parser = subparsers.add_parser("status", help="Show workspace status.")
@@ -417,6 +438,33 @@ def main() -> None:
         help="Maximum number of sessions to run (default: 20).",
     )
 
+    session_parser = subparsers.add_parser(
+        "session", help="Commands used inside an active DevLab role session."
+    )
+    session_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Target workspace root (default: current working directory).",
+    )
+    session_subparsers = session_parser.add_subparsers(
+        dest="session_command", required=True
+    )
+    handoff_parser = session_subparsers.add_parser(
+        "handoff", help="Initialize or submit the active session handoff candidate."
+    )
+    handoff_subparsers = handoff_parser.add_subparsers(
+        dest="handoff_command", required=True
+    )
+    for command_name in ("init", "submit"):
+        command_parser = handoff_subparsers.add_parser(command_name)
+        command_parser.add_argument(
+            "--session-envelope",
+            type=Path,
+            default=None,
+            help=argparse.SUPPRESS,
+        )
+
     args = parser.parse_args()
     root = args.root.resolve()
     if args.command == "agent-smoke-test":
@@ -457,6 +505,7 @@ def main() -> None:
             retain_prompts=args.retain_prompts,
             automatic_version_control=True,
             clarification_mode=args.clarification_mode,
+            handoff_correction=args.handoff_correction,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
@@ -476,6 +525,7 @@ def main() -> None:
             replace_plan=args.replace_plan,
             mark_specs_planned=args.mark_specs_planned,
             clarification_mode=args.clarification_mode,
+            handoff_correction=args.handoff_correction,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
@@ -567,6 +617,28 @@ def main() -> None:
             raise SystemExit(1)
         if result.run_result is not None and result.run_result.exit_code != 0:
             raise SystemExit(result.run_result.exit_code)
+    elif args.command == "session":
+        try:
+            if args.handoff_command == "init":
+                path = initialize_handoff_candidate(root, args.session_envelope)
+                print(f"Initialized handoff candidate: {path.relative_to(root)}")
+            else:
+                result = submit_session_handoff(
+                    root, envelope_path=args.session_envelope
+                )
+                print(
+                    f"Accepted handoff for {result.role_name} session "
+                    f"{result.session_id}."
+                )
+        except HandoffSubmissionError as exc:
+            print("Handoff rejected:\n")
+            for index, issue in enumerate(exc.issues, start=1):
+                print(f"{index}. {issue}")
+            print("\nCorrect the candidate and submit it again.")
+            raise SystemExit(1) from exc
+        except HandoffError as exc:
+            print(f"Handoff submission failed: {exc}")
+            raise SystemExit(1) from exc
 
 
 def _run_log_level(*, quiet: bool, verbose: bool) -> int:

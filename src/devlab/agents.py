@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import shlex
 import subprocess
 import time
@@ -43,6 +44,7 @@ class AgentInvocation:
     invocation_id: str
     stdout_log: Path
     stderr_log: Path
+    environment: Mapping[str, str] = dataclasses.field(default_factory=dict)
 
 
 AgentCall = AgentInvocation
@@ -118,6 +120,7 @@ class CliAgentProvider:
                 result = subprocess.run(
                     cmd,
                     cwd=str(invocation.root),
+                    env={**os.environ, **invocation.environment},
                     input=stdin,
                     text=stdin is not None,
                     check=False,
@@ -230,6 +233,7 @@ class MockProvider:
             )
             handoff_path.parent.mkdir(parents=True, exist_ok=True)
             handoff_path.write_text(self._handoff_for(call))
+            self._publish_test_result(invocation, handoff_path)
         failure_kind: AgentFailureKind = "none" if self.return_code == 0 else "nonzero_exit"
         return AgentResult(
             return_code=self.return_code,
@@ -238,6 +242,32 @@ class MockProvider:
             role_name=invocation.role_name,
             stdout_log=invocation.stdout_log,
             stderr_log=invocation.stderr_log,
+        )
+
+    @staticmethod
+    def _publish_test_result(invocation: AgentInvocation, handoff_path: Path) -> None:
+        """Make the mock emulate a successful in-session submission when valid."""
+        from devlab.handoffs import (
+            SESSION_ENVELOPE_ENV,
+            candidate_from_handoff,
+            load_session_envelope,
+            parse_handoff,
+            publish_session_result,
+        )
+
+        envelope_value = invocation.environment.get(SESSION_ENVELOPE_ENV, "")
+        if not envelope_value:
+            return
+        envelope_path = Path(envelope_value)
+        try:
+            envelope = load_session_envelope(envelope_path)
+            handoff = parse_handoff(handoff_path, invocation.role_name)
+        except ValueError:
+            return
+        publish_session_result(
+            envelope_path,
+            envelope,
+            candidate_from_handoff(handoff),
         )
 
     def _handoff_for(self, call: AgentCall) -> str:

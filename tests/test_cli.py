@@ -10,6 +10,7 @@ import pytest
 
 from devlab.clarifications import FileClarificationTracker
 from devlab.cli import main
+from devlab.handoffs import SessionEnvelope, write_session_envelope
 from devlab.workflow_state import ResumeState, set_resume_state
 
 
@@ -50,6 +51,39 @@ def _create_clarification(root: Path) -> str:
         ),
     )
     return clarification.id
+
+
+def test_cli_session_handoff_rejects_then_accepts_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    envelope_path = tmp_path / ".devlab/session-artifacts/architect/session.toml"
+    write_session_envelope(
+        envelope_path,
+        SessionEnvelope(1, "s1", "architect"),
+    )
+    monkeypatch.setenv("DEVLAB_SESSION_ENVELOPE", envelope_path.as_posix())
+
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "session", "--root", str(tmp_path), "handoff", "submit")
+
+    assert exc.value.code == 1
+    rejected = capsys.readouterr().out
+    assert "Handoff rejected" in rejected
+    assert "done must contain at least one entry" in rejected
+    assert "next_session_hint must be non-empty" in rejected
+
+    envelope_path.with_name("handoff-candidate.toml").write_text(
+        'schema_version = 1\noutcome = "completed"\ncommit_message = "Design system"\n'
+        'done = ["Designed the system"]\nchanged_artifacts = ["docs/design.md"]\n'
+        'open_issues = []\naddressed_findings = []\n'
+        'next_session_hint = "Create the implementation plan."\n'
+    )
+
+    _run_cli(monkeypatch, "session", "--root", str(tmp_path), "handoff", "submit")
+
+    assert "Accepted handoff for architect session s1" in capsys.readouterr().out
+    assert envelope_path.with_name("result.toml").exists()
+    assert envelope_path.with_name("handoff.md").exists()
 
 
 def test_cli_init_creates_devlab_tree_and_git_baseline(

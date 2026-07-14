@@ -266,9 +266,11 @@ def _format_project_knowledge(knowledge: ProjectKnowledge) -> str:
 
 def _handoff_reminder(role_name: str) -> str:
     return (
-        "\n\nIMPORTANT: When done, write your handoff file to "
-        f".devlab/session-artifacts/{role_name}/handoff.md "
-        "using the template from conventions.md."
+        "\n\nIMPORTANT: Before exiting, fill "
+        f".devlab/session-artifacts/{role_name}/handoff-candidate.toml and run "
+        "`devlab session handoff submit`. The session is complete only when "
+        "DevLab reports that the handoff was accepted. Correct all reported "
+        "errors and resubmit; do not edit result.toml or handoff.md directly."
     )
 
 

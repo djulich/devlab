@@ -100,42 +100,47 @@ Reviewers approve a task by appending or updating this section in the task file:
     ## Review
     - [x] Approved
 
-## Handoff Template
+## Handoff Submission
 
-File: `.devlab/session-artifacts/<role>/handoff.md` (archived to `.devlab/history/` by orchestrator).
+DevLab initializes `.devlab/session-artifacts/<role>/handoff-candidate.toml`
+before the session. Fill that candidate, then run:
 
-Required `##` sections must appear exactly in this order. Do not insert extra `##` sections between them.
+    devlab session handoff submit
 
-    # Handoff: <role>
-    ## Done
-    - <completed action>
-    ## Changed Artifacts
-    - <path> (created|modified|deleted)
-    ## Open Issues
-    - <unresolved item>
-    ## Addressed Findings
-    - <finding ID>: <task ID>[, <task ID>]
-    ## Next Session Hint
-    <what the next session for this role should prioritize>
-    ## Commit Message
-    <one-line description of what changed>
+The session is complete only after the command reports `Accepted`. If it reports
+validation errors, correct all listed fields and submit again. Do not directly
+edit `result.toml` or `handoff.md`; DevLab publishes those canonical artifacts
+after accepting the candidate.
 
-Use exactly `- None` for `## Open Issues` when there are no open issues. Do not mix `- None` with real issues.
+The common candidate fields are:
 
-For planner handoffs, use `- FXXXX: TXXXX[, TXXXX]` in `## Addressed Findings` to assert the complete follow-up task set for each addressed finding. Use exactly `- None` only when no findings were addressed; do not mix `- None` with mappings or prose.
+    schema_version = 1
+    outcome = "completed"
+    commit_message = "Concise one-line summary"
+    done = ["Completed action"]
+    changed_artifacts = ["path/to/file"]
+    open_issues = []
+    addressed_findings = []
+    next_session_hint = "What the next session should prioritize."
 
-Planner handoffs must append `## Planning State` with exactly `planning_complete = true` or `planning_complete = false`. Non-planner handoffs must omit it.
+Use `outcome = "needs_clarification"` only with one `[clarification]` table, and
+use `outcome = "failed"` only with at least one actionable `open_issues` entry.
+Planner candidates additionally contain `planning_complete = true` or `false`.
 
-If continuing would require inventing operator intent, append one `## Clarification Request` section instead of completing the normal workflow transition. The section starts with TOML, then Markdown details:
+For planner `addressed_findings`, use `"FXXXX: TXXXX[, TXXXX]"` entries to
+assert the complete follow-up task set for each addressed finding. Use an empty
+array when no findings were addressed.
 
-    ## Clarification Request
-    clarification_required = true
+If continuing would require inventing operator intent, set
+`outcome = "needs_clarification"` and add:
+
+    [clarification]
     title = "Specific decision title"
     scope = "planning"
     blocks = "planning"
     answer_shape = "choice"
     recommended_option = "A"
-
+    details = """
     ### Context
     <why repository state is insufficient>
 
@@ -145,7 +150,11 @@ If continuing would require inventing operator intent, append one `## Clarificat
     ### Options
     - A: <recommended option and rationale>
     - B: <alternative>
+    """
 
-Allowed `answer_shape` values are `choice`, `text`, and `file-edit`. Use `### Expected Answer` for text answers and `### Expected File Edits` for file-edit answers. Ask only one specific, bounded clarification.
+Allowed `answer_shape` values are `choice`, `text`, and `file-edit`. Use
+`### Expected Answer` for text answers and `### Expected File Edits` for
+file-edit answers. Ask only one specific, bounded clarification.
 
-In `## Commit Message`, write a concise one-line summary of what your session changed. Do not include the task ID or role prefix; the orchestrator adds that prefix when creating the commit.
+Do not include the task ID or role prefix in `commit_message`; the orchestrator
+adds that prefix when creating the commit.

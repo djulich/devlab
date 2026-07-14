@@ -35,7 +35,28 @@ from devlab.clarifications import (
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
 from devlab.git import VersionControlError
-from devlab.handoffs import Handoff, HandoffError, parse_handoff
+from devlab.handoffs import (
+    HANDOFF_CANDIDATE_FILE,
+    HANDOFF_FILE,
+    MAX_SUBMISSION_ATTEMPTS,
+    SESSION_ENVELOPE_ENV,
+    SESSION_ENVELOPE_FILE,
+    SESSION_RESULT_FILE,
+    Handoff,
+    HandoffError,
+    HandoffFailureReason,
+    HandoffSubmissionError,
+    SessionEnvelope,
+    active_session_envelope,
+    load_session_envelope,
+    load_session_result,
+    parse_handoff,
+    parse_handoff_candidate,
+    publish_session_result,
+    record_submission_attempt,
+    submission_attempt_count,
+    write_session_envelope,
+)
 from devlab.profiles import ProfileNotFoundError, load_profile
 from devlab.prompt_resources import read_prompt_resource
 from devlab.prompts import (
@@ -139,6 +160,7 @@ class SessionContext:
     def build_invocation(
         self, base_prompt: str, session_prompt: str
     ) -> AgentInvocation:
+        envelope = self.root / ARTIFACTS_DIR / self.role_name / SESSION_ENVELOPE_FILE
         return AgentInvocation(
             root=self.root,
             role_name=self.role_name,
@@ -147,6 +169,7 @@ class SessionContext:
             invocation_id=self.invocation_id,
             stdout_log=self.stdout_log,
             stderr_log=self.stderr_log,
+            environment={SESSION_ENVELOPE_ENV: envelope.as_posix()},
         )
 
     def log_resolved_config(self, config: ResolvedAgentConfig) -> Path:
@@ -244,20 +267,110 @@ def invoke_session(
 # ---------------------------------------------------------------------------
 
 
+@dataclasses.dataclass(frozen=True)
+class HandoffSubmissionResult:
+    """Accepted result and paths published by an in-session submission."""
+
+    session_id: str
+    role_name: str
+    result_path: Path
+    handoff_path: Path
+
+
+def submit_session_handoff(
+    root: Path,
+    *,
+    envelope_path: Path | None = None,
+) -> HandoffSubmissionResult:
+    """Validate and publish the active session's candidate without workflow mutation."""
+    root = root.resolve()
+    resolved_envelope = active_session_envelope(root, envelope_path)
+    try:
+        resolved_envelope.relative_to(root)
+    except ValueError as exc:
+        raise HandoffError("session envelope must be inside the target workspace") from exc
+    envelope = load_session_envelope(resolved_envelope)
+    if envelope.role not in ROLES:
+        raise HandoffError(f"session envelope has unknown role {envelope.role!r}")
+    if resolved_envelope.parent.name != envelope.role:
+        raise HandoffError("session envelope role does not match its artifact directory")
+    result_path = resolved_envelope.with_name(SESSION_RESULT_FILE)
+    if result_path.exists():
+        raise HandoffError("this session already has an accepted result")
+    if submission_attempt_count(resolved_envelope) >= MAX_SUBMISSION_ATTEMPTS:
+        raise HandoffError(
+            f"session reached the maximum of {MAX_SUBMISSION_ATTEMPTS} handoff submissions"
+        )
+
+    try:
+        candidate = parse_handoff_candidate(
+            resolved_envelope.with_name(HANDOFF_CANDIDATE_FILE), envelope.role
+        )
+        handoff_path = resolved_envelope.with_name(HANDOFF_FILE)
+        handoff = candidate.as_handoff(handoff_path, envelope.role)
+        snapshot = Workspace(root).snapshot
+        validate_handoff(handoff, snapshot)
+        if envelope.role == "planner" and not envelope.allow_active_task_replacement:
+            current_ids = {task.id for task in snapshot.list_tasks()}
+            deleted = sorted(set(envelope.protected_active_tasks) - current_ids)
+            if deleted:
+                raise HandoffError(
+                    "planner deleted active task file(s): " + ", ".join(deleted),
+                    reason=HandoffFailureReason.SEMANTIC_CONFLICT,
+                )
+        if (
+            envelope.role == "planner"
+            and envelope.incremental_planning_required
+            and not candidate.planning_complete
+            and not _has_actionable_or_planned_work(snapshot)
+        ):
+            raise HandoffError(
+                "planner was invoked because the backlog was exhausted while "
+                ".devlab/workflow.toml has planning.complete = false, but it "
+                "neither created new durable work nor reported planning_complete = true",
+                reason=HandoffFailureReason.SEMANTIC_CONFLICT,
+            )
+    except HandoffSubmissionError as exc:
+        record_submission_attempt(
+            resolved_envelope, accepted=False, issues=exc.issues
+        )
+        raise
+    except HandoffError as exc:
+        record_submission_attempt(
+            resolved_envelope, accepted=False, issues=(str(exc),)
+        )
+        raise HandoffSubmissionError((str(exc),), reason=exc.reason) from exc
+    publish_session_result(resolved_envelope, envelope, candidate)
+    record_submission_attempt(resolved_envelope, accepted=True)
+    return HandoffSubmissionResult(
+        session_id=envelope.session_id,
+        role_name=envelope.role,
+        result_path=result_path,
+        handoff_path=handoff_path,
+    )
+
+
 def validate_handoff(
     handoff: Handoff,
     snapshot: WorkspaceSnapshot,
 ) -> None:
     if "unrecoverable" in handoff.open_issues.lower():
-        raise HandoffError("handoff reports an unrecoverable issue")
+        raise HandoffError(
+            "handoff reports an unrecoverable issue",
+            reason=HandoffFailureReason.SEMANTIC_CONFLICT,
+        )
     if handoff.role_name == "planner":
         planner_error = _validate_planner_addressed_findings(snapshot, handoff)
         if planner_error:
-            raise HandoffError(planner_error)
+            raise HandoffError(
+                planner_error, reason=HandoffFailureReason.REFERENCE
+            )
     if handoff.role_name == "reviewer":
         reviewer_error = _validate_reviewer_outcome(snapshot, handoff)
         if reviewer_error:
-            raise HandoffError(reviewer_error)
+            raise HandoffError(
+                reviewer_error, reason=HandoffFailureReason.SEMANTIC_CONFLICT
+            )
 
 
 def archive_handoff(root: Path, role_name: str) -> Path:
@@ -271,6 +384,16 @@ def archive_handoff(root: Path, role_name: str) -> Path:
         dest = history / f"{timestamp}_{counter}_{role_name}_handoff.md"
         counter += 1
     shutil.copy2(src, dest)
+    result_src = src.with_name(SESSION_RESULT_FILE)
+    if result_src.exists():
+        result_dest = dest.with_name(dest.name.removesuffix("_handoff.md") + "_result.toml")
+        shutil.copy2(result_src, result_dest)
+    attempts_src = src.with_name("submission-attempts.jsonl")
+    if attempts_src.exists():
+        attempts_dest = dest.with_name(
+            dest.name.removesuffix("_handoff.md") + "_submission-attempts.jsonl"
+        )
+        shutil.copy2(attempts_src, attempts_dest)
     return dest
 
 
@@ -547,10 +670,12 @@ def _validate_exhausted_backlog_planner_progress(
     before: WorkspaceSnapshot,
     after: WorkspaceSnapshot,
     role_name: str,
+    *,
+    reported_planning_complete: bool | None = None,
 ) -> str | None:
     if role_name != "planner" or not _needs_incremental_planning(before):
         return None
-    if after.workflow_state().planning.complete:
+    if reported_planning_complete or after.workflow_state().planning.complete:
         return None
     if _has_actionable_or_planned_work(after):
         return None
@@ -673,6 +798,95 @@ def _log_command_details(
     if config_log is not None:
         details.append(f"config_command=cat {config_log.as_posix()}")
     return details
+
+
+def _handoff_correction_snapshot(root: Path, artifacts_dir: Path) -> dict[str, str]:
+    snapshot: dict[str, str] = {}
+    allowed_artifacts = {
+        (artifacts_dir / HANDOFF_CANDIDATE_FILE).relative_to(root).as_posix(),
+        (artifacts_dir / HANDOFF_FILE).relative_to(root).as_posix(),
+        (artifacts_dir / SESSION_RESULT_FILE).relative_to(root).as_posix(),
+        (artifacts_dir / "submission-attempts.jsonl").relative_to(root).as_posix(),
+    }
+    for path in root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if relative.startswith(".git/") or relative.startswith(f"{AGENT_LOG_DIR}/"):
+            continue
+        if relative in allowed_artifacts:
+            continue
+        snapshot[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return snapshot
+
+
+def _changed_snapshot_paths(
+    before: dict[str, str], after: dict[str, str]
+) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            path
+            for path in set(before) | set(after)
+            if before.get(path) != after.get(path)
+        )
+    )
+
+
+def _attempt_handoff_correction(
+    ctx: SessionContext,
+    agent_provider: AgentProvider,
+    issues: tuple[str, ...],
+) -> SessionError | None:
+    """Run one correction-only invocation and enforce non-artifact isolation."""
+    artifacts_dir = ctx.root / ARTIFACTS_DIR / ctx.role_name
+    before = _handoff_correction_snapshot(ctx.root, artifacts_dir)
+    correction_id = ctx.invocation_id + "_handoff-correction"
+    correction_ctx = dataclasses.replace(
+        ctx,
+        invocation_id=correction_id,
+        stdout_log=_agent_log_path(ctx.root, correction_id, "stdout.log"),
+        stderr_log=_agent_log_path(ctx.root, correction_id, "stderr.log"),
+        base_prompt_log=None,
+        session_prompt_log=None,
+    )
+    diagnostics = "\n".join(f"- {issue}" for issue in issues) or "- No candidate was submitted."
+    system_prompt = (
+        "You are repairing only the result submission for a completed DevLab role "
+        "session. Do not redo role work or edit product, task, milestone, finding, "
+        "workflow, or configuration files."
+    )
+    session_prompt = (
+        f"The completed {ctx.role_name} session did not publish an accepted result.\n\n"
+        f"Validation diagnostics:\n{diagnostics}\n\n"
+        f"Edit only {ARTIFACTS_DIR}/{ctx.role_name}/{HANDOFF_CANDIDATE_FILE}, then "
+        "run `devlab session handoff submit`. Finish only after DevLab reports "
+        "Accepted. Existing workspace changes are evidence; do not modify them."
+    )
+    result = invoke_session(
+        correction_ctx.build_invocation(system_prompt, session_prompt),
+        agent_provider=agent_provider,
+    )
+    after = _handoff_correction_snapshot(ctx.root, artifacts_dir)
+    unexpected = _changed_snapshot_paths(before, after)
+    if unexpected:
+        return SessionError(
+            "handoff_correction",
+            "handoff correction changed forbidden path(s): " + ", ".join(unexpected),
+            1,
+        )
+    if not result.succeeded:
+        return SessionError(
+            "handoff_correction",
+            _agent_error_message(correction_ctx, result, None),
+            result.return_code or 1,
+        )
+    if not (artifacts_dir / SESSION_RESULT_FILE).exists():
+        return SessionError(
+            "handoff_correction",
+            "handoff correction exited without an accepted result",
+            1,
+        )
+    return None
 
 
 def _build_session_metadata(
@@ -1254,6 +1468,7 @@ def run_loop(
     adopt_existing: bool = False,
     mark_specs_planned: bool = False,
     clarification_mode: str = "operator",
+    handoff_correction: bool = False,
     session_progress: SessionProgressCallback | None = None,
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
@@ -1672,6 +1887,23 @@ def run_loop(
         if artifacts_dir.exists():
             shutil.rmtree(artifacts_dir)
         artifacts_dir.mkdir(parents=True, exist_ok=True)
+        write_session_envelope(
+            artifacts_dir / SESSION_ENVELOPE_FILE,
+            SessionEnvelope(
+                schema_version=1,
+                session_id=ctx.invocation_id,
+                role=role_name,
+                task=session_task_id or "",
+                milestone=session_milestone_id or "",
+                protected_active_tasks=tuple(
+                    task.id for task in start_snapshot.active_tasks()
+                ),
+                incremental_planning_required=(
+                    role_name == "planner" and _needs_incremental_planning(start_snapshot)
+                ),
+                allow_active_task_replacement=fresh_generation_plan,
+            ),
+        )
 
         try:
             snapshot = workspace.snapshot
@@ -1764,18 +1996,58 @@ def run_loop(
 
         workspace.did_mutate()
 
-        handoff_path = artifacts_dir / "handoff.md"
+        handoff_path = artifacts_dir / HANDOFF_FILE
+        result_path = artifacts_dir / SESSION_RESULT_FILE
+        if not result_path.exists():
+            submission_issues: tuple[str, ...]
+            try:
+                submit_session_handoff(
+                    root, envelope_path=artifacts_dir / SESSION_ENVELOPE_FILE
+                )
+            except HandoffSubmissionError as exc:
+                submission_issues = exc.issues
+            except HandoffError as exc:
+                submission_issues = (str(exc),)
+            else:
+                submission_issues = ()
+            if not result_path.exists() and handoff_correction:
+                correction_error = _attempt_handoff_correction(
+                    ctx, agent_provider, submission_issues
+                )
+                if correction_error is not None:
+                    logger.error("%s. Stopping.", correction_error.message)
+                    metadata = _build_session_metadata(
+                        ctx, agent_result, resolved_agent_configs, session_task_id,
+                    )
+                    ctx.write_session_metadata(metadata)
+                    return RunResult(
+                        sessions_run,
+                        False,
+                        correction_error.exit_code,
+                        (correction_error,),
+                    )
         try:
-            handoff = parse_handoff(handoff_path, role_name)
+            if result_path.exists():
+                session_result = load_session_result(result_path)
+                if session_result.envelope.session_id != ctx.invocation_id:
+                    raise HandoffError("accepted result belongs to a different session")
+                if session_result.envelope.role != role_name:
+                    raise HandoffError("accepted result belongs to a different role")
+                if session_result.envelope.task != (session_task_id or ""):
+                    raise HandoffError("accepted result belongs to a different task")
+                if session_result.envelope.milestone != (session_milestone_id or ""):
+                    raise HandoffError("accepted result belongs to a different milestone")
+                handoff = session_result.as_handoff(handoff_path)
+            else:
+                # Parse a legacy artifact only to retain its precise diagnostic;
+                # new sessions cannot accept agent-authored Markdown directly.
+                parse_handoff(handoff_path, role_name)
+                raise HandoffError(
+                    "session exited without an accepted result; run "
+                    "'devlab session handoff submit' before exiting"
+                )
             validate_handoff(handoff, workspace.snapshot)
             if handoff.clarification_request is None:
-                _apply_planner_workflow_state(
-                    workspace,
-                    handoff,
-                    planning_update=planner_generation_update,
-                )
-                if role_name == "planner" and spec_status is not None:
-                    _workflow_state, spec_status = _load_workflow_and_spec_status(root)
                 planner_task_error = _validate_planner_preserved_active_tasks(
                     start_snapshot,
                     workspace.snapshot,
@@ -1788,9 +2060,17 @@ def run_loop(
                     start_snapshot,
                     workspace.snapshot,
                     role_name,
+                    reported_planning_complete=handoff.planning_complete,
                 )
                 if planner_noop_error is not None:
                     raise HandoffError(planner_noop_error)
+                _apply_planner_workflow_state(
+                    workspace,
+                    handoff,
+                    planning_update=planner_generation_update,
+                )
+                if role_name == "planner" and spec_status is not None:
+                    _workflow_state, spec_status = _load_workflow_and_spec_status(root)
         except HandoffError as exc:
             message = _handoff_error_message(ctx, str(exc), config_log)
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
