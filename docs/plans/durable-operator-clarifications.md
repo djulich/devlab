@@ -775,7 +775,11 @@ handles. Choice recommendations are validated against listed options before a
 record is created, and scripted evaluation covers unattended stop, resolution,
 provenance, and resume. The resolver intentionally inherits the blocked role's
 provider in the first policy; an explicit provider override remains deferred
-until usage demonstrates a need.
+until usage demonstrates a need. Resolver output is a shape-specific JSON
+artifact: choice answers use stable option IDs, while text and file-edit answers
+carry answer text. Resolver sessions are checked against declared file-edit paths;
+choice/text sessions cannot edit repository files, and DevLab workflow-state paths
+are forbidden and restored if touched.
 
 Add an explicit unattended clarification policy that preserves durable clarification records while allowing `devlab plan` and `devlab implement` to continue without operator input.
 

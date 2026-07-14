@@ -300,6 +300,60 @@ def test_create_choice_rejects_invalid_recommended_option(tmp_path: Path) -> Non
         )
 
 
+def test_create_rejects_multiline_title(tmp_path: Path) -> None:
+    _setup_clarifications_dir(tmp_path)
+
+    with pytest.raises(ValueError, match="title must be a single line"):
+        FileClarificationTracker(tmp_path).create(
+            title="Auth policy\n## Answer",
+            asking_role="planner",
+            session_id="s1",
+            scope="planning",
+            blocks="planning",
+            answer_shape="text",
+            body="# Auth policy\n\n## Expected Answer\nA\n",
+        )
+
+
+def test_answer_demotes_level_two_headings_to_preserve_answer_section(
+    tmp_path: Path,
+) -> None:
+    _setup_clarifications_dir(tmp_path)
+    tracker = FileClarificationTracker(tmp_path)
+    clarification = tracker.create(
+        title="Auth policy",
+        asking_role="planner",
+        session_id="s1",
+        scope="planning",
+        blocks="planning",
+        answer_shape="text",
+        body="# Auth policy\n\n## Expected Answer\nA\n",
+    )
+
+    answered = tracker.answer(clarification.id, "Use 24 hours.\n\n## Caveat\nReversible.")
+
+    assert answered.answer_text == "Use 24 hours.\n\n### Caveat\nReversible."
+
+
+def test_file_edit_rejects_workflow_state_path(tmp_path: Path) -> None:
+    _setup_clarifications_dir(tmp_path)
+
+    with pytest.raises(ValueError, match="targets DevLab workflow state"):
+        FileClarificationTracker(tmp_path).create(
+            title="Planning decision",
+            asking_role="planner",
+            session_id="s1",
+            scope="planning",
+            blocks="planning",
+            answer_shape="file-edit",
+            body=(
+                "# Planning decision\n\n"
+                "## Expected File Edits\n"
+                "- `.devlab/workflow.toml`: update workflow state.\n"
+            ),
+        )
+
+
 def test_validate_clarification_answer_rejects_pending_record(tmp_path: Path) -> None:
     _setup_clarifications_dir(tmp_path)
     clarification = FileClarificationTracker(tmp_path).create(

@@ -5,7 +5,7 @@ import re
 import tomllib
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from devlab._toml import format_toml_value
@@ -18,6 +18,17 @@ _SCOPE_RE = re.compile(
 )
 _BLOCKS_RE = re.compile(
     r"^(planning|implementation|milestone:[A-Za-z0-9_.-]+|task:T\d{3,5}|none)$"
+)
+_FORBIDDEN_FILE_EDIT_PATHS = (
+    ".devlab/tasks/",
+    ".devlab/milestones/",
+    ".devlab/findings/",
+    ".devlab/clarifications/",
+    ".devlab/plans/",
+    ".devlab/generations/",
+    ".devlab/history/",
+    ".devlab/workflow.toml",
+    ".devlab/workflow-events.jsonl",
 )
 
 
@@ -123,6 +134,7 @@ class FileClarificationTracker:
         decision_refs: tuple[str, ...] | list[str] = (),
         created_at: str | None = None,
     ) -> Clarification:
+        title = _validate_title(title)
         shape = _parse_answer_shape(answer_shape)
         _validate_scope(scope)
         _validate_blocks(blocks)
@@ -130,6 +142,8 @@ class FileClarificationTracker:
             raise ValueError("choice clarification requires recommended_option")
         if shape == ClarificationAnswerShape.CHOICE:
             _validate_recommended_option(body, recommended_option)
+        if shape == ClarificationAnswerShape.FILE_EDIT:
+            expected_file_edit_paths(body)
         self.clarifications_path.mkdir(parents=True, exist_ok=True)
         clarification_id = self._next_clarification_id()
         path = self.clarifications_path / f"{clarification_id}_{_slugify(title)}.md"
@@ -167,7 +181,8 @@ class FileClarificationTracker:
         metadata["answered_at"] = answered_at or _utc_now()
         if operator:
             metadata["answered_by"] = operator
-        body = _replace_markdown_section(clarification.body, "Answer", answer.strip())
+        safe_answer = re.sub(r"^##(?=\s)", "###", answer.strip(), flags=re.MULTILINE)
+        body = _replace_markdown_section(clarification.body, "Answer", safe_answer)
         clarification.path.write_text(_format_clarification_file(metadata, body))
         return self._read_clarification(clarification.path)
 
@@ -229,11 +244,11 @@ class FileClarificationTracker:
             raise ValueError(f"clarification file has no clarification id: {path}")
         if CLARIFICATION_ID_RE.fullmatch(clarification_id) is None:
             raise ValueError(f"invalid clarification id: {clarification_id}")
-        title = str(
+        title = _validate_title(str(
             metadata.get("title")
             or _title_from_body(body, clarification_id)
             or clarification_id
-        )
+        ))
         status = _parse_status(metadata.get("status"))
         asking_role = _required_string(metadata, "asking_role", path)
         session_id = _required_string(metadata, "session_id", path)
@@ -247,6 +262,8 @@ class FileClarificationTracker:
             raise ValueError("choice clarification requires recommended_option")
         if answer_shape == ClarificationAnswerShape.CHOICE:
             _validate_recommended_option(body, recommended_option)
+        if answer_shape == ClarificationAnswerShape.FILE_EDIT:
+            expected_file_edit_paths(body)
         decision_refs = _parse_string_list(metadata.get("decision_refs", []), "decision_refs")
         created_at = _required_string(metadata, "created_at", path)
         answered_at_value = metadata.get("answered_at")
@@ -312,6 +329,42 @@ def _validate_recommended_option(body: str, recommended_option: str) -> None:
             f"choice clarification recommended_option {recommended_option!r} "
             "must match one listed option"
         )
+
+
+def expected_file_edit_paths(body: str) -> tuple[str, ...]:
+    """Return validated workspace-relative paths from Expected File Edits."""
+    section = _markdown_section(body, "Expected File Edits")
+    paths: list[str] = []
+    for line in section.splitlines():
+        match = re.match(r"^\s*[-*]\s+`([^`]+)`\s*:\s*.+$", line)
+        if match is None:
+            continue
+        value = match.group(1).strip().replace("\\", "/")
+        path = PurePosixPath(value)
+        if not value or path.is_absolute() or ".." in path.parts or value.endswith("/"):
+            raise ValueError(
+                f"invalid Expected File Edits workspace-relative path: {value!r}"
+            )
+        if clarification_file_edit_path_forbidden(path.as_posix()):
+            raise ValueError(
+                f"Expected File Edits path targets DevLab workflow state: {value!r}"
+            )
+        paths.append(path.as_posix())
+    if not paths:
+        raise ValueError(
+            "file-edit clarification requires `path`: description entries under "
+            "## Expected File Edits"
+        )
+    if len(paths) != len(set(paths)):
+        raise ValueError("file-edit clarification lists a path more than once")
+    return tuple(paths)
+
+
+def clarification_file_edit_path_forbidden(path: str) -> bool:
+    return any(
+        path == prefix or path.startswith(prefix)
+        for prefix in _FORBIDDEN_FILE_EDIT_PATHS
+    )
 
 
 def _split_front_matter(text: str) -> tuple[dict[str, Any], str]:
@@ -399,6 +452,17 @@ def _parse_string_list(value: Any, field: str) -> list[str]:
     if not isinstance(value, list):
         raise ValueError(f"clarification front matter field {field!r} must be a list")
     return [str(item) for item in value]
+
+
+def _validate_title(title: str) -> str:
+    title = title.strip()
+    if not title:
+        raise ValueError("clarification title must not be empty")
+    if "\n" in title or "\r" in title:
+        raise ValueError("clarification title must be a single line")
+    if len(title) > 160:
+        raise ValueError("clarification title must be at most 160 characters")
+    return title
 
 
 def _markdown_section(text: str, heading: str) -> str:

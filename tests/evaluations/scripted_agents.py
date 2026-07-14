@@ -130,11 +130,11 @@ class ClarificationCalculatorScriptedAgent(CalculatorScriptedAgent):
             self._record(invocation)
             answer_path = (
                 invocation.root
-                / ".devlab/session-artifacts/clarification-resolver/answer.toml"
+                / ".devlab/session-artifacts/clarification-resolver/answer.json"
             )
             answer_path.write_text(
-                'clarification_id = "CL0001"\n'
-                'answer = """A: Use integer arithmetic."""\n'
+                '{"clarification_id":"CL0001","answer_shape":"choice",'
+                '"choice":"A"}'
             )
             return
         super().on_invoke(invocation)

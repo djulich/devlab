@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
 import subprocess
 from pathlib import Path
@@ -457,14 +458,16 @@ def test_run_loop_agent_clarification_mode_invokes_resolver_and_resumes(
                 call.root
                 / ARTIFACTS_DIR
                 / "clarification-resolver"
-                / "answer.toml"
+                / "answer.json"
             )
             answer_path.parent.mkdir(parents=True, exist_ok=True)
             answer_path.write_text(
-                'clarification_id = "CL0001"\n'
-                'answer = """A: 24-hour idle timeout."""\n'
+                '{"clarification_id":"CL0001","answer_shape":"choice",'
+                '"choice":"A"}'
             )
             assert "## Clarification To Resolve" in call.session_prompt
+            assert "<clarification-data>" in call.session_prompt
+            assert '"choice": "<option ID>"' in call.session_prompt
         if call.role_name == "developer" and developer_calls == 1:
             complete_acceptance(call.root, "T0001")
 
@@ -506,12 +509,12 @@ def test_run_loop_agent_clarification_mode_stops_on_invalid_resolver_answer(
                 call.root
                 / ARTIFACTS_DIR
                 / "clarification-resolver"
-                / "answer.toml"
+                / "answer.json"
             )
             answer_path.parent.mkdir(parents=True, exist_ok=True)
             answer_path.write_text(
-                'clarification_id = "CL0001"\n'
-                'answer = """Use a 24-hour idle timeout."""\n'
+                '{"clarification_id":"CL0001","answer_shape":"choice",'
+                '"choice":"C"}'
             )
 
     provider = MockProvider(
@@ -528,7 +531,7 @@ def test_run_loop_agent_clarification_mode_stops_on_invalid_resolver_answer(
 
     assert result.exit_code == 1
     assert result.errors[0].phase == "clarification_resolver"
-    assert "choice answer must match one listed option" in result.errors[0].message
+    assert "must match one listed option ID" in result.errors[0].message
     assert FileClarificationTracker(tmp_path).get("CL0001").status.value == "pending"
     assert load_workflow_state(tmp_path).resume is not None
 
@@ -598,9 +601,13 @@ def test_run_loop_agent_clarification_mode_resolves_non_choice_answers(
             answer = "Recorded a 24-hour idle timeout in docs/session-policy.md."
         else:
             answer = "Use a 24-hour idle timeout."
-        answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.toml"
+        answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.json"
         answer_path.write_text(
-            'clarification_id = "CL0001"\n' f'answer = """{answer}"""\n'
+            '{"clarification_id":"CL0001","answer_shape":"'
+            + answer_shape
+            + '","answer":'
+            + json.dumps(answer)
+            + "}"
         )
 
     provider = MockProvider(handoff_text=handoff_for, on_invoke=on_invoke)
@@ -626,12 +633,15 @@ def test_run_loop_agent_clarification_mode_resolves_non_choice_answers(
     ("artifact", "expected_error"),
     [
         (None, "did not write"),
-        ("not = [valid", "invalid TOML"),
+        ("not valid json", "invalid JSON"),
         (
-            'clarification_id = "CL9999"\nanswer = """Use 24 hours."""\n',
+            '{"clarification_id":"CL9999","answer_shape":"choice","choice":"A"}',
             "clarification_id must be 'CL0001'",
         ),
-        ('clarification_id = "CL0001"\nanswer = ""\n', "requires non-empty answer"),
+        (
+            '{"clarification_id":"CL0001","answer_shape":"choice","choice":""}',
+            "requires non-empty choice",
+        ),
     ],
 )
 def test_run_loop_resolver_artifact_failure_preserves_pending_resume(
@@ -644,7 +654,7 @@ def test_run_loop_resolver_artifact_failure_preserves_pending_resume(
 
     def on_invoke(call: AgentCall) -> None:
         if call.role_name == "clarification-resolver" and artifact is not None:
-            answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.toml"
+            answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.json"
             answer_path.write_text(artifact)
 
     provider = MockProvider(
@@ -669,6 +679,77 @@ def test_run_loop_resolver_artifact_failure_preserves_pending_resume(
     resume = load_workflow_state(tmp_path).resume
     assert resume is not None
     assert resume.blocked_by == "CL0001"
+
+
+def test_run_loop_resolver_rejects_and_restores_forbidden_workflow_edit(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "Auth")
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name != "clarification-resolver":
+            return
+        (call.root / ".devlab/workflow.toml").write_text("corrupted = true\n")
+        answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.json"
+        answer_path.write_text(
+            '{"clarification_id":"CL0001","answer_shape":"choice",'
+            '"choice":"A"}'
+        )
+
+    provider = MockProvider(
+        handoff_text=_clarification_handoff("developer"), on_invoke=on_invoke
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=2,
+        agent_providers={"default": provider},
+        clarification_mode="agent",
+    )
+
+    assert result.exit_code == 1
+    assert ".devlab/workflow.toml" in result.errors[0].message
+    assert FileClarificationTracker(tmp_path).get("CL0001").status.value == "pending"
+    resume = load_workflow_state(tmp_path).resume
+    assert resume is not None
+    assert resume.blocked_by == "CL0001"
+
+
+def test_run_loop_file_edit_resolver_requires_declared_edit(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "Auth")
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name != "clarification-resolver":
+            return
+        answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.json"
+        answer_path.write_text(
+            '{"clarification_id":"CL0001","answer_shape":"file-edit",'
+            '"answer":"No edit was needed."}'
+        )
+
+    provider = MockProvider(
+        handoff_text=_clarification_handoff("developer", answer_shape="file-edit"),
+        on_invoke=on_invoke,
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=2,
+        agent_providers={"default": provider},
+        clarification_mode="agent",
+    )
+
+    assert result.exit_code == 1
+    assert "did not edit expected path(s): docs/session-policy.md" in (
+        result.errors[0].message
+    )
+    assert FileClarificationTracker(tmp_path).get("CL0001").status.value == "pending"
 
 
 def _create_answered_clarification(root: Path) -> str:

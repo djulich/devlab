@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
-import re
 import shutil
 import tomllib
 from collections.abc import Callable
@@ -25,6 +25,12 @@ from devlab.agents import (
 )
 from devlab.clarification_ops import (
     apply_validated_clarification_answer,
+)
+from devlab.clarifications import (
+    Clarification,
+    clarification_file_edit_path_forbidden,
+    expected_file_edit_paths,
+    option_text,
 )
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
@@ -474,7 +480,18 @@ def process_handoff(
 
 
 def _clarification_body(title: str, details: str) -> str:
-    normalized = re.sub(r"^### ", "## ", details.strip(), flags=re.MULTILINE)
+    normalized_lines: list[str] = []
+    fence: str | None = None
+    headings = {"Context", "Question", "Options", "Expected Answer", "Expected File Edits"}
+    for line in details.strip().splitlines():
+        stripped = line.lstrip()
+        marker = stripped[:3] if stripped.startswith(("```", "~~~")) else None
+        if marker is not None:
+            fence = None if fence == marker else marker if fence is None else fence
+        if fence is None and line.startswith("### ") and line[4:].strip() in headings:
+            line = "## " + line[4:]
+        normalized_lines.append(line)
+    normalized = "\n".join(normalized_lines)
     return f"# {title}\n\n{normalized}\n"
 
 
@@ -687,7 +704,94 @@ def _build_session_metadata(
 
 
 def _resolver_answer_path(root: Path) -> Path:
-    return root / ARTIFACTS_DIR / CLARIFICATION_RESOLVER_ROLE / "answer.toml"
+    return root / ARTIFACTS_DIR / CLARIFICATION_RESOLVER_ROLE / "answer.json"
+
+
+_RESOLVER_SNAPSHOT_EXCLUSIONS = (
+    ".git/",
+    f"{AGENT_LOG_DIR}/",
+    f"{ARTIFACTS_DIR}/{CLARIFICATION_RESOLVER_ROLE}/",
+)
+
+
+def _resolver_file_snapshot(root: Path) -> dict[str, str]:
+    snapshot: dict[str, str] = {}
+    for path in root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if any(
+            relative == prefix.rstrip("/") or relative.startswith(prefix)
+            for prefix in _RESOLVER_SNAPSHOT_EXCLUSIONS
+        ):
+            continue
+        snapshot[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return snapshot
+
+
+def _resolver_forbidden_contents(root: Path) -> dict[str, bytes]:
+    contents: dict[str, bytes] = {}
+    for path in root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if _resolver_path_forbidden(relative):
+            contents[relative] = path.read_bytes()
+    return contents
+
+
+def _resolver_path_forbidden(path: str) -> bool:
+    return clarification_file_edit_path_forbidden(path)
+
+
+def _restore_forbidden_resolver_edits(
+    root: Path, changed_paths: set[str], before: dict[str, bytes]
+) -> None:
+    for relative in sorted(path for path in changed_paths if _resolver_path_forbidden(path)):
+        path = root / relative
+        original = before.get(relative)
+        if original is None:
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_symlink():
+            path.unlink()
+        path.write_bytes(original)
+
+
+def _validate_resolver_file_edits(
+    root: Path,
+    clarification: Clarification,
+    before: dict[str, str],
+    forbidden_before: dict[str, bytes],
+    *,
+    require_expected: bool,
+) -> str | None:
+    after = _resolver_file_snapshot(root)
+    changed = {
+        path
+        for path in set(before) | set(after)
+        if before.get(path) != after.get(path)
+    }
+    allowed = (
+        set(expected_file_edit_paths(clarification.body))
+        if clarification.answer_shape.value == "file-edit"
+        else set()
+    )
+    missing = allowed - set(after)
+    if require_expected and missing:
+        joined = ", ".join(sorted(missing))
+        return f"clarification resolver did not edit expected path(s): {joined}"
+    unexpected = changed - allowed
+    if not unexpected:
+        return None
+    _restore_forbidden_resolver_edits(root, unexpected, forbidden_before)
+    joined = ", ".join(sorted(unexpected))
+    return (
+        "clarification resolver changed paths outside its allowed file-edit set: "
+        f"{joined}"
+    )
 
 
 def _resolver_repair_guidance(clarification_id: str, command: str) -> str:
@@ -698,25 +802,53 @@ def _resolver_repair_guidance(clarification_id: str, command: str) -> str:
     )
 
 
-def _parse_resolver_answer(root: Path, path: Path, clarification_id: str) -> str:
+def _parse_resolver_answer(root: Path, path: Path, clarification: Clarification) -> str:
     if not path.exists():
         raise HandoffError(
             "clarification resolver did not write "
             f"{path.relative_to(root).as_posix()}"
         )
     try:
-        data = tomllib.loads(path.read_text())
-    except tomllib.TOMLDecodeError as exc:
-        raise HandoffError("clarification resolver answer.toml is invalid TOML") from exc
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise HandoffError("clarification resolver answer.json is invalid JSON") from exc
+    if not isinstance(data, dict):
+        raise HandoffError("clarification resolver answer.json must contain an object")
     found_id = data.get("clarification_id")
-    if found_id != clarification_id:
+    if found_id != clarification.id:
         raise HandoffError(
-            "clarification resolver answer.toml clarification_id must be "
-            f"{clarification_id!r}"
+            "clarification resolver answer.json clarification_id must be "
+            f"{clarification.id!r}"
+        )
+    answer_shape = clarification.answer_shape.value
+    if data.get("answer_shape") != answer_shape:
+        raise HandoffError(
+            "clarification resolver answer.json answer_shape must be "
+            f"{answer_shape!r}"
+        )
+    if answer_shape == "choice":
+        if set(data) != {"clarification_id", "answer_shape", "choice"}:
+            raise HandoffError(
+                "clarification resolver choice answer.json must contain exactly "
+                "clarification_id, answer_shape, and choice"
+            )
+        choice = data.get("choice")
+        if not isinstance(choice, str) or not choice.strip():
+            raise HandoffError("clarification resolver answer.json requires non-empty choice")
+        answer = option_text(clarification.body, choice)
+        if answer is None:
+            raise HandoffError(
+                f"clarification resolver choice {choice!r} must match one listed option ID"
+            )
+        return answer
+    if set(data) != {"clarification_id", "answer_shape", "answer"}:
+        raise HandoffError(
+            "clarification resolver answer.json must contain exactly clarification_id, "
+            "answer_shape, and answer"
         )
     answer = data.get("answer")
     if not isinstance(answer, str) or not answer.strip():
-        raise HandoffError("clarification resolver answer.toml requires non-empty answer")
+        raise HandoffError("clarification resolver answer.json requires non-empty answer")
     return answer.strip()
 
 
@@ -785,6 +917,15 @@ def _invoke_clarification_resolver(
     ctx.write_prompt_logs(base_prompt, session_prompt)
     invocation = ctx.build_invocation(base_prompt, session_prompt)
     agent_provider = provider_for_role(blocked_role, agent_providers, role_agent_providers)
+    try:
+        resolver_files_before = _resolver_file_snapshot(root)
+        forbidden_contents_before = _resolver_forbidden_contents(root)
+    except OSError as exc:
+        return SessionError(
+            "clarification_resolver",
+            f"Cannot snapshot workspace before clarification resolver: {exc}",
+            1,
+        ), False
 
     logger.info("Starting session %s: %s", ctx.session_number, CLARIFICATION_RESOLVER_ROLE)
     _notify_session_progress(
@@ -799,6 +940,23 @@ def _invoke_clarification_resolver(
             message=f"agent provider error: {exc}",
         )
     ctx.write_session_metadata(_build_session_metadata(ctx, agent_result, None, None))
+    try:
+        edit_error = _validate_resolver_file_edits(
+            root,
+            clarification,
+            resolver_files_before,
+            forbidden_contents_before,
+            require_expected=agent_result.succeeded,
+        )
+    except OSError as exc:
+        edit_error = f"Cannot validate clarification resolver file edits: {exc}"
+    if edit_error is not None:
+        guidance = _resolver_repair_guidance(
+            clarification_id, workflow_state.resume.command
+        )
+        return SessionError(
+            "clarification_resolver", f"{edit_error}. {guidance}", 1
+        ), True
     if not agent_result.succeeded:
         message = _agent_error_message(ctx, agent_result, None)
         guidance = _resolver_repair_guidance(
@@ -811,7 +969,7 @@ def _invoke_clarification_resolver(
         ), True
 
     try:
-        answer = _parse_resolver_answer(root, _resolver_answer_path(root), clarification_id)
+        answer = _parse_resolver_answer(root, _resolver_answer_path(root), clarification)
         _answer_clarification_from_resolver(
             root,
             clarification_id,

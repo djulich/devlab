@@ -257,6 +257,45 @@ def test_parse_handoff_rejects_choice_clarification_with_invalid_recommendation(
         parse_handoff(path, "developer")
 
 
+def test_parse_handoff_does_not_find_recommendation_outside_options(
+    tmp_path: Path,
+) -> None:
+    path = _write_handoff(
+        tmp_path,
+        extra_after=(
+            "## Clarification Request\n"
+            "clarification_required = true\n"
+            'title = "Auth policy"\n'
+            'scope = "planning"\n'
+            'blocks = "planning"\n'
+            'answer_shape = "choice"\n'
+            'recommended_option = "C"\n\n'
+            "### Context\n- C: Mentioned here, but not an option.\n\n"
+            "### Question\nQ\n\n"
+            "### Options\n- A: First.\n- B: Second.\n"
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="must match one listed option"):
+        parse_handoff(path, "developer")
+
+
+def test_parse_handoff_rejects_duplicate_clarification_request(tmp_path: Path) -> None:
+    request = (
+        "## Clarification Request\n"
+        "clarification_required = true\n"
+        'title = "Auth policy"\n'
+        'scope = "planning"\n'
+        'blocks = "planning"\n'
+        'answer_shape = "text"\n\n'
+        "### Context\nC\n\n### Question\nQ\n\n### Expected Answer\nA\n"
+    )
+    path = _write_handoff(tmp_path, extra_after=request + request)
+
+    with pytest.raises(HandoffError, match="duplicate heading: ## Clarification Request"):
+        parse_handoff(path, "developer")
+
+
 def test_parse_handoff_rejects_invalid_clarification_enum(tmp_path: Path) -> None:
     path = _write_handoff(
         tmp_path,

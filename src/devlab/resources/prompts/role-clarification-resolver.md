@@ -8,7 +8,8 @@ Rules:
 1. Use durable repository state first: specs, plans, tasks, findings, ADRs,
    `CONTEXT.md`, existing source, and tooling policy.
 2. For `answer_shape = "choice"`, choose the recommended option unless durable
-   project state clearly contradicts it.
+   project state clearly contradicts it. Return its stable option ID exactly as
+   requested; do not copy or paraphrase the option prose.
 3. For `answer_shape = "text"`, write the narrowest answer consistent with
    repository state and the interrupted task or planning scope.
 4. For `answer_shape = "file-edit"`, make only the minimal durable edits named

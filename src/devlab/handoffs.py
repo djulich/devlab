@@ -5,6 +5,8 @@ import re
 import tomllib
 from pathlib import Path
 
+from devlab.clarifications import expected_file_edit_paths
+
 REQUIRED_HANDOFF_HEADINGS = (
     "Done",
     "Changed Artifacts",
@@ -169,6 +171,11 @@ def parse_clarification_request(section: str) -> ClarificationRequest:
         _validate_recommended_clarification_option(details, recommended_option)
     elif answer_shape == "file-edit":
         _require_clarification_detail(details, "Expected File Edits")
+        normalized = re.sub(r"^### ", "## ", details, flags=re.MULTILINE)
+        try:
+            expected_file_edit_paths(normalized)
+        except ValueError as exc:
+            raise HandoffError(str(exc)) from exc
     else:
         _require_clarification_detail(details, "Expected Answer")
     return ClarificationRequest(
@@ -204,9 +211,14 @@ def _parse_sections(text: str, role_name: str) -> dict[str, str]:
         ))
 
     headings = [match.group("heading").strip() for match in matches]
-    for required in REQUIRED_HANDOFF_HEADINGS:
-        if headings.count(required) > 1:
-            raise HandoffError(f"handoff has duplicate required heading: ## {required}")
+    recognized_headings = set(REQUIRED_HANDOFF_HEADINGS) | set(OPTIONAL_HANDOFF_HEADINGS)
+    for heading in recognized_headings:
+        if headings.count(heading) > 1:
+            if heading in REQUIRED_HANDOFF_HEADINGS:
+                raise HandoffError(
+                    f"handoff has duplicate required heading: ## {heading}"
+                )
+            raise HandoffError(f"handoff has duplicate heading: ## {heading}")
 
     missing = [heading for heading in REQUIRED_HANDOFF_HEADINGS if heading not in headings]
     if missing:
@@ -225,7 +237,6 @@ def _parse_sections(text: str, role_name: str) -> dict[str, str]:
         raise HandoffError("handoff has unexpected ## section between required headings")
 
     sections: dict[str, str] = {}
-    recognized_headings = set(REQUIRED_HANDOFF_HEADINGS) | set(OPTIONAL_HANDOFF_HEADINGS)
     for index, match in enumerate(matches):
         heading = headings[index]
         if heading not in recognized_headings:
@@ -315,6 +326,15 @@ def _clarification_string(data: dict[str, object], key: str) -> str:
         raise HandoffError(
             f"handoff section ## Clarification Request {key} must be a non-empty string"
         )
+    value = value.strip()
+    if key == "title" and ("\n" in value or "\r" in value):
+        raise HandoffError(
+            "handoff section ## Clarification Request title must be a single line"
+        )
+    if key == "title" and len(value) > 160:
+        raise HandoffError(
+            "handoff section ## Clarification Request title must be at most 160 characters"
+        )
     return value
 
 
@@ -346,11 +366,18 @@ def _require_clarification_detail(details: str, heading: str) -> None:
 def _validate_recommended_clarification_option(
     details: str, recommended_option: str
 ) -> None:
+    options = _clarification_detail(details, "Options")
     pattern = re.compile(
         rf"^\s*[-*]\s+{re.escape(recommended_option)}:\s+.+$", re.MULTILINE
     )
-    if pattern.search(details) is None:
+    if pattern.search(options) is None:
         raise HandoffError(
             "handoff section ## Clarification Request recommended_option "
             f"{recommended_option!r} must match one listed option"
         )
+
+
+def _clarification_detail(details: str, heading: str) -> str:
+    pattern = rf"^### {re.escape(heading)}[ \t]*$([\s\S]*?)(?=^###\s|\Z)"
+    match = re.search(pattern, details, flags=re.MULTILINE)
+    return match.group(1).strip() if match else ""
