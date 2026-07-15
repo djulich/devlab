@@ -17,6 +17,7 @@ from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.handoffs import Handoff, HandoffError, parse_handoff
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import (
+    RunStopReason,
     _timestamp,
     close_task,
     process_handoff,
@@ -1382,6 +1383,8 @@ class TestRunLoop:
         )
 
         assert result.sessions_run == 2
+        assert result.stop_reason == RunStopReason.COMMAND_COMPLETE
+        assert result.completed is True
         assert [call.role_name for call in provider.calls] == ["architect", "planner"]
         assert Workspace(tmp_path).snapshot.assess_state() == "developer"
 
@@ -1482,6 +1485,8 @@ class TestRunLoop:
         )
 
         assert result.sessions_run == 0
+        assert result.stop_reason == RunStopReason.COMMAND_COMPLETE
+        assert result.completed is True
         assert provider.calls == []
 
     def test_planning_only_noop_records_missing_spec_baseline(
@@ -1702,6 +1707,7 @@ class TestRunLoop:
 
         assert result.exit_code == 0
         assert result.sessions_run == 0
+        assert result.stop_reason == RunStopReason.COMMAND_COMPLETE
         assert provider.calls == []
         assert f'last_planned_spec_commit = "{latest}"' in (
             tmp_path / ".devlab/workflow.toml"
@@ -2040,6 +2046,7 @@ class TestRunLoop:
 
         assert result.exit_code == 1
         assert result.completed is False
+        assert result.stop_reason == RunStopReason.ERROR
         assert result.errors[0].phase == "environment_setup"
         assert provider.calls == []
         assert list((tmp_path / ".devlab/logs/environment").glob("*_developer_setup_*.log"))
@@ -2203,10 +2210,98 @@ class TestRunLoop:
         )
 
         assert result.completed is True
+        assert result.stop_reason == RunStopReason.WORKFLOW_COMPLETE
         assert result.exit_code == 0
         assert result.errors == ()
         assert [call.role_name for call in provider.calls] == ["developer", "reviewer"]
         assert 'status = "closed"' in task.read_text()
+
+    def test_session_limit_is_not_workflow_completion(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "First")
+        provider = MockProvider(on_invoke=_complete_developer_task)
+
+        result = run_loop(
+            tmp_path, max_sessions=1, agent_providers={"default": provider}
+        )
+
+        assert result.stop_reason == RunStopReason.SESSION_LIMIT
+        assert result.completed is False
+        assert result.exit_code == 0
+
+    def test_blocking_clarification_precedes_no_role_selection(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = true\n"
+        )
+        Workspace(tmp_path).clarifications().create(
+            title="Choose retention policy",
+            asking_role="planner",
+            session_id="session-1",
+            scope="planning",
+            blocks="planning",
+            answer_shape="text",
+            body="# Choose retention policy\n\n## Expected Answer\nA duration.\n",
+        )
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path, max_sessions=1, agent_providers={"default": provider}
+        )
+
+        assert result.stop_reason == RunStopReason.CLARIFICATION_BLOCKED
+        assert result.completed is False
+        assert result.exit_code == 0
+        assert result.errors[0].phase == "clarification_required"
+        assert provider.calls == []
+
+    def test_nonblocking_clarification_does_not_block_completion(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        (tmp_path / ".devlab/workflow.toml").write_text(
+            "version = 1\n\n[planning]\ncomplete = true\n"
+        )
+        Workspace(tmp_path).clarifications().create(
+            title="Optional note",
+            asking_role="planner",
+            session_id="session-1",
+            scope="planning",
+            blocks="none",
+            answer_shape="text",
+            body="# Optional note\n\n## Expected Answer\nOptional.\n",
+        )
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": MockProvider()},
+        )
+
+        assert result.stop_reason == RunStopReason.WORKFLOW_COMPLETE
+        assert result.completed is True
+
+    def test_dependency_blocked_tasks_have_distinct_stop_reason(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0002", "Blocked", depends_on=["T0001"])
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": MockProvider()},
+        )
+
+        assert result.stop_reason == RunStopReason.NO_ELIGIBLE_ROLE
+        assert result.completed is False
+        assert result.exit_code == 0
 
     def test_completed_milestone_selects_integrator(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

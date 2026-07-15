@@ -1,6 +1,6 @@
 # Run Stop Reasons and Blocker-First Selection
 
-Status: planned.
+Status: implemented.
 
 ## Goal
 
@@ -11,6 +11,15 @@ complete or ineligible.
 This plan implements priorities 1 and 2 from
 `architectural-improvements.md`. It deliberately keeps CLI exit codes compatible
 and does not redesign clarification scope, resume storage, or role selection.
+
+## Outcome
+
+`RunResult` now carries an explicit `RunStopReason`; evaluation diagnostics
+serialize it as `stop_reason`; and `completed` is limited to terminal workflow or
+command boundaries. The orchestrator checks pending durable clarification
+blockers before ordinary role selection, while answered clarification resume
+routes continue to receive task/milestone identity validation. CLI exit codes
+remain unchanged.
 
 ## Current Problem
 
@@ -222,4 +231,3 @@ session-limit, clarification-blocked, and error outcomes.
 ```bash
 make check
 ```
-

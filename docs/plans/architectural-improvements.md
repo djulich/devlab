@@ -17,6 +17,10 @@ trackers own file formats, and `Workspace` handles own mutations.
 
 Implementation plan: `run-stop-reasons-and-blocker-ordering.md`.
 
+Status: implemented. `RunResult.stop_reason` is authoritative, evaluation JSON
+exposes it, `completed` is limited to terminal workflow/command boundaries, and
+CLI exit codes remain compatible.
+
 Current `RunResult` semantics can report `completed = true` with exit code zero
 when a durable clarification blocks progress. Similar ambiguity can arise when a
 session limit is reached normally. Automation cannot reliably distinguish:
@@ -56,6 +60,10 @@ Priority: high.
 ### 2. Check durable workflow blockers before ordinary role selection
 
 Implementation plan: `run-stop-reasons-and-blocker-ordering.md`.
+
+Status: implemented. Pending blockers are inspected before `assess_state()`;
+non-blocking clarifications continue normally, and selected resume routes retain
+their task/milestone identity validation.
 
 The workflow loop currently selects a role before reporting pending clarification
 blockers. If no role is eligible, the run can report that work is complete or
@@ -228,16 +236,17 @@ Priority: opportunistic.
 
 ## Suggested implementation order
 
-1. Add structured run stop reasons without changing CLI exit codes.
-2. Move clarification blocker inspection ahead of ordinary role selection.
-3. Add atomic file replacement and migrate the highest-risk workflow and tracker
-   mutations.
-4. Replace string-matched validation errors with typed reasons while touching
-   those mutation paths.
-5. Decide concurrent mutation policy before any multi-agent execution work.
-6. Improve resolver isolation only when Git/non-Git evaluation evidence warrants
+Completed foundations: structured run stop reasons, blocker-first selection, and
+atomic replacement for authoritative durable files.
+
+Remaining suggested order:
+
+1. Replace string-matched validation errors with typed reasons while touching
+   relevant workflow paths.
+2. Decide concurrent mutation policy before any multi-agent execution work.
+3. Improve resolver isolation only when Git/non-Git evaluation evidence warrants
    the additional machinery.
-7. Add artifact size limits based on observed provider output sizes.
+4. Add artifact size limits based on observed provider output sizes.
 
 ## Non-goals
 

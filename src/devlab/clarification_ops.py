@@ -11,7 +11,7 @@ from devlab.clarifications import (
     ClarificationStatus,
     choice_option_texts,
 )
-from devlab.workflow_state import ResumeState, clear_resume_state, load_workflow_state
+from devlab.workflow_state import ResumeState, load_workflow_state
 from devlab.workspace import Workspace
 
 if TYPE_CHECKING:
@@ -178,7 +178,7 @@ def supersede_clarification(root: Path, clarification_id: str, reason: str) -> C
 
 
 def resume_workflow(root: Path, *, max_sessions: int = 20) -> ResumeDispatchResult:
-    from devlab.orchestrator import run_loop
+    from devlab.orchestrator import RunStopReason, run_loop
 
     state = load_workflow_state(root)
     if state.resume is None:
@@ -206,8 +206,13 @@ def resume_workflow(root: Path, *, max_sessions: int = 20) -> ResumeDispatchResu
             else "Resume failed before workflow could continue."
         )
         return ResumeDispatchResult(False, message, result)
-    if result.exit_code == 0 and result.sessions_run > 0:
-        clear_resume_state(root)
+    if result.stop_reason == RunStopReason.CLARIFICATION_BLOCKED:
+        message = (
+            result.errors[0].message
+            if result.errors
+            else "Workflow resumed and requires another operator clarification."
+        )
+        return ResumeDispatchResult(True, message, result)
     return ResumeDispatchResult(True, "Resumed workflow.", result)
 
 

@@ -8,6 +8,7 @@ import sys
 import tomllib
 from collections.abc import Callable
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 
 from devlab._logging import logger
@@ -107,26 +108,61 @@ SessionProgressCallback = Callable[[str, int, str], None]
 
 @dataclasses.dataclass(frozen=True)
 class SessionError:
-    """An error that stopped the orchestrator loop."""
+    """Actionable diagnostic associated with an orchestrator stop."""
 
     phase: str
     message: str
     exit_code: int
 
 
+class RunStopReason(StrEnum):
+    """Stable reason why one bounded orchestrator invocation stopped."""
+
+    WORKFLOW_COMPLETE = "workflow_complete"
+    COMMAND_COMPLETE = "command_complete"
+    SESSION_LIMIT = "session_limit"
+    CLARIFICATION_BLOCKED = "clarification_blocked"
+    NO_ELIGIBLE_ROLE = "no_eligible_role"
+    ERROR = "error"
+
+
 @dataclasses.dataclass(frozen=True)
 class RunResult:
     """Outcome of a run_loop execution.
 
-    Callers inspect ``completed`` to determine whether the workflow finished
-    normally (all milestones done, max sessions reached, or user quit) or was
-    stopped by an error.
+    ``stop_reason`` is the authoritative outcome. ``completed`` remains for
+    compatibility and is true only for a terminal workflow or command boundary.
     """
 
     sessions_run: int
     completed: bool
     exit_code: int
     errors: tuple[SessionError, ...]
+    stop_reason: RunStopReason
+
+
+def _error_result(
+    sessions_run: int, error: SessionError, *additional: SessionError
+) -> RunResult:
+    return RunResult(
+        sessions_run,
+        False,
+        error.exit_code,
+        (error, *additional),
+        RunStopReason.ERROR,
+    )
+
+
+def _stop_result(
+    sessions_run: int,
+    reason: RunStopReason,
+    errors: tuple[SessionError, ...] = (),
+) -> RunResult:
+    completed = reason in {
+        RunStopReason.WORKFLOW_COMPLETE,
+        RunStopReason.COMMAND_COMPLETE,
+    }
+    return RunResult(sessions_run, completed, 0, errors, reason)
 
 
 # ---------------------------------------------------------------------------
@@ -1620,30 +1656,22 @@ def run_loop(
     if mark_specs_planned and not planning_only:
         raise ValueError("mark_specs_planned requires planning_only")
     if replace_plan and adopt_existing:
-        return RunResult(
+        return _error_result(
             0,
-            False,
-            2,
-            (
-                SessionError(
-                    "planning_mode",
-                    "devlab plan cannot combine --replace-plan and --adopt-existing",
-                    2,
-                ),
+            SessionError(
+                "planning_mode",
+                "devlab plan cannot combine --replace-plan and --adopt-existing",
+                2,
             ),
         )
     if mark_specs_planned and (revise_plan or replace_plan or adopt_existing):
-        return RunResult(
+        return _error_result(
             0,
-            False,
-            2,
-            (
-                SessionError(
-                    "planning_mode",
-                    "devlab plan cannot combine --mark-specs-planned with "
-                    "--revise, --replace-plan, or --adopt-existing",
-                    2,
-                ),
+            SessionError(
+                "planning_mode",
+                "devlab plan cannot combine --mark-specs-planned with "
+                "--revise, --replace-plan, or --adopt-existing",
+                2,
             ),
         )
     sessions_run = 0
@@ -1651,29 +1679,21 @@ def run_loop(
     workflow_state: WorkflowState | None = None
     active_plan_exists = has_active_plan(root)
     if planning_only and adopt_existing and active_plan_exists:
-        return RunResult(
+        return _error_result(
             0,
-            False,
-            2,
-            (
-                SessionError(
-                    "planning_mode",
-                    "--adopt-existing is only allowed when no active DevLab plan exists",
-                    2,
-                ),
+            SessionError(
+                "planning_mode",
+                "--adopt-existing is only allowed when no active DevLab plan exists",
+                2,
             ),
         )
     if planning_only and replace_plan and not active_plan_exists:
-        return RunResult(
+        return _error_result(
             0,
-            False,
-            2,
-            (
-                SessionError(
-                    "planning_mode",
-                    "--replace-plan requires an active DevLab plan to archive",
-                    2,
-                ),
+            SessionError(
+                "planning_mode",
+                "--replace-plan requires an active DevLab plan to archive",
+                2,
             ),
         )
     if automatic_version_control:
@@ -1683,37 +1703,33 @@ def run_loop(
             if planning_only and spec_status.dirty_spec_paths:
                 error = _dirty_spec_error(spec_status.dirty_spec_paths)
                 logger.error("%s. Stopping.", error.message)
-                return RunResult(0, False, error.exit_code, (error,))
+                return _error_result(0, error)
             assert_clean_worktree(root)
         except VersionControlError as exc:
             logger.error("%s. Stopping.", exc)
-            return RunResult(0, False, 1, (SessionError("version_control", str(exc), 1),))
+            return _error_result(0, SessionError("version_control", str(exc), 1))
         except (OSError, ValueError) as exc:
             logger.error("%s. Stopping.", exc)
-            return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
+            return _error_result(0, SessionError("workflow_state", str(exc), 1))
         if not planning_only and spec_status is not None and spec_status.changed:
             error = _stale_specs_error(spec_status)
             logger.error("%s. Stopping.", error.message)
-            return RunResult(0, False, error.exit_code, (error,))
+            return _error_result(0, error)
     else:
         try:
             workflow_state = load_workflow_state(root)
         except (OSError, ValueError) as exc:
             logger.error("%s. Stopping.", exc)
-            return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
+            return _error_result(0, SessionError("workflow_state", str(exc), 1))
 
     if mark_specs_planned:
         if spec_status is None:
-            return RunResult(
+            return _error_result(
                 0,
-                False,
-                1,
-                (
-                    SessionError(
-                        "spec_reconciliation",
-                        "--mark-specs-planned requires automatic version control",
-                        1,
-                    ),
+                SessionError(
+                    "spec_reconciliation",
+                    "--mark-specs-planned requires automatic version control",
+                    1,
                 ),
             )
         logger.warning(
@@ -1738,12 +1754,12 @@ def run_loop(
                     logger.info("Committed DevLab spec planning baseline")
         except VersionControlError as exc:
             logger.error("%s. Stopping.", exc)
-            return RunResult(0, False, 1, (SessionError("version_control", str(exc), 1),))
+            return _error_result(0, SessionError("version_control", str(exc), 1))
         except OSError as exc:
             logger.error("%s. Stopping.", exc)
-            return RunResult(0, False, 1, (SessionError("workflow_state", str(exc), 1),))
+            return _error_result(0, SessionError("workflow_state", str(exc), 1))
         logger.info("Specs marked planned; no planning sessions were run.")
-        return RunResult(0, True, 0, ())
+        return _stop_result(0, RunStopReason.COMMAND_COMPLETE)
 
     workspace = Workspace(root)
     if workflow_state is None:
@@ -1756,12 +1772,7 @@ def run_loop(
     )
     if resume_command_error is not None:
         logger.error("%s. Stopping.", resume_command_error.message)
-        return RunResult(
-            0,
-            False,
-            resume_command_error.exit_code,
-            (resume_command_error,),
-        )
+        return _error_result(0, resume_command_error)
     active_resume = workflow_state.resume
     resolved_agent_configs = None
     if agent_providers is None:
@@ -1775,12 +1786,7 @@ def run_loop(
             )
         except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
             logger.error("%s. Stopping.", exc)
-            return RunResult(
-                0,
-                False,
-                1,
-                (SessionError("agent_configuration", str(exc), 1),),
-            )
+            return _error_result(0, SessionError("agent_configuration", str(exc), 1))
         agent_providers = agent_configuration.providers
         role_agent_providers = agent_configuration.role_providers
         resolved_agent_configs = agent_configuration.resolved
@@ -1818,12 +1824,7 @@ def run_loop(
                     logger.info("Committed DevLab generation archive")
         except OSError as exc:
             logger.error("%s. Stopping.", exc)
-            return RunResult(
-                0,
-                False,
-                1,
-                (SessionError("generation_archive", str(exc), 1),),
-            )
+            return _error_result(0, SessionError("generation_archive", str(exc), 1))
     forced_planning_roles = (
         ("architect", "planner")
         if revise_plan or fresh_generation_plan or adopt_existing
@@ -1845,12 +1846,18 @@ def run_loop(
                 assert_clean_worktree(root)
             except VersionControlError as exc:
                 logger.error("%s. Stopping.", exc)
-                return RunResult(
-                    sessions_run,
-                    False,
-                    1,
-                    (SessionError("version_control", str(exc), 1),),
+                return _error_result(
+                    sessions_run, SessionError("version_control", str(exc), 1)
                 )
+        clarification_error = _blocking_clarification_error(workspace.snapshot)
+        if clarification_error is not None:
+            logger.info("%s", clarification_error.message)
+            logger.info("Stopping.")
+            return _stop_result(
+                sessions_run,
+                RunStopReason.CLARIFICATION_BLOCKED,
+                (clarification_error,),
+            )
         if planning_only and not revise_plan and not fresh_generation_plan and not adopt_existing:
             role_name = workspace.snapshot.assess_state()
         else:
@@ -1879,28 +1886,19 @@ def run_loop(
         )
         if resume_validation_error is not None:
             logger.error("%s. Stopping.", resume_validation_error.message)
-            return RunResult(
-                sessions_run,
-                False,
-                resume_validation_error.exit_code,
-                (resume_validation_error,),
-            )
+            return _error_result(sessions_run, resume_validation_error)
         if role_name is None:
             if workspace.snapshot.blocked_tasks():
                 logger.info(
                     "No task is eligible; remaining development tasks"
                     " are blocked by dependencies."
                 )
+                reason = RunStopReason.NO_ELIGIBLE_ROLE
             else:
                 logger.info("All milestones complete or no task can proceed.")
+                reason = RunStopReason.WORKFLOW_COMPLETE
             logger.info("Stopping.")
-            break
-
-        clarification_error = _blocking_clarification_error(workspace.snapshot)
-        if clarification_error is not None:
-            logger.info("%s", clarification_error.message)
-            logger.info("Stopping.")
-            return RunResult(sessions_run, True, 0, ())
+            return _stop_result(sessions_run, reason)
 
         if (
             not planning_only
@@ -1914,7 +1912,7 @@ def run_loop(
         ):
             error = _stale_specs_error(spec_status)
             logger.error("%s. Stopping.", error.message)
-            return RunResult(sessions_run, False, error.exit_code, (error,))
+            return _error_result(sessions_run, error)
 
         if (
             planning_only
@@ -1944,23 +1942,20 @@ def run_loop(
                                 logger.info("Committed DevLab spec planning baseline")
                     except VersionControlError as exc:
                         logger.error("%s. Stopping.", exc)
-                        return RunResult(
-                            sessions_run,
-                            False,
-                            1,
-                            (SessionError("version_control", str(exc), 1),),
+                        return _error_result(
+                            sessions_run, SessionError("version_control", str(exc), 1)
                         )
             else:
                 logger.info("Planning complete; stopping before implementation roles.")
             logger.info("Stopping before %s session.", role_name)
-            break
+            return _stop_result(sessions_run, RunStopReason.COMMAND_COMPLETE)
         if (
             planning_only
             and (revise_plan or fresh_generation_plan or adopt_existing)
             and sessions_run >= len(forced_planning_roles)
         ):
             logger.info("Planning revision complete; stopping before implementation roles.")
-            break
+            return _stop_result(sessions_run, RunStopReason.COMMAND_COMPLETE)
 
         if automatic_version_control and resolved_agent_configs is not None:
             agent_config_error = _preflight_agent_executable(
@@ -1968,12 +1963,7 @@ def run_loop(
             )
             if agent_config_error is not None:
                 logger.error("%s. Stopping.", agent_config_error.message)
-                return RunResult(
-                    sessions_run,
-                    False,
-                    agent_config_error.exit_code,
-                    (agent_config_error,),
-                )
+                return _error_result(sessions_run, agent_config_error)
 
         if role_name == "integrator":
             milestone = workspace.snapshot.select_integration_milestone()
@@ -2050,8 +2040,9 @@ def run_loop(
             environment = _environment_for_session(root, workspace.snapshot, role_name)
         except ProfileNotFoundError as exc:
             logger.error("%s. Stopping.", exc)
-            return RunResult(sessions_run, False, 1,
-                             (SessionError("profile_resolution", str(exc), 1),))
+            return _error_result(
+                sessions_run, SessionError("profile_resolution", str(exc), 1)
+            )
 
         agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
         lifecycle = _invoke_role_agent(
@@ -2072,11 +2063,8 @@ def run_loop(
                 ctx, agent_result, resolved_agent_configs, route.task_id,
             )
             ctx.write_session_metadata(metadata)
-            return RunResult(
-                sessions_run,
-                False,
-                primary_error.exit_code,
-                lifecycle.errors,
+            return _error_result(
+                sessions_run, primary_error, *lifecycle.errors[1:]
             )
 
         workspace.did_mutate()
@@ -2104,12 +2092,7 @@ def run_loop(
                         ctx, agent_result, resolved_agent_configs, route.task_id,
                     )
                     ctx.write_session_metadata(metadata)
-                    return RunResult(
-                        sessions_run,
-                        False,
-                        correction_error.exit_code,
-                        (correction_error,),
-                    )
+                    return _error_result(sessions_run, correction_error)
         try:
             handoff = _load_accepted_handoff(
                 ctx,
@@ -2149,8 +2132,8 @@ def run_loop(
                 ctx, agent_result, resolved_agent_configs, route.task_id,
             )
             ctx.write_session_metadata(metadata)
-            return RunResult(
-                sessions_run, False, 1, (SessionError("handoff_validation", message, 1),)
+            return _error_result(
+                sessions_run, SessionError("handoff_validation", message, 1)
             )
 
         commit_message = _commit_message(workspace.snapshot, handoff)
@@ -2214,11 +2197,8 @@ def run_loop(
                     )
             except VersionControlError as exc:
                 logger.error("%s. Stopping.", exc)
-                return RunResult(
-                    sessions_run,
-                    False,
-                    1,
-                    (SessionError("version_control", str(exc), 1),),
+                return _error_result(
+                    sessions_run, SessionError("version_control", str(exc), 1)
                 )
         finish_context = session_finish_context(
             workspace.snapshot,
@@ -2243,7 +2223,12 @@ def run_loop(
                     "Answer and resume with: devlab clarify answer %s --resume",
                     process_result.clarification_id,
                 )
-                return RunResult(sessions_run, True, 0, ())
+                clarification_error = _blocking_clarification_error(workspace.snapshot)
+                return _stop_result(
+                    sessions_run,
+                    RunStopReason.CLARIFICATION_BLOCKED,
+                    (clarification_error,) if clarification_error is not None else (),
+                )
             if sessions_run >= max_sessions:
                 error = SessionError(
                     "clarification_resolver",
@@ -2251,7 +2236,7 @@ def run_loop(
                     1,
                 )
                 logger.error("%s. Stopping.", error.message)
-                return RunResult(sessions_run, False, error.exit_code, (error,))
+                return _error_result(sessions_run, error)
             resolver_error, counted = _invoke_clarification_resolver(
                 root,
                 clarification_id=process_result.clarification_id,
@@ -2266,12 +2251,7 @@ def run_loop(
                 sessions_run += 1
             if resolver_error is not None:
                 logger.error("%s. Stopping.", resolver_error.message)
-                return RunResult(
-                    sessions_run,
-                    False,
-                    resolver_error.exit_code,
-                    (resolver_error,),
-                )
+                return _error_result(sessions_run, resolver_error)
             if automatic_version_control:
                 try:
                     committed = commit_all(
@@ -2285,11 +2265,8 @@ def run_loop(
                         )
                 except VersionControlError as exc:
                     logger.error("%s. Stopping.", exc)
-                    return RunResult(
-                        sessions_run,
-                        False,
-                        1,
-                        (SessionError("version_control", str(exc), 1),),
+                    return _error_result(
+                        sessions_run, SessionError("version_control", str(exc), 1)
                     )
             workspace = Workspace(root)
             active_resume = load_workflow_state(root).resume
@@ -2301,7 +2278,31 @@ def run_loop(
             and sessions_run >= len(forced_planning_roles)
         ):
             logger.info("Planning revision complete; stopping before implementation roles.")
-            break
+            return _stop_result(sessions_run, RunStopReason.COMMAND_COMPLETE)
 
     logger.info("Orchestrator finished after %s session(s).", sessions_run)
-    return RunResult(sessions_run, True, 0, ())
+    workspace.sync()
+    clarification_error = _blocking_clarification_error(workspace.snapshot)
+    if clarification_error is not None:
+        return _stop_result(
+            sessions_run,
+            RunStopReason.CLARIFICATION_BLOCKED,
+            (clarification_error,),
+        )
+    next_role = workspace.snapshot.assess_state()
+    if next_role is None:
+        reason = (
+            RunStopReason.NO_ELIGIBLE_ROLE
+            if workspace.snapshot.blocked_tasks()
+            else RunStopReason.WORKFLOW_COMPLETE
+        )
+        return _stop_result(sessions_run, reason)
+    if (
+        planning_only
+        and not revise_plan
+        and not fresh_generation_plan
+        and not adopt_existing
+        and next_role not in {"architect", "planner"}
+    ):
+        return _stop_result(sessions_run, RunStopReason.COMMAND_COMPLETE)
+    return _stop_result(sessions_run, RunStopReason.SESSION_LIMIT)

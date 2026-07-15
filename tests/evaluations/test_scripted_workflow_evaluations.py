@@ -1300,6 +1300,7 @@ def test_live_failure_context_summarizes_errors_without_full_json(tmp_path: Path
         sessions_run=3,
         completed=False,
         exit_code=1,
+        stop_reason="error",
         roles=["architect", "planner", "developer"],
         findings_created=0,
         findings_resolved=0,
@@ -1397,6 +1398,7 @@ def _assert_diagnostics(
 ) -> None:
     diagnostics_path = root / ".devlab/evaluations" / f"{scenario.id}.json"
     assert diagnostics.completed is True, diagnostics_path.read_text()
+    assert diagnostics.stop_reason == "workflow_complete", diagnostics_path.read_text()
     assert diagnostics.exit_code == 0, diagnostics_path.read_text()
     assert diagnostics.sessions_run == scenario.expected_sessions
     assert tuple(diagnostics.roles) == scenario.expected_roles

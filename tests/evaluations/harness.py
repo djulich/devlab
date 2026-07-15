@@ -110,6 +110,7 @@ class EvaluationDiagnostics:
     sessions_run: int
     completed: bool
     exit_code: int
+    stop_reason: str
     roles: list[str]
     findings_created: int
     findings_resolved: int
@@ -354,6 +355,7 @@ def diagnostics_for(
         sessions_run=result.sessions_run,
         completed=result.completed,
         exit_code=result.exit_code,
+        stop_reason=result.stop_reason.value,
         roles=list(roles),
         findings_created=len(findings),
         findings_resolved=sum(
