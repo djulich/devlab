@@ -15,6 +15,8 @@ trackers own file formats, and `Workspace` handles own mutations.
 
 ### 1. Distinguish workflow completion from bounded and blocked stops
 
+Implementation plan: `run-stop-reasons-and-blocker-ordering.md`.
+
 Current `RunResult` semantics can report `completed = true` with exit code zero
 when a durable clarification blocks progress. Similar ambiguity can arise when a
 session limit is reached normally. Automation cannot reliably distinguish:
@@ -52,6 +54,8 @@ Acceptance:
 Priority: high.
 
 ### 2. Check durable workflow blockers before ordinary role selection
+
+Implementation plan: `run-stop-reasons-and-blocker-ordering.md`.
 
 The workflow loop currently selects a role before reporting pending clarification
 blockers. If no role is eligible, the run can report that work is complete or

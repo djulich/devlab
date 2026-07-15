@@ -6,6 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
+- [run-stop-reasons-and-blocker-ordering.md](run-stop-reasons-and-blocker-ordering.md) — planned implementation of explicit run outcomes and clarification-blocker checks before ordinary role selection
 - [resilient-session-handoffs.md](resilient-session-handoffs.md) — structured submission and DevLab-owned publication are implemented; representative live-provider acceptance metrics remain to collect
 - [architectural-improvements.md](architectural-improvements.md) — cross-cutting backlog for run-result semantics, blocker ordering, concurrency policy, typed validation failures, resolver isolation, and artifact bounds; atomic durable writes are implemented
 - [durable-operator-clarifications.md](durable-operator-clarifications.md) — durable stop/answer/resume and bounded unattended resolution are implemented; scoped routing and external adapters remain optional
