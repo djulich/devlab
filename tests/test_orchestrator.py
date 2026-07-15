@@ -4,6 +4,7 @@ import dataclasses
 import json
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -3274,6 +3275,13 @@ def test_run_loop_can_use_one_opt_in_handoff_correction(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert invocations == 2
+    assert provider.calls[0].environment["DEVLAB_PYTHON"] == str(
+        Path(sys.executable).absolute()
+    )
+    assert (
+        '"$DEVLAB_PYTHON" -m devlab.cli session handoff submit'
+        in provider.calls[0].session_prompt
+    )
     assert list((tmp_path / HISTORY_DIR).glob("*_architect_result.toml"))
 
 

@@ -268,8 +268,9 @@ def _handoff_reminder(role_name: str) -> str:
     return (
         "\n\nIMPORTANT: Before exiting, fill "
         f".devlab/session-artifacts/{role_name}/handoff-candidate.toml and run "
-        "`devlab session handoff submit`. The session is complete only when "
-        "DevLab reports that the handoff was accepted. Correct all reported "
+        "`\"$DEVLAB_PYTHON\" -m devlab.cli session handoff submit`. The session "
+        "is complete only when DevLab reports that the handoff was accepted. "
+        "Correct all reported "
         "errors and resubmit; do not edit result.toml or handoff.md directly."
     )
 

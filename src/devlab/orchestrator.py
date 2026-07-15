@@ -4,6 +4,7 @@ import dataclasses
 import hashlib
 import json
 import shutil
+import sys
 import tomllib
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -36,6 +37,7 @@ from devlab.environment import EnvironmentCommandError, EnvironmentManager
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
 from devlab.git import VersionControlError
 from devlab.handoffs import (
+    DEVLAB_PYTHON_ENV,
     HANDOFF_CANDIDATE_FILE,
     HANDOFF_FILE,
     MAX_SUBMISSION_ATTEMPTS,
@@ -169,7 +171,12 @@ class SessionContext:
             invocation_id=self.invocation_id,
             stdout_log=self.stdout_log,
             stderr_log=self.stderr_log,
-            environment={SESSION_ENVELOPE_ENV: envelope.as_posix()},
+            environment={
+                SESSION_ENVELOPE_ENV: envelope.as_posix(),
+                # Preserve a virtual-environment symlink: resolving it can bypass
+                # that environment's installed DevLab package.
+                DEVLAB_PYTHON_ENV: str(Path(sys.executable).absolute()),
+            },
         )
 
     def log_resolved_config(self, config: ResolvedAgentConfig) -> Path:
@@ -859,7 +866,8 @@ def _attempt_handoff_correction(
         f"The completed {ctx.role_name} session did not publish an accepted result.\n\n"
         f"Validation diagnostics:\n{diagnostics}\n\n"
         f"Edit only {ARTIFACTS_DIR}/{ctx.role_name}/{HANDOFF_CANDIDATE_FILE}, then "
-        "run `devlab session handoff submit`. Finish only after DevLab reports "
+        "run `\"$DEVLAB_PYTHON\" -m devlab.cli session handoff submit`. "
+        "Finish only after DevLab reports "
         "Accepted. Existing workspace changes are evidence; do not modify them."
     )
     result = invoke_session(

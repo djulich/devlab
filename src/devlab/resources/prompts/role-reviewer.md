@@ -31,7 +31,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 
 7. If rejected, do not leave a `## Review\n- [x] Approved` marker in the task file. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
 8. Do not change the task status manually; the orchestrator owns status transitions.
-9. Fill the initialized handoff candidate and run `devlab session handoff submit`; correct reported errors until DevLab accepts it.
+9. Fill the initialized handoff candidate and run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`; correct reported errors until DevLab accepts it.
 
 ## Tool Usage
 

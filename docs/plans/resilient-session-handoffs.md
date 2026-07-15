@@ -8,9 +8,9 @@ The initial provider-neutral submission protocol is implemented:
 
 - DevLab creates a trusted, versioned session envelope and role-aware TOML
   candidate before each ordinary role invocation.
-- `devlab session handoff submit` aggregates contract and semantic diagnostics,
-  records attempts, and publishes `result.toml` plus rendered `handoff.md` only
-  after acceptance.
+- The interpreter-bound `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`
+  command aggregates contract and semantic diagnostics, records attempts, and
+  publishes `result.toml` plus rendered `handoff.md` only after acceptance.
 - Agent invocations receive the active envelope path through their process
   environment, and packaged prompts require same-session submission.
 - The outer orchestrator consumes the structured result, verifies its session

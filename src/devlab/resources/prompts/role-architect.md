@@ -27,7 +27,7 @@ The architect translates the system specification into a design plan and reviews
    - Leave Open Issues as `None` only when no unplanned architecture/spec drift remains.
 4. Create or update `CONTEXT.md` when initial domain framing, context boundaries, or architecture-significant terminology is clarified.
 5. Create or update an ADR only when a decision is hard to reverse, surprising without context, and the result of a real trade-off.
-6. Fill the initialized handoff candidate and run `devlab session handoff submit`; correct reported errors until DevLab accepts it.
+6. Fill the initialized handoff candidate and run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`; correct reported errors until DevLab accepts it.
 
 ## Design Plan Contents
 

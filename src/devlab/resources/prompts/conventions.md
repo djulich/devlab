@@ -105,7 +105,7 @@ Reviewers approve a task by appending or updating this section in the task file:
 DevLab initializes `.devlab/session-artifacts/<role>/handoff-candidate.toml`
 before the session. Fill that candidate, then run:
 
-    devlab session handoff submit
+    "$DEVLAB_PYTHON" -m devlab.cli session handoff submit
 
 The session is complete only after the command reports `Accepted`. If it reports
 validation errors, correct all listed fields and submit again. Do not directly

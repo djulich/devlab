@@ -37,7 +37,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 8. Assign each task at most one profile with task metadata `profile = "<profile-id>"`; omit `profile` only when the default profile is appropriate.
 9. Update `CONTEXT.md` when project-specific language is clarified while planning tasks or corrective work.
 10. Update the project plan with the milestone and its task references.
-11. Fill the initialized handoff candidate, set `planning_complete = false` when future planner sessions are still needed or `planning_complete = true` when all required in-scope spec work is represented by durable tasks/milestones or explicitly out of scope, and run `devlab session handoff submit` until DevLab accepts it.
+11. Fill the initialized handoff candidate, set `planning_complete = false` when future planner sessions are still needed or `planning_complete = true` when all required in-scope spec work is represented by durable tasks/milestones or explicitly out of scope, and run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit` until DevLab accepts it.
 
 ## Milestone planning
 
