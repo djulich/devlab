@@ -64,4 +64,5 @@ Diagnostics:
 - Prefer domain names: task, milestone, finding, profile, handoff, provider, workspace.
 - Add concise docstrings only when they clarify purpose, contracts, invariants, or tradeoffs.
 - Add focused tests for behavior changes, especially state transitions, file formats, CLI output, and validation errors.
+- Run the complete development validation (`make check`, including Ruff, ty, and pytest) for code changes.
 - Only split a module when the extracted piece is a self-contained domain with minimal coupling back. If the extracted code needs types or functions from multiple other modules, it increases the import graph agents must navigate — keep it together instead.

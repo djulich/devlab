@@ -486,6 +486,7 @@ Run after each slice:
 
 ```bash
 uv --cache-dir /tmp/uv-cache run ruff check src tests
+uv --cache-dir /tmp/uv-cache run ty check
 uv --cache-dir /tmp/uv-cache run pytest
 ```
 

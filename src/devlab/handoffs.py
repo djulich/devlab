@@ -8,6 +8,7 @@ import tomllib
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 from devlab.clarifications import expected_file_edit_paths
 
@@ -807,6 +808,7 @@ def _candidate_clarification(
     if not isinstance(value, dict):
         issues.append("clarification must be a TOML table")
         return None
+    value = cast(dict[str, object], value)
     expected = {
         "title",
         "scope",
@@ -887,14 +889,18 @@ def _candidate_string_list(
     allow_empty: bool,
 ) -> tuple[str, ...]:
     value = data.get(key)
-    if not isinstance(value, list) or any(
-        not isinstance(entry, str) or not entry.strip() for entry in value
-    ):
+    if not isinstance(value, list):
         issues.append(f"{key} must be an array of non-empty strings")
         return ()
+    entries: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str) or not entry.strip():
+            issues.append(f"{key} must be an array of non-empty strings")
+            return ()
+        entries.append(entry.strip())
     if not allow_empty and not value:
         issues.append(f"{key} must contain at least one entry")
-    return tuple(entry.strip() for entry in value)
+    return tuple(entries)
 
 
 def _load_toml_file(path: Path, label: str) -> dict[str, object]:
@@ -936,12 +942,20 @@ def _required_string_tuple(
     data: dict[str, object], key: str, label: str
 ) -> tuple[str, ...]:
     value = data.get(key)
-    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+    if not isinstance(value, list):
         raise HandoffError(
             f"{label} field {key} must be an array of strings",
             reason=HandoffFailureReason.SESSION_PROTOCOL,
         )
-    return tuple(item.strip() for item in value)
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise HandoffError(
+                f"{label} field {key} must be an array of strings",
+                reason=HandoffFailureReason.SESSION_PROTOCOL,
+            )
+        items.append(item.strip())
+    return tuple(items)
 
 
 def _required_bool(data: dict[str, object], key: str, label: str) -> bool:
