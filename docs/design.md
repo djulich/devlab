@@ -343,9 +343,9 @@ complete = false
 
 `planning.complete = false` means backlog exhaustion is not workflow completion. When all known tasks/milestones are closed and planning is still incomplete, the orchestrator routes back to the planner so the next milestone can be planned. `planning.complete = true` means the planner asserts all required in-scope specification work is represented by durable tasks/milestones or explicitly out of scope; once all known work is closed, the workflow may stop.
 
-This avoids treating prose such as "future milestone candidates" as hidden workflow state. The planner may plan only the next milestone, but a follow-up planner session invoked on an exhausted backlog must either create new durable work or report `planning_complete = true` in its handoff.
+This avoids treating prose such as "future milestone candidates" as hidden workflow state. The planner may plan only the next milestone, but a follow-up planner session invoked on an exhausted backlog must either create new durable work or submit `planning_complete = true` in its structured result candidate.
 
-Agents do not edit `.devlab/workflow.toml` or `.devlab/workflow-events.jsonl` directly. The orchestrator supplies the current planning state in planner prompt context, parses the planner handoff's `## Planning State` section, updates `.devlab/workflow.toml` programmatically, and appends lifecycle events for reporting. Planning generation is represented by directory scope: active `.devlab/tasks/`, `.devlab/milestones/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/session-artifacts/`, `.devlab/logs/agents/`, and `.devlab/plans/` describe the current generation, while archived generations live under `.devlab/generations/NNNN/`. Task and milestone front matter does not carry `planning_generation`.
+Agents do not edit `.devlab/workflow.toml` or `.devlab/workflow-events.jsonl` directly. The orchestrator supplies the current planning state in planner prompt context, validates the planner candidate's typed `planning_complete` field, updates `.devlab/workflow.toml` programmatically, and appends lifecycle events for reporting. Before each role invocation DevLab creates a trusted session envelope and role-aware TOML candidate; same-session submission publishes authoritative `result.toml` plus a rendered Markdown handoff only after contract and semantic validation. Planning generation is represented by directory scope: active `.devlab/tasks/`, `.devlab/milestones/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/session-artifacts/`, `.devlab/logs/agents/`, and `.devlab/plans/` describe the current generation, while archived generations live under `.devlab/generations/NNNN/`. Task and milestone front matter does not carry `planning_generation`.
 
 ## Agent providers
 
@@ -396,19 +396,29 @@ Reusable DevLab role definitions and conventions should not live in target `.dev
 
 ## Handoffs and continuity
 
-Each session must write a handoff to:
+Before each ordinary role session, DevLab creates a trusted envelope and a
+role-aware candidate:
 
 ```text
-.devlab/session-artifacts/<role>/handoff.md
+.devlab/session-artifacts/<role>/session.toml
+.devlab/session-artifacts/<role>/handoff-candidate.toml
 ```
 
-The orchestrator validates that the handoff exists, is non-empty, follows the expected structure, and does not report an unrecoverable issue. It then archives the handoff to:
+The role submits the candidate during the same session. DevLab aggregates
+contract and semantic diagnostics, records each attempt, and publishes
+authoritative `result.toml` plus rendered `handoff.md` only after acceptance. The
+outer orchestrator verifies that the result belongs to the selected session,
+role, task, and milestone before applying workflow transitions. It then archives
+the structured result, rendered handoff, and submission evidence under:
 
 ```text
 .devlab/history/
 ```
 
-Handoffs are intentionally structured. They allow the next session to recover context without relying on chat history.
+Rendered handoffs remain the human-readable continuity and audit artifact.
+Structured results are the control artifact, so new sessions do not depend on
+recovering transition facts from agent-authored Markdown. Legacy Markdown history
+remains readable.
 
 ## Why Markdown and simple files?
 

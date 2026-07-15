@@ -6,7 +6,7 @@ DevLab provides the orchestrator and packaged worker prompts. The target reposit
 
 ## Maturity
 
-DevLab is an early, tested orchestrator prototype.
+DevLab is pre-1.0 software with a tested end-to-end workflow and evolving live-agent baselines.
 
 Current confidence:
 
@@ -15,12 +15,18 @@ Current confidence:
 - opt-in live-agent evaluations exist for representative workflows, with baseline
   collection still ongoing;
 - existing-project adoption, spec reconciliation, prompt-size monitoring, and
-  agent invocation diagnostics are implemented.
+  agent invocation diagnostics are implemented;
+- role sessions use same-session structured handoff submission with trusted
+  session identity, aggregate validation feedback, and DevLab-owned publication;
+- durable operator clarifications support explicit answer/resume flows and an
+  opt-in bounded unattended resolver.
 
 Current limits:
 
 - broad live-agent baseline results are not collected yet;
-- target-owned test-suite execution and deployment verification are deferred;
+- orchestrator-enforced execution and recording of task validation commands is
+  deferred; worker roles currently run target-owned validation from task/profile
+  instructions;
 - sandboxing and approval policy are not implemented.
 
 Use DevLab on disposable or version-controlled workspaces until you have reviewed the generated changes and trust your local configuration.
@@ -146,7 +152,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 ## CLI commands
 
 - `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
-- `devlab plan [--root PATH] [--revise] [--mark-specs-planned] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
+- `devlab plan [--root PATH] [--revise] [--adopt-existing] [--replace-plan] [--mark-specs-planned] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
 - `devlab implement [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab clarify [--root PATH] list|show|answer|supersede ...` — inspect and answer durable operator clarifications.
 - `devlab resume [--root PATH] [--max-sessions N]` — resume the workflow blocked by an answered clarification.
@@ -157,7 +163,11 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
 - `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.
 
-Useful `implement` and `plan` options include `--provider`, `--model`, `--effort`, `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`.
+Useful `implement` and `plan` options include `--provider`, `--model`, `--effort`,
+`--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`. Both commands also
+support `--unattended` (bounded agent clarification resolution) and
+`--handoff-correction` (one isolated correction attempt when a role exits without
+an accepted result).
 
 ## Target workspace layout
 
@@ -176,8 +186,26 @@ A DevLab target repository contains workflow state under `.devlab/`:
 ├── clarifications/      # operator clarification requests and answers
 ├── history/             # archived handoffs
 ├── logs/                # agent and environment logs
-└── session-artifacts/   # current session output before archiving
+└── session-artifacts/   # trusted envelope, candidate, result, and rendered handoff
 ```
+
+## Session results and handoffs
+
+Before invoking a role, DevLab initializes a trusted `session.toml` envelope and
+a role-aware `handoff-candidate.toml` under
+`.devlab/session-artifacts/<role>/`. The role fills the candidate and submits it
+inside the same session with:
+
+```bash
+"$DEVLAB_PYTHON" -m devlab.cli session handoff submit
+```
+
+DevLab validates the structured candidate and its workflow meaning before
+publishing authoritative `result.toml` and the human-readable `handoff.md`.
+Rejected attempts are recorded and report aggregate diagnostics to the role.
+Accepted results, rendered handoffs, and submission-attempt evidence are archived
+together. Directly authored Markdown remains readable in old history but is not
+accepted as the control result for a new role session.
 
 DevLab also discovers optional target-owned project knowledge in `CONTEXT.md`, `CONTEXT-MAP.md`, and `docs/adr/*.md`.
 

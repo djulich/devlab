@@ -81,6 +81,14 @@ Supported placeholders:
 - `{system_prompt}`
 - `{session_prompt}`
 
+For ordinary workflow sessions DevLab also supplies process environment needed by
+the submission protocol. `DEVLAB_SESSION_ENVELOPE` identifies the trusted active
+session envelope, and `DEVLAB_PYTHON` identifies the interpreter running DevLab so
+the role can submit its initialized candidate with
+`"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`. Provider commands do not
+need to template these values into their arguments, but the invoked agent must be
+able to edit the target workspace and run the local submission command.
+
 `{system_prompt}` is DevLab's generated standing prompt for the role: packaged
 conventions, role instructions, applicable domain overlays, and tooling policy.
 Provider flags such as Claude's `--system-prompt` are provider-specific transport

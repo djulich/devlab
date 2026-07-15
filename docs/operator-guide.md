@@ -76,11 +76,15 @@ Inspect and answer with:
 - `devlab clarify answer CL0001 --choice A`
 - `devlab clarify answer CL0001 --text "Use a 24-hour idle timeout."`
 - `devlab clarify answer CL0001 --choice A --resume`
+- `devlab clarify supersede CL0001 --reason "The interrupted work is obsolete"`
 - `devlab resume`
 
 Clarifications are workflow state, not findings. Answering records operator
 intent; resuming lets DevLab continue from the stored `[resume]` pointer in
-`.devlab/workflow.toml`.
+`.devlab/workflow.toml`. `--resume` answers and then invokes the stored command;
+plain `devlab resume` is useful after answering separately or validating a
+manually edited record. Superseding is an explicit repair for obsolete requests;
+it does not silently invent an answer.
 
 ## Specs and Planning
 
@@ -232,39 +236,52 @@ addresses_findings = ["F0001"]
 The planner handoff must also list the complete finding-to-task mapping. DevLab
 marks the finding as planned only after validating both sides of that relation.
 
-## Handoffs
+## Session Results and Handoffs
 
-Every role session writes its current handoff to:
+Before every ordinary role session, DevLab initializes:
 
 ```text
+.devlab/session-artifacts/<role>/session.toml
+.devlab/session-artifacts/<role>/handoff-candidate.toml
+```
+
+`session.toml` is the trusted identity envelope. The role proposes its outcome by
+editing the role-aware TOML candidate and submitting it before exiting:
+
+```bash
+"$DEVLAB_PYTHON" -m devlab.cli session handoff submit
+```
+
+Submission validates both the candidate contract and its meaning against current
+task, finding, milestone, and planning state. A rejection reports all independently
+detectable issues and records the attempt. After acceptance DevLab publishes:
+
+```text
+.devlab/session-artifacts/<role>/result.toml
 .devlab/session-artifacts/<role>/handoff.md
 ```
 
-After a valid session, DevLab archives it under:
+`result.toml` is the authoritative control result. `handoff.md` is rendered by
+DevLab as the human-readable audit trail. New sessions cannot substitute directly
+authored Markdown for an accepted structured result. Legacy Markdown history
+remains readable.
+
+After processing an accepted result, DevLab archives the structured result,
+rendered handoff, and submission-attempt evidence under:
 
 ```text
 .devlab/history/
 ```
 
-Handoffs are the session audit trail. They record what the role did, what changed,
-what could not be finished, validation evidence, open issues, and recommended next
-steps. Later sessions may read them for continuity, but durable state transitions
-come from the orchestrator processing validated files and handoffs.
+The result records what the role did, changed, could not finish, and recommends
+next. Planner candidates include the typed `planning_complete` field; the
+orchestrator validates it and updates `.devlab/workflow.toml`. Agents never edit
+workflow control state directly.
 
-Planner handoffs also include a `## Planning State` section with:
-
-```toml
-planning_complete = true
-```
-
-or:
-
-```toml
-planning_complete = false
-```
-
-The orchestrator parses that section and updates `.devlab/workflow.toml`; planner
-agents do not edit workflow control state directly.
+Submission attempts are capped at three. `--handoff-correction` permits one
+additional correction-only provider invocation if the original role exits without
+an accepted result. That invocation may change only disposable handoff artifacts;
+changes to product or durable workflow files reject the correction.
 
 ## Logs and Diagnostics
 

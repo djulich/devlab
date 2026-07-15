@@ -77,15 +77,14 @@ Priority: high.
 
 ### 3. Make tracker mutations atomic and interruption-safe
 
-Clarification and other tracker mutations currently use ordinary read/modify/write
-operations. Process interruption can leave a partially written file, and
-read-validate-write sequences have no protection against another DevLab process
-changing the same record.
+Status: implemented for authoritative task, milestone, finding, clarification,
+workflow-state, generation-manifest, and handoff/result writes through the shared
+`_files.atomic_write_text()` helper. Logs and other disposable artifacts retain
+ordinary writes.
 
-Add one shared low-level atomic file replacement helper using a temporary file in
-the destination directory, flush/fsync where appropriate, and `os.replace()`.
-Trackers should use it for complete-file mutations while retaining ownership of
-their formats.
+The shared helper writes a temporary file in the destination directory, flushes
+and fsyncs it, preserves existing permissions, and atomically replaces the target.
+Trackers retain ownership of their formats and complete-file mutation policy.
 
 Do not add general locking prematurely. First make single-writer interruption
 safe. Add an optimistic concurrency guard only if simultaneous DevLab processes
@@ -100,7 +99,8 @@ Acceptance:
 - the helper does not move domain mutation policy out of trackers or workspace
   handles.
 
-Priority: medium-high.
+Remaining concurrency protection is covered separately below; atomic replacement
+does not make simultaneous read-modify-write operations conflict-safe.
 
 ### 4. Define concurrent-process behavior explicitly
 

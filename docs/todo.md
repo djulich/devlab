@@ -73,7 +73,12 @@ Open work:
 
 Priority: medium. DevLab should support bounded user clarification when a role session encounters an ambiguity, contradiction, missing prerequisite, or scope decision that cannot be resolved safely from repository state.
 
-Status: **initial durable clarification workflow implemented**. DevLab now has `.devlab/clarifications/` records, handoff parsing for one bounded clarification request, `[resume]` workflow state, CLI list/show/answer/supersede/resume commands, prompt inclusion for answered clarifications, and read-only status/doctor coverage.
+Status: **durable clarification workflow and unattended resolver implemented**.
+DevLab has `.devlab/clarifications/` records, structured candidates for one
+bounded clarification request, `[resume]` workflow state, CLI
+list/show/answer/supersede/resume commands, same-route resume validation, prompt
+inclusion, read-only status/doctor/workflow-state reporting, diagnostics metrics,
+and an opt-in bounded resolver through `--unattended`.
 
 Usefulness: high, but only if tightly constrained. Clarification prevents agents from inventing requirements, but unconstrained back-and-forth would weaken bounded sessions and durable workflow state.
 
@@ -92,10 +97,11 @@ Expected behavior:
 Open follow-up work:
 
 - Add narrower task/milestone-scoped blocking after more real usage; the initial behavior conservatively blocks top-level workflow continuation for pending blocking clarifications.
-- Add richer wrong-command guidance for active resume pointers.
 - Add optional editor-mode clarification answering.
-- Add diagnostics counters for clarification stops by role and time-to-answer.
 - Decide whether task/finding `decision_refs` metadata is needed for stronger traceability.
+- Consider Git-aware resolver edit isolation or temporary worktrees only if live
+  usage shows whole-workspace snapshots are too expensive or insufficiently
+  contained.
 
 ## 7. Add Workflow Attention Notifications
 

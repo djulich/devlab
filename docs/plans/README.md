@@ -6,9 +6,9 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [resilient-session-handoffs.md](resilient-session-handoffs.md) — replace agent-authored control artifacts with same-session validated result submission and DevLab-owned canonical publication
-- [architectural-improvements.md](architectural-improvements.md) — cross-cutting backlog for run-result semantics, blocker ordering, atomic mutations, concurrency policy, typed validation failures, resolver isolation, and artifact bounds
-- [durable-operator-clarifications.md](durable-operator-clarifications.md) — add bounded, repository-backed operator clarification requests and answers for ambiguous or unsafe workflow decisions
+- [resilient-session-handoffs.md](resilient-session-handoffs.md) — structured submission and DevLab-owned publication are implemented; representative live-provider acceptance metrics remain to collect
+- [architectural-improvements.md](architectural-improvements.md) — cross-cutting backlog for run-result semantics, blocker ordering, concurrency policy, typed validation failures, resolver isolation, and artifact bounds; atomic durable writes are implemented
+- [durable-operator-clarifications.md](durable-operator-clarifications.md) — durable stop/answer/resume and bounded unattended resolution are implemented; scoped routing and external adapters remain optional
 
 ## Implemented
 

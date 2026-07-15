@@ -4,40 +4,45 @@ This plan implements TODO #6 from `docs/todo.md`: support bounded operator clari
 
 ## Current Progress
 
-The initial durable clarification workflow slice is implemented. DevLab now has repository-backed clarification records, a single active resume pointer, handoff parsing for bounded clarification requests, CLI answer/supersede/resume commands, prompt context for answered clarifications, and initial status/doctor integration.
+The durable clarification workflow and its bounded unattended resolver are
+implemented and hardened. DevLab has repository-backed clarification records, a
+single active resume pointer, structured handoff candidates for bounded requests,
+CLI answer/supersede/resume commands, prompt context, read-only reporting, and
+route-safe continuation.
 
 Completed implementation:
 
 - `src/devlab/clarifications.py`: file-backed tracker for `.devlab/clarifications/CLXXXX_slug.md`.
 - `src/devlab/clarification_ops.py`: shared answer, supersede, validation, and resume operations for CLI and future adapters.
-- `src/devlab/handoffs.py`: optional `## Clarification Request` parsing and validation.
+- `src/devlab/handoffs.py`: structured clarification candidate parsing,
+  validation, and canonical Markdown rendering, plus legacy Markdown parsing.
 - `src/devlab/workflow_state.py`: optional `.devlab/workflow.toml [resume]` pointer support.
 - `src/devlab/workspace.py`: clarification access through `Workspace` and `WorkspaceSnapshot`.
-- `src/devlab/orchestrator.py`: clarification request handling, conservative pending-blocker checks, resume pointer creation, wrong-command guard, and resume pointer clearing after matching continuation.
+- `src/devlab/orchestrator.py`: clarification request handling, conservative
+  pending-blocker checks, resume-route validation, bounded resolver invocation,
+  edit isolation, and resume pointer clearing after matching continuation.
 - `src/devlab/cli.py`: `devlab clarify list/show/answer/supersede` and `devlab resume`.
 - `src/devlab/prompts.py`: concise answered clarification context in role prompts.
 - `src/devlab/status.py` and `src/devlab/doctor_workflow_state.py`: initial read-only reporting and validation.
 - Documentation and packaged prompt conventions for clarification artifacts and answer/resume flow.
 - Focused tests, including tracker, handoff, orchestration, CLI, status, doctor, and prompt coverage.
 
-Validation from the completed slice:
+Current development validation is:
 
 ```bash
 uv --cache-dir /tmp/uv-cache run ruff check src tests
+uv --cache-dir /tmp/uv-cache run ty check
 uv --cache-dir /tmp/uv-cache run pytest
 ```
 
-Observed result: ruff passed and pytest reported `490 passed, 7 skipped`.
+The remaining work is optional or evidence-driven rather than required for the
+durable path:
 
-The remaining work is refinement and extension rather than the first durable path:
-
-- keep scoped clarification blocking deferred; precise `blocks` values are preserved, but pending blocking clarifications still stop conservatively until real usage justifies task/milestone routing complexity;
-- finish strengthening resume validation so developer/reviewer resume cannot silently switch tasks and stops clearly when the interrupted task is missing, closed, dependency-blocked, or superseded by higher-priority reconciliation work;
-- continue UX refinements as needed; wrong-command and resume guidance now include the stored route, exact answer/resume commands, and repair guidance for stale interrupted work;
-- continue reporting refinements as needed; `devlab workflow-state` now includes clarification blockers and resume pointers in text, digest, and JSON output;
-- continue diagnostics refinements as needed; diagnostics now report clarification stops by role, record counts, average answer latency when timestamps are available, and repeated role/scope request warnings;
-- continue improving repair guidance where needed; reusable manual-edit answer validation now distinguishes pending, empty answered, malformed, superseded, and choice-mismatch records, and `devlab resume` validates answers before invoking a role;
-- add unattended clarification handling through a bounded resolver session that answers durable clarification records instead of disabling the clarification mechanism;
+- keep scoped clarification blocking deferred; route identity is preserved and
+  resume validation prevents silent task/role switches, but pending blockers stop
+  conservatively until usage justifies more routing complexity;
+- refine resolver containment only if large-workspace or edit-isolation evidence
+  warrants Git-aware snapshots or temporary worktrees;
 - optionally add the editor adapter after shared operations are stable;
 - defer `decision_refs` traceability extensions until real usage shows scope-based prompt selection is insufficient.
 

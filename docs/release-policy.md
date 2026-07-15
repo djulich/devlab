@@ -33,8 +33,9 @@ The following should be treated as user-facing compatibility surfaces:
 - CLI commands, options, and exit behavior;
 - `.devlab/config/agents.toml`;
 - profile TOML files under `.devlab/config/profiles/`;
-- task, finding, milestone, workflow, workflow-event, and generation file formats;
-- role handoff contracts that DevLab validates;
+- task, finding, milestone, clarification, workflow, workflow-event, and generation file formats;
+- trusted session envelopes, structured result candidates/results, rendered
+  handoff contracts, and archived submission evidence;
 - target workspace layout under `.devlab/`;
 - package installation and the `devlab` console script.
 
