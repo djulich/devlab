@@ -6,6 +6,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
+- [language-neutral-target-workspaces.md](language-neutral-target-workspaces.md) — neutral initialization, explicit Rust/Go/C/C++ starter profiles, compiled-language evaluations, and a staged mixed-language baseline
 - [resilient-session-handoffs.md](resilient-session-handoffs.md) — structured submission and DevLab-owned publication are implemented; representative live-provider acceptance metrics remain to collect
 - [architectural-improvements.md](architectural-improvements.md) — cross-cutting backlog for concurrency policy, typed validation failures, resolver isolation, and artifact bounds; stop semantics, blocker ordering, and atomic durable writes are implemented
 - [durable-operator-clarifications.md](durable-operator-clarifications.md) — durable stop/answer/resume and bounded unattended resolution are implemented; scoped routing and external adapters remain optional
