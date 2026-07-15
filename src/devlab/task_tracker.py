@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from devlab._files import atomic_write_text
 from devlab._toml import format_toml_value
 
 TASKS_DIR = ".devlab/tasks"
@@ -97,21 +98,10 @@ class FileTaskTracker:
         return {task.id for task in self.active_tasks()}
 
     def eligible_tasks(self) -> list[Task]:
-        closed_ids = {task.id for task in self.list_tasks() if task.status == TaskStatus.CLOSED}
-        return [
-            task
-            for task in self.list_tasks()
-            if task.status in DEVELOPABLE_STATUSES and set(task.depends_on).issubset(closed_ids)
-        ]
+        return eligible_tasks(self.list_tasks())
 
     def blocked_tasks(self) -> list[Task]:
-        closed_ids = {task.id for task in self.list_tasks() if task.status == TaskStatus.CLOSED}
-        return [
-            task
-            for task in self.list_tasks()
-            if task.status in DEVELOPABLE_STATUSES
-            and not set(task.depends_on).issubset(closed_ids)
-        ]
+        return blocked_tasks(self.list_tasks())
 
     def review_tasks(self) -> list[Task]:
         return [task for task in self.list_tasks() if task.status == TaskStatus.IN_REVIEW]
@@ -141,11 +131,10 @@ class FileTaskTracker:
         )
 
     def tasks_for_milestone(self, milestone: str) -> list[Task]:
-        return [task for task in self.list_tasks() if task.milestone == milestone]
+        return tasks_for_milestone(self.list_tasks(), milestone)
 
     def milestone_complete(self, milestone: str) -> bool:
-        tasks = self.tasks_for_milestone(milestone)
-        return bool(tasks) and all(task.status == TaskStatus.CLOSED for task in tasks)
+        return milestone_complete(self.list_tasks(), milestone)
 
     def completed_milestones(self) -> list[str]:
         return [milestone for milestone in self.milestones() if self.milestone_complete(milestone)]
@@ -178,7 +167,7 @@ class FileTaskTracker:
             metadata.pop("validation", None)
         else:
             metadata["validation"] = list(task.validation)
-        task.path.write_text(_format_task_file(metadata, task.body))
+        atomic_write_text(task.path, _format_task_file(metadata, task.body))
 
     def _read_task(self, path: Path) -> Task:
         text = path.read_text()
@@ -221,6 +210,37 @@ class FileTaskTracker:
             body=body,
             metadata=normalized_metadata,
         )
+
+
+def eligible_tasks(tasks: list[Task]) -> list[Task]:
+    """Return developable tasks whose dependencies are closed."""
+    closed_ids = {task.id for task in tasks if task.status == TaskStatus.CLOSED}
+    return [
+        task
+        for task in tasks
+        if task.status in DEVELOPABLE_STATUSES
+        and set(task.depends_on).issubset(closed_ids)
+    ]
+
+
+def blocked_tasks(tasks: list[Task]) -> list[Task]:
+    """Return developable tasks whose dependencies are not closed."""
+    closed_ids = {task.id for task in tasks if task.status == TaskStatus.CLOSED}
+    return [
+        task
+        for task in tasks
+        if task.status in DEVELOPABLE_STATUSES
+        and not set(task.depends_on).issubset(closed_ids)
+    ]
+
+
+def tasks_for_milestone(tasks: list[Task], milestone: str) -> list[Task]:
+    return [task for task in tasks if task.milestone == milestone]
+
+
+def milestone_complete(tasks: list[Task], milestone: str) -> bool:
+    matching = tasks_for_milestone(tasks, milestone)
+    return bool(matching) and all(task.status == TaskStatus.CLOSED for task in matching)
 
 
 def _split_front_matter(text: str) -> tuple[dict[str, Any], str]:

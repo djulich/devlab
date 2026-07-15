@@ -25,6 +25,7 @@ from devlab.orchestrator import (
     validate_handoff,
 )
 from devlab.prompts import build_base_prompt, build_session_prompt
+from devlab.roles import ROLES
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workflow_events import load_workflow_events
 from devlab.workflow_state import ResumeState, load_workflow_state, set_resume_state
@@ -34,7 +35,6 @@ from devlab.workspace import (
     DESIGN_PLAN,
     HISTORY_DIR,
     PROJECT_PLAN,
-    ROLES,
     Workspace,
 )
 from tests.helpers import complete_acceptance

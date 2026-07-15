@@ -13,13 +13,13 @@ from devlab.findings import FindingStatus
 from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
 from devlab.profiles import Profile, load_profile
 from devlab.prompt_resources import read_optional_prompt_resource, read_prompt_resource
+from devlab.roles import RoleConfig
 from devlab.task_tracker import Task
 from devlab.workflow_state import ResumeState
 from devlab.workspace import (
     DESIGN_PLAN,
     HISTORY_DIR,
     PROJECT_PLAN,
-    RoleConfig,
     WorkspaceSnapshot,
     read_file,
 )

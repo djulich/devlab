@@ -66,6 +66,7 @@ from devlab.prompts import (
     build_clarification_resolver_prompt,
     build_session_prompt,
 )
+from devlab.roles import ROLES, RoleConfig
 from devlab.session_logging import session_finish_context, session_start_context
 from devlab.spec_reconciliation import (
     SpecReconciliationStatus,
@@ -93,7 +94,6 @@ from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
     HISTORY_DIR,
-    ROLES,
     Workspace,
     WorkspaceSnapshot,
 )
@@ -221,6 +221,19 @@ class SessionMetadata:
     provider_version: str = ""
 
 
+@dataclasses.dataclass(frozen=True)
+class SessionRoute:
+    """Trusted workflow identity selected for one role session."""
+
+    role_name: str
+    task: Task | None = None
+    milestone_id: str | None = None
+
+    @property
+    def task_id(self) -> str | None:
+        return self.task.id if self.task is not None else None
+
+
 def _build_session_context(
     root: Path,
     session_number: int,
@@ -244,6 +257,23 @@ def _build_session_context(
         session_prompt_log=(
             _agent_log_path(root, invocation_id, "session-prompt.md") if retain_prompts else None
         ),
+    )
+
+
+def _select_session_route(
+    snapshot: WorkspaceSnapshot, role_name: str
+) -> SessionRoute:
+    milestone_id = (
+        snapshot.select_integration_milestone()
+        if role_name == "integrator"
+        else snapshot.select_architecture_review_milestone()
+        if role_name == "architect"
+        else None
+    )
+    return SessionRoute(
+        role_name=role_name,
+        task=_task_for_role(snapshot, role_name),
+        milestone_id=milestone_id,
     )
 
 
@@ -1459,6 +1489,103 @@ def _notify_session_progress(
         logger.warning("Session progress callback failed: %s", exc)
 
 
+@dataclasses.dataclass(frozen=True)
+class AgentLifecycleResult:
+    """Provider result plus lifecycle errors for one role session."""
+
+    agent_result: AgentResult
+    errors: tuple[SessionError, ...] = ()
+
+
+def _invoke_role_agent(
+    ctx: SessionContext,
+    role: RoleConfig,
+    environment: EnvironmentManager,
+    agent_provider: AgentProvider,
+    base_prompt: str,
+    session_prompt: str,
+    config_log: Path | None,
+) -> AgentLifecycleResult:
+    """Prepare, invoke, and tear down one role's managed environment."""
+    manage_environment = role.needs_environment and environment.manages_role(ctx.role_name)
+    if manage_environment:
+        try:
+            logger.info("Preparing environment for %s session", ctx.role_name)
+            environment.pre_session(ctx.role_name)
+            environment.setup(ctx.role_name)
+        except EnvironmentCommandError as exc:
+            return AgentLifecycleResult(
+                AgentResult(return_code=1, failure_kind="provider_error"),
+                (SessionError("environment_setup", str(exc), 1),),
+            )
+
+    agent_result = AgentResult(return_code=1, failure_kind="provider_error")
+    agent_error: SessionError | None = None
+    try:
+        agent_result = invoke_session(
+            ctx.build_invocation(base_prompt, session_prompt),
+            agent_provider=agent_provider,
+        )
+    except ProviderError as exc:
+        agent_error = SessionError(
+            "agent_invocation",
+            _agent_error_message(
+                ctx,
+                dataclasses.replace(
+                    agent_result, message=f"agent provider error: {exc}"
+                ),
+                config_log,
+            ),
+            1,
+        )
+    else:
+        if not agent_result.succeeded:
+            agent_error = SessionError(
+                "agent_invocation",
+                _agent_error_message(ctx, agent_result, config_log),
+                agent_result.return_code or 1,
+            )
+
+    teardown_error: SessionError | None = None
+    if manage_environment:
+        try:
+            logger.info("Tearing down environment for %s session", ctx.role_name)
+            environment.post_session(ctx.role_name)
+        except EnvironmentCommandError as exc:
+            teardown_error = SessionError("environment_teardown", str(exc), 1)
+    errors = tuple(error for error in (agent_error, teardown_error) if error is not None)
+    return AgentLifecycleResult(agent_result, errors)
+
+
+def _load_accepted_handoff(
+    ctx: SessionContext,
+    artifacts_dir: Path,
+    *,
+    route: SessionRoute,
+) -> Handoff:
+    """Load an accepted result and verify it belongs to the selected route."""
+    handoff_path = artifacts_dir / HANDOFF_FILE
+    result_path = artifacts_dir / SESSION_RESULT_FILE
+    if not result_path.exists():
+        # Parse legacy output only to preserve its more precise format diagnostic.
+        parse_handoff(handoff_path, ctx.role_name)
+        raise HandoffError(
+            "session exited without an accepted result; run "
+            "'devlab session handoff submit' before exiting"
+        )
+    session_result = load_session_result(result_path)
+    expected = {
+        "session": (session_result.envelope.session_id, ctx.invocation_id),
+        "role": (session_result.envelope.role, ctx.role_name),
+        "task": (session_result.envelope.task, route.task_id or ""),
+        "milestone": (session_result.envelope.milestone, route.milestone_id or ""),
+    }
+    for label, (actual, wanted) in expected.items():
+        if actual != wanted:
+            raise HandoffError(f"accepted result belongs to a different {label}")
+    return session_result.as_handoff(handoff_path)
+
+
 def run_loop(
     root: Path,
     *,
@@ -1863,15 +1990,7 @@ def run_loop(
             )
             else None
         )
-        session_task = _task_for_role(start_snapshot, role_name)
-        session_task_id = session_task.id if session_task is not None else None
-        session_milestone_id = (
-            start_snapshot.select_integration_milestone()
-            if role_name == "integrator"
-            else start_snapshot.select_architecture_review_milestone()
-            if role_name == "architect"
-            else None
-        )
+        route = _select_session_route(start_snapshot, role_name)
         role = ROLES[role_name]
         ctx = _build_session_context(
             root, sessions_run + 1, role_name, retain_prompts=retain_prompts,
@@ -1882,7 +2001,7 @@ def run_loop(
             "Starting session %s: %s %s",
             ctx.session_number,
             role_name,
-            session_start_context(start_snapshot, role_name, session_task),
+            session_start_context(start_snapshot, role_name, route.task),
         )
         _notify_session_progress(session_progress, "start", ctx.session_number, role_name)
         if resolved_agent_configs is not None:
@@ -1901,8 +2020,8 @@ def run_loop(
                 schema_version=1,
                 session_id=ctx.invocation_id,
                 role=role_name,
-                task=session_task_id or "",
-                milestone=session_milestone_id or "",
+                task=route.task_id or "",
+                milestone=route.milestone_id or "",
                 protected_active_tasks=tuple(
                     task.id for task in start_snapshot.active_tasks()
                 ),
@@ -1934,77 +2053,34 @@ def run_loop(
             return RunResult(sessions_run, False, 1,
                              (SessionError("profile_resolution", str(exc), 1),))
 
-        manage_environment = role.needs_environment and environment.manages_role(role_name)
-        if manage_environment:
-            try:
-                logger.info("Preparing environment for %s session", role_name)
-                environment.pre_session(role_name)
-                environment.setup(role_name)
-            except EnvironmentCommandError as exc:
-                logger.error("%s. Stopping.", exc)
-                logger.info(_failed_session_cleanup_hint())
-                return RunResult(sessions_run, False, 1,
-                                 (SessionError("environment_setup", str(exc), 1),))
-
-        agent_result = AgentResult(return_code=1, failure_kind="provider_error")
-        agent_error: SessionError | None = None
-        invocation = ctx.build_invocation(base_prompt, session_prompt)
         agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
-        try:
-            agent_result = invoke_session(invocation, agent_provider=agent_provider)
-        except ProviderError as exc:
-            agent_error = SessionError(
-                "agent_invocation",
-                _agent_error_message(
-                    ctx,
-                    AgentResult(
-                        return_code=1,
-                        failure_kind="provider_error",
-                        message=f"agent provider error: {exc}",
-                    ),
-                    config_log,
-                ),
-                1,
-            )
-        else:
-            if not agent_result.succeeded:
-                agent_error = SessionError(
-                    "agent_invocation",
-                    _agent_error_message(ctx, agent_result, config_log),
-                    agent_result.return_code or 1,
-                )
-
-        teardown_error: SessionError | None = None
-        if manage_environment:
-            try:
-                logger.info("Tearing down environment for %s session", role_name)
-                environment.post_session(role_name)
-            except EnvironmentCommandError as exc:
-                logger.error("%s. Stopping.", exc)
-                teardown_error = SessionError("environment_teardown", str(exc), 1)
-
-        if agent_error is not None:
-            logger.error("%s. Stopping.", agent_error.message)
+        lifecycle = _invoke_role_agent(
+            ctx,
+            role,
+            environment,
+            agent_provider,
+            base_prompt,
+            session_prompt,
+            config_log,
+        )
+        agent_result = lifecycle.agent_result
+        if lifecycle.errors:
+            primary_error = lifecycle.errors[0]
+            logger.error("%s. Stopping.", primary_error.message)
             logger.info(_failed_session_cleanup_hint())
             metadata = _build_session_metadata(
-                ctx, agent_result, resolved_agent_configs, session_task_id,
-            )
-            ctx.write_session_metadata(metadata)
-            errors = (agent_error,) + ((teardown_error,) if teardown_error else ())
-            return RunResult(sessions_run, False, agent_error.exit_code, errors)
-        if teardown_error is not None:
-            logger.info(_failed_session_cleanup_hint())
-            metadata = _build_session_metadata(
-                ctx, agent_result, resolved_agent_configs, session_task_id,
+                ctx, agent_result, resolved_agent_configs, route.task_id,
             )
             ctx.write_session_metadata(metadata)
             return RunResult(
-                sessions_run, False, agent_result.return_code or 1, (teardown_error,)
+                sessions_run,
+                False,
+                primary_error.exit_code,
+                lifecycle.errors,
             )
 
         workspace.did_mutate()
 
-        handoff_path = artifacts_dir / HANDOFF_FILE
         result_path = artifacts_dir / SESSION_RESULT_FILE
         if not result_path.exists():
             submission_issues: tuple[str, ...]
@@ -2025,7 +2101,7 @@ def run_loop(
                 if correction_error is not None:
                     logger.error("%s. Stopping.", correction_error.message)
                     metadata = _build_session_metadata(
-                        ctx, agent_result, resolved_agent_configs, session_task_id,
+                        ctx, agent_result, resolved_agent_configs, route.task_id,
                     )
                     ctx.write_session_metadata(metadata)
                     return RunResult(
@@ -2035,25 +2111,11 @@ def run_loop(
                         (correction_error,),
                     )
         try:
-            if result_path.exists():
-                session_result = load_session_result(result_path)
-                if session_result.envelope.session_id != ctx.invocation_id:
-                    raise HandoffError("accepted result belongs to a different session")
-                if session_result.envelope.role != role_name:
-                    raise HandoffError("accepted result belongs to a different role")
-                if session_result.envelope.task != (session_task_id or ""):
-                    raise HandoffError("accepted result belongs to a different task")
-                if session_result.envelope.milestone != (session_milestone_id or ""):
-                    raise HandoffError("accepted result belongs to a different milestone")
-                handoff = session_result.as_handoff(handoff_path)
-            else:
-                # Parse a legacy artifact only to retain its precise diagnostic;
-                # new sessions cannot accept agent-authored Markdown directly.
-                parse_handoff(handoff_path, role_name)
-                raise HandoffError(
-                    "session exited without an accepted result; run "
-                    "'devlab session handoff submit' before exiting"
-                )
+            handoff = _load_accepted_handoff(
+                ctx,
+                artifacts_dir,
+                route=route,
+            )
             validate_handoff(handoff, workspace.snapshot)
             if handoff.clarification_request is None:
                 planner_task_error = _validate_planner_preserved_active_tasks(
@@ -2084,7 +2146,7 @@ def run_loop(
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
             logger.info(_failed_session_cleanup_hint())
             metadata = _build_session_metadata(
-                ctx, agent_result, resolved_agent_configs, session_task_id,
+                ctx, agent_result, resolved_agent_configs, route.task_id,
             )
             ctx.write_session_metadata(metadata)
             return RunResult(
@@ -2097,8 +2159,8 @@ def run_loop(
             workspace,
             command=requested_command,
             session_id=ctx.invocation_id,
-            task_id=session_task_id,
-            milestone_id=session_milestone_id,
+            task_id=route.task_id,
+            milestone_id=route.milestone_id,
         )
         if planning_only and not plan_started_recorded and role_name in {"architect", "planner"}:
             append_workflow_event(
@@ -2121,7 +2183,7 @@ def run_loop(
                 planning_complete=workspace.snapshot.workflow_state().planning.complete,
             )
         metadata = _build_session_metadata(
-            ctx, agent_result, resolved_agent_configs, session_task_id,
+            ctx, agent_result, resolved_agent_configs, route.task_id,
         )
         ctx.write_session_metadata(metadata)
         if (
@@ -2161,8 +2223,8 @@ def run_loop(
         finish_context = session_finish_context(
             workspace.snapshot,
             role_name,
-            task_id=session_task_id,
-            milestone_id=session_milestone_id,
+            task_id=route.task_id,
+            milestone_id=route.milestone_id,
         )
         duration = agent_result.duration_seconds
         duration_info = f" duration={duration:.1f}s" if duration is not None else ""

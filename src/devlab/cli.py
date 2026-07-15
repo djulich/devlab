@@ -37,6 +37,52 @@ from devlab.workflow_state_report import (
 )
 
 
+def _run_parent_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to operate on (default: current working directory).",
+    )
+    parser.add_argument("--max-sessions", type=int)
+    parser.add_argument("--provider", default=None, help="Override the configured provider.")
+    parser.add_argument("--model", default=None, help="Override the configured model.")
+    parser.add_argument("--effort", default=None, help="Override the configured effort.")
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "-q", "--quiet", action="store_true", help="Show only warnings and errors."
+    )
+    verbosity.add_argument(
+        "-v", "--verbose", action="store_true", help="Show debug diagnostics."
+    )
+    parser.add_argument(
+        "--log-file", type=Path, default=None, help="Write detailed DevLab logs to this file."
+    )
+    parser.add_argument(
+        "--retain-prompts",
+        action="store_true",
+        help="Write full base/session prompts to .devlab/logs/agents/ for debugging.",
+    )
+    parser.add_argument(
+        "--clarification-mode",
+        choices=("operator", "agent"),
+        default="operator",
+        help="Stop for operator clarification or use a bounded resolver agent.",
+    )
+    parser.add_argument(
+        "--unattended",
+        action="store_true",
+        help="Run without operator clarification stops; implies --clarification-mode=agent.",
+    )
+    parser.add_argument(
+        "--handoff-correction",
+        action="store_true",
+        help="Allow one correction-only invocation for a missing accepted result.",
+    )
+    return parser
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="devlab",
@@ -67,98 +113,20 @@ def main() -> None:
         help="Git user.email for DevLab-created commits.",
     )
 
+    run_parent = _run_parent_parser()
     implement_parser = subparsers.add_parser(
-        "implement", help="Implement planned DevLab workflow tasks."
+        "implement",
+        parents=[run_parent],
+        help="Implement planned DevLab workflow tasks.",
     )
-    implement_parser.add_argument(
-        "--root",
-        type=Path,
-        default=DEFAULT_PROJECT_ROOT,
-        help="Project root to operate on (default: current working directory).",
-    )
-    implement_parser.add_argument(
-        "--max-sessions",
-        type=int,
-        default=20,
-        help="Maximum number of sessions to run (default: 20).",
-    )
-    implement_parser.add_argument(
-        "--provider",
-        default=None,
-        help="Override the configured provider for this implementation run.",
-    )
-    implement_parser.add_argument(
-        "--model",
-        default=None,
-        help="Override the configured model for this implementation run.",
-    )
-    implement_parser.add_argument(
-        "--effort",
-        default=None,
-        help="Override the configured effort for this implementation run.",
-    )
-    verbosity = implement_parser.add_mutually_exclusive_group()
-    verbosity.add_argument(
-        "-q",
-        "--quiet",
-        action="store_true",
-        help="Show only warnings and errors during implementation.",
-    )
-    verbosity.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show debug diagnostics during implementation.",
-    )
-    implement_parser.add_argument(
-        "--log-file",
-        type=Path,
-        default=None,
-        help="Write detailed DevLab implementation logs to this file.",
-    )
-    implement_parser.add_argument(
-        "--retain-prompts",
-        action="store_true",
-        help="Write full base/session prompts to .devlab/logs/agents/ for debugging.",
-    )
-    implement_parser.add_argument(
-        "--clarification-mode",
-        choices=("operator", "agent"),
-        default="operator",
-        help=(
-            "How to handle role-requested clarifications: stop for operator input "
-            "or use a bounded resolver agent (default: operator)."
-        ),
-    )
-    implement_parser.add_argument(
-        "--unattended",
-        action="store_true",
-        help="Run without operator clarification stops; implies --clarification-mode=agent.",
-    )
-    implement_parser.add_argument(
-        "--handoff-correction",
-        action="store_true",
-        help=(
-            "Allow one correction-only agent invocation when a session exits "
-            "without an accepted result."
-        ),
-    )
+    implement_parser.set_defaults(max_sessions=20)
 
     plan_parser = subparsers.add_parser(
-        "plan", help="Run planning sessions and stop before implementation."
+        "plan",
+        parents=[run_parent],
+        help="Run planning sessions and stop before implementation.",
     )
-    plan_parser.add_argument(
-        "--root",
-        type=Path,
-        default=DEFAULT_PROJECT_ROOT,
-        help="Project root to operate on (default: current working directory).",
-    )
-    plan_parser.add_argument(
-        "--max-sessions",
-        type=int,
-        default=2,
-        help="Maximum number of sessions to run (default: 2).",
-    )
+    plan_parser.set_defaults(max_sessions=2)
     plan_parser.add_argument(
         "--revise",
         action="store_true",
@@ -180,67 +148,6 @@ def main() -> None:
         help=(
             "Mark the current committed specs as planned without running "
             "architect/planner reconciliation."
-        ),
-    )
-    plan_parser.add_argument(
-        "--provider",
-        default=None,
-        help="Override the configured provider for this plan run.",
-    )
-    plan_parser.add_argument(
-        "--model",
-        default=None,
-        help="Override the configured model for this plan run.",
-    )
-    plan_parser.add_argument(
-        "--effort",
-        default=None,
-        help="Override the configured effort for this plan run.",
-    )
-    plan_verbosity = plan_parser.add_mutually_exclusive_group()
-    plan_verbosity.add_argument(
-        "-q",
-        "--quiet",
-        action="store_true",
-        help="Show only warnings and errors during the plan run.",
-    )
-    plan_verbosity.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show debug diagnostics during the plan run.",
-    )
-    plan_parser.add_argument(
-        "--log-file",
-        type=Path,
-        default=None,
-        help="Write detailed DevLab plan logs to this file.",
-    )
-    plan_parser.add_argument(
-        "--retain-prompts",
-        action="store_true",
-        help="Write full base/session prompts to .devlab/logs/agents/ for debugging.",
-    )
-    plan_parser.add_argument(
-        "--clarification-mode",
-        choices=("operator", "agent"),
-        default="operator",
-        help=(
-            "How to handle role-requested clarifications: stop for operator input "
-            "or use a bounded resolver agent (default: operator)."
-        ),
-    )
-    plan_parser.add_argument(
-        "--unattended",
-        action="store_true",
-        help="Run without operator clarification stops; implies --clarification-mode=agent.",
-    )
-    plan_parser.add_argument(
-        "--handoff-correction",
-        action="store_true",
-        help=(
-            "Allow one correction-only agent invocation when a session exits "
-            "without an accepted result."
         ),
     )
 

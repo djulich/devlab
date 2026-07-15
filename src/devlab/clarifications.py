@@ -8,6 +8,7 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from devlab._files import atomic_write_text
 from devlab._toml import format_toml_value
 
 CLARIFICATIONS_DIR = ".devlab/clarifications"
@@ -160,7 +161,9 @@ class FileClarificationTracker:
             "decision_refs": list(decision_refs),
             "created_at": created_at or _utc_now(),
         }
-        path.write_text(_format_clarification_file(metadata, _body_with_pending_answer(body)))
+        atomic_write_text(
+            path, _format_clarification_file(metadata, _body_with_pending_answer(body))
+        )
         return self._read_clarification(path)
 
     def answer(
@@ -183,7 +186,7 @@ class FileClarificationTracker:
             metadata["answered_by"] = operator
         safe_answer = re.sub(r"^##(?=\s)", "###", answer.strip(), flags=re.MULTILINE)
         body = _replace_markdown_section(clarification.body, "Answer", safe_answer)
-        clarification.path.write_text(_format_clarification_file(metadata, body))
+        atomic_write_text(clarification.path, _format_clarification_file(metadata, body))
         return self._read_clarification(clarification.path)
 
     def answer_choice(
@@ -225,7 +228,7 @@ class FileClarificationTracker:
         metadata["status"] = ClarificationStatus.SUPERSEDED.value
         metadata["superseded_at"] = superseded_at or _utc_now()
         body = clarification.body.rstrip() + "\n\n## Superseded\n" + reason.strip() + "\n"
-        clarification.path.write_text(_format_clarification_file(metadata, body))
+        atomic_write_text(clarification.path, _format_clarification_file(metadata, body))
         return self._read_clarification(clarification.path)
 
     def _next_clarification_id(self) -> str:

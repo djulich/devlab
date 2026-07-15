@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from devlab._files import atomic_write_text
 from devlab._toml import format_toml_value
 
 GENERATIONS_DIR = ".devlab/generations"
@@ -123,7 +124,9 @@ def archive_active_generation(
         reason=reason,
         spec_baseline=spec_baseline,
     )
-    (archive_root / GENERATION_MANIFEST).write_text(format_generation_manifest(manifest))
+    atomic_write_text(
+        archive_root / GENERATION_MANIFEST, format_generation_manifest(manifest)
+    )
     clear_active_generation(root)
     create_active_skeleton(root)
     return manifest

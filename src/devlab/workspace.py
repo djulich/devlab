@@ -14,7 +14,15 @@ from devlab.clarifications import Clarification, FileClarificationTracker
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.generations import active_generation
 from devlab.milestones import FileMilestoneTracker, Milestone
-from devlab.task_tracker import DEVELOPABLE_STATUSES, FileTaskTracker, Task, TaskStatus
+from devlab.task_tracker import (
+    FileTaskTracker,
+    Task,
+    TaskStatus,
+    blocked_tasks,
+    eligible_tasks,
+    milestone_complete,
+    tasks_for_milestone,
+)
 from devlab.workflow_state import WORKFLOW_STATE, WorkflowState, load_workflow_state
 
 DESIGN_PLAN = ".devlab/plans/design-plan.md"
@@ -24,48 +32,6 @@ FINDINGS_DIR = ".devlab/findings"
 CLARIFICATIONS_DIR = ".devlab/clarifications"
 ARTIFACTS_DIR = ".devlab/session-artifacts"
 AGENT_LOG_DIR = ".devlab/logs/agents"
-
-
-@dataclasses.dataclass(frozen=True)
-class RoleConfig:
-    name: str
-    prompt_resource: str
-    reads_tooling: bool
-    needs_environment: bool
-
-
-ROLES: dict[str, RoleConfig] = {
-    "architect": RoleConfig(
-        "architect",
-        "role-architect.md",
-        reads_tooling=True,
-        needs_environment=False,
-    ),
-    "planner": RoleConfig(
-        "planner",
-        "role-planner.md",
-        reads_tooling=True,
-        needs_environment=False,
-    ),
-    "developer": RoleConfig(
-        "developer",
-        "role-developer.md",
-        reads_tooling=True,
-        needs_environment=True,
-    ),
-    "reviewer": RoleConfig(
-        "reviewer",
-        "role-reviewer.md",
-        reads_tooling=True,
-        needs_environment=True,
-    ),
-    "integrator": RoleConfig(
-        "integrator",
-        "role-integrator.md",
-        reads_tooling=True,
-        needs_environment=True,
-    ),
-}
 
 
 # ---------------------------------------------------------------------------
@@ -476,11 +442,8 @@ class WorkspaceSnapshot:
         return [task for task in self.current_generation_tasks() if task.is_active]
 
     def select_next_development_task(self) -> Task | None:
-        closed_ids = {task.id for task in self.list_tasks() if task.status == TaskStatus.CLOSED}
-        for task in self.current_generation_tasks():
-            if task.status in DEVELOPABLE_STATUSES and set(task.depends_on).issubset(closed_ids):
-                return task
-        return None
+        tasks = eligible_tasks(self.current_generation_tasks())
+        return tasks[0] if tasks else None
 
     def select_next_review_task(self) -> Task | None:
         for task in self.current_generation_tasks():
@@ -489,22 +452,13 @@ class WorkspaceSnapshot:
         return None
 
     def blocked_tasks(self) -> list[Task]:
-        closed_ids = {task.id for task in self.list_tasks() if task.status == TaskStatus.CLOSED}
-        return [
-            task
-            for task in self.current_generation_tasks()
-            if task.status in DEVELOPABLE_STATUSES
-            and not set(task.depends_on).issubset(closed_ids)
-        ]
+        return blocked_tasks(self.current_generation_tasks())
 
     def tasks_for_milestone(self, milestone: str) -> list[Task]:
-        return [
-            task for task in self.current_generation_tasks() if task.milestone == milestone
-        ]
+        return tasks_for_milestone(self.current_generation_tasks(), milestone)
 
     def milestone_complete(self, milestone: str) -> bool:
-        tasks = self.tasks_for_milestone(milestone)
-        return bool(tasks) and all(task.status == TaskStatus.CLOSED for task in tasks)
+        return milestone_complete(self.current_generation_tasks(), milestone)
 
     def open_findings(self) -> list[Finding]:
         return [

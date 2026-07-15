@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from devlab._files import atomic_write_text
 from devlab._toml import format_toml_value
 from devlab.task_tracker import FileTaskTracker, Task
 
@@ -102,7 +103,7 @@ class FileMilestoneTracker:
                         metadata["status"] = MilestoneStatus.ACTIVE.value
                         metadata["integrated"] = False
                         metadata["architecture_reviewed"] = False
-                    path.write_text(_format_milestone_file(metadata))
+                    atomic_write_text(path, _format_milestone_file(metadata))
                     milestone = self._read_milestone(path)
             else:
                 metadata = _default_milestone_metadata(
@@ -110,7 +111,7 @@ class FileMilestoneTracker:
                     titles.get(milestone_id, milestone_id),
                     task_ids_by_milestone[milestone_id],
                 )
-                path.write_text(_format_milestone_file(metadata))
+                atomic_write_text(path, _format_milestone_file(metadata))
                 milestone = self._read_milestone(path)
             milestones.append(milestone)
         return milestones
@@ -121,7 +122,7 @@ class FileMilestoneTracker:
             return
         metadata = dict(milestone.metadata)
         metadata["status"] = MilestoneStatus.TASKS_COMPLETE.value
-        milestone.path.write_text(_format_milestone_file(metadata))
+        atomic_write_text(milestone.path, _format_milestone_file(metadata))
 
     def mark_integrated(self, milestone_id: str, handoff_path: Path) -> None:
         milestone = self.get(milestone_id)
@@ -129,7 +130,7 @@ class FileMilestoneTracker:
         metadata["status"] = MilestoneStatus.INTEGRATED.value
         metadata["integrated"] = True
         metadata["integration_handoff"] = handoff_path.name
-        milestone.path.write_text(_format_milestone_file(metadata))
+        atomic_write_text(milestone.path, _format_milestone_file(metadata))
 
     def mark_integration_failed(self, milestone_id: str, finding_id: str) -> None:
         milestone = self.get(milestone_id)
@@ -140,7 +141,7 @@ class FileMilestoneTracker:
         metadata["status"] = MilestoneStatus.INTEGRATION_FAILED.value
         metadata["integrated"] = False
         metadata["findings"] = findings
-        milestone.path.write_text(_format_milestone_file(metadata))
+        atomic_write_text(milestone.path, _format_milestone_file(metadata))
 
     def mark_architecture_reviewed(self, milestone_id: str, handoff_path: Path) -> None:
         milestone = self.get(milestone_id)
@@ -148,7 +149,7 @@ class FileMilestoneTracker:
         metadata["status"] = MilestoneStatus.ARCHITECTURE_REVIEWED.value
         metadata["architecture_reviewed"] = True
         metadata["architecture_review_handoff"] = handoff_path.name
-        milestone.path.write_text(_format_milestone_file(metadata))
+        atomic_write_text(milestone.path, _format_milestone_file(metadata))
 
     def _read_milestone(self, path: Path) -> Milestone:
         metadata = tomllib.loads(path.read_text())

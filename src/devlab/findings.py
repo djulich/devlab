@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from devlab._files import atomic_write_text
 from devlab._toml import format_toml_value
 
 FINDINGS_DIR = ".devlab/findings"
@@ -86,7 +87,7 @@ class FileFindingTracker:
             metadata["milestone"] = milestone
         if handoff is not None:
             metadata["handoff"] = handoff
-        path.write_text(_format_finding_file(metadata, body))
+        atomic_write_text(path, _format_finding_file(metadata, body))
         return self._read_finding(path)
 
     def create_from_handoff(
@@ -126,7 +127,7 @@ class FileFindingTracker:
         finding = self.get(finding_id)
         metadata = dict(finding.metadata)
         metadata["status"] = status.value
-        finding.path.write_text(_format_finding_file(metadata, finding.body))
+        atomic_write_text(finding.path, _format_finding_file(metadata, finding.body))
 
     def _next_finding_id(self) -> str:
         max_id = 0

@@ -8,7 +8,8 @@ from typing import Any, cast
 
 from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES
 from devlab.prompts import build_base_prompt, build_session_prompt
-from devlab.workspace import ROLES, WorkspaceSnapshot
+from devlab.roles import ROLES
+from devlab.workspace import WorkspaceSnapshot
 
 DEFAULT_WARNING_TOKENS = 60_000
 DEFAULT_CRITICAL_TOKENS = 100_000

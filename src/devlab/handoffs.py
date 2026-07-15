@@ -10,6 +10,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
+from devlab._files import atomic_write_text
 from devlab.clarifications import expected_file_edit_paths
 
 REQUIRED_HANDOFF_HEADINGS = (
@@ -176,9 +177,9 @@ class HandoffSubmissionError(HandoffError):
 
 def write_session_envelope(path: Path, envelope: SessionEnvelope) -> None:
     """Create trusted identity and a role-aware disposable candidate."""
-    _atomic_write(path, _render_envelope(envelope))
+    atomic_write_text(path, _render_envelope(envelope))
     candidate_path = path.with_name(HANDOFF_CANDIDATE_FILE)
-    _atomic_write(candidate_path, render_candidate_template(envelope.role))
+    atomic_write_text(candidate_path, render_candidate_template(envelope.role))
 
 
 def load_session_envelope(path: Path) -> SessionEnvelope:
@@ -247,7 +248,7 @@ def initialize_handoff_candidate(
     envelope_path = active_session_envelope(root.resolve(), explicit_envelope)
     envelope = load_session_envelope(envelope_path)
     candidate_path = envelope_path.with_name(HANDOFF_CANDIDATE_FILE)
-    _atomic_write(candidate_path, render_candidate_template(envelope.role))
+    atomic_write_text(candidate_path, render_candidate_template(envelope.role))
     return candidate_path
 
 
@@ -282,10 +283,10 @@ def publish_session_result(
     """Atomically publish validated structured and rendered session artifacts."""
     result = SessionResult(envelope=envelope, candidate=candidate)
     artifacts = envelope_path.parent
-    _atomic_write(artifacts / HANDOFF_FILE, render_handoff(candidate, envelope.role))
+    atomic_write_text(artifacts / HANDOFF_FILE, render_handoff(candidate, envelope.role))
     # Publish the structured acceptance marker last. The outer orchestrator can
     # reconstruct Markdown from it if publication is interrupted between files.
-    _atomic_write(artifacts / SESSION_RESULT_FILE, _render_result(result))
+    atomic_write_text(artifacts / SESSION_RESULT_FILE, _render_result(result))
     return result
 
 
@@ -1052,13 +1053,3 @@ def _toml_string(value: str) -> str:
 
 def _toml_array(values: tuple[str, ...]) -> str:
     return "[" + ", ".join(_toml_string(value) for value in values) + "]"
-
-
-def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        temporary.write_text(text)
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)

@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 from typing import Any, cast
 
+from devlab._files import atomic_write_text
 from devlab._toml import format_toml_value
 
 WORKFLOW_STATE = ".devlab/workflow.toml"
@@ -61,7 +62,7 @@ def load_workflow_state(root: Path) -> WorkflowState:
 def write_workflow_state(root: Path, state: WorkflowState) -> None:
     path = root / WORKFLOW_STATE
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(format_workflow_state(state))
+    atomic_write_text(path, format_workflow_state(state))
 
 
 def set_planning_complete(root: Path, complete: bool) -> WorkflowState:
@@ -100,7 +101,7 @@ def update_workflow_state(
                 "last_planned_spec_commit",
                 last_planned_spec_commit,
             )
-        path.write_text(text)
+        atomic_write_text(path, text)
     else:
         write_workflow_state(root, updated)
     return updated
@@ -119,7 +120,7 @@ def set_resume_state(root: Path, resume: ResumeState) -> WorkflowState:
         text = _remove_table(path.read_text(), "resume")
         suffix = "" if text.endswith("\n") or not text else "\n"
         text = text + suffix + _format_resume_table(resume)
-        path.write_text(text)
+        atomic_write_text(path, text)
     else:
         write_workflow_state(root, updated)
     return updated
@@ -135,7 +136,7 @@ def clear_resume_state(root: Path) -> WorkflowState:
     )
     path = root / WORKFLOW_STATE
     if path.exists():
-        path.write_text(_remove_table(path.read_text(), "resume"))
+        atomic_write_text(path, _remove_table(path.read_text(), "resume"))
     else:
         write_workflow_state(root, updated)
     return updated

@@ -36,6 +36,7 @@ Workflow core:
 - `handoffs.py`: handoff parsing and validation.
 - `agents.py`: provider-specific invocation, not orchestration logic.
 - `agent_config.py`: `agents.toml` loading and role/provider resolution.
+- `roles.py`: provider-independent workflow role definitions and prompt/environment needs.
 
 Domain state (file-backed trackers):
 - `task_tracker.py`, `milestones.py`, `findings.py`, `profiles.py`: one tracker per domain.
@@ -57,6 +58,7 @@ Diagnostics:
 - `artifact_hygiene.py`: git-based artifact classification.
 - `doctor.py`: workspace validation checks.
 - `status.py`, `session_logging.py`, `cli.py`, `init.py`, `_logging.py`, `_toml.py`.
+- `_files.py`: low-level atomic text replacement for authoritative workflow files.
 
 ## Coding standards
 
