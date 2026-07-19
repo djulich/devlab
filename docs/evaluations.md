@@ -22,6 +22,10 @@ Current scenarios cover:
 - static frontend todo app happy path with vanilla HTML/CSS/JS
 - deployable web API happy path with local container artifacts
 - Compose deployment happy path with local deploy/teardown commands
+- Rust Cargo CLI happy path
+- Go module CLI happy path
+- C and C++ CMake-presets CLI happy paths
+- mixed Rust/Go components with task-specific profiles and a root integration command
 
 The normal scripted suite uses structural checks as hard gates. Deployment scenarios may also include optional tool-backed checks, such as running a target-owned `make deployment-check`, `make compose-check`, or `docker compose config`, but these are skipped unless explicitly enabled:
 
@@ -30,6 +34,11 @@ DEVLAB_EVAL_DEPLOYMENT_TOOLS=1 uv run pytest tests/evaluations
 ```
 
 When enabled, missing host tools such as `make` are reported as skipped/unverified rather than installed. Target-owned commands that do run must pass, or the evaluation fails.
+
+Compiled-language scenarios always exercise the complete scripted workflow and
+structurally check their generated projects. Their Cargo, Go, compiler, CMake,
+CTest, and mixed-workspace commands run automatically when the required tools
+are on `PATH`; otherwise the individual check is recorded as skipped/unverified.
 
 The scripted provider writes realistic role artifacts without using LLM tokens. Each scenario records diagnostics in the temporary target repository:
 

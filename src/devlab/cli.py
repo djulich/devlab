@@ -25,7 +25,7 @@ from devlab.handoffs import (
     initialize_handoff_candidate,
 )
 from devlab.history import format_history
-from devlab.init import format_init_next_steps, format_init_result, init_workspace
+from devlab.init import INIT_TEMPLATES, format_init_next_steps, format_init_result, init_workspace
 from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop, submit_session_handoff
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
@@ -101,6 +101,12 @@ def main() -> None:
         "--force",
         action="store_true",
         help="Overwrite existing starter files.",
+    )
+    init_parser.add_argument(
+        "--template",
+        choices=INIT_TEMPLATES,
+        default="neutral",
+        help="Starter tooling template (default: neutral).",
     )
     init_parser.add_argument(
         "--git-user-name",
@@ -393,6 +399,7 @@ def main() -> None:
     if args.command == "init":
         result = init_workspace(
             root,
+            template=args.template,
             force=args.force,
             automatic_git=True,
             git_user_name=args.git_user_name,

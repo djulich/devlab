@@ -146,32 +146,6 @@ Design pressure:
 - Keep CLI commands thin enough that future server/API handlers can call the same operations.
 - Do not let external adapters bypass clarification validation, resume semantics, spec reconciliation guards, or planning/implementation command boundaries.
 
-## 9. Language-Neutral Target Workspaces
-
-Priority: high-medium. DevLab is implemented as a Python CLI/package, but its
-target-workspace workflow should support Rust, Go, C, C++, and eventually
-mixed-language repositories without imposing Python product conventions.
-
-Plan: `docs/plans/language-neutral-target-workspaces.md`.
-
-Open work:
-
-- Make `devlab init` generate a language-neutral default tooling policy and
-  profile instead of an implicit Python package workflow.
-- Add explicit Python, Rust, Go, C, and C++ starter templates while keeping all
-  toolchain behavior in target-owned profiles and validation commands.
-- Audit reusable prompts, diagnostics, and documentation for unintended target
-  Python assumptions; retain `DEVLAB_PYTHON` only as DevLab's own handoff
-  submission interpreter.
-- Add deterministic compiled-language evaluations with black-box build/test/run
-  checks and clear skips or prerequisite diagnostics when host tools are absent.
-- After single-language baselines are reliable, add a mixed-language evaluation
-  using component-specific profiles and a repository-owned integration command;
-  do not add language branches to orchestration.
-- Coordinate missing-tool and validation-result reporting with the
-  orchestrator-owned validation work in TODO #1. DevLab must not install host
-  compilers, SDKs, package managers, build systems, or analyzers.
-
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).

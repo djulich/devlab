@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from devlab.git import VersionControlError
-from devlab.init import format_init_next_steps, format_init_result, init_workspace
+from devlab.init import INIT_TEMPLATES, format_init_next_steps, format_init_result, init_workspace
 
 
 def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
@@ -36,11 +36,54 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
         assert (tmp_path / relative).exists(), relative
 
     assert 'layout_version = 1' in (tmp_path / ".devlab/manifest.toml").read_text()
+    assert 'init_template = "neutral"' in (tmp_path / ".devlab/manifest.toml").read_text()
     assert "complete = false" in (tmp_path / ".devlab/workflow.toml").read_text()
     assert 'id = "default"' in (tmp_path / ".devlab/config/profiles/default.toml").read_text()
     assert '[providers.default]' in (tmp_path / ".devlab/config/agents.toml").read_text()
     assert result.created
     assert not result.overwritten
+
+
+def test_default_init_is_language_neutral(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+
+    tooling = (tmp_path / ".devlab/config/tooling.md").read_text().lower()
+    profile = (tmp_path / ".devlab/config/profiles/default.toml").read_text()
+
+    assert "## python" not in tooling
+    assert "uv run" not in profile
+    assert "default_validation = []" in profile
+
+
+@pytest.mark.parametrize(
+    ("template", "expected"),
+    [
+        ("neutral", "Neutral project workflow"),
+        ("python", "uv run pytest"),
+        ("rust", "cargo test --workspace"),
+        ("go", "go test ./..."),
+        ("c", "C project with CMake presets"),
+        ("cpp", "C++ project with CMake presets"),
+    ],
+)
+def test_init_workspace_supports_tooling_templates(
+    tmp_path: Path, template: str, expected: str
+) -> None:
+    init_workspace(tmp_path, template=template)
+
+    manifest = (tmp_path / ".devlab/manifest.toml").read_text()
+    profile = (tmp_path / ".devlab/config/profiles/default.toml").read_text()
+
+    assert template in INIT_TEMPLATES
+    assert f'init_template = "{template}"' in manifest
+    assert expected in profile
+
+
+def test_init_workspace_rejects_unknown_template_before_writing(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unknown init template 'fortran'"):
+        init_workspace(tmp_path, template="fortran")
+
+    assert not (tmp_path / ".devlab").exists()
 
 
 def test_init_workspace_is_non_destructive_by_default(tmp_path: Path) -> None:
@@ -64,6 +107,17 @@ def test_init_workspace_force_overwrites_starter_files(tmp_path: Path) -> None:
 
     assert tooling.read_text().startswith("# Tooling Policy")
     assert tooling in result.overwritten
+
+
+def test_init_workspace_force_can_replace_starter_template(tmp_path: Path) -> None:
+    init_workspace(tmp_path, template="python")
+
+    result = init_workspace(tmp_path, template="rust", force=True)
+
+    profile = tmp_path / ".devlab/config/profiles/default.toml"
+    assert "cargo test --workspace" in profile.read_text()
+    assert 'init_template = "rust"' in (tmp_path / ".devlab/manifest.toml").read_text()
+    assert profile in result.overwritten
 
 
 def test_format_init_result_uses_relative_paths(tmp_path: Path) -> None:

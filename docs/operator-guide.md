@@ -28,6 +28,31 @@ The usual operator loop is:
 sessions. This keeps operator-authored changes separate from DevLab-authored
 session commits.
 
+## Initialization Templates
+
+`devlab init` generates a neutral tooling policy and an empty-validation default
+profile unless an explicit starter is selected:
+
+```bash
+devlab init --template neutral
+devlab init --template python
+devlab init --template rust
+devlab init --template go
+devlab init --template c
+devlab init --template cpp
+```
+
+The language starters provide conventional profile commands. The C and C++
+starters use checked-in CMake presets as their initial convention; replace the
+profile before planning dependent tasks when a repository uses Make, Meson,
+Bazel, or another build system. A template is initialization input only. Normal
+workflow behavior always comes from `.devlab/config/tooling.md`, task metadata,
+and the actual profile files.
+
+Initialization does not overwrite existing files unless `--force` is supplied.
+Using `--force --template ...` intentionally replaces starter files and should
+not be used as an upgrade mechanism for an established workspace.
+
 ## What Operators Own
 
 Operators normally edit:
@@ -151,6 +176,11 @@ Keep profile compatibility in mind. If a changed profile would remove, replace,
 narrow, or materially alter validation, setup, teardown, services, or assumptions
 used by already-planned tasks, prefer creating a new profile and assigning new
 tasks to it.
+
+Different components in one repository can use different profiles. A task that
+crosses component boundaries should select a deliberate aggregate profile whose
+validation invokes a repository-owned integration command, such as `make check`
+or a checked-in script.
 
 ## Tasks
 

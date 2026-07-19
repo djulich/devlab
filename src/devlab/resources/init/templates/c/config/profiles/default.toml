@@ -1,0 +1,22 @@
+version = 1
+id = "default"
+title = "C project with CMake presets"
+
+[tooling]
+summary = "C project using checked-in CMake configure, build, and test presets."
+default_validation = [
+  "cmake --preset dev",
+  "cmake --build --preset dev",
+  "ctest --preset dev",
+]
+
+[environment]
+managed_roles = ["developer", "reviewer", "integrator"]
+pre_session = []
+setup = []
+post_session = []
+
+[timeouts]
+pre_session = 300
+setup = 600
+post_session = 300

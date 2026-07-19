@@ -36,6 +36,7 @@ from devlab.workflow_history import (
     derive_task_rework_summary,
 )
 from tests.evaluations.checks import (
+    BlackBoxCheck,
     CheckResult,
     command_check,
     command_fails_check,
@@ -44,6 +45,7 @@ from tests.evaluations.checks import (
     file_contains_check,
     optional_docker_compose_config_check,
     optional_make_target_check,
+    optional_toolchain_command_check,
     react_vite_browser_integration_check,
     react_vite_container_build_check,
     react_vite_frontend_check,
@@ -64,13 +66,139 @@ from tests.evaluations.scripted_agents import (
     AdoptExistingScriptedAgent,
     CalculatorScriptedAgent,
     ClarificationCalculatorScriptedAgent,
+    CompiledLanguageScriptedAgent,
     ComposeDeploymentScriptedAgent,
     DeploymentWebApiScriptedAgent,
     HttpApiScriptedAgent,
+    MixedLanguageScriptedAgent,
     SpecReconciliationScriptedAgent,
     StatefulWebApiScriptedAgent,
     StaticFrontendScriptedAgent,
 )
+
+
+@pytest.mark.parametrize(
+    ("language", "artifact", "checks"),
+    [
+        (
+            "rust",
+            "Cargo.toml",
+            (
+                optional_toolchain_command_check("cargo format", ["cargo", "fmt", "--check"]),
+                optional_toolchain_command_check("cargo test", ["cargo", "test"]),
+                optional_toolchain_command_check(
+                    "rust CLI output",
+                    ["cargo", "run", "--quiet"],
+                    expected_stdout="hello from rust",
+                ),
+            ),
+        ),
+        (
+            "go",
+            "go.mod",
+            (
+                optional_toolchain_command_check("go test", ["go", "test", "./..."]),
+                optional_toolchain_command_check(
+                    "go CLI output", ["go", "run", "."], expected_stdout="hello from go"
+                ),
+            ),
+        ),
+        (
+            "c",
+            "CMakeLists.txt",
+            (
+                optional_toolchain_command_check(
+                    "C configure",
+                    ["cmake", "--preset", "dev"],
+                    required_tools=["cmake", "make", "cc"],
+                ),
+                optional_toolchain_command_check(
+                    "C build", ["cmake", "--build", "--preset", "dev"],
+                    required_tools=["cmake", "make", "cc"],
+                ),
+                optional_toolchain_command_check(
+                    "C test", ["ctest", "--preset", "dev"],
+                    required_tools=["ctest", "make", "cc"],
+                ),
+            ),
+        ),
+        (
+            "cpp",
+            "CMakeLists.txt",
+            (
+                optional_toolchain_command_check(
+                    "C++ configure",
+                    ["cmake", "--preset", "dev"],
+                    required_tools=["cmake", "make", "c++"],
+                ),
+                optional_toolchain_command_check(
+                    "C++ build", ["cmake", "--build", "--preset", "dev"],
+                    required_tools=["cmake", "make", "c++"],
+                ),
+                optional_toolchain_command_check(
+                    "C++ test", ["ctest", "--preset", "dev"],
+                    required_tools=["ctest", "make", "c++"],
+                ),
+            ),
+        ),
+    ],
+)
+def test_scripted_compiled_language_workflow_evaluation(
+    tmp_path: Path, language: str, artifact: str, checks: tuple[BlackBoxCheck, ...]
+) -> None:
+    scenario = EvaluationScenario(
+        id=f"{language}-cli-happy-path",
+        title=f"{language} CLI happy path",
+        system_spec=f"Build a minimal {language} CLI with project-owned validation.",
+        max_sessions=8,
+        scripted_agent=CompiledLanguageScriptedAgent(language),
+        checks=(file_contains_check("toolchain artifact", artifact, ""), *checks),
+        expected_roles=(
+            "architect", "planner", "developer", "reviewer", "integrator", "architect",
+        ),
+        expected_sessions=6,
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact=artifact)
+    assert diagnostics.profiles.items[0].default_validation_count >= 2
+
+
+def test_scripted_mixed_language_workflow_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="mixed-rust-go-happy-path",
+        title="Mixed Rust and Go workspace",
+        system_spec=(
+            "Build independently testable Rust and Go components with one root "
+            "integration command."
+        ),
+        max_sessions=12,
+        scripted_agent=MixedLanguageScriptedAgent(),
+        checks=(
+            file_contains_check("Rust component", "rust-component/Cargo.toml", "[package]"),
+            file_contains_check("Go component", "go-component/go.mod", "module "),
+            optional_toolchain_command_check(
+                "cross-component validation",
+                ["make", "check"],
+                required_tools=["make", "cargo", "go"],
+            ),
+        ),
+        expected_roles=(
+            "architect", "planner", "developer", "reviewer", "developer", "reviewer",
+            "developer", "reviewer", "integrator", "architect",
+        ),
+        expected_sessions=10,
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="Makefile")
+    assert diagnostics.profiles.tasks_by_profile == {
+        "go": ["T0002"],
+        "integration": ["T0003"],
+        "rust": ["T0001"],
+    }
 
 
 def test_scripted_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:

@@ -1,0 +1,22 @@
+version = 1
+id = "default"
+title = "Rust Cargo workflow"
+
+[tooling]
+summary = "Rust workspace using Cargo, rustfmt, and Clippy."
+default_validation = [
+  "cargo fmt --check",
+  "cargo clippy --workspace --all-targets --all-features -- -D warnings",
+  "cargo test --workspace --all-features",
+]
+
+[environment]
+managed_roles = ["developer", "reviewer", "integrator"]
+pre_session = []
+setup = []
+post_session = []
+
+[timeouts]
+pre_session = 300
+setup = 600
+post_session = 300

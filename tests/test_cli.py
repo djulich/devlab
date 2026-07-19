@@ -120,6 +120,18 @@ def test_cli_init_force_overwrites_starter_file(
     assert tooling.read_text().startswith("# Tooling Policy")
 
 
+def test_cli_init_selects_rust_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path), "--template", "rust")
+    capsys.readouterr()
+
+    manifest = (tmp_path / ".devlab/manifest.toml").read_text()
+    profile = (tmp_path / ".devlab/config/profiles/default.toml").read_text()
+    assert 'init_template = "rust"' in manifest
+    assert "cargo clippy --workspace" in profile
+
+
 def test_cli_status_reports_next_role_for_initialized_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

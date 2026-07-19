@@ -27,6 +27,12 @@ Each task resolves to exactly one profile:
 
 Profiles define task-type defaults such as validation commands and session environment lifecycle. Profile sections omitted from a profile are treated as empty/no-op values.
 
+The default `neutral` initialization template leaves validation empty until the
+project's toolchain is chosen. Explicit `python`, `rust`, `go`, `c`, and `cpp`
+templates provide starter policies and profiles. The selected template is not a
+runtime language mode; these files remain the authority and may be adapted to
+the repository's actual conventions.
+
 Existing profiles should only be extended or fixed in backward-compatible ways. If new behavior would remove, replace, narrow, or materially alter tooling, validation, setup, teardown, services, or assumptions used by already-planned tasks, create a new reusable profile instead.
 
 ## Planner Responsibilities

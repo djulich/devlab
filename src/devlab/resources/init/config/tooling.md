@@ -8,21 +8,16 @@
 - Add comments/docstrings only when they clarify purpose, contracts, invariants, or design tradeoffs.
 - Include a `README.md` with a project overview, installation instructions, and a first-usage example. Create it as part of the project scaffold; keep it current as features are added.
 
-## Python
+## Project Toolchain
 
-Use:
+Preserve established build, dependency, formatting, analysis, and test conventions
+when adopting an existing repository. For a greenfield project, make the language
+and toolchain explicit in the design and add a reusable profile before product
+tasks depend on it.
 
-- `uv` for dependency, lockfile, environment, and command management
-- `uv_build` as the build backend
-- `ruff` for linting and formatting
-- `ty` for static type checking
-- `pytest` for testing
-- a `src/` package layout for importable Python package code
+Prefer checked-in, workspace-root validation entry points where practical. Keep
+generated dependencies, build products, caches, and editor artifacts out of Git.
 
-Include a `.gitignore` covering standard Python artifacts (`.venv/`, `__pycache__/`, `dist/`, `build/`, `*.egg-info`, `.ruff_cache/`, `.pytest_cache/`). Create it as part of the project scaffold.
-
-Include a `py.typed` marker in the package directory for typed packages.
-
-Do not place importable Python package code directly at the repository root unless explicitly required by an approved task.
-
-Do not introduce alternative Python tooling such as Poetry, Pipenv, tox, mypy, Black, Flake8, or unittest unless explicitly required by an approved task.
+DevLab does not install compilers, SDKs, package managers, build systems, or
+analyzers. Document required host tools and report unavailable checks as
+unverified prerequisites.

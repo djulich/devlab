@@ -6,13 +6,13 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [language-neutral-target-workspaces.md](language-neutral-target-workspaces.md) — neutral initialization, explicit Rust/Go/C/C++ starter profiles, compiled-language evaluations, and a staged mixed-language baseline
 - [resilient-session-handoffs.md](resilient-session-handoffs.md) — structured submission and DevLab-owned publication are implemented; representative live-provider acceptance metrics remain to collect
 - [architectural-improvements.md](architectural-improvements.md) — cross-cutting backlog for concurrency policy, typed validation failures, resolver isolation, and artifact bounds; stop semantics, blocker ordering, and atomic durable writes are implemented
 - [durable-operator-clarifications.md](durable-operator-clarifications.md) — durable stop/answer/resume and bounded unattended resolution are implemented; scoped routing and external adapters remain optional
 
 ## Implemented
 
+- [language-neutral-target-workspaces.md](language-neutral-target-workspaces.md) — added neutral initialization, explicit Python/Rust/Go/C/C++ starters, compiled-language evaluations, and a mixed Rust/Go baseline
 - [run-stop-reasons-and-blocker-ordering.md](run-stop-reasons-and-blocker-ordering.md) — added explicit workflow/command/limit/blocker/ineligible/error outcomes and moved clarification blockers before ordinary role selection
 - [workflow-state-reporting.md](workflow-state-reporting.md) — added an operator-facing lifecycle state command backed by durable workflow events and inference for older target workspaces
 - [react-vite-browser-live-evaluation.md](react-vite-browser-live-evaluation.md) — added a Podman-isolated browser/dev-server/API integration check to the React/Vite live evaluation

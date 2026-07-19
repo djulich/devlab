@@ -7,9 +7,12 @@ from devlab.findings import FileFindingTracker
 from devlab.task_tracker import FileTaskTracker
 from tests.evaluations.generated_products import (
     write_calculator,
+    write_compiled_cli,
     write_compose_deployment_artifacts,
     write_container_deployment_artifacts,
     write_http_app,
+    write_mixed_rust_go_component,
+    write_mixed_rust_go_integration,
     write_stateful_todo_api,
     write_static_frontend,
 )
@@ -117,6 +120,138 @@ class CalculatorScriptedAgent:
             and self.role_counts.get("integrator", 0) == 1
             and not finding_exists(root, "F0001")
         )
+
+
+class CompiledLanguageScriptedAgent:
+    """Drive one minimal compiled-language task through the complete workflow."""
+
+    def __init__(self, language: str):
+        self.language = language
+        self.roles: list[str] = []
+        self.role_counts: dict[str, int] = {}
+        self.review_rejections = 0
+        self.prompt_chars: list[int] = []
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        role = invocation.role_name
+        self.roles.append(role)
+        self.role_counts[role] = self.role_counts.get(role, 0) + 1
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
+        if role == "architect":
+            _design_plan(invocation.root).write_text(
+                "# Design Plan\n\n"
+                f"Build a minimal {self.language} CLI with project-owned validation.\n"
+            )
+        elif role == "planner":
+            self._plan(invocation.root)
+        elif role == "developer":
+            task = FileTaskTracker(invocation.root).select_next_development_task()
+            assert task is not None
+            complete_acceptance(invocation.root, task.id)
+            write_compiled_cli(invocation.root, self.language)
+        elif role == "reviewer":
+            approve_review_task(invocation.root)
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        return handoff(invocation.role_name)
+
+    def _plan(self, root: Path) -> None:
+        title = f"Implement {self.language} CLI"
+        _project_plan(root).write_text(
+            f"# Project Plan\n\n## M1: {self.language} CLI\n- T0001: {title}\n"
+        )
+        profile = root / ".devlab/config/profiles/default.toml"
+        profile.write_text(_compiled_profile(self.language))
+        task_path = write_task(root, "T0001", title, "M1")
+        task_path.write_text(task_path.read_text().replace('validation = []\n', ""))
+
+
+def _compiled_profile(language: str) -> str:
+    commands = {
+        "rust": ["cargo fmt --check", "cargo test"],
+        "go": ["gofmt -l . | (! grep .)", "go vet ./...", "go test ./..."],
+        "c": ["cmake --preset dev", "cmake --build --preset dev", "ctest --preset dev"],
+        "cpp": ["cmake --preset dev", "cmake --build --preset dev", "ctest --preset dev"],
+    }[language]
+    validation = "\n".join(f'  "{command}",' for command in commands)
+    return (
+        'version = 1\nid = "default"\n'
+        f'title = "{language} evaluation"\n\n'
+        f'[tooling]\nsummary = "{language} project-owned workflow."\n'
+        f"default_validation = [\n{validation}\n]\n\n"
+        '[environment]\nmanaged_roles = []\n'
+    )
+
+
+class MixedLanguageScriptedAgent:
+    """Exercise component profiles and a repository-owned integration command."""
+
+    def __init__(self):
+        self.roles: list[str] = []
+        self.role_counts: dict[str, int] = {}
+        self.review_rejections = 0
+        self.prompt_chars: list[int] = []
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        role = invocation.role_name
+        self.roles.append(role)
+        self.role_counts[role] = self.role_counts.get(role, 0) + 1
+        self.prompt_chars.append(len(invocation.system_prompt) + len(invocation.session_prompt))
+        if role == "architect":
+            _design_plan(invocation.root).write_text(
+                "# Design Plan\n\nRust and Go components with a root integration command.\n"
+            )
+        elif role == "planner":
+            self._plan(invocation.root)
+        elif role == "developer":
+            self._develop(invocation.root)
+        elif role == "reviewer":
+            approve_review_task(invocation.root)
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        return handoff(invocation.role_name)
+
+    def _plan(self, root: Path) -> None:
+        _project_plan(root).write_text(
+            "# Project Plan\n\n## M1: Mixed workspace\n"
+            "- T0001: Implement Rust component\n"
+            "- T0002: Implement Go component\n"
+            "- T0003: Add cross-component validation\n"
+        )
+        profiles = root / ".devlab/config/profiles"
+        (profiles / "rust.toml").write_text(_named_profile("rust", ["cargo test"]))
+        (profiles / "go.toml").write_text(_named_profile("go", ["go test ./..."]))
+        (profiles / "integration.toml").write_text(_named_profile("integration", ["make check"]))
+        tasks = (
+            ("T0001", "Implement Rust component", "rust", []),
+            ("T0002", "Implement Go component", "go", ["T0001"]),
+            ("T0003", "Add cross-component validation", "integration", ["T0001", "T0002"]),
+        )
+        for task_id, title, profile, dependencies in tasks:
+            path = write_task(root, task_id, title, "M1", depends_on=dependencies)
+            text = path.read_text().replace('profile = "default"', f'profile = "{profile}"')
+            path.write_text(text.replace('validation = []\n', ""))
+
+    def _develop(self, root: Path) -> None:
+        task = FileTaskTracker(root).select_next_development_task()
+        assert task is not None
+        complete_acceptance(root, task.id)
+        if task.id == "T0001":
+            write_mixed_rust_go_component(root, "rust")
+        elif task.id == "T0002":
+            write_mixed_rust_go_component(root, "go")
+        else:
+            write_mixed_rust_go_integration(root)
+
+
+def _named_profile(profile_id: str, commands: list[str]) -> str:
+    validation = "\n".join(f'  "{command}",' for command in commands)
+    return (
+        f'version = 1\nid = "{profile_id}"\ntitle = "{profile_id} workflow"\n\n'
+        f'[tooling]\nsummary = "{profile_id} project-owned workflow."\n'
+        f"default_validation = [\n{validation}\n]\n\n"
+        '[environment]\nmanaged_roles = []\n'
+    )
 
 
 class ClarificationCalculatorScriptedAgent(CalculatorScriptedAgent):

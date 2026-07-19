@@ -16,6 +16,8 @@ from devlab.workflow_state import WORKFLOW_STATE, initial_workflow_state_text
 
 LAYOUT_VERSION = 1
 _TEMPLATE_PACKAGE = "devlab.resources.init"
+DEFAULT_TEMPLATE = "neutral"
+INIT_TEMPLATES = ("neutral", "python", "rust", "go", "c", "cpp")
 
 TEMPLATE_FILES = (
     "config/README.md",
@@ -53,12 +55,16 @@ class InitResult:
 def init_workspace(
     root: Path,
     *,
+    template: str = DEFAULT_TEMPLATE,
     force: bool = False,
     automatic_git: bool = False,
     git_user_name: str | None = None,
     git_user_email: str | None = None,
 ) -> InitResult:
     """Create a target-local `.devlab/` workflow tree."""
+    if template not in INIT_TEMPLATES:
+        choices = ", ".join(INIT_TEMPLATES)
+        raise ValueError(f"unknown init template {template!r}; choose one of: {choices}")
     root = root.resolve()
     created: list[Path] = []
     skipped: list[Path] = []
@@ -81,7 +87,11 @@ def init_workspace(
     manifest = devlab / "manifest.toml"
     _write_file(
         manifest,
-        f"layout_version = {LAYOUT_VERSION}\ncreated_by = \"devlab\"\n",
+        (
+            f"layout_version = {LAYOUT_VERSION}\n"
+            'created_by = "devlab"\n'
+            f'init_template = "{template}"\n'
+        ),
         force=force,
         created=created,
         skipped=skipped,
@@ -98,7 +108,9 @@ def init_workspace(
 
     template_root = resources.files(_TEMPLATE_PACKAGE)
     for relative in TEMPLATE_FILES:
-        content = template_root.joinpath(relative).read_text()
+        override = template_root.joinpath("templates", template, relative)
+        source = override if override.is_file() else template_root.joinpath(relative)
+        content = source.read_text()
         _write_file(
             devlab / relative,
             content,

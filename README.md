@@ -1,6 +1,6 @@
 # DevLab
 
-DevLab is a reusable CLI and Python package for running an auditable, file-backed, role-based agentic software development workflow inside a target repository.
+DevLab is a reusable CLI and Python package for running an auditable, file-backed, role-based agentic software development workflow inside a target repository. DevLab itself requires Python, but target projects may use Python, Rust, Go, C, C++, or mixed toolchains.
 
 DevLab provides the orchestrator and packaged worker prompts. The target repository stores product-specific specs, plans, tasks, milestones, findings, handoffs, configuration, and logs under `.devlab/`.
 
@@ -92,6 +92,16 @@ mkdir -p /path/to/target-project
 cd /path/to/target-project
 devlab init
 ```
+
+Initialization is language-neutral by default. To start a greenfield project
+with conventional tooling guidance, select an explicit starter:
+
+```bash
+devlab init --template python  # or rust, go, c, cpp
+```
+
+Templates only generate initial tooling policy and profile files. They do not
+enable a hidden language mode, and DevLab does not install their host tools.
 
 `devlab init` initializes Git when needed and creates an initial commit containing all non-ignored files. In existing directories, add secrets, local configuration, caches, and generated artifacts to `.gitignore` before running it.
 

@@ -3,6 +3,71 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def write_compiled_cli(root: Path, language: str) -> None:
+    """Write a dependency-free CLI and build metadata for a toolchain evaluation."""
+    if language == "rust":
+        (root / "src").mkdir()
+        (root / "Cargo.toml").write_text(
+            '[package]\nname = "devlab-eval"\nversion = "0.1.0"\nedition = "2021"\n'
+        )
+        (root / "src/main.rs").write_text('fn main() { println!("hello from rust"); }\n')
+        (root / ".gitignore").write_text("/target/\n")
+        return
+    if language == "go":
+        (root / "go.mod").write_text("module example.invalid/devlab-eval\n\ngo 1.22\n")
+        (root / "main.go").write_text(
+            'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println("hello from go") }\n'
+        )
+        return
+    if language not in {"c", "cpp"}:
+        raise ValueError(f"unsupported compiled evaluation language: {language}")
+    extension = "c" if language == "c" else "cpp"
+    standard = "11" if language == "c" else "20"
+    project_language = "C" if language == "c" else "CXX"
+    message = "hello from c" if language == "c" else "hello from cpp"
+    source = (
+        '#include <stdio.h>\nint main(void) { puts("hello from c"); return 0; }\n'
+        if language == "c"
+        else '#include <iostream>\nint main() { std::cout << "hello from cpp\\n"; }\n'
+    )
+    (root / f"main.{extension}").write_text(source)
+    (root / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.20)\n"
+        f"project(devlab_eval LANGUAGES {project_language})\n"
+        f"set(CMAKE_{project_language}_STANDARD {standard})\n"
+        f"add_executable(devlab-eval main.{extension})\n"
+        "enable_testing()\n"
+        "add_test(NAME output COMMAND devlab-eval)\n"
+        f'set_tests_properties(output PROPERTIES PASS_REGULAR_EXPRESSION "{message}")\n'
+    )
+    (root / "CMakePresets.json").write_text(
+        '{\n  "version": 3,\n  "configurePresets": [{\n'
+        '    "name": "dev", "generator": "Unix Makefiles",\n'
+        '    "binaryDir": "${sourceDir}/build"\n'
+        '  }],\n  "buildPresets": [{"name": "dev", "configurePreset": "dev"}],\n'
+        '  "testPresets": [{"name": "dev", "configurePreset": "dev"}]\n}\n'
+    )
+    (root / ".gitignore").write_text("/build/\n")
+
+
+def write_mixed_rust_go_component(root: Path, language: str) -> None:
+    component = root / f"{language}-component"
+    component.mkdir()
+    write_compiled_cli(component, language)
+
+
+def write_mixed_rust_go_integration(root: Path) -> None:
+    (root / "Makefile").write_text(
+        ".PHONY: check\n"
+        "check:\n"
+        "\tcargo test --manifest-path rust-component/Cargo.toml\n"
+        "\tcd go-component && go test ./...\n"
+    )
+    gitignore = root / ".gitignore"
+    existing = gitignore.read_text() if gitignore.exists() else ""
+    gitignore.write_text(existing + "/rust-component/target/\n")
+
+
 def write_calculator(root: Path, *, include_subtract: bool) -> None:
     subtract_block = (
         "    if operation == 'subtract':\n"

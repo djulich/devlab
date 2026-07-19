@@ -25,6 +25,43 @@ class CheckResult:
 BlackBoxCheck = Callable[[Path], CheckResult]
 
 
+def optional_toolchain_command_check(
+    name: str,
+    command: Sequence[str],
+    *,
+    required_tools: Sequence[str] | None = None,
+    expected_stdout: str | None = None,
+    timeout: int = 60,
+) -> BlackBoxCheck:
+    """Run a target command when its host toolchain is available."""
+    tools = tuple(required_tools or command[:1])
+
+    def check(root: Path) -> CheckResult:
+        missing = [tool for tool in tools if shutil.which(tool) is None]
+        if missing:
+            names = ", ".join(repr(tool) for tool in missing)
+            return CheckResult(name, True, f"skipped: {names} not on PATH; unverified")
+        result = subprocess.run(
+            command,
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        output_matches = expected_stdout is None or result.stdout.strip() == expected_stdout
+        passed = result.returncode == 0 and output_matches
+        return CheckResult(
+            name,
+            passed,
+            ""
+            if passed
+            else f"exit={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+
+    return check
+
+
 def command_check(name: str, args: Sequence[str], expected_stdout: str) -> BlackBoxCheck:
     def check(root: Path) -> CheckResult:
         result = subprocess.run(

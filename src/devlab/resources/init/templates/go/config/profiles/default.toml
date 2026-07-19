@@ -1,10 +1,14 @@
 version = 1
 id = "default"
-title = "Neutral project workflow"
+title = "Go module workflow"
 
 [tooling]
-summary = "Project-owned tooling; define validation before implementation tasks depend on it."
-default_validation = []
+summary = "Go module using gofmt, go vet, and go test."
+default_validation = [
+  "test -z \"$(gofmt -l .)\"",
+  "go vet ./...",
+  "go test ./...",
+]
 
 [environment]
 managed_roles = ["developer", "reviewer", "integrator"]

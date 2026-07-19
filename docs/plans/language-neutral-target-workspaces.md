@@ -1,5 +1,10 @@
 # Language-Neutral Target Workspaces Plan
 
+Status: **implemented**. Neutral initialization, explicit Python/Rust/Go/C/C++
+starters, compiled-language workflow evaluations, and a mixed Rust/Go profile
+baseline are implemented. Further validation-result enforcement belongs to the
+general workflow-contract hardening work rather than language-specific logic.
+
 This plan implements the language-neutral target support item in `docs/todo.md`.
 DevLab itself remains a Python CLI/package, but the repositories it operates on
 must be able to use Rust, Go, C, C++, or another project-owned toolchain without

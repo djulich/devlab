@@ -140,6 +140,12 @@ Instead:
 
 This keeps agents focused and reduces duplicated instructions across Markdown files.
 
+New workspaces receive a language-neutral tooling policy and profile by default.
+Explicit Python, Rust, Go, C, and C++ initialization templates are convenience
+starters only: the generated files remain authoritative, and orchestration does
+not retain or branch on a target-language mode. Mixed-language work uses normal
+task-specific profiles plus a repository-owned aggregate integration command.
+
 ### State transitions should be explicit
 
 The workflow is designed around explicit state transitions rather than implicit progress.
