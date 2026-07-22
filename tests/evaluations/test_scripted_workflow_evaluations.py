@@ -104,9 +104,20 @@ from tests.evaluations.scripted_agents import (
             "go",
             "go.mod",
             (
-                optional_toolchain_command_check("go test", ["go", "test", "./..."]),
                 optional_toolchain_command_check(
-                    "go CLI output", ["go", "run", "."], expected_stdout="hello from go"
+                    "Go format",
+                    ["gofmt", "-l", "."],
+                    required_tools=["gofmt"],
+                    expected_stdout="",
+                ),
+                optional_toolchain_command_check(
+                    "go test", ["go", "test", "./..."], required_tools=["go"]
+                ),
+                optional_toolchain_command_check(
+                    "go CLI output",
+                    ["go", "run", "."],
+                    required_tools=["go"],
+                    expected_stdout="hello from go",
                 ),
             ),
         ),
@@ -125,7 +136,7 @@ from tests.evaluations.scripted_agents import (
                 ),
                 optional_toolchain_command_check(
                     "C test", ["ctest", "--preset", "dev"],
-                    required_tools=["ctest", "make", "cc"],
+                    required_tools=["cmake", "ctest", "make", "cc"],
                 ),
             ),
         ),
@@ -144,7 +155,7 @@ from tests.evaluations.scripted_agents import (
                 ),
                 optional_toolchain_command_check(
                     "C++ test", ["ctest", "--preset", "dev"],
-                    required_tools=["ctest", "make", "c++"],
+                    required_tools=["cmake", "ctest", "make", "c++"],
                 ),
             ),
         ),
@@ -488,6 +499,49 @@ def test_optional_rust_check_reports_missing_component_as_unverified(
     check = optional_toolchain_command_check(
         "Rust check",
         ["cargo", "test"],
+        required_tools=required_tools,
+    )
+
+    result = check(tmp_path)
+
+    assert result.passed is True
+    assert result.message == f"skipped: {missing_tool!r} not on PATH; unverified"
+
+
+@pytest.mark.parametrize(
+    ("command", "required_tools", "available_tools", "missing_tool"),
+    [
+        (["gofmt", "-l", "."], ["gofmt"], set(), "gofmt"),
+        (["go", "test", "./..."], ["go"], set(), "go"),
+        (
+            ["cmake", "--preset", "dev"],
+            ["cmake", "make", "cc"],
+            {"cmake", "make"},
+            "cc",
+        ),
+        (
+            ["ctest", "--preset", "dev"],
+            ["cmake", "ctest", "make", "c++"],
+            {"ctest", "make", "c++"},
+            "cmake",
+        ),
+    ],
+)
+def test_optional_go_and_native_checks_report_missing_prerequisites_as_unverified(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+    required_tools: list[str],
+    available_tools: set[str],
+    missing_tool: str,
+) -> None:
+    monkeypatch.setattr(
+        "tests.evaluations.checks.shutil.which",
+        lambda tool: f"/tool/bin/{tool}" if tool in available_tools else None,
+    )
+    check = optional_toolchain_command_check(
+        "Toolchain check",
+        command,
         required_tools=required_tools,
     )
 
