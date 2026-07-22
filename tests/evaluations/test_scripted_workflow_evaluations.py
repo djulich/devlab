@@ -84,11 +84,18 @@ from tests.evaluations.scripted_agents import (
             "rust",
             "Cargo.toml",
             (
-                optional_toolchain_command_check("cargo format", ["cargo", "fmt", "--check"]),
-                optional_toolchain_command_check("cargo test", ["cargo", "test"]),
+                optional_toolchain_command_check(
+                    "cargo format",
+                    ["cargo", "fmt", "--check"],
+                    required_tools=["cargo", "rustfmt"],
+                ),
+                optional_toolchain_command_check(
+                    "cargo test", ["cargo", "test"], required_tools=["cargo", "rustc"]
+                ),
                 optional_toolchain_command_check(
                     "rust CLI output",
                     ["cargo", "run", "--quiet"],
+                    required_tools=["cargo", "rustc"],
                     expected_stdout="hello from rust",
                 ),
             ),
@@ -163,6 +170,8 @@ def test_scripted_compiled_language_workflow_evaluation(
 
     _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact=artifact)
     assert diagnostics.profiles.items[0].default_validation_count >= 2
+    if language == "rust":
+        assert "version = 3" in (tmp_path / "Cargo.lock").read_text()
 
 
 def test_scripted_mixed_language_workflow_evaluation(tmp_path: Path) -> None:
@@ -460,6 +469,32 @@ def test_optional_make_target_check_is_skipped_unless_enabled(tmp_path: Path) ->
     assert result.passed is True
     assert "skipped" in result.message
     assert "DEVLAB_EVAL_DEPLOYMENT_TOOLS=1" in result.message
+
+
+@pytest.mark.parametrize(
+    ("required_tools", "missing_tool"),
+    [(["cargo", "rustfmt"], "rustfmt"), (["cargo", "rustc"], "rustc")],
+)
+def test_optional_rust_check_reports_missing_component_as_unverified(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    required_tools: list[str],
+    missing_tool: str,
+) -> None:
+    monkeypatch.setattr(
+        "tests.evaluations.checks.shutil.which",
+        lambda tool: "/tool/bin/cargo" if tool == "cargo" else None,
+    )
+    check = optional_toolchain_command_check(
+        "Rust check",
+        ["cargo", "test"],
+        required_tools=required_tools,
+    )
+
+    result = check(tmp_path)
+
+    assert result.passed is True
+    assert result.message == f"skipped: {missing_tool!r} not on PATH; unverified"
 
 
 def test_optional_make_target_check_reports_missing_make_as_unverified(
