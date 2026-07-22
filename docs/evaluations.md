@@ -35,10 +35,13 @@ DEVLAB_EVAL_DEPLOYMENT_TOOLS=1 uv run pytest tests/evaluations
 
 When enabled, missing host tools such as `make` are reported as skipped/unverified rather than installed. Target-owned commands that do run must pass, or the evaluation fails.
 
-Compiled-language scenarios always exercise the complete scripted workflow and
-structurally check their generated projects. Their Cargo, Go, compiler, CMake,
-CTest, and mixed-workspace commands run automatically when the required tools
-are on `PATH`; otherwise the individual check is recorded as skipped/unverified.
+Compiled-language structural scenarios always exercise the complete scripted
+workflow and check their generated projects without depending on host
+toolchains. Separate toolchain-verification tests run Cargo, Go, compiler,
+CMake, CTest, and mixed-workspace commands. Each verification test has a fixed
+scope: it runs all of its commands when its complete prerequisite set is on
+`PATH`, or pytest explicitly skips the whole test and reports the missing tools.
+Use `pytest -rs` to display individual skip reasons.
 
 The scripted provider writes realistic role artifacts without using LLM tokens. Each scenario records diagnostics in the temporary target repository:
 

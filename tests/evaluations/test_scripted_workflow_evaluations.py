@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -45,13 +46,13 @@ from tests.evaluations.checks import (
     file_contains_check,
     optional_docker_compose_config_check,
     optional_make_target_check,
-    optional_toolchain_command_check,
     react_vite_browser_integration_check,
     react_vite_container_build_check,
     react_vite_frontend_check,
     stateful_todo_api_check,
     static_frontend_check,
     stdlib_http_api_check,
+    toolchain_command_check,
 )
 from tests.evaluations.generated_products import write_stateful_todo_api
 from tests.evaluations.harness import (
@@ -77,105 +78,44 @@ from tests.evaluations.scripted_agents import (
 )
 
 
-@pytest.mark.parametrize(
-    ("language", "artifact", "checks"),
-    [
-        (
-            "rust",
-            "Cargo.toml",
-            (
-                optional_toolchain_command_check(
-                    "cargo format",
-                    ["cargo", "fmt", "--check"],
-                    required_tools=["cargo", "rustfmt"],
-                ),
-                optional_toolchain_command_check(
-                    "cargo test", ["cargo", "test"], required_tools=["cargo", "rustc"]
-                ),
-                optional_toolchain_command_check(
-                    "rust CLI output",
-                    ["cargo", "run", "--quiet"],
-                    required_tools=["cargo", "rustc"],
-                    expected_stdout="hello from rust",
-                ),
-            ),
-        ),
-        (
-            "go",
-            "go.mod",
-            (
-                optional_toolchain_command_check(
-                    "Go format",
-                    ["gofmt", "-l", "."],
-                    required_tools=["gofmt"],
-                    expected_stdout="",
-                ),
-                optional_toolchain_command_check(
-                    "go test", ["go", "test", "./..."], required_tools=["go"]
-                ),
-                optional_toolchain_command_check(
-                    "go CLI output",
-                    ["go", "run", "."],
-                    required_tools=["go"],
-                    expected_stdout="hello from go",
-                ),
-            ),
-        ),
-        (
-            "c",
-            "CMakeLists.txt",
-            (
-                optional_toolchain_command_check(
-                    "C configure",
-                    ["cmake", "--preset", "dev"],
-                    required_tools=["cmake", "make", "cc"],
-                ),
-                optional_toolchain_command_check(
-                    "C build", ["cmake", "--build", "--preset", "dev"],
-                    required_tools=["cmake", "make", "cc"],
-                ),
-                optional_toolchain_command_check(
-                    "C test", ["ctest", "--preset", "dev"],
-                    required_tools=["cmake", "ctest", "make", "cc"],
-                ),
-            ),
-        ),
-        (
-            "cpp",
-            "CMakeLists.txt",
-            (
-                optional_toolchain_command_check(
-                    "C++ configure",
-                    ["cmake", "--preset", "dev"],
-                    required_tools=["cmake", "make", "c++"],
-                ),
-                optional_toolchain_command_check(
-                    "C++ build", ["cmake", "--build", "--preset", "dev"],
-                    required_tools=["cmake", "make", "c++"],
-                ),
-                optional_toolchain_command_check(
-                    "C++ test", ["ctest", "--preset", "dev"],
-                    required_tools=["cmake", "ctest", "make", "c++"],
-                ),
-            ),
-        ),
-    ],
-)
-def test_scripted_compiled_language_workflow_evaluation(
-    tmp_path: Path, language: str, artifact: str, checks: tuple[BlackBoxCheck, ...]
-) -> None:
-    scenario = EvaluationScenario(
+def _compiled_language_scenario(
+    language: str,
+    artifact: str,
+    extra_checks: tuple[BlackBoxCheck, ...] = (),
+) -> EvaluationScenario:
+    return EvaluationScenario(
         id=f"{language}-cli-happy-path",
         title=f"{language} CLI happy path",
         system_spec=f"Build a minimal {language} CLI with project-owned validation.",
         max_sessions=8,
         scripted_agent=CompiledLanguageScriptedAgent(language),
-        checks=(file_contains_check("toolchain artifact", artifact, ""), *checks),
+        checks=(file_contains_check("toolchain artifact", artifact, ""), *extra_checks),
         expected_roles=(
             "architect", "planner", "developer", "reviewer", "integrator", "architect",
         ),
         expected_sessions=6,
     )
+
+
+def _require_tools(tools: tuple[str, ...]) -> None:
+    missing = [tool for tool in tools if shutil.which(tool) is None]
+    if missing:
+        pytest.skip(f"requires tools on PATH: {', '.join(missing)}")
+
+
+@pytest.mark.parametrize(
+    ("language", "artifact"),
+    [
+        ("rust", "Cargo.toml"),
+        ("go", "go.mod"),
+        ("c", "CMakeLists.txt"),
+        ("cpp", "CMakeLists.txt"),
+    ],
+)
+def test_scripted_compiled_language_workflow_evaluation(
+    tmp_path: Path, language: str, artifact: str
+) -> None:
+    scenario = _compiled_language_scenario(language, artifact)
 
     diagnostics = run_scripted_evaluation(tmp_path, scenario)
 
@@ -185,7 +125,106 @@ def test_scripted_compiled_language_workflow_evaluation(
         assert "version = 3" in (tmp_path / "Cargo.lock").read_text()
 
 
+@pytest.mark.parametrize(
+    ("language", "artifact", "required_tools", "checks"),
+    [
+        (
+            "rust",
+            "Cargo.toml",
+            ("cargo", "rustfmt", "rustc"),
+            (
+                toolchain_command_check("cargo format", ["cargo", "fmt", "--check"]),
+                toolchain_command_check("cargo test", ["cargo", "test"]),
+                toolchain_command_check(
+                    "rust CLI output", ["cargo", "run", "--quiet"],
+                    expected_stdout="hello from rust",
+                ),
+            ),
+        ),
+        (
+            "go",
+            "go.mod",
+            ("gofmt", "go"),
+            (
+                toolchain_command_check(
+                    "Go format", ["gofmt", "-l", "."], expected_stdout=""
+                ),
+                toolchain_command_check("go test", ["go", "test", "./..."]),
+                toolchain_command_check(
+                    "go CLI output", ["go", "run", "."], expected_stdout="hello from go"
+                ),
+            ),
+        ),
+        (
+            "c",
+            "CMakeLists.txt",
+            ("cmake", "ctest", "make", "cc"),
+            (
+                toolchain_command_check("C configure", ["cmake", "--preset", "dev"]),
+                toolchain_command_check(
+                    "C build", ["cmake", "--build", "--preset", "dev"]
+                ),
+                toolchain_command_check("C test", ["ctest", "--preset", "dev"]),
+            ),
+        ),
+        (
+            "cpp",
+            "CMakeLists.txt",
+            ("cmake", "ctest", "make", "c++"),
+            (
+                toolchain_command_check("C++ configure", ["cmake", "--preset", "dev"]),
+                toolchain_command_check(
+                    "C++ build", ["cmake", "--build", "--preset", "dev"]
+                ),
+                toolchain_command_check("C++ test", ["ctest", "--preset", "dev"]),
+            ),
+        ),
+    ],
+)
+def test_compiled_language_toolchain_verification(
+    tmp_path: Path,
+    language: str,
+    artifact: str,
+    required_tools: tuple[str, ...],
+    checks: tuple[BlackBoxCheck, ...],
+) -> None:
+    _require_tools(required_tools)
+    scenario = _compiled_language_scenario(language, artifact, checks)
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact=artifact)
+
+
 def test_scripted_mixed_language_workflow_evaluation(tmp_path: Path) -> None:
+    scenario = _mixed_language_scenario()
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="Makefile")
+    assert diagnostics.profiles.tasks_by_profile == {
+        "go": ["T0002"],
+        "integration": ["T0003"],
+        "rust": ["T0001"],
+    }
+
+
+def test_mixed_language_toolchain_verification(tmp_path: Path) -> None:
+    _require_tools(("make", "cargo", "rustc", "go"))
+    scenario = _mixed_language_scenario(
+        (
+            toolchain_command_check("cross-component validation", ["make", "check"]),
+        )
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="Makefile")
+
+
+def _mixed_language_scenario(
+    extra_checks: tuple[BlackBoxCheck, ...] = (),
+) -> EvaluationScenario:
     scenario = EvaluationScenario(
         id="mixed-rust-go-happy-path",
         title="Mixed Rust and Go workspace",
@@ -198,11 +237,7 @@ def test_scripted_mixed_language_workflow_evaluation(tmp_path: Path) -> None:
         checks=(
             file_contains_check("Rust component", "rust-component/Cargo.toml", "[package]"),
             file_contains_check("Go component", "go-component/go.mod", "module "),
-            optional_toolchain_command_check(
-                "cross-component validation",
-                ["make", "check"],
-                required_tools=["make", "cargo", "go"],
-            ),
+            *extra_checks,
         ),
         expected_roles=(
             "architect", "planner", "developer", "reviewer", "developer", "reviewer",
@@ -211,14 +246,7 @@ def test_scripted_mixed_language_workflow_evaluation(tmp_path: Path) -> None:
         expected_sessions=10,
     )
 
-    diagnostics = run_scripted_evaluation(tmp_path, scenario)
-
-    _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="Makefile")
-    assert diagnostics.profiles.tasks_by_profile == {
-        "go": ["T0002"],
-        "integration": ["T0003"],
-        "rust": ["T0001"],
-    }
+    return scenario
 
 
 def test_scripted_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
@@ -480,75 +508,6 @@ def test_optional_make_target_check_is_skipped_unless_enabled(tmp_path: Path) ->
     assert result.passed is True
     assert "skipped" in result.message
     assert "DEVLAB_EVAL_DEPLOYMENT_TOOLS=1" in result.message
-
-
-@pytest.mark.parametrize(
-    ("required_tools", "missing_tool"),
-    [(["cargo", "rustfmt"], "rustfmt"), (["cargo", "rustc"], "rustc")],
-)
-def test_optional_rust_check_reports_missing_component_as_unverified(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    required_tools: list[str],
-    missing_tool: str,
-) -> None:
-    monkeypatch.setattr(
-        "tests.evaluations.checks.shutil.which",
-        lambda tool: "/tool/bin/cargo" if tool == "cargo" else None,
-    )
-    check = optional_toolchain_command_check(
-        "Rust check",
-        ["cargo", "test"],
-        required_tools=required_tools,
-    )
-
-    result = check(tmp_path)
-
-    assert result.passed is True
-    assert result.message == f"skipped: {missing_tool!r} not on PATH; unverified"
-
-
-@pytest.mark.parametrize(
-    ("command", "required_tools", "available_tools", "missing_tool"),
-    [
-        (["gofmt", "-l", "."], ["gofmt"], set(), "gofmt"),
-        (["go", "test", "./..."], ["go"], set(), "go"),
-        (
-            ["cmake", "--preset", "dev"],
-            ["cmake", "make", "cc"],
-            {"cmake", "make"},
-            "cc",
-        ),
-        (
-            ["ctest", "--preset", "dev"],
-            ["cmake", "ctest", "make", "c++"],
-            {"ctest", "make", "c++"},
-            "cmake",
-        ),
-    ],
-)
-def test_optional_go_and_native_checks_report_missing_prerequisites_as_unverified(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    command: list[str],
-    required_tools: list[str],
-    available_tools: set[str],
-    missing_tool: str,
-) -> None:
-    monkeypatch.setattr(
-        "tests.evaluations.checks.shutil.which",
-        lambda tool: f"/tool/bin/{tool}" if tool in available_tools else None,
-    )
-    check = optional_toolchain_command_check(
-        "Toolchain check",
-        command,
-        required_tools=required_tools,
-    )
-
-    result = check(tmp_path)
-
-    assert result.passed is True
-    assert result.message == f"skipped: {missing_tool!r} not on PATH; unverified"
 
 
 def test_optional_make_target_check_reports_missing_make_as_unverified(
