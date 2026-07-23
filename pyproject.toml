@@ -19,8 +19,8 @@ classifiers = [
 ]
 
 [project.urls]
-Issues = "https://github.com/mucisland/harness-template-1/issues"
-Source = "https://github.com/mucisland/harness-template-1"
+Issues = "https://github.com/mucisland/devlab/issues"
+Source = "https://github.com/mucisland/devlab"
 
 [dependency-groups]
 dev = ["pytest", "ruff", "ty"]
