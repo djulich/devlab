@@ -434,19 +434,17 @@ Future UX options:
 - `devlab clarify answer CL0001 --use-default`
 - `devlab plan --interactive-clarifications`
 - `devlab implement --interactive-clarifications`
-- `devlab plan --clarification-mode=agent`
-- `devlab implement --clarification-mode=agent`
-- `devlab plan --unattended`
-- `devlab implement --unattended`
 - `devlab clarify export --pending`
 
-Do not implement unattended answering in the first slice. The first slice should prove the durable state and stop/resume behavior.
+Unattended answering was intentionally deferred from the first implementation
+slice until the durable stop/answer/resume path was proven. It is now
+implemented as described below.
 
 ## Unattended Clarification Resolution
 
 Unattended mode must not disable durable clarifications. It should preserve the same clarification record, resume pointer, validation path, prompt context, and audit trail, but route the pending decision to a bounded resolver agent session instead of stopping for an operator.
 
-Recommended CLI shape:
+Implemented CLI shape:
 
 ```bash
 devlab plan --clarification-mode=operator
@@ -456,7 +454,11 @@ devlab implement --clarification-mode=agent
 devlab implement --unattended
 ```
 
-`operator` is the current behavior: write the clarification and resume pointer, then stop with answer/resume instructions. `agent` means DevLab writes the clarification and resume pointer, invokes a separate resolver session, validates the resolver's answer through shared clarification validation, and resumes through the stored route. `--unattended` should be a convenience alias for the fully unattended policy once the surrounding command behavior is defined; at minimum it should select `--clarification-mode=agent`.
+`operator` writes the clarification and resume pointer, then stops with
+answer/resume instructions. `agent` writes the same durable state, invokes a
+separate resolver session, validates the resolver's answer through shared
+clarification validation, and resumes through the stored route. `--unattended`
+is the convenience alias for `--clarification-mode=agent`.
 
 Do not let the original blocked role silently answer its own clarification inline. The useful property of a clarification is that the role had to externalize a decision rather than continuing inside the same bounded session. In unattended mode, "external" means a separate resolver role/session with a narrow prompt contract.
 

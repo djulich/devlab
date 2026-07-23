@@ -175,7 +175,8 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 
 Useful `implement` and `plan` options include `--provider`, `--model`, `--effort`,
 `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`. Both commands also
-support `--unattended` (bounded agent clarification resolution) and
+support `--clarification-mode=operator|agent`; `--unattended` selects bounded
+agent clarification resolution. They also support
 `--handoff-correction` (one isolated correction attempt when a role exits without
 an accepted result).
 

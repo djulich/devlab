@@ -117,7 +117,18 @@ Important workflow state is stored in files, for example:
 
 This makes the workflow restartable. If an agent session fails or the process stops, the next run can reconstruct the state from the repository.
 
-Clarifications are distinct from findings. A finding means repository work is needed; a clarification means operator intent is needed. A valid role handoff may request one clarification instead of making its normal workflow transition. DevLab archives the handoff, writes `.devlab/clarifications/CLXXXX_*.md`, stores a `[resume]` pointer in `.devlab/workflow.toml`, and stops until the operator answers with `devlab clarify answer ...` or edits the clarification record and runs `devlab resume`.
+Clarifications are distinct from findings. A finding means repository work is
+needed; a clarification means operator intent is needed. A valid role handoff
+may request one clarification instead of making its normal workflow transition.
+DevLab archives the handoff, writes
+`.devlab/clarifications/CLXXXX_*.md`, and stores the interrupted route in a
+`[resume]` pointer in `.devlab/workflow.toml`. In the default operator mode,
+DevLab stops until the operator records a valid answer and resumes the stored
+route. With `--clarification-mode=agent` or its `--unattended` alias, DevLab
+instead invokes a separate bounded clarification-resolver session, validates
+and records its answer with agent provenance, and continues through that same
+stored route. Both modes preserve the clarification record and resume semantics
+as durable workflow state.
 
 ### Sessions are small and bounded
 

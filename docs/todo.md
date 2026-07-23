@@ -69,9 +69,11 @@ Open work:
 - Avoid overloading implementation tasks for pre-planning work; if design slices are needed, store them as architecture-planning artifacts rather than normal developer tasks.
 - Add tests/evaluations with an intentionally large spec that requires multiple architecture passes.
 
-## 6. Add Durable Operator Clarifications
+## 6. Durable Operator Clarifications
 
-Priority: medium. DevLab should support bounded user clarification when a role session encounters an ambiguity, contradiction, missing prerequisite, or scope decision that cannot be resolved safely from repository state.
+Priority: medium. DevLab supports bounded user clarification when a role session
+encounters an ambiguity, contradiction, missing prerequisite, or scope decision
+that cannot be resolved safely from repository state.
 
 Status: **durable clarification workflow and unattended resolver implemented**.
 DevLab has `.devlab/clarifications/` records, structured candidates for one
@@ -84,21 +86,25 @@ Usefulness: high, but only if tightly constrained. Clarification prevents agents
 
 GSD's `Discuss` step is a useful nearby pattern: capture implementation decisions before planning so the planner does not guess about libraries, error handling, UI behavior, or edge cases. DevLab should integrate that idea as bounded durable clarifications and planning decisions, not as an open-ended conversational phase. Reference: GSD [The phase loop](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/the-phase-loop.md).
 
-Expected behavior:
+Implemented behavior:
 
 - A role session may request operator clarification instead of making an unsafe assumption.
 - DevLab stops the workflow in a durable "needs clarification" state.
 - The clarification request is stored in repository state with the asking role, session id, question, relevant context, and expected answer shape.
 - The operator can answer through a CLI command or by editing a documented file.
-- Once answered, DevLab resumes with the answer included in the next relevant role prompt.
+- Once answered and resumed, DevLab includes the answer in the next relevant
+  role prompt.
 - Clarifications become durable project knowledge when they affect requirements, scope, architecture, task definitions, or deployment expectations.
-- Answered clarifications that constrain future implementation should get stable references so tasks, findings, and milestone verification can point at them without duplicating prose.
+- Unattended mode uses a separate bounded resolver session, records its answer
+  with agent provenance, and resumes through the same durable route.
 
 Open follow-up work:
 
 - Add narrower task/milestone-scoped blocking after more real usage; the initial behavior conservatively blocks top-level workflow continuation for pending blocking clarifications.
 - Add optional editor-mode clarification answering.
-- Decide whether task/finding `decision_refs` metadata is needed for stronger traceability.
+- Decide whether stable task/finding `decision_refs` metadata is needed so tasks,
+  findings, and milestone verification can reference clarification decisions
+  without duplicating prose.
 - Consider Git-aware resolver edit isolation or temporary worktrees only if live
   usage shows whole-workspace snapshots are too expensive or insufficiently
   contained.

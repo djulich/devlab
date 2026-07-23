@@ -111,6 +111,11 @@ plain `devlab resume` is useful after answering separately or validating a
 manually edited record. Superseding is an explicit repair for obsolete requests;
 it does not silently invent an answer.
 
+For a file-edit clarification, inspect the requested paths in the clarification
+record, make only those durable edits, then record a concise text answer
+summarizing the edits and run `devlab resume`. DevLab validates the answer and
+stored route before invoking another role.
+
 ## Specs and Planning
 
 DevLab reads all Markdown files under:

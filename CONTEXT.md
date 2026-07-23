@@ -76,7 +76,10 @@ _Avoid_: project documentation
 
 - A **Target workspace** contains **Workflow state**.
 - A **Role session** produces a **Handoff**.
-- A **Handoff** may request one **Clarification**, which blocks the relevant workflow command until answered.
+- A **Handoff** may request one **Clarification**, which records the interrupted
+  route for answer and resume. Pending clarifications with a blocking `blocks`
+  value conservatively stop the relevant workflow command; `blocks = "none"`
+  remains visible without blocking later progress.
 - A **Task** may belong to one **Milestone** and use one **Profile**.
 - A **Finding** may belong to one **Milestone** and is converted into **Addressing tasks** by the planner.
 - A **Workspace** creates **WorkspaceSnapshots** for read-only decisions and exposes handles for workflow mutations.
