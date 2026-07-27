@@ -209,6 +209,56 @@ Use `devlab status --verbose` to inspect the resolved provider, model, effort, t
 
 Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
 
+## Executable Configuration Trust
+
+DevLab does not interpret provider permission, approval, authentication,
+network, or sandbox options. Those policies are provider-native and
+operator-owned.
+
+Before an operator-facing command starts a provider or profile lifecycle
+command, DevLab builds a canonical snapshot of effective provider configuration,
+role mappings, invocation overrides, and profile lifecycle configuration. It
+fingerprints and freezes that parsed snapshot for the command. Formatting and
+comment-only TOML changes do not change the digest; executable values and
+provider/model/effort overrides do.
+
+Inspect and approve the current snapshot:
+
+```bash
+devlab trust executable-config --show
+devlab trust executable-config
+```
+
+Trust is stored outside the target repository in user-local DevLab state and is
+scoped to the canonical workspace, agent-config source, and digest. A target
+repository cannot carry its own operator trust record. Editing executable
+configuration produces a new digest and requires another approval:
+
+```bash
+devlab trust executable-config --revoke
+```
+
+Unattended CI can require an independently approved full digest:
+
+```bash
+devlab implement --unattended \
+  --require-exec-config-digest "$APPROVED_DEVLAB_EXEC_DIGEST"
+```
+
+The expected value should come from protected CI or runner configuration, not an
+ordinary target-repository file. An externally contained or disposable
+environment may explicitly accept the current snapshot for one invocation:
+
+```bash
+devlab implement --unattended --accept-current-exec-config
+```
+
+This does not create persistent trust. DevLab records the digest and
+authorization source and still freezes the snapshot. Trust covers configured
+process entry points only; it does not cover the implementation or transitive
+behavior of commands such as `make setup`, nor does it contain a process after
+launch.
+
 Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under `.devlab/logs/agents/`. Use `--provider <name>` to select one provider, or `--all-providers` to also test unassigned provider entries that have provider-local defaults. Add `--use-provider-defaults` with `--provider` or `--all-providers` to test `[providers.<name>.defaults]` directly instead of role-derived policy.
 
 ```bash

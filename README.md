@@ -43,6 +43,14 @@ In particular:
 
 DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab implement`, especially in cloned or agent-modified workspaces.
 
+Before starting configured processes, DevLab fingerprints the effective provider
+and profile lifecycle configuration. Operators can approve that fingerprint in
+user-local state with `devlab trust executable-config`, require an independently
+approved digest in CI, or explicitly accept the current snapshot for one
+externally contained invocation. DevLab treats provider permission and sandbox
+options as opaque operator-owned policy. Trusting configured process entry points
+does not certify the commands or their transitive behavior as safe.
+
 ## Prerequisites
 
 To install and run DevLab, you need:
@@ -132,6 +140,8 @@ Inspect the workspace:
 devlab doctor
 devlab status --verbose
 devlab workflow-state
+devlab trust executable-config --show
+devlab trust executable-config
 devlab agent-smoke-test
 devlab diagnostics
 ```
@@ -169,6 +179,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab workflow-state [--root PATH] [--digest] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state. Use `--digest` for a compact operator summary; add `--json` to serialize the selected view.
 - `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
+- `devlab trust executable-config [--root PATH] [--config PATH] [--show|--revoke]` — inspect, approve, or revoke workspace-scoped executable-configuration trust stored in user-local DevLab state.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
 - `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.

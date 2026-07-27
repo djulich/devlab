@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ from devlab.workflow_state import ResumeState, load_workflow_state
 from devlab.workspace import Workspace
 
 if TYPE_CHECKING:
+    from devlab.executable_config import ExecutableConfigSnapshot
     from devlab.orchestrator import RunResult
 
 
@@ -146,6 +148,8 @@ def answer_clarification(
     operator: str = "",
     resume: bool = False,
     max_sessions: int = 20,
+    executable_config: ExecutableConfigSnapshot | None = None,
+    executable_config_factory: Callable[[], ExecutableConfigSnapshot] | None = None,
 ) -> ClarificationAnswerResult:
     workspace = Workspace(root)
     clarification_handle = workspace.clarifications().get(clarification_id)
@@ -166,7 +170,12 @@ def answer_clarification(
         )
     run_result = None
     if resume:
-        dispatch = resume_workflow(root, max_sessions=max_sessions)
+        dispatch = resume_workflow(
+            root,
+            max_sessions=max_sessions,
+            executable_config=executable_config,
+            executable_config_factory=executable_config_factory,
+        )
         run_result = dispatch.run_result
         if not dispatch.resumed:
             raise ValueError(dispatch.message)
@@ -177,7 +186,13 @@ def supersede_clarification(root: Path, clarification_id: str, reason: str) -> C
     return Workspace(root).clarifications().get(clarification_id).supersede(reason)
 
 
-def resume_workflow(root: Path, *, max_sessions: int = 20) -> ResumeDispatchResult:
+def resume_workflow(
+    root: Path,
+    *,
+    max_sessions: int = 20,
+    executable_config: ExecutableConfigSnapshot | None = None,
+    executable_config_factory: Callable[[], ExecutableConfigSnapshot] | None = None,
+) -> ResumeDispatchResult:
     from devlab.orchestrator import RunStopReason, run_loop
 
     state = load_workflow_state(root)
@@ -193,11 +208,14 @@ def resume_workflow(root: Path, *, max_sessions: int = 20) -> ResumeDispatchResu
             False,
             _resume_validation_message(state.resume, validation.message),
         )
+    if executable_config is None and executable_config_factory is not None:
+        executable_config = executable_config_factory()
     result = run_loop(
         root,
         max_sessions=max_sessions,
         automatic_version_control=True,
         planning_only=state.resume.command == "plan",
+        executable_config=executable_config,
     )
     if result.exit_code != 0:
         message = (

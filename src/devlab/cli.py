@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
+import sys
 from pathlib import Path
 
 from devlab._logging import configure_logging
@@ -19,6 +21,16 @@ from devlab.clarification_ops import (
 from devlab.clarifications import FileClarificationTracker
 from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
 from devlab.doctor import check_workspace, format_doctor_report
+from devlab.executable_config import (
+    ExecutableConfigSnapshot,
+    ExecutableConfigTrustError,
+    authorize_executable_config,
+    build_executable_config_snapshot,
+    executable_config_is_trusted,
+    format_executable_config,
+    revoke_executable_config_trust,
+    trust_executable_config,
+)
 from devlab.handoffs import (
     HandoffError,
     HandoffSubmissionError,
@@ -80,7 +92,28 @@ def _run_parent_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow one correction-only invocation for a missing accepted result.",
     )
+    _add_executable_config_authorization_options(parser)
     return parser
+
+
+def _add_executable_config_authorization_options(
+    parser: argparse.ArgumentParser,
+) -> None:
+    authorization = parser.add_mutually_exclusive_group()
+    authorization.add_argument(
+        "--require-exec-config-digest",
+        default=None,
+        metavar="DIGEST",
+        help="Run only when executable configuration matches this approved digest.",
+    )
+    authorization.add_argument(
+        "--accept-current-exec-config",
+        action="store_true",
+        help=(
+            "Accept current executable configuration for this invocation without "
+            "persistent trust; intended for externally contained environments."
+        ),
+    )
 
 
 def main() -> None:
@@ -291,6 +324,44 @@ def main() -> None:
         default=None,
         help="Override the configured effort for this smoke test.",
     )
+    _add_executable_config_authorization_options(smoke_parser)
+
+    trust_parser = subparsers.add_parser(
+        "trust", help="Inspect and manage operator-local trust."
+    )
+    trust_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Workspace root (default: current working directory).",
+    )
+    trust_subparsers = trust_parser.add_subparsers(
+        dest="trust_command", required=True
+    )
+    trust_exec = trust_subparsers.add_parser(
+        "executable-config",
+        help="Inspect, approve, or revoke executable configuration.",
+    )
+    trust_exec.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Agent config TOML path. Defaults to the target agents.toml.",
+    )
+    trust_exec.add_argument("--provider", default=None)
+    trust_exec.add_argument("--model", default=None)
+    trust_exec.add_argument("--effort", default=None)
+    trust_action = trust_exec.add_mutually_exclusive_group()
+    trust_action.add_argument(
+        "--show",
+        action="store_true",
+        help="Show effective executable configuration and trust status without changing it.",
+    )
+    trust_action.add_argument(
+        "--revoke",
+        action="store_true",
+        help="Revoke stored trust for this workspace and config source.",
+    )
 
     clean_parser = subparsers.add_parser(
         "clean-failed-session",
@@ -329,6 +400,7 @@ def main() -> None:
     clarify_answer.add_argument("--operator", default="")
     clarify_answer.add_argument("--resume", action="store_true")
     clarify_answer.add_argument("--max-sessions", type=int, default=20)
+    _add_executable_config_authorization_options(clarify_answer)
     clarify_supersede = clarify_subparsers.add_parser(
         "supersede", help="Mark a clarification superseded."
     )
@@ -344,6 +416,7 @@ def main() -> None:
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to operate on (default: current working directory).",
     )
+    _add_executable_config_authorization_options(resume_parser)
     resume_parser.add_argument(
         "--max-sessions",
         type=int,
@@ -410,6 +483,15 @@ def main() -> None:
         print(format_init_next_steps())
     elif args.command == "implement":
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+        executable_config = _authorized_executable_config(
+            root,
+            provider=args.provider,
+            model=args.model,
+            effort=args.effort,
+            expected_digest=args.require_exec_config_digest,
+            accept_current=args.accept_current_exec_config,
+            allow_prompt=not args.unattended,
+        )
         result = run_loop(
             root,
             max_sessions=args.max_sessions,
@@ -420,11 +502,25 @@ def main() -> None:
             automatic_version_control=True,
             clarification_mode=args.clarification_mode,
             handoff_correction=args.handoff_correction,
+            executable_config=executable_config,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
     elif args.command == "plan":
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+        executable_config = (
+            None
+            if args.mark_specs_planned
+            else _authorized_executable_config(
+                root,
+                provider=args.provider,
+                model=args.model,
+                effort=args.effort,
+                expected_digest=args.require_exec_config_digest,
+                accept_current=args.accept_current_exec_config,
+                allow_prompt=not args.unattended,
+            )
+        )
         result = run_loop(
             root,
             max_sessions=args.max_sessions,
@@ -440,6 +536,7 @@ def main() -> None:
             mark_specs_planned=args.mark_specs_planned,
             clarification_mode=args.clarification_mode,
             handoff_correction=args.handoff_correction,
+            executable_config=executable_config,
         )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
@@ -467,13 +564,38 @@ def main() -> None:
     elif args.command == "doctor":
         problems = check_workspace(root)
         print(format_doctor_report(problems))
+        if not problems:
+            try:
+                executable_config = build_executable_config_snapshot(root)
+            except (OSError, ValueError, KeyError) as exc:
+                print(f"Executable configuration: invalid ({exc})")
+                raise SystemExit(1) from exc
+            trust_status = (
+                "trusted"
+                if executable_config_is_trusted(executable_config)
+                else "not trusted"
+            )
+            print(
+                "Executable configuration: "
+                f"{trust_status} ({executable_config.digest})"
+            )
         if problems:
             raise SystemExit(1)
     elif args.command == "agent-smoke-test":
+        config_path = args.config.resolve() if args.config is not None else None
+        executable_config = _authorized_executable_config(
+            root,
+            config_path=config_path,
+            model=args.model,
+            effort=args.effort,
+            expected_digest=args.require_exec_config_digest,
+            accept_current=args.accept_current_exec_config,
+            allow_prompt=True,
+        )
         try:
             result = run_agent_smoke_test(
                 root,
-                config_path=args.config.resolve() if args.config is not None else None,
+                config_path=config_path,
                 role_names=tuple(args.role) if args.role is not None else None,
                 provider=args.provider,
                 model=args.model,
@@ -481,6 +603,7 @@ def main() -> None:
                 all_providers=args.all_providers,
                 use_provider_defaults=args.use_provider_defaults,
                 on_progress=_print_agent_smoke_progress,
+                executable_config=executable_config,
             )
         except ValueError as exc:
             parser.error(str(exc))
@@ -507,6 +630,18 @@ def main() -> None:
                     operator=args.operator,
                     resume=args.resume,
                     max_sessions=args.max_sessions,
+                    executable_config_factory=(
+                        (
+                            lambda: _authorized_executable_config(
+                                root,
+                                expected_digest=args.require_exec_config_digest,
+                                accept_current=args.accept_current_exec_config,
+                                allow_prompt=False,
+                            )
+                        )
+                        if args.resume
+                        else None
+                    ),
                 )
             except ValueError as exc:
                 parser.error(str(exc))
@@ -525,12 +660,23 @@ def main() -> None:
             print(f"Superseded {clarification.id}: {clarification.title}")
     elif args.command == "resume":
         configure_logging(logging.INFO, None)
-        result = resume_workflow(root, max_sessions=args.max_sessions)
+        result = resume_workflow(
+            root,
+            max_sessions=args.max_sessions,
+            executable_config_factory=lambda: _authorized_executable_config(
+                root,
+                expected_digest=args.require_exec_config_digest,
+                accept_current=args.accept_current_exec_config,
+                allow_prompt=False,
+            ),
+        )
         print(result.message)
         if not result.resumed:
             raise SystemExit(1)
         if result.run_result is not None and result.run_result.exit_code != 0:
             raise SystemExit(result.run_result.exit_code)
+    elif args.command == "trust":
+        _run_trust_command(args, root)
     elif args.command == "session":
         try:
             if args.handoff_command == "init":
@@ -561,6 +707,99 @@ def _run_log_level(*, quiet: bool, verbose: bool) -> int:
     if verbose:
         return logging.DEBUG
     return logging.INFO
+
+
+def _authorized_executable_config(
+    root: Path,
+    *,
+    config_path: Path | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    expected_digest: str | None = None,
+    accept_current: bool = False,
+    allow_prompt: bool,
+) -> ExecutableConfigSnapshot:
+    try:
+        snapshot = build_executable_config_snapshot(
+            root,
+            config_path=config_path,
+            provider=provider,
+            model=model,
+            effort=effort,
+        )
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"DevLab trust: could not load executable configuration: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    try:
+        authorization = authorize_executable_config(
+            snapshot,
+            expected_digest=expected_digest,
+            accept_current=accept_current,
+        )
+    except ExecutableConfigTrustError as exc:
+        if expected_digest is not None or accept_current or not allow_prompt:
+            print(f"DevLab trust: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        if not sys.stdin.isatty():
+            print(
+                f"DevLab trust: {exc}\n"
+                "Non-interactive execution cannot create trust. Run "
+                "'devlab trust executable-config' first, supply "
+                "--require-exec-config-digest, or explicitly use "
+                "--accept-current-exec-config in an externally contained environment.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from exc
+        print(format_executable_config(snapshot))
+        answer = input("\nTrust this executable configuration for this workspace? [y/N] ")
+        if answer.strip().lower() not in {"y", "yes"}:
+            raise SystemExit(1) from exc
+        trust_executable_config(snapshot)
+        authorization = authorize_executable_config(snapshot)
+    if accept_current:
+        print(
+            "WARNING: accepting current executable configuration for this invocation "
+            f"without persistent trust ({snapshot.digest}).",
+            file=sys.stderr,
+        )
+    return dataclasses.replace(snapshot, authorization=authorization)
+
+
+def _run_trust_command(args: argparse.Namespace, root: Path) -> None:
+    try:
+        snapshot = build_executable_config_snapshot(
+            root,
+            config_path=args.config.resolve() if args.config is not None else None,
+            provider=args.provider,
+            model=args.model,
+            effort=args.effort,
+        )
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"DevLab trust: could not load executable configuration: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    if args.show:
+        print(format_executable_config(snapshot))
+        return
+    if args.revoke:
+        revoked = revoke_executable_config_trust(snapshot)
+        print(
+            "Revoked executable-configuration trust."
+            if revoked
+            else "No executable-configuration trust record existed."
+        )
+        return
+    print(format_executable_config(snapshot))
+    if executable_config_is_trusted(snapshot):
+        print("\nThis executable configuration is already trusted.")
+        return
+    answer = input("\nTrust this executable configuration for this workspace? [y/N] ")
+    if answer.strip().lower() not in {"y", "yes"}:
+        print("Executable configuration was not trusted.")
+        raise SystemExit(1)
+    path = trust_executable_config(snapshot)
+    print(f"Trusted executable configuration {snapshot.digest}.")
+    print(f"Operator-local record: {path}")
 
 
 def _print_agent_smoke_progress(event: AgentSmokeProgressEvent) -> None:

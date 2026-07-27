@@ -10,6 +10,10 @@ import pytest
 
 from devlab.clarifications import FileClarificationTracker
 from devlab.cli import main
+from devlab.executable_config import (
+    ExecutableConfigSnapshot,
+    build_executable_config_snapshot,
+)
 from devlab.handoffs import SessionEnvelope, write_session_envelope
 from devlab.workflow_state import ResumeState, set_resume_state
 
@@ -378,7 +382,9 @@ def test_cli_doctor_reports_ok_for_initialized_workspace(
 
     _run_cli(monkeypatch, "doctor", "--root", str(tmp_path))
 
-    assert capsys.readouterr().out.strip() == "DevLab doctor: OK"
+    output = capsys.readouterr().out
+    assert "DevLab doctor: OK" in output
+    assert "Executable configuration: not trusted (exec-v1:" in output
 
 
 def test_cli_implement_emits_progress_logs_by_default(
@@ -387,10 +393,138 @@ def test_cli_implement_emits_progress_logs_by_default(
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
 
-    _run_cli(monkeypatch, "implement", "--root", str(tmp_path), "--max-sessions", "0")
+    _run_cli(
+        monkeypatch,
+        "implement",
+        "--root",
+        str(tmp_path),
+        "--max-sessions",
+        "0",
+        "--accept-current-exec-config",
+    )
 
     captured = capsys.readouterr()
     assert "Orchestrator finished after 0 session(s)." in captured.err
+
+
+def test_cli_trust_executable_config_approves_shows_and_revokes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "operator-state"))
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(
+        monkeypatch,
+        "trust",
+        "--root",
+        str(tmp_path),
+        "executable-config",
+        "--show",
+    )
+    shown = capsys.readouterr().out
+    assert "Fingerprint: exec-v1:" in shown
+    assert "Trust status: not trusted" in shown
+
+    monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
+    _run_cli(
+        monkeypatch,
+        "trust",
+        "--root",
+        str(tmp_path),
+        "executable-config",
+    )
+    assert "Trusted executable configuration exec-v1:" in capsys.readouterr().out
+
+    _run_cli(
+        monkeypatch,
+        "trust",
+        "--root",
+        str(tmp_path),
+        "executable-config",
+        "--show",
+    )
+    assert "Trust status: trusted" in capsys.readouterr().out
+
+    _run_cli(
+        monkeypatch,
+        "trust",
+        "--root",
+        str(tmp_path),
+        "executable-config",
+        "--revoke",
+    )
+    assert "Revoked executable-configuration trust" in capsys.readouterr().out
+
+
+def test_cli_unattended_requires_trust_or_explicit_authorization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "implement", "--unattended", "--root", str(tmp_path))
+
+    assert exc.value.code == 1
+    assert "executable configuration is not trusted" in capsys.readouterr().err
+
+    _run_cli(
+        monkeypatch,
+        "implement",
+        "--unattended",
+        "--root",
+        str(tmp_path),
+        "--accept-current-exec-config",
+    )
+
+    snapshot = cast("ExecutableConfigSnapshot", seen["executable_config"])
+    assert snapshot.authorization is not None
+    assert snapshot.authorization.source.value == "accepted_current"
+
+
+def test_cli_accepts_independently_expected_executable_config_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    digest = build_executable_config_snapshot(tmp_path).digest
+
+    _run_cli(
+        monkeypatch,
+        "implement",
+        "--unattended",
+        "--root",
+        str(tmp_path),
+        "--require-exec-config-digest",
+        digest,
+    )
+
+    snapshot = cast("ExecutableConfigSnapshot", seen["executable_config"])
+    assert snapshot.authorization is not None
+    assert snapshot.authorization.source.value == "expected_digest"
 
 
 def test_cli_run_is_not_registered(
@@ -460,6 +594,7 @@ def test_cli_implement_passes_retain_prompts(
         str(tmp_path),
         "--max-sessions",
         "1",
+        "--accept-current-exec-config",
     )
 
     assert "auto" not in seen
@@ -488,6 +623,7 @@ def test_cli_unattended_sets_agent_clarification_mode(
         "--unattended",
         "--root",
         str(tmp_path),
+        "--accept-current-exec-config",
     )
 
     assert seen["clarification_mode"] == "agent"
@@ -515,6 +651,7 @@ def test_cli_plan_passes_agent_clarification_mode(
         "agent",
         "--root",
         str(tmp_path),
+        "--accept-current-exec-config",
     )
 
     assert seen["clarification_mode"] == "agent"
@@ -535,7 +672,14 @@ def test_cli_plan_unattended_sets_agent_clarification_mode(
 
     monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
 
-    _run_cli(monkeypatch, "plan", "--unattended", "--root", str(tmp_path))
+    _run_cli(
+        monkeypatch,
+        "plan",
+        "--unattended",
+        "--root",
+        str(tmp_path),
+        "--accept-current-exec-config",
+    )
 
     assert seen["clarification_mode"] == "agent"
 
@@ -554,6 +698,7 @@ def test_cli_implement_quiet_suppresses_progress_logs(
         str(tmp_path),
         "--max-sessions",
         "0",
+        "--accept-current-exec-config",
     )
 
     captured = capsys.readouterr()
@@ -581,6 +726,7 @@ def test_cli_implement_verbose_emits_debug_logs(
         str(tmp_path),
         "--max-sessions",
         "1",
+        "--accept-current-exec-config",
     )
 
     captured = capsys.readouterr()
@@ -611,6 +757,7 @@ def test_cli_implement_log_file_captures_debug_logs_when_console_is_quiet(
         str(tmp_path),
         "--max-sessions",
         "1",
+        "--accept-current-exec-config",
     )
 
     assert "file debug detail" in log_file.read_text()
@@ -677,6 +824,13 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
 
     monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
     monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+    config_path = tmp_path / ".local/live-eval/agents.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        '[defaults]\nprovider = "codex"\n'
+        '[providers.codex]\ncommand = "codex"\n'
+        'args = ["{system_prompt}", "{session_prompt}"]\n'
+    )
 
     _run_cli(
         monkeypatch,
@@ -684,13 +838,14 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
         "--root",
         str(tmp_path),
         "--config",
-        str(tmp_path / ".local/live-eval/agents.toml"),
+        str(config_path),
         "--provider",
         "codex",
         "--model",
         "gpt-5.5",
         "--effort",
         "medium",
+        "--accept-current-exec-config",
     )
 
     assert capsys.readouterr().out.strip() == "smoke report"
@@ -718,7 +873,13 @@ def test_cli_agent_smoke_test_exits_nonzero_on_failure(
     monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
 
     with pytest.raises(SystemExit) as exc:
-        _run_cli(monkeypatch, "agent-smoke-test", "--root", str(tmp_path))
+        _run_cli(
+            monkeypatch,
+            "agent-smoke-test",
+            "--root",
+            str(tmp_path),
+            "--accept-current-exec-config",
+        )
 
     assert exc.value.code == 1
 
@@ -732,7 +893,13 @@ def test_cli_agent_smoke_test_reports_configuration_errors(
     monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
 
     with pytest.raises(SystemExit) as exc:
-        _run_cli(monkeypatch, "agent-smoke-test", "--root", str(tmp_path))
+        _run_cli(
+            monkeypatch,
+            "agent-smoke-test",
+            "--root",
+            str(tmp_path),
+            "--accept-current-exec-config",
+        )
 
     assert exc.value.code == 2
     assert "providers.test.args[1] has invalid placeholder syntax" in capsys.readouterr().err
@@ -754,7 +921,14 @@ def test_cli_agent_smoke_test_supports_all_providers(
     monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
     monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
 
-    _run_cli(monkeypatch, "agent-smoke-test", "--root", str(tmp_path), "--all-providers")
+    _run_cli(
+        monkeypatch,
+        "agent-smoke-test",
+        "--root",
+        str(tmp_path),
+        "--all-providers",
+        "--accept-current-exec-config",
+    )
 
     kwargs = cast("dict[str, object]", seen["kwargs"])
     assert kwargs["all_providers"] is True
@@ -784,6 +958,7 @@ def test_cli_agent_smoke_test_supports_provider_defaults_modifier(
         "--provider",
         "codex",
         "--use-provider-defaults",
+        "--accept-current-exec-config",
     )
 
     kwargs = cast("dict[str, object]", seen["kwargs"])

@@ -35,6 +35,7 @@ from devlab.clarifications import (
     option_text,
 )
 from devlab.environment import EnvironmentCommandError, EnvironmentManager
+from devlab.executable_config import ExecutableConfigSnapshot
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
 from devlab.git import VersionControlError
 from devlab.handoffs import (
@@ -60,7 +61,7 @@ from devlab.handoffs import (
     submission_attempt_count,
     write_session_envelope,
 )
-from devlab.profiles import ProfileNotFoundError, load_profile
+from devlab.profiles import Profile, ProfileNotFoundError, load_profile, profile_from_snapshot
 from devlab.prompt_resources import read_prompt_resource
 from devlab.prompts import (
     build_base_prompt,
@@ -255,6 +256,8 @@ class SessionMetadata:
     duration_seconds: float | None
     task_id: str
     provider_version: str = ""
+    executable_config_digest: str = ""
+    executable_config_authorization: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -730,10 +733,18 @@ def _milestone_tag_name(milestone: str) -> str:
 
 
 def _environment_for_session(
-    root: Path, snapshot: WorkspaceSnapshot, role_name: str
+    root: Path,
+    snapshot: WorkspaceSnapshot,
+    role_name: str,
+    profiles: dict[str, Profile] | None = None,
 ) -> EnvironmentManager:
     task = _task_for_role(snapshot, role_name)
-    profile = load_profile(root, task.profile if task is not None else None)
+    profile_id = task.profile if task is not None else None
+    profile = (
+        profile_from_snapshot(profiles, profile_id, root=root)
+        if profiles is not None
+        else load_profile(root, profile_id)
+    )
     return EnvironmentManager(root, profile.environment)
 
 
@@ -968,6 +979,7 @@ def _build_session_metadata(
     agent_result: AgentResult,
     resolved_agent_configs: dict[str, ResolvedAgentConfig] | None,
     task_id: str | None,
+    executable_config: ExecutableConfigSnapshot | None = None,
 ) -> SessionMetadata:
     provider = ""
     model = ""
@@ -988,6 +1000,15 @@ def _build_session_metadata(
         duration_seconds=agent_result.duration_seconds,
         task_id=task_id or "",
         provider_version=provider_version,
+        executable_config_digest=(
+            executable_config.digest if executable_config is not None else ""
+        ),
+        executable_config_authorization=(
+            executable_config.authorization.source.value
+            if executable_config is not None
+            and executable_config.authorization is not None
+            else ""
+        ),
     )
 
 
@@ -1641,6 +1662,7 @@ def run_loop(
     clarification_mode: str = "operator",
     handoff_correction: bool = False,
     session_progress: SessionProgressCallback | None = None,
+    executable_config: ExecutableConfigSnapshot | None = None,
 ) -> RunResult:
     """Run the orchestrator loop, returning a structured result."""
     if clarification_mode not in CLARIFICATION_MODES:
@@ -1775,14 +1797,20 @@ def run_loop(
         return _error_result(0, resume_command_error)
     active_resume = workflow_state.resume
     resolved_agent_configs = None
+    frozen_profiles: dict[str, Profile] | None = None
+    frozen_profile_texts: dict[str, str] | None = None
     if agent_providers is None:
         try:
-            agent_configuration = load_agent_configuration(
-                root,
-                provider=provider,
-                model=model,
-                effort=effort,
-                discover_provider_versions=True,
+            agent_configuration = (
+                executable_config.resolve_agents(discover_provider_versions=True)
+                if executable_config is not None
+                else load_agent_configuration(
+                    root,
+                    provider=provider,
+                    model=model,
+                    effort=effort,
+                    discover_provider_versions=True,
+                )
             )
         except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
             logger.error("%s. Stopping.", exc)
@@ -1790,6 +1818,9 @@ def run_loop(
         agent_providers = agent_configuration.providers
         role_agent_providers = agent_configuration.role_providers
         resolved_agent_configs = agent_configuration.resolved
+    if executable_config is not None:
+        frozen_profiles = executable_config.profiles
+        frozen_profile_texts = executable_config.profile_texts
 
     reconcile_plan = bool(spec_status and spec_status.changed)
     planning_event_mode = _planning_event_mode(
@@ -2030,6 +2061,8 @@ def run_loop(
             session_prompt = build_session_prompt(
                 snapshot,
                 role_name,
+                profiles=frozen_profiles,
+                profile_texts=frozen_profile_texts,
                 planning_revision=planning_only
                 and (revise_plan or fresh_generation_plan or adopt_existing),
                 adopt_existing=planning_only and adopt_existing,
@@ -2037,7 +2070,12 @@ def run_loop(
                 spec_reconciliation=reconcile_plan,
             )
             ctx.write_prompt_logs(base_prompt, session_prompt)
-            environment = _environment_for_session(root, workspace.snapshot, role_name)
+            environment = _environment_for_session(
+                root,
+                workspace.snapshot,
+                role_name,
+                frozen_profiles,
+            )
         except ProfileNotFoundError as exc:
             logger.error("%s. Stopping.", exc)
             return _error_result(
@@ -2060,7 +2098,11 @@ def run_loop(
             logger.error("%s. Stopping.", primary_error.message)
             logger.info(_failed_session_cleanup_hint())
             metadata = _build_session_metadata(
-                ctx, agent_result, resolved_agent_configs, route.task_id,
+                ctx,
+                agent_result,
+                resolved_agent_configs,
+                route.task_id,
+                executable_config,
             )
             ctx.write_session_metadata(metadata)
             return _error_result(
@@ -2089,7 +2131,11 @@ def run_loop(
                 if correction_error is not None:
                     logger.error("%s. Stopping.", correction_error.message)
                     metadata = _build_session_metadata(
-                        ctx, agent_result, resolved_agent_configs, route.task_id,
+                        ctx,
+                        agent_result,
+                        resolved_agent_configs,
+                        route.task_id,
+                        executable_config,
                     )
                     ctx.write_session_metadata(metadata)
                     return _error_result(sessions_run, correction_error)
@@ -2129,7 +2175,11 @@ def run_loop(
             logger.error("Invalid handoff produced by %s: %s. Stopping.", role_name, message)
             logger.info(_failed_session_cleanup_hint())
             metadata = _build_session_metadata(
-                ctx, agent_result, resolved_agent_configs, route.task_id,
+                ctx,
+                agent_result,
+                resolved_agent_configs,
+                route.task_id,
+                executable_config,
             )
             ctx.write_session_metadata(metadata)
             return _error_result(
@@ -2166,7 +2216,11 @@ def run_loop(
                 planning_complete=workspace.snapshot.workflow_state().planning.complete,
             )
         metadata = _build_session_metadata(
-            ctx, agent_result, resolved_agent_configs, route.task_id,
+            ctx,
+            agent_result,
+            resolved_agent_configs,
+            route.task_id,
+            executable_config,
         )
         ctx.write_session_metadata(metadata)
         if (

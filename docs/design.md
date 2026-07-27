@@ -374,6 +374,21 @@ This keeps the orchestrator independent from a specific CLI shape. For example, 
 
 A useful pattern is to run the developer and reviewer with different providers to reduce shared blind spots, while keeping the default single-provider setup simple.
 
+## Executable configuration authorization
+
+Provider command options are opaque to DevLab; provider-native permission and
+sandbox policy belongs to the operator. Before an operator-facing CLI command
+starts configured processes, DevLab canonically fingerprints effective provider
+invocation and profile lifecycle configuration and freezes the parsed snapshot
+for that command.
+
+Authorization comes from workspace/config/digest-scoped user-local trust, an
+independently supplied expected digest, or explicit acceptance of the current
+snapshot for one invocation. The target workspace cannot store its own operator
+trust. This protects the transition from unreviewed executable configuration to
+execution, but does not certify transitive command behavior or contain the
+resulting process. See ADR 0010.
+
 ## Prompt context monitoring
 
 DevLab estimates prompt context size per role using the same prompt builders used for sessions. The report separates base prompt, session prompt, and total estimated tokens, and compares totals against configurable warning and critical thresholds from `.devlab/config/agents.toml`.

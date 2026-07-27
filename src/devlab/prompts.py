@@ -11,7 +11,7 @@ from pathlib import Path
 from devlab.clarifications import Clarification, ClarificationStatus
 from devlab.findings import FindingStatus
 from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
-from devlab.profiles import Profile, load_profile
+from devlab.profiles import Profile, load_profile, profile_from_snapshot
 from devlab.prompt_resources import read_optional_prompt_resource, read_prompt_resource
 from devlab.roles import RoleConfig
 from devlab.task_tracker import Task
@@ -50,6 +50,8 @@ def build_session_prompt(
     snapshot: WorkspaceSnapshot,
     role_name: str,
     *,
+    profiles: dict[str, Profile] | None = None,
+    profile_texts: dict[str, str] | None = None,
     planning_revision: bool = False,
     adopt_existing: bool = False,
     fresh_generation: bool = False,
@@ -62,7 +64,14 @@ def build_session_prompt(
         "reviewer": _build_reviewer_prompt,
         "integrator": _build_integrator_prompt,
     }
-    prompt = builders[role_name](snapshot)
+    if role_name == "planner":
+        prompt = _build_planner_prompt(snapshot, profile_texts=profile_texts)
+    elif role_name == "developer":
+        prompt = _build_developer_prompt(snapshot, profiles=profiles)
+    elif role_name == "reviewer":
+        prompt = _build_reviewer_prompt(snapshot, profiles=profiles)
+    else:
+        prompt = builders[role_name](snapshot)
     knowledge = _format_project_knowledge(discover_project_knowledge(snapshot.root))
     if knowledge:
         prompt = knowledge + "\n\n" + prompt
@@ -283,7 +292,15 @@ def _latest_handoff(root: Path, role_name: str) -> str:
     return read_file(handoffs[-1])
 
 
-def _session_profile(root: Path, task: Task | None) -> Profile:
+def _session_profile(
+    root: Path, task: Task | None, profiles: dict[str, Profile] | None = None
+) -> Profile:
+    if profiles is not None:
+        return profile_from_snapshot(
+            profiles,
+            task.profile if task is not None else None,
+            root=root,
+        )
     return load_profile(root, task.profile if task is not None else None)
 
 
@@ -390,8 +407,10 @@ def _format_task_listing(tasks: list[Task]) -> str:
     )
 
 
-def _profile_prompt_sections(root: Path, task: Task) -> list[str]:
-    profile = _session_profile(root, task)
+def _profile_prompt_sections(
+    root: Path, task: Task, profiles: dict[str, Profile] | None = None
+) -> list[str]:
+    profile = _session_profile(root, task, profiles)
     lines = [
         f"Profile: `{profile.id}`",
         f"Title: {profile.title}",
@@ -423,7 +442,14 @@ def _validation_prompt_section(task: Task, profile: Profile) -> str:
     )
 
 
-def _format_profile_listing(root: Path) -> str:
+def _format_profile_listing(
+    root: Path, profile_texts: dict[str, str] | None = None
+) -> str:
+    if profile_texts is not None:
+        return "\n\n".join(
+            f"### {profile_id}.toml\n\n{text.strip()}"
+            for profile_id, text in sorted(profile_texts.items())
+        )
     profiles_dir = root / ".devlab/config/profiles"
     if not profiles_dir.exists():
         return ""
@@ -433,7 +459,9 @@ def _format_profile_listing(root: Path) -> str:
     return "\n\n".join(lines)
 
 
-def _build_planner_prompt(snapshot: WorkspaceSnapshot) -> str:
+def _build_planner_prompt(
+    snapshot: WorkspaceSnapshot, *, profile_texts: dict[str, str] | None = None
+) -> str:
     root = snapshot.root
     parts: list[str] = []
     plan = read_file(root / DESIGN_PLAN)
@@ -455,7 +483,7 @@ def _build_planner_prompt(snapshot: WorkspaceSnapshot) -> str:
     tasks = snapshot.list_tasks()
     if tasks:
         parts.append(f"## Current Tasks\n\n{_format_task_listing(tasks)}")
-    profile_listing = _format_profile_listing(root)
+    profile_listing = _format_profile_listing(root, profile_texts)
     if profile_listing:
         parts.append(f"## Existing Profiles\n\n{profile_listing}")
     findings = snapshot.open_findings()
@@ -473,15 +501,19 @@ def _build_planner_prompt(snapshot: WorkspaceSnapshot) -> str:
     return "\n\n".join(parts)
 
 
-def _build_developer_prompt(snapshot: WorkspaceSnapshot) -> str:
+def _build_developer_prompt(
+    snapshot: WorkspaceSnapshot, *, profiles: dict[str, Profile] | None = None
+) -> str:
     root = snapshot.root
     parts: list[str] = []
     task = snapshot.select_next_development_task()
     if task:
         content = read_file(task.path)
         parts.append(f"## Assigned Task ({task.path.name})\n\n{content}")
-        parts.extend(_profile_prompt_sections(root, task))
-        validation_section = _validation_prompt_section(task, _session_profile(root, task))
+        parts.extend(_profile_prompt_sections(root, task, profiles))
+        validation_section = _validation_prompt_section(
+            task, _session_profile(root, task, profiles)
+        )
         if validation_section:
             parts.append(validation_section)
     else:
@@ -541,15 +573,19 @@ def _build_integrator_prompt(snapshot: WorkspaceSnapshot) -> str:
     return "\n\n".join(parts)
 
 
-def _build_reviewer_prompt(snapshot: WorkspaceSnapshot) -> str:
+def _build_reviewer_prompt(
+    snapshot: WorkspaceSnapshot, *, profiles: dict[str, Profile] | None = None
+) -> str:
     root = snapshot.root
     parts: list[str] = []
     task = snapshot.select_next_review_task()
     if task:
         content = read_file(task.path)
         parts.append(f"## Task Awaiting Review ({task.path.name})\n\n{content}")
-        parts.extend(_profile_prompt_sections(root, task))
-        validation_section = _validation_prompt_section(task, _session_profile(root, task))
+        parts.extend(_profile_prompt_sections(root, task, profiles))
+        validation_section = _validation_prompt_section(
+            task, _session_profile(root, task, profiles)
+        )
         if validation_section:
             parts.append(validation_section)
     else:

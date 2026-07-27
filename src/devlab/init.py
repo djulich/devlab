@@ -183,7 +183,12 @@ def format_init_next_steps() -> str:
   5. Validate configuration:
        devlab doctor
 
-  6. Generate plans:
+  6. Review, trust, and smoke-test executable configuration:
+       devlab trust executable-config --show
+       devlab trust executable-config
+       devlab agent-smoke-test
+
+  7. Generate plans:
        devlab plan
 
 DevLab plan/implement require a clean Git working tree. Commit spec and config edits

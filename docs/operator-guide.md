@@ -177,6 +177,38 @@ Profile commands are trusted executable configuration. DevLab does not sandbox
 them or install missing tools. Review profile changes before running workflow
 commands, especially in cloned or agent-modified workspaces.
 
+## Executable Configuration Authorization
+
+Commands that start agents or profile lifecycle processes require authorization
+of a canonical executable-configuration snapshot. The normal workstation flow
+is:
+
+```bash
+devlab trust executable-config --show
+devlab trust executable-config
+devlab agent-smoke-test
+devlab plan --unattended
+devlab implement --unattended
+```
+
+The parsed provider and profile snapshot is frozen for each command. Changes
+made during a run do not affect later sessions in that run. If a later session
+selects a profile that was not in the frozen snapshot, the run stops and asks
+the operator to restart after reviewing the new configuration.
+
+`devlab doctor` reports the current fingerprint and whether it has matching
+operator-local trust. An untrusted fingerprint is not malformed repository
+state, but commands that execute it require one of:
+
+- matching workspace-scoped user-local trust;
+- `--require-exec-config-digest DIGEST` with an independently approved value;
+- `--accept-current-exec-config` for one externally contained invocation.
+
+Provider-native permissions and sandboxing remain operator-owned. DevLab does
+not classify provider flags. A matching digest authorizes configured entry
+points; it is not a sandbox and does not establish that repository scripts,
+build targets, external binaries, or transitive commands are safe.
+
 Keep profile compatibility in mind. If a changed profile would remove, replace,
 narrow, or materially alter validation, setup, teardown, services, or assumptions
 used by already-planned tasks, prefer creating a new profile and assigning new

@@ -122,10 +122,33 @@ def load_agent_configuration(
     effort: str | None = None,
     discover_provider_versions: bool = False,
 ) -> AgentConfiguration:
-    data = _load_config(root, config_path=config_path)
-    if data is None:
-        data = _fallback_config()
+    data = load_agent_configuration_data(root, config_path=config_path)
+    return resolve_agent_configuration(
+        data,
+        provider=provider,
+        model=model,
+        effort=effort,
+        discover_provider_versions=discover_provider_versions,
+    )
 
+
+def load_agent_configuration_data(
+    root: Path, *, config_path: Path | None = None
+) -> dict[str, Any]:
+    """Load agent configuration data without executing version discovery."""
+    data = _load_config(root, config_path=config_path)
+    return data if data is not None else _fallback_config()
+
+
+def resolve_agent_configuration(
+    data: dict[str, Any],
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    discover_provider_versions: bool = False,
+) -> AgentConfiguration:
+    """Resolve already-loaded data, allowing callers to freeze it before execution."""
     defaults = _table(data.get("defaults", {}), "defaults")
     roles = _table(data.get("roles", {}), "roles")
     providers_config = _table(data.get("providers", {}), "providers")

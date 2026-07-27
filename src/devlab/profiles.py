@@ -53,6 +53,27 @@ def load_profile(root: Path, profile_id: str | None) -> Profile:
     raise ProfileNotFoundError(resolved_id, path)
 
 
+def load_profiles(root: Path) -> dict[str, Profile]:
+    """Load every configured profile into one immutable-by-convention snapshot."""
+    profiles_dir = root / PROFILES_DIR
+    if not profiles_dir.exists():
+        return {}
+    return {
+        path.stem: _read_profile(path, path.stem)
+        for path in sorted(profiles_dir.glob("*.toml"))
+    }
+
+
+def profile_from_snapshot(
+    profiles: dict[str, Profile], profile_id: str | None, *, root: Path
+) -> Profile:
+    resolved_id = effective_profile_id(profile_id)
+    try:
+        return profiles[resolved_id]
+    except KeyError as exc:
+        raise ProfileNotFoundError(resolved_id, profile_path(root, resolved_id)) from exc
+
+
 def _read_profile(path: Path, expected_id: str) -> Profile:
     data = tomllib.loads(path.read_text())
     profile_id = str(data.get("id") or expected_id)

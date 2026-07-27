@@ -24,6 +24,16 @@ _Avoid_: conversation, chat
 The abstraction responsible for invoking a concrete agent implementation.
 _Avoid_: agent CLI when referring to the abstraction
 
+**Executable configuration snapshot**:
+A canonical, fingerprinted, per-command frozen view of provider invocation and
+profile lifecycle configuration that DevLab may execute.
+_Avoid_: sandbox, safe configuration
+
+**Executable configuration trust**:
+Operator authorization for one target workspace, agent-config source, and
+executable-configuration digest, stored outside the target workspace.
+_Avoid_: repository trust, provider safety
+
 **Task**:
 A repository-backed unit of implementation work scoped for one developer session and one reviewer session.
 _Avoid_: issue, ticket, job
@@ -85,6 +95,9 @@ _Avoid_: project documentation
 - A **Workspace** creates **WorkspaceSnapshots** for read-only decisions and exposes handles for workflow mutations.
 - A **Tracker** owns one storage format; the orchestrator coordinates trackers through workspace boundaries.
 - An **Agent provider** invokes concrete agents without leaking provider details into orchestration logic.
+- An **Executable configuration snapshot** must be authorized before DevLab
+  starts its configured processes. Authorization does not imply containment or
+  interpret provider-native permission policy.
 
 ## Example dialogue
 

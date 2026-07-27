@@ -16,6 +16,7 @@ from devlab.agent_config import (
     load_agent_configuration,
 )
 from devlab.agents import AgentInvocation, AgentProvider, AgentResult
+from devlab.executable_config import ExecutableConfigSnapshot
 
 SMOKE_MARKER = "DEVLAB_SMOKE_OK"
 
@@ -62,6 +63,8 @@ class AgentSmokeResult:
     config_path: Path
     check_results: tuple[AgentSmokeCheckResult, ...]
     skipped_providers: tuple[AgentSmokeSkippedProvider, ...] = ()
+    executable_config_digest: str = ""
+    executable_config_authorization: str = ""
 
     @property
     def passed(self) -> bool:
@@ -91,6 +94,7 @@ def run_agent_smoke_test(
     all_providers: bool = False,
     use_provider_defaults: bool = False,
     on_progress: Callable[[AgentSmokeProgressEvent], None] | None = None,
+    executable_config: ExecutableConfigSnapshot | None = None,
 ) -> AgentSmokeResult:
     """Invoke configured agent providers with a tiny prompt to verify wiring."""
     if all_providers and role_names is not None:
@@ -106,12 +110,16 @@ def run_agent_smoke_test(
     if role_names is not None:
         _validate_roles(role_names)
     effective_config_path = config_path or root / AGENTS_CONFIG
-    configuration = load_agent_configuration(
-        root,
-        config_path=config_path,
-        model=model,
-        effort=effort,
-        discover_provider_versions=True,
+    configuration = (
+        executable_config.resolve_agents(discover_provider_versions=True)
+        if executable_config is not None
+        else load_agent_configuration(
+            root,
+            config_path=config_path,
+            model=model,
+            effort=effort,
+            discover_provider_versions=True,
+        )
     )
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     results: list[AgentSmokeCheckResult] = []
@@ -180,6 +188,15 @@ def run_agent_smoke_test(
         config_path=effective_config_path,
         check_results=tuple(results),
         skipped_providers=tuple(skipped),
+        executable_config_digest=(
+            executable_config.digest if executable_config is not None else ""
+        ),
+        executable_config_authorization=(
+            executable_config.authorization.source.value
+            if executable_config is not None
+            and executable_config.authorization is not None
+            else ""
+        ),
     )
 
 
@@ -188,6 +205,14 @@ def format_agent_smoke_report(result: AgentSmokeResult) -> str:
         "Agent smoke test",
         f"Workspace: {result.root}",
         f"Config: {result.config_path}",
+        *(
+            [
+                f"Executable config: {result.executable_config_digest}",
+                f"Authorization: {result.executable_config_authorization}",
+            ]
+            if result.executable_config_digest
+            else []
+        ),
         "Checks: " + _format_check_names(result.check_results),
         "",
     ]

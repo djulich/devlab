@@ -39,13 +39,19 @@ Open work:
 
 Priority: high-medium. Target-owned `agents.toml` and profile environment lifecycle commands are trusted executable configuration. This needs to be explicit before broader reuse.
 
-Status: **trust guidance documented**. README and operator docs now warn that DevLab runs target-owned agent/profile commands without sandboxing, describe ownership of generated workflow files, and call out `.gitignore`, logs, retained prompts, and automatic commits.
+Status: **initial trust model implemented**. README and operator docs warn that
+DevLab runs target-owned agent/profile commands without sandboxing. DevLab
+treats provider-native permission policy as opaque and operator-owned. Executing
+CLI commands fingerprint and freeze canonical provider/profile executable
+configuration. Operators can approve a workspace/config/digest in user-local
+state, require an independently approved digest in CI, or explicitly accept the
+current snapshot for one externally contained invocation. Session and smoke-test
+metadata record the digest and authorization source.
 
 Open work:
 
-- Add `doctor` warnings for obviously dangerous profile commands or permission-skip flags where practical.
 - Consider dependency-introduction warnings for tasks or plans that add new package-manager dependencies, especially when the package name comes from agent output rather than an existing target convention. This should be lighter than GSD's full package-legitimacy gate at first: report unverified dependency additions and point operators at registry/source review rather than trying to install new host security tooling. Reference: GSD [Security model](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/security-model.md).
-- Consider a future workspace trust marker or explicit `--allow-exec-config` mode before running target-owned executable config.
+- Consider administrator-managed organization policy or optional OS sandboxing only when concrete deployment requirements justify their cross-platform complexity.
 
 ## 4. Prompt Context Size Monitoring and Reduction
 
