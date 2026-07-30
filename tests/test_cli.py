@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+from importlib.metadata import version
 from pathlib import Path
 from typing import cast
 
@@ -55,6 +56,18 @@ def _create_clarification(root: Path) -> str:
         ),
     )
     return clarification.id
+
+
+def test_cli_reports_installed_version(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["devlab", "--version"])
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == f"devlab {version('devlab')}"
 
 
 def test_cli_session_handoff_rejects_then_accepts_candidate(

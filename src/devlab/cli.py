@@ -4,6 +4,7 @@ import argparse
 import dataclasses
 import logging
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from devlab._logging import configure_logging
@@ -47,6 +48,14 @@ from devlab.workflow_state_report import (
     format_workflow_state_digest,
     format_workflow_state_report,
 )
+
+
+def _devlab_version() -> str:
+    """Return the installed distribution version used by this CLI."""
+    try:
+        return version("devlab")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def _run_parent_parser() -> argparse.ArgumentParser:
@@ -120,6 +129,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="devlab",
         description="Orchestrate agentic development sessions.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_devlab_version()}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

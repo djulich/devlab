@@ -88,6 +88,11 @@ uv tool install "git+https://github.com/mucisland/devlab.git@main"
 ```
 
 After installation, the `devlab` command can be run from inside any target project repository.
+Confirm the installed release with:
+
+```bash
+devlab --version
+```
 
 DevLab is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).
 Pre-1.0 compatibility and release expectations are documented in

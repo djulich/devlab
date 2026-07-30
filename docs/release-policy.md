@@ -26,6 +26,41 @@ versioning:
 - minor versions add backward-compatible functionality;
 - patch versions fix bugs without changing documented behavior.
 
+### Version Source
+
+The `[project].version` value in `pyproject.toml` is the single authoritative
+DevLab package version. Use plain semantic versions there, such as `0.2.0`,
+without a `v` prefix.
+
+The CLI reads the installed distribution metadata through
+`importlib.metadata`; it does not duplicate the version in a Python module.
+This makes `devlab --version` report the package that is actually being
+executed, whether it was installed from a wheel, checkout, Git tag, or editable
+checkout.
+
+Package versions are independent from version fields in durable DevLab file
+formats. Values such as `schema_version`, `layout_version`, and workflow
+`version` advance only when their specific persisted format changes. They do
+not track package releases.
+
+### Choosing the Next Version
+
+Choose the release version from the most significant user-facing change since
+the previous release:
+
+- increment the patch component for bug fixes that preserve documented
+  behavior, for example `0.2.0` to `0.2.1`;
+- increment the minor component for new capabilities, for example `0.2.1` to
+  `0.3.0`;
+- during `0.x`, also increment the minor component for intentional breaking
+  changes and document their migration impact;
+- release `1.0.0` when the public compatibility contract is considered stable;
+- after `1.0.0`, increment the major component for breaking changes.
+
+Do not bump the package version for every development commit. Select and record
+the next version while preparing a release. If the current version has not yet
+been released, compatible work may be included without another bump.
+
 ## Compatibility Surfaces
 
 The following should be treated as user-facing compatibility surfaces:
@@ -61,18 +96,58 @@ During `0.x`, old target workspaces are not guaranteed to keep working across al
 minor upgrades. Prefer explicit diagnostics and repair guidance over silent
 best-effort compatibility.
 
-## Release Checklist
+## Release Procedure
 
-Before cutting a release:
+Until DevLab is published to PyPI, a release consists of an immutable Git tag
+and installable source distribution and wheel. Use tags of the form `vX.Y.Z`;
+the tag for package version `0.2.0` is `v0.2.0`.
 
-- run `make check`;
-- run relevant scripted workflow evaluations;
-- run any selected live-agent baseline evaluations for the release risk;
-- verify `uv build` produces an sdist and wheel;
-- install the built wheel into a clean environment and run `devlab --help`;
+1. Review changes since the previous release and choose the next version using
+   the rules above.
+2. Update `[project].version` in `pyproject.toml`.
+3. Refresh `uv.lock` so the root package entry records the same version.
+4. Document notable changes. Include explicit migration guidance for breaking
+   CLI, configuration, workspace-layout, or durable-format changes.
+5. Run the complete development validation:
+
+   ```bash
+   make check
+   ```
+
+6. Run relevant scripted workflow evaluations and any live-agent baseline
+   evaluations justified by the release risk.
+7. Build both package formats:
+
+   ```bash
+   uv build
+   ```
+
+8. Verify that the source distribution and wheel contain the expected package
+   metadata, license, resources, and documentation.
+9. Install the built wheel into a clean environment and smoke-test the installed
+   command:
+
+   ```bash
+   devlab --version
+   devlab --help
+   ```
+
+   The reported version must match `pyproject.toml`.
+10. Commit the release preparation, then create an annotated tag:
+
+    ```bash
+    git tag -a vX.Y.Z -m "DevLab X.Y.Z"
+    ```
+
+11. Verify that the tagged commit is clean and that installation from the tag
+    succeeds. Push the commit and tag only when the release is ready to share.
+
+Before considering the release complete:
+
 - update README maturity guidance if evaluation confidence changed;
-- document breaking changes and migration steps;
-- tag the release in Git.
+- retain the validation and evaluation results needed to support release
+  claims;
+- ensure users can install by immutable tag rather than relying on `main`.
 
 PyPI publication remains a future decision. Until then, release tags and Git URLs
 are the expected installation path for non-development users.
