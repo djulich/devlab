@@ -59,7 +59,7 @@ def _devlab_version() -> str:
         return "unknown"
 
 
-def _run_parent_parser() -> argparse.ArgumentParser:
+def _run_parent_parser(*, max_sessions: int) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--root",
@@ -67,7 +67,7 @@ def _run_parent_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to operate on (default: current working directory).",
     )
-    parser.add_argument("--max-sessions", type=int)
+    parser.add_argument("--max-sessions", type=int, default=max_sessions)
     parser.add_argument("--provider", default=None, help="Override the configured provider.")
     parser.add_argument("--model", default=None, help="Override the configured model.")
     parser.add_argument("--effort", default=None, help="Override the configured effort.")
@@ -167,20 +167,17 @@ def main() -> None:
         help="Git user.email for DevLab-created commits.",
     )
 
-    run_parent = _run_parent_parser()
-    implement_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "implement",
-        parents=[run_parent],
+        parents=[_run_parent_parser(max_sessions=20)],
         help="Implement planned DevLab workflow tasks.",
     )
-    implement_parser.set_defaults(max_sessions=20)
 
     plan_parser = subparsers.add_parser(
         "plan",
-        parents=[run_parent],
+        parents=[_run_parent_parser(max_sessions=2)],
         help="Run planning sessions and stop before implementation.",
     )
-    plan_parser.set_defaults(max_sessions=2)
     plan_parser.add_argument(
         "--revise",
         action="store_true",

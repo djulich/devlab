@@ -640,6 +640,7 @@ def test_cli_unattended_sets_agent_clarification_mode(
     )
 
     assert seen["clarification_mode"] == "agent"
+    assert seen["max_sessions"] == 20
 
 
 def test_cli_plan_passes_agent_clarification_mode(
