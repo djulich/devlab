@@ -70,6 +70,70 @@ def test_cli_reports_installed_version(
     assert capsys.readouterr().out.strip() == f"devlab {version('devlab')}"
 
 
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (
+            ("implement",),
+            (
+                "Maximum number of sessions to run (default: 20).",
+                "default: operator",
+                "default INFO logging",
+                "target agents configuration",
+            ),
+        ),
+        (
+            ("plan",),
+            (
+                "Maximum number of planning sessions to run (default: 2).",
+                "default: operator",
+            ),
+        ),
+        (("init",), ("default: neutral", "default: current working directory")),
+        (
+            ("agent-smoke-test",),
+            (
+                "default: .devlab/config/agents.toml under --root",
+                "role-derived model",
+                "role-derived effort",
+            ),
+        ),
+        (
+            ("trust", "executable-config"),
+            (
+                "default: target .devlab/config/agents.toml",
+                "target agents configuration",
+                "With no action",
+            ),
+        ),
+        (
+            ("clarify", "answer"),
+            (
+                "Maximum sessions to run when --resume is used (default: 20).",
+                "Optional rationale",
+                "Optional operator identity",
+            ),
+        ),
+        (("resume",), ("Maximum number of sessions to run (default: 20).",)),
+    ],
+)
+def test_cli_help_describes_user_relevant_defaults(
+    arguments: tuple[str, ...],
+    expected: tuple[str, ...],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, *arguments, "--help")
+
+    assert exc.value.code == 0
+    output = " ".join(capsys.readouterr().out.split())
+    for text in expected:
+        assert text in output
+    assert "default: None" not in output
+    assert "default: False" not in output
+
+
 def test_cli_session_handoff_rejects_then_accepts_candidate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

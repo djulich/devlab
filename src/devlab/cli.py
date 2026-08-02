@@ -50,6 +50,10 @@ from devlab.workflow_state_report import (
     format_workflow_state_report,
 )
 
+IMPLEMENT_MAX_SESSIONS = 20
+PLAN_MAX_SESSIONS = 2
+DEFAULT_CLARIFICATION_MODE = "operator"
+
 
 def _devlab_version() -> str:
     """Return the installed distribution version used by this CLI."""
@@ -59,7 +63,9 @@ def _devlab_version() -> str:
         return "unknown"
 
 
-def _run_parent_parser(*, max_sessions: int) -> argparse.ArgumentParser:
+def _run_parent_parser(
+    *, max_sessions: int, session_kind: str = "sessions"
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--root",
@@ -67,16 +73,39 @@ def _run_parent_parser(*, max_sessions: int) -> argparse.ArgumentParser:
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to operate on (default: current working directory).",
     )
-    parser.add_argument("--max-sessions", type=int, default=max_sessions)
-    parser.add_argument("--provider", default=None, help="Override the configured provider.")
-    parser.add_argument("--model", default=None, help="Override the configured model.")
-    parser.add_argument("--effort", default=None, help="Override the configured effort.")
+    parser.add_argument(
+        "--max-sessions",
+        type=int,
+        default=max_sessions,
+        help=f"Maximum number of {session_kind} to run (default: {max_sessions}).",
+    )
+    parser.add_argument(
+        "--provider",
+        default=None,
+        help="Override provider resolution from the target agents configuration.",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Override model resolution from the target agents configuration.",
+    )
+    parser.add_argument(
+        "--effort",
+        default=None,
+        help="Override effort resolution from the target agents configuration.",
+    )
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument(
-        "-q", "--quiet", action="store_true", help="Show only warnings and errors."
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Show only warnings and errors instead of the default INFO logging.",
     )
     verbosity.add_argument(
-        "-v", "--verbose", action="store_true", help="Show debug diagnostics."
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show debug diagnostics instead of the default INFO logging.",
     )
     parser.add_argument(
         "--log-file", type=Path, default=None, help="Write detailed DevLab logs to this file."
@@ -89,8 +118,11 @@ def _run_parent_parser(*, max_sessions: int) -> argparse.ArgumentParser:
     parser.add_argument(
         "--clarification-mode",
         choices=("operator", "agent"),
-        default="operator",
-        help="Stop for operator clarification or use a bounded resolver agent.",
+        default=DEFAULT_CLARIFICATION_MODE,
+        help=(
+            "Stop for operator clarification or use a bounded resolver agent "
+            f"(default: {DEFAULT_CLARIFICATION_MODE})."
+        ),
     )
     parser.add_argument(
         "--unattended",
@@ -169,13 +201,18 @@ def main() -> None:
 
     subparsers.add_parser(
         "implement",
-        parents=[_run_parent_parser(max_sessions=20)],
+        parents=[_run_parent_parser(max_sessions=IMPLEMENT_MAX_SESSIONS)],
         help="Implement planned DevLab workflow tasks.",
     )
 
     plan_parser = subparsers.add_parser(
         "plan",
-        parents=[_run_parent_parser(max_sessions=2)],
+        parents=[
+            _run_parent_parser(
+                max_sessions=PLAN_MAX_SESSIONS,
+                session_kind="planning sessions",
+            )
+        ],
         help="Run planning sessions and stop before implementation.",
     )
     plan_parser.add_argument(
@@ -296,7 +333,10 @@ def main() -> None:
         "--config",
         type=Path,
         default=None,
-        help="Agent config TOML path. Defaults to .devlab/config/agents.toml under --root.",
+        help=(
+            "Agent config TOML path "
+            "(default: .devlab/config/agents.toml under --root)."
+        ),
     )
     smoke_selection = smoke_parser.add_mutually_exclusive_group()
     smoke_selection.add_argument(
@@ -329,12 +369,18 @@ def main() -> None:
     smoke_parser.add_argument(
         "--model",
         default=None,
-        help="Override the configured model for this smoke test.",
+        help=(
+            "Override the role-derived model for this smoke test; with "
+            "--use-provider-defaults, override the provider default."
+        ),
     )
     smoke_parser.add_argument(
         "--effort",
         default=None,
-        help="Override the configured effort for this smoke test.",
+        help=(
+            "Override the role-derived effort for this smoke test; with "
+            "--use-provider-defaults, override the provider default."
+        ),
     )
     _add_executable_config_authorization_options(smoke_parser)
 
@@ -358,11 +404,23 @@ def main() -> None:
         "--config",
         type=Path,
         default=None,
-        help="Agent config TOML path. Defaults to the target agents.toml.",
+        help="Agent config TOML path (default: target .devlab/config/agents.toml).",
     )
-    trust_exec.add_argument("--provider", default=None)
-    trust_exec.add_argument("--model", default=None)
-    trust_exec.add_argument("--effort", default=None)
+    trust_exec.add_argument(
+        "--provider",
+        default=None,
+        help="Override provider resolution from the target agents configuration.",
+    )
+    trust_exec.add_argument(
+        "--model",
+        default=None,
+        help="Override model resolution from the target agents configuration.",
+    )
+    trust_exec.add_argument(
+        "--effort",
+        default=None,
+        help="Override effort resolution from the target agents configuration.",
+    )
     trust_action = trust_exec.add_mutually_exclusive_group()
     trust_action.add_argument(
         "--show",
@@ -373,6 +431,9 @@ def main() -> None:
         "--revoke",
         action="store_true",
         help="Revoke stored trust for this workspace and config source.",
+    )
+    trust_exec.epilog = (
+        "With no action, display the effective configuration and prompt to trust it."
     )
 
     clean_parser = subparsers.add_parser(
@@ -404,14 +465,32 @@ def main() -> None:
     clarify_answer = clarify_subparsers.add_parser(
         "answer", help="Answer a pending clarification."
     )
-    clarify_answer.add_argument("clarification_id")
+    clarify_answer.add_argument("clarification_id", help="Clarification ID to answer.")
     answer_value = clarify_answer.add_mutually_exclusive_group(required=True)
-    answer_value.add_argument("--choice", default=None)
-    answer_value.add_argument("--text", default=None)
-    clarify_answer.add_argument("--note", default="")
-    clarify_answer.add_argument("--operator", default="")
-    clarify_answer.add_argument("--resume", action="store_true")
-    clarify_answer.add_argument("--max-sessions", type=int, default=20)
+    answer_value.add_argument(
+        "--choice", default=None, help="Select an option declared by the clarification."
+    )
+    answer_value.add_argument(
+        "--text", default=None, help="Supply a free-text clarification answer."
+    )
+    clarify_answer.add_argument(
+        "--note", default="", help="Optional rationale recorded with the answer."
+    )
+    clarify_answer.add_argument(
+        "--operator", default="", help="Optional operator identity recorded with the answer."
+    )
+    clarify_answer.add_argument(
+        "--resume", action="store_true", help="Resume the blocked workflow after answering."
+    )
+    clarify_answer.add_argument(
+        "--max-sessions",
+        type=int,
+        default=IMPLEMENT_MAX_SESSIONS,
+        help=(
+            "Maximum sessions to run when --resume is used "
+            f"(default: {IMPLEMENT_MAX_SESSIONS})."
+        ),
+    )
     _add_executable_config_authorization_options(clarify_answer)
     clarify_supersede = clarify_subparsers.add_parser(
         "supersede", help="Mark a clarification superseded."
@@ -432,8 +511,11 @@ def main() -> None:
     resume_parser.add_argument(
         "--max-sessions",
         type=int,
-        default=20,
-        help="Maximum number of sessions to run (default: 20).",
+        default=IMPLEMENT_MAX_SESSIONS,
+        help=(
+            "Maximum number of sessions to run "
+            f"(default: {IMPLEMENT_MAX_SESSIONS})."
+        ),
     )
 
     session_parser = subparsers.add_parser(
