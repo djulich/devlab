@@ -28,6 +28,44 @@ The usual operator loop is:
 sessions. This keeps operator-authored changes separate from DevLab-authored
 session commits.
 
+## Workflow Termination Summaries
+
+Every bounded `devlab plan` and `devlab implement` invocation that reaches an
+orchestrator result prints a final operator summary. The summary is command
+output rather than progress logging, so it remains visible with `--quiet`. It
+reports:
+
+- why the invocation stopped and how many sessions completed;
+- the next role, task, task status, or milestone when applicable;
+- whether a durable operator clarification is pending;
+- whether executable configuration changed or is not trusted; and
+- the commands that should be run next.
+
+`session limit reached` is a successful bounded-command stop, not workflow
+completion. Run the recommended continuation command to allow more sessions.
+Reviewer-requested task changes are ordinary agent-to-agent workflow work: the
+next developer session handles them through `devlab implement`. They are not
+operator clarifications.
+
+A durable clarification is explicitly labeled `operator clarification
+required` and includes `devlab clarify show`, `devlab clarify answer`, and
+`devlab resume` guidance. It requires operator intent unless unattended
+clarification resolution was selected.
+
+Profiles and agent configuration are executable configuration. If a session
+changes them, the final summary compares the command's frozen authorized digest
+with the repository's current digest. Review and authorize an untrusted current
+snapshot before continuation:
+
+```bash
+devlab trust executable-config --show
+devlab trust executable-config
+devlab implement
+```
+
+The summary is read-only. It does not trust configuration, answer
+clarifications, repair state, or alter role selection and exit behavior.
+
 ## Initialization Templates
 
 `devlab init` generates a neutral tooling policy and an empty-validation default

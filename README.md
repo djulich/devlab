@@ -166,6 +166,11 @@ Implement the planned workflow. `devlab implement` carries out already-reconcile
 devlab implement --max-sessions 20
 ```
 
+Bounded `plan` and `implement` commands finish with an operator summary that
+states why the command stopped, the next role or task, whether clarification or
+executable-configuration review is required, and the recommended continuation
+command.
+
 For prompt-debugging only, retain full base/session prompts alongside agent logs:
 
 ```bash

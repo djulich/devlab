@@ -39,7 +39,8 @@ from devlab.handoffs import (
 )
 from devlab.history import format_history
 from devlab.init import INIT_TEMPLATES, format_init_next_steps, format_init_result, init_workspace
-from devlab.orchestrator import DEFAULT_PROJECT_ROOT, run_loop, submit_session_handoff
+from devlab.orchestrator import DEFAULT_PROJECT_ROOT, RunResult, run_loop, submit_session_handoff
+from devlab.run_summary import build_run_summary, format_run_summary
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
 from devlab.workflow_state_report import (
@@ -518,6 +519,17 @@ def main() -> None:
             handoff_correction=args.handoff_correction,
             executable_config=executable_config,
         )
+        if isinstance(result, RunResult):
+            print(
+                format_run_summary(
+                    build_run_summary(
+                        root,
+                        command="implement",
+                        result=result,
+                        initial_executable_config=executable_config,
+                    )
+                )
+            )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
     elif args.command == "plan":
@@ -552,6 +564,17 @@ def main() -> None:
             handoff_correction=args.handoff_correction,
             executable_config=executable_config,
         )
+        if isinstance(result, RunResult):
+            print(
+                format_run_summary(
+                    build_run_summary(
+                        root,
+                        command="plan",
+                        result=result,
+                        initial_executable_config=executable_config,
+                    )
+                )
+            )
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
     elif args.command == "status":

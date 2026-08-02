@@ -716,6 +716,8 @@ def test_cli_implement_quiet_suppresses_progress_logs(
 
     captured = capsys.readouterr()
     assert "Orchestrator finished" not in captured.err
+    assert "DevLab stopped: session limit reached; work remains" in captured.out
+    assert "Next action:" in captured.out
 
 
 def test_cli_implement_verbose_emits_debug_logs(
