@@ -14,7 +14,14 @@ from devlab._logging import logger
 from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider, ProviderError
 from devlab.clarifications import FileClarificationTracker
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
-from devlab.handoffs import Handoff, HandoffError, parse_handoff
+from devlab.handoffs import (
+    Handoff,
+    HandoffError,
+    HandoffSubmissionError,
+    SessionEnvelope,
+    parse_handoff,
+    write_session_envelope,
+)
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import (
     RunStopReason,
@@ -89,7 +96,11 @@ def _write_task(
         validation_commands = ", ".join(f'"{command}"' for command in validation)
         validation_line = f"validation = [{validation_commands}]\n"
     if body is None:
-        body = f"# {task_id}: {title}\n\n## Acceptance Criteria\n- [ ] Done\n"
+        body = (
+            f"# {task_id}: {title}\n\n"
+            f"## Goal\nComplete {title}.\n\n"
+            "## Acceptance Criteria\n- [ ] Done\n"
+        )
     path.write_text(
         "+++\n"
         f'id = "{task_id}"\n'
@@ -385,6 +396,7 @@ def test_run_loop_clears_matching_resume_pointer_after_session(
         "T0001",
         body=(
             "# T0001: First\n\n"
+            "## Goal\nComplete First.\n\n"
             "## Acceptance Criteria\n"
             "- [x] Done\n"
         ),
@@ -1316,7 +1328,11 @@ class TestBuildSystemPrompt:
 
 
 def _checked_task_body(task_id: str, title: str) -> str:
-    return f"# {task_id}: {title}\n\n## Acceptance Criteria\n- [x] Done\n"
+    return (
+        f"# {task_id}: {title}\n\n"
+        f"## Goal\nComplete {title}.\n\n"
+        "## Acceptance Criteria\n- [x] Done\n"
+    )
 
 
 def _approve_task(call: AgentCall, task_id: str | None = None) -> None:
@@ -1409,7 +1425,8 @@ class TestRunLoop:
 
         events = load_workflow_events(tmp_path)
         assert result.sessions_run == 2
-        assert [(event.type, event.data["mode"]) for event in events] == [
+        planning_events = [event for event in events if event.type.startswith("plan_")]
+        assert [(event.type, event.data["mode"]) for event in planning_events] == [
             ("plan_started", "greenfield"),
             ("plan_completed", "greenfield"),
         ]
@@ -1886,6 +1903,7 @@ class TestRunLoop:
         assert len(provider.calls) == 1
         assert provider.calls[0].role_name == "developer"
         assert 'status = "in_review"' in task.read_text()
+        assert _find_metadata(tmp_path)["progress"] == "workflow_advance"
 
     def test_session_progress_callback_reports_start_and_finish(
         self, tmp_path: Path
@@ -3380,6 +3398,55 @@ def test_run_loop_can_use_one_opt_in_handoff_correction(tmp_path: Path) -> None:
     assert list((tmp_path / HISTORY_DIR).glob("*_architect_result.toml"))
 
 
+def test_completed_developer_submission_requires_complete_acceptance(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_task(
+        tmp_path,
+        "T0001",
+        "First",
+        body=(
+            "# T0001: First\n\n"
+            "## Acceptance Criteria\n"
+            "- [x] Implement behavior\n"
+            "- [ ] Add regression coverage\n"
+        ),
+    )
+    artifacts = tmp_path / ARTIFACTS_DIR / "developer"
+    artifacts.mkdir(parents=True)
+    envelope_path = artifacts / "session.toml"
+    write_session_envelope(
+        envelope_path,
+        SessionEnvelope(
+            schema_version=1,
+            session_id="session-1",
+            role="developer",
+            task="T0001",
+            protected_active_tasks=("T0001",),
+        ),
+    )
+    (artifacts / "handoff-candidate.toml").write_text(
+        'schema_version = 1\noutcome = "completed"\n'
+        'commit_message = "Finish task"\n'
+        'done = ["Implemented task"]\n'
+        'changed_artifacts = ["src/example.py"]\n'
+        "open_issues = []\naddressed_findings = []\n"
+        'next_session_hint = "Review the task."\n'
+    )
+
+    with pytest.raises(
+        HandoffSubmissionError, match="Add regression coverage"
+    ):
+        submit_session_handoff(tmp_path, envelope_path=envelope_path)
+
+    complete_acceptance(tmp_path, "T0001")
+    result = submit_session_handoff(tmp_path, envelope_path=envelope_path)
+
+    assert result.role_name == "developer"
+    assert result.result_path.exists()
+
+
 def test_handoff_correction_rejects_product_file_changes(tmp_path: Path) -> None:
     _setup_tree(tmp_path)
     invocations = 0
@@ -3403,6 +3470,104 @@ def test_handoff_correction_rejects_product_file_changes(tmp_path: Path) -> None
     assert result.errors[0].phase == "handoff_correction"
     assert "unexpected.txt" in result.errors[0].message
     assert invocations == 2
+
+
+def test_handoff_correction_can_check_assigned_acceptance_criterion(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    task = _write_task(tmp_path, "T0001", "First")
+    invocations = 0
+
+    def on_invoke(call: AgentCall) -> None:
+        nonlocal invocations
+        invocations += 1
+        envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
+        candidate = envelope_path.with_name("handoff-candidate.toml")
+        candidate.write_text(
+            'schema_version = 1\noutcome = "completed"\n'
+            'commit_message = "Finish task"\n'
+            'done = ["Implemented task"]\nchanged_artifacts = []\n'
+            "open_issues = []\naddressed_findings = []\n"
+            'next_session_hint = "Review."\n'
+        )
+        if invocations == 2:
+            complete_acceptance(call.root, "T0001")
+            submit_session_handoff(call.root, envelope_path=envelope_path)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+        handoff_correction=True,
+    )
+
+    assert result.exit_code == 0
+    assert invocations == 2
+    assert 'status = "in_review"' in task.read_text()
+
+
+def test_repeated_non_advancing_developer_stops_after_one_recovery(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First")
+
+    def on_invoke(call: AgentCall) -> None:
+        envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
+        envelope_path.with_name("handoff-candidate.toml").write_text(
+            'schema_version = 1\noutcome = "failed"\n'
+            'commit_message = "Unable to progress"\n'
+            'done = ["Inspected task"]\nchanged_artifacts = []\n'
+            'open_issues = ["No implementation progress"]\n'
+            "addressed_findings = []\n"
+            'next_session_hint = "Retry once."\n'
+        )
+        submit_session_handoff(call.root, envelope_path=envelope_path)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=3,
+        agent_providers={"default": provider},
+    )
+
+    assert result.stop_reason == RunStopReason.DEVELOPER_NON_ADVANCING
+    assert result.sessions_run == 2
+    assert len(provider.calls) == 2
+    assert "## Bounded Recovery" in provider.calls[1].session_prompt
+
+
+def test_repeated_validation_failure_stops_after_one_developer_recovery(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First", validation=["false"])
+
+    def on_invoke(call: AgentCall) -> None:
+        complete_acceptance(call.root, "T0001")
+
+    provider = MockProvider(on_invoke=on_invoke)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=3,
+        agent_providers={"default": provider},
+    )
+
+    assert result.stop_reason == RunStopReason.VALIDATION_FAILED
+    assert result.sessions_run == 2
+    assert len(provider.calls) == 2
+    assert "## Validation Recovery" in provider.calls[1].session_prompt
+    task = FileTaskTracker(tmp_path).get("T0001")
+    assert task.status == TaskStatus.CHANGES_REQUESTED
+    assert not task.acceptance_criteria_complete
 
 
 class TestTimestamp:

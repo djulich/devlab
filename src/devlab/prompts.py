@@ -11,7 +11,12 @@ from pathlib import Path
 from devlab.clarifications import Clarification, ClarificationStatus
 from devlab.findings import FindingStatus
 from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
-from devlab.profiles import Profile, load_profile, profile_from_snapshot
+from devlab.profiles import (
+    Profile,
+    effective_validation,
+    load_profile,
+    profile_from_snapshot,
+)
 from devlab.prompt_resources import read_optional_prompt_resource, read_prompt_resource
 from devlab.roles import RoleConfig
 from devlab.task_tracker import Task
@@ -421,8 +426,9 @@ def _profile_prompt_sections(
 
 
 def _validation_prompt_section(task: Task, profile: Profile) -> str:
-    if task.validation is None:
-        commands = profile.tooling.default_validation
+    validation = effective_validation(task, profile)
+    if validation.source == "profile":
+        commands = validation.commands
         if commands:
             command_lines = "\n".join(f"- `{command}`" for command in commands)
             return (
@@ -431,9 +437,11 @@ def _validation_prompt_section(task: Task, profile: Profile) -> str:
                 f"profile `{profile.id}`. Run from the workspace root:\n\n{command_lines}"
             )
         return ""
-    if task.validation:
-        commands = "\n".join(f"- `{command}`" for command in task.validation)
+    if validation.source == "task":
+        commands = "\n".join(f"- `{command}`" for command in validation.commands)
         return f"## Task Validation Commands\n\nRun from the workspace root:\n\n{commands}"
+    if task.validation is None:
+        return ""
     return (
         "## Task Validation Commands\n\n"
         "Task metadata sets `validation = []`. No validation commands "

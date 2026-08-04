@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from devlab.profiles import ProfileNotFoundError, effective_profile_id, load_profile
+from devlab.profiles import (
+    ProfileNotFoundError,
+    effective_profile_id,
+    effective_validation,
+    load_profile,
+)
+from devlab.task_tracker import FileTaskTracker
 
 
 def test_omitted_profile_resolves_to_default() -> None:
@@ -76,3 +82,53 @@ def test_rejects_profile_id_mismatch(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="id mismatch"):
         load_profile(tmp_path, "api")
+
+
+@pytest.mark.parametrize(
+    ("task_validation", "profile_validation", "source", "commands"),
+    [
+        (["task check"], ["profile check"], "task", ("task check",)),
+        ([], ["profile check"], "none", ()),
+        (None, ["profile check"], "profile", ("profile check",)),
+        (None, [], "none", ()),
+    ],
+)
+def test_effective_validation_resolution(
+    tmp_path: Path,
+    task_validation: list[str] | None,
+    profile_validation: list[str],
+    source: str,
+    commands: tuple[str, ...],
+) -> None:
+    tasks = tmp_path / ".devlab/tasks"
+    tasks.mkdir(parents=True)
+    validation_line = (
+        ""
+        if task_validation is None
+        else "validation = ["
+        + ", ".join(f'\"{command}\"' for command in task_validation)
+        + "]\n"
+    )
+    (tasks / "T0001_task.md").write_text(
+        "+++\n"
+        'id = "T0001"\n'
+        'title = "Task"\n'
+        'status = "open"\n'
+        f"{validation_line}"
+        "+++\n\n"
+        "# T0001: Task\n\n## Acceptance Criteria\n- [ ] Done\n"
+    )
+    profiles = tmp_path / ".devlab/config/profiles"
+    profiles.mkdir(parents=True)
+    values = ", ".join(f'\"{command}\"' for command in profile_validation)
+    (profiles / "default.toml").write_text(
+        'version = 1\nid = "default"\n[tooling]\n'
+        f"default_validation = [{values}]\n"
+    )
+
+    resolved = effective_validation(
+        FileTaskTracker(tmp_path).get("T0001"), load_profile(tmp_path, None)
+    )
+
+    assert resolved.source == source
+    assert resolved.commands == commands

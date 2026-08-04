@@ -45,6 +45,22 @@ The governing rule is:
 > workflow; stop before repeating an action that has already failed to produce
 > progress.
 
+## Implementation Status
+
+Implemented on 2026-08-05. The delivered policy keeps profile-default validation
+failure soft at task level, while explicit task validation receives one bounded
+developer correction before `validation_failed`. This distinction was confirmed by
+the mixed-language scripted evaluation: a repository-wide profile command can be
+expected to fail after the first task in an intentionally incremental milestone.
+
+Implemented behavior includes semantic developer submission validation, restricted
+checkbox correction, durable session-progress events and diagnostics, one bounded
+non-advancing recovery, centralized validation resolution and records, bounded
+explicit-task validation recovery, structural task gates, non-blocking compound
+criterion warnings, and consolidated reviewer/scenario guidance. Live evaluation
+remains continuous evidence for tuning heuristics and defaults, not a prerequisite
+for enforcement.
+
 ## Non-Goals
 
 This plan does not initially:

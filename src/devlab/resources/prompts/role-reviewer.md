@@ -22,16 +22,17 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 3. Inspect the changed files and relevant tests.
 4. Compare only the assigned task's changed behavior, tests, and documentation against the task acceptance criteria and directly relevant system/deployment specification clauses. Pay special attention to externally observable contracts such as command names, request/response shapes, status codes, file names, and documented operational procedures.
 5. Validate that the implementation satisfies the task without unrelated changes, using the assigned task's validation metadata or resolved profile defaults. For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
-6. If approved, append or update this section in the task file:
+6. Finding one rejection-worthy defect does not end the review. Continue through every acceptance criterion and directly relevant specification, migration, test, and documentation contract so one rejection reports all currently discoverable actionable issues.
+7. If approved, append or update this section in the task file:
 
    ```md
    ## Review
    - [x] Approved
    ```
 
-7. If rejected, do not leave a `## Review\n- [x] Approved` marker in the task file. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. The orchestrator will set the task status to `changes_requested`.
-8. Do not change the task status manually; the orchestrator owns status transitions.
-9. Fill the initialized handoff candidate and run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`; correct reported errors until DevLab accepts it.
+8. If rejected, do not leave a `## Review\n- [x] Approved` marker in the task file. Uncheck at least one relevant acceptance criterion in the task file, add or update a `## Requested Changes` section with the required fixes (only actionable fix requirements), and summarize those fixes in the handoff's Open Issues section. Distinguish defects in the submitted implementation, defects introduced by corrective work, and gaps that require replanning. The orchestrator will set the task status to `changes_requested`.
+9. Do not change the task status manually; the orchestrator owns status transitions.
+10. Fill the initialized handoff candidate and run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`; correct reported errors until DevLab accepts it.
 
 ## Tool Usage
 
@@ -46,7 +47,7 @@ Before approving, confirm:
 - [ ] The assigned task's changed behavior, tests, and documentation match directly relevant externally observable contracts, including exact JSON response shapes, status codes, command names, file names, and operational verification steps.
 - [ ] Task `validation` commands pass when present and non-empty.
 - [ ] Default validation from the resolved task profile passes when task `validation` is omitted.
-- [ ] If task `validation = []`, the developer handoff states whether any validation was run and why.
+- [ ] If task `validation = []`, relevant manual or deliberately skipped checks that DevLab cannot infer are documented when applicable.
 - [ ] If the task creates or changes a profile, the profile follows `.devlab/config/tooling.md` policy.
 - [ ] Existing profile changes are backward-compatible for existing planned tasks, unless the task explicitly required a new profile or breaking migration.
 - [ ] The implementation honors existing `CONTEXT.md` terminology and ADR decisions, or documents a clear contradiction that requires follow-up.

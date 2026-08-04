@@ -221,7 +221,12 @@ def _next_commands(
             f"devlab clarify answer {clarification.id} ...",
             "devlab resume",
         )
-    if result.stop_reason == RunStopReason.ERROR:
+    if result.stop_reason in {
+        RunStopReason.ERROR,
+        RunStopReason.DEVELOPER_NON_ADVANCING,
+        RunStopReason.TASK_CONTRACT_INVALID,
+        RunStopReason.VALIDATION_FAILED,
+    }:
         return ("Inspect the errors above and run devlab doctor before retrying.",)
     if executable_config.state == "invalid":
         return ("devlab doctor",)
@@ -250,5 +255,8 @@ def _stop_reason_text(reason: RunStopReason) -> str:
         RunStopReason.SESSION_LIMIT: "session limit reached; work remains",
         RunStopReason.CLARIFICATION_BLOCKED: "operator clarification required",
         RunStopReason.NO_ELIGIBLE_ROLE: "no eligible workflow role",
+        RunStopReason.DEVELOPER_NON_ADVANCING: "developer recovery made no progress",
+        RunStopReason.TASK_CONTRACT_INVALID: "task contract is invalid",
+        RunStopReason.VALIDATION_FAILED: "task validation failed after bounded recovery",
         RunStopReason.ERROR: "workflow error",
     }[reason]

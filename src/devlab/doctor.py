@@ -11,6 +11,7 @@ from devlab.doctor_workflow_state import (
     check_clarifications,
     check_git_worktree,
     check_milestones,
+    check_task_contracts,
     check_task_domains,
     check_workflow_state,
 )
@@ -31,6 +32,7 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     problems.extend(check_clarifications(root))
     problems.extend(check_milestones(root, snapshot))
     problems.extend(check_task_domains(snapshot))
+    problems.extend(check_task_contracts(snapshot))
     problems.extend(check_deployment_spec(root))
     problems.extend(check_project_knowledge(root))
     return problems

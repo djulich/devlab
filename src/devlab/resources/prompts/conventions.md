@@ -62,7 +62,7 @@ Each task has one primary domain with `domain = "<domain>"`; if omitted, `domain
 
 Each task may specify one profile with `profile = "<profile-id>"`; if omitted, `profile = "default"` is used. Profiles live in `.devlab/config/profiles/` and define tooling, default validation, and executable lifecycle commands for task types. If a task needs combined tooling/environment behavior, create a dedicated profile for that task type. Existing profiles may be extended or fixed in backward-compatible ways; breaking behavior changes should use a new profile so already-planned tasks keep their expected execution contract.
 
-Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root after the orchestrator-managed environment lifecycle has established the development environment. If `validation` is omitted, use the default validation from the resolved task profile. If `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
+Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root after the orchestrator-managed environment lifecycle has established the development environment. If `validation` is omitted, use the default validation from the resolved task profile. If `validation = []`, no mechanical validation commands are required; report only relevant manual checks or deliberately skipped checks that DevLab cannot infer.
 
 ## Finding Template
 

@@ -251,7 +251,9 @@ class TestFileTaskTrackerParsing:
             ),
         )
 
-        assert not FileTaskTracker(tmp_path).get("T0001").acceptance_criteria_complete
+        task = FileTaskTracker(tmp_path).get("T0001")
+        assert not task.acceptance_criteria_complete
+        assert task.unchecked_acceptance_criteria == ("Second criterion",)
 
     def test_acceptance_criteria_missing_or_without_checkboxes_is_incomplete(
         self, tmp_path: Path

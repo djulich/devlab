@@ -9,6 +9,7 @@ from devlab.doctor_common import DoctorProblem, display_path
 from devlab.findings import FindingStatus
 from devlab.git import VersionControlError, run_git
 from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
+from devlab.profiles import profile_path
 from devlab.task_tracker import DEFAULT_TASK_DOMAIN
 from devlab.workflow_state import WORKFLOW_STATE, load_workflow_state
 from devlab.workspace import WorkspaceSnapshot
@@ -70,6 +71,61 @@ def check_task_domains(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
                 )
             )
     return problems
+
+
+def check_task_contracts(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
+    """Report deterministic task work-packet defects before agent execution."""
+    problems: list[DoctorProblem] = []
+    tasks = snapshot.list_tasks()
+    task_ids = {task.id for task in tasks}
+    dependencies = {task.id: task.depends_on for task in tasks}
+    for task in tasks:
+        task_path = display_path(task.path, snapshot.root)
+        for issue in task.contract_errors:
+            problems.append(DoctorProblem(task_path, issue))
+        for dependency in task.depends_on:
+            if dependency not in task_ids:
+                problems.append(
+                    DoctorProblem(task_path, f"depends_on references unknown task {dependency!r}")
+                )
+        if task.profile is not None and not profile_path(snapshot.root, task.profile).exists():
+            problems.append(
+                DoctorProblem(task_path, f"references missing profile {task.profile!r}")
+            )
+    for cycle in _dependency_cycles(dependencies):
+        task = next(task for task in tasks if task.id == cycle[0])
+        problems.append(
+            DoctorProblem(
+                display_path(task.path, snapshot.root),
+                "dependency cycle: " + " -> ".join((*cycle, cycle[0])),
+            )
+        )
+    return problems
+
+
+def _dependency_cycles(dependencies: dict[str, tuple[str, ...]]) -> list[tuple[str, ...]]:
+    cycles: set[tuple[str, ...]] = set()
+    visiting: list[str] = []
+    visited: set[str] = set()
+
+    def visit(task_id: str) -> None:
+        if task_id in visiting:
+            cycle = visiting[visiting.index(task_id) :]
+            rotations = [tuple(cycle[index:] + cycle[:index]) for index in range(len(cycle))]
+            cycles.add(min(rotations))
+            return
+        if task_id in visited:
+            return
+        visiting.append(task_id)
+        for dependency in dependencies.get(task_id, ()):
+            if dependency in dependencies:
+                visit(dependency)
+        visiting.pop()
+        visited.add(task_id)
+
+    for task_id in dependencies:
+        visit(task_id)
+    return sorted(cycles)
 
 
 def check_clarifications(root: Path) -> list[DoctorProblem]:

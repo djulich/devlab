@@ -710,7 +710,9 @@ def _write_task(
         "depends_on = []\n"
         f"addresses_findings = [{findings_text}]\n"
         "+++\n\n"
-        f"# {task_id}\n"
+        f"# {task_id}\n\n"
+        "## Goal\nComplete the task.\n\n"
+        "## Acceptance Criteria\n- [ ] Done\n"
     )
 
 

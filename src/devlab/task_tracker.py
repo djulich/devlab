@@ -62,9 +62,47 @@ class Task:
         return bool(checked) and not unchecked
 
     @property
+    def unchecked_acceptance_criteria(self) -> tuple[str, ...]:
+        """Return the visible text of unchecked acceptance criteria."""
+        section = _markdown_section(self.body, "Acceptance Criteria")
+        return tuple(
+            match.strip()
+            for match in re.findall(
+                r"^\s*- \[ \]\s*(.*\S|)\s*$", section, flags=re.MULTILINE
+            )
+        )
+
+    @property
     def review_approved(self) -> bool:
         section = _markdown_section(self.body, "Review")
         return bool(re.search(r"^\s*- \[[xX]\] Approved\s*$", section, flags=re.MULTILINE))
+
+    @property
+    def contract_errors(self) -> tuple[str, ...]:
+        """Return deterministic structural problems in this task work packet."""
+        issues: list[str] = []
+        if not _markdown_section(self.body, "Goal").strip():
+            issues.append("missing or empty ## Goal section")
+        criteria = _markdown_section(self.body, "Acceptance Criteria")
+        if not criteria.strip():
+            issues.append("missing or empty ## Acceptance Criteria section")
+        elif not re.search(r"^\s*- \[[ xX]\]", criteria, flags=re.MULTILINE):
+            issues.append("Acceptance Criteria contains no checkboxes")
+        return tuple(issues)
+
+    @property
+    def contract_warnings(self) -> tuple[str, ...]:
+        """Return conservative, non-blocking task-quality observations."""
+        criteria = _markdown_section(self.body, "Acceptance Criteria")
+        warnings: list[str] = []
+        for line in criteria.splitlines():
+            match = re.match(r"^\s*- \[[ xX]\]\s*(.+)$", line)
+            if match and match.group(1).lower().count(" and ") >= 2:
+                warnings.append(
+                    "compound acceptance criterion may hide independently "
+                    f"falsifiable behavior: {match.group(1).strip()}"
+                )
+        return tuple(warnings)
 
 
 class FileTaskTracker:
@@ -144,6 +182,26 @@ class FileTaskTracker:
 
     def mark_changes_requested(self, task_id: str) -> None:
         self.set_status(task_id, TaskStatus.CHANGES_REQUESTED)
+
+    def record_validation_failure(self, task_id: str, summary: str) -> None:
+        """Return a task to development with durable validation evidence."""
+        task = self.get(task_id)
+        body = task.body
+        section = _markdown_section(body, "Acceptance Criteria")
+        checked = re.search(r"^\s*- \[[xX]\]", section, flags=re.MULTILINE)
+        if checked is not None:
+            section = section[: checked.start()] + re.sub(
+                r"\[[xX]\]", "[ ]", section[checked.start() :], count=1
+            )
+            body = _replace_markdown_section(body, "Acceptance Criteria", section)
+        failure_section = f"Validation failed: {summary.strip()}"
+        if _markdown_section(body, "Validation Failure"):
+            body = _replace_markdown_section(body, "Validation Failure", failure_section)
+        else:
+            body = body.rstrip() + "\n\n## Validation Failure\n" + failure_section + "\n"
+        metadata = dict(task.metadata)
+        metadata["status"] = TaskStatus.CHANGES_REQUESTED.value
+        atomic_write_text(task.path, _format_task_file(metadata, body))
 
     def close(self, task_id: str) -> None:
         self.set_status(task_id, TaskStatus.CLOSED)
@@ -285,6 +343,13 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
         lines.append(f"{key} = {format_toml_value(metadata[key])}")
     lines.append("+++")
     return "\n".join(lines) + "\n\n" + body.lstrip("\n")
+
+
+def _replace_markdown_section(body: str, heading: str, replacement: str) -> str:
+    pattern = re.compile(
+        rf"(^## {re.escape(heading)}\s*$)([\s\S]*?)(?=^##\s+|\Z)", re.MULTILINE
+    )
+    return pattern.sub(rf"\1\n{replacement.rstrip()}\n\n", body, count=1)
 
 
 

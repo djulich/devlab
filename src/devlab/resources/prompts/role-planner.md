@@ -56,6 +56,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 - Remember each task incurs a developer and reviewer session, so oversplitting increases workflow cost.
 - Each task must be completable in one developer session.
 - Each task must have concrete, verifiable acceptance criteria.
+- Avoid compound criteria that hide independently falsifiable behavior. For stateful or persistence work, make relevant scope isolation, replay equivalence, historical correctness, rollback/retry, schema-upgrade, and unsupported-version cases explicit rather than relying on one broad claim.
 - Tasks should be independent from each other where possible.
 - If a task depends on another, add the dependency task IDs to the task metadata's `depends_on` array.
 - New tasks start with `status = "open"`.

@@ -54,6 +54,7 @@ class TaskItem:
     status: str
     milestone: str
     domain: str
+    contract_warnings: list[str]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,6 +97,13 @@ class PromptLogMetrics:
     session_count: int
     max_base_prompt_bytes: int
     max_session_prompt_bytes: int
+
+
+@dataclasses.dataclass(frozen=True)
+class SessionProgressMetrics:
+    classified: int
+    unclassified: int
+    by_kind: dict[str, int]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -143,6 +151,7 @@ class WorkflowDiagnostics:
     artifact_hygiene: ArtifactHygiene
     agent_logs: AgentLogMetrics
     prompt_logs: PromptLogMetrics
+    session_progress: SessionProgressMetrics
     quality: QualitySummary
 
     def as_dict(self) -> dict[str, object]:
@@ -181,6 +190,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
         artifact_hygiene=artifact_hygiene,
         agent_logs=collect_agent_log_metrics(root),
         prompt_logs=collect_prompt_log_metrics(root),
+        session_progress=collect_session_progress_metrics(root),
         quality=quality_summary(
             checks=[],
             task_metrics=task_metrics,
@@ -263,6 +273,7 @@ def collect_task_metrics(
                 status=task.status.value,
                 milestone=task.milestone or "",
                 domain=task.domain,
+                contract_warnings=list(task.contract_warnings),
             )
             for task in tasks
         ],
@@ -329,6 +340,28 @@ def collect_agent_log_metrics(root: Path) -> AgentLogMetrics:
     )
 
 
+def collect_session_progress_metrics(root: Path) -> SessionProgressMetrics:
+    """Collect progress classifications from durable session metadata."""
+    by_kind: dict[str, int] = {}
+    unclassified = 0
+    for path in (root / ".devlab/logs/agents").glob("*.metadata.json"):
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            unclassified += 1
+            continue
+        progress = data.get("progress")
+        if not isinstance(progress, str) or not progress:
+            unclassified += 1
+            continue
+        by_kind[progress] = by_kind.get(progress, 0) + 1
+    return SessionProgressMetrics(
+        classified=sum(by_kind.values()),
+        unclassified=unclassified,
+        by_kind=dict(sorted(by_kind.items())),
+    )
+
+
 def collect_prompt_log_metrics(root: Path) -> PromptLogMetrics:
     log_dir = root / ".devlab/logs/agents"
     base_logs = list(log_dir.glob("*.base-prompt.md"))
@@ -356,6 +389,11 @@ def quality_summary(
     closed = task_metrics.by_status.get(TaskStatus.CLOSED.value, 0)
     all_tasks_closed = task_metrics.total == closed
     warnings = [f"flagged artifact path: {path}" for path in artifact_hygiene.flagged_paths]
+    warnings.extend(
+        f"task quality warning {item.id}: {warning}"
+        for item in task_metrics.items
+        for warning in item.contract_warnings
+    )
     if task_rework is not None:
         warnings.extend(
             f"task rework detected: {task_id}" for task_id in task_rework.tasks_with_rework
@@ -407,6 +445,7 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
     lines.append(_format_profile_summary(diagnostics.profiles))
     lines.append(_format_generation_summary(diagnostics.generations))
     lines.append(_format_artifact_hygiene_summary(diagnostics.artifact_hygiene))
+    lines.append(_format_session_progress_summary(diagnostics.session_progress))
     if diagnostics.quality.warnings:
         lines.append("Warnings:")
         lines.extend(f"- {warning}" for warning in diagnostics.quality.warnings)
@@ -494,6 +533,15 @@ def _format_artifact_hygiene_summary(artifact_hygiene: ArtifactHygiene) -> str:
         f"{artifact_hygiene.product_file_count} product files, "
         f"{artifact_hygiene.ignored_file_count} ignored files, "
         f"{len(artifact_hygiene.flagged_paths)} flagged paths"
+    )
+
+
+def _format_session_progress_summary(progress: SessionProgressMetrics) -> str:
+    kinds = ", ".join(
+        f"{kind}={count}" for kind, count in progress.by_kind.items()
+    ) or "none"
+    return (
+        f"Session progress: {kinds}; unclassified={progress.unclassified}"
     )
 
 

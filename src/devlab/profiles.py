@@ -4,9 +4,10 @@ import dataclasses
 import re
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from devlab.environment import EnvironmentConfig, EnvironmentTimeouts, _int_value, _string_tuple
+from devlab.task_tracker import Task
 
 PROFILES_DIR = ".devlab/config/profiles"
 DEFAULT_PROFILE = "default"
@@ -26,6 +27,28 @@ class Profile:
     tooling: ToolingConfig = dataclasses.field(default_factory=ToolingConfig)
     environment: EnvironmentConfig = dataclasses.field(default_factory=EnvironmentConfig)
     path: Path | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class EffectiveValidation:
+    """Resolved validation contract for one task and profile."""
+
+    source: Literal["task", "profile", "none"]
+    commands: tuple[str, ...]
+
+
+def effective_validation(task: Task, profile: Profile) -> EffectiveValidation:
+    """Resolve task validation without executing commands or mutating state."""
+    if task.validation is not None:
+        return EffectiveValidation(
+            source="task" if task.validation else "none",
+            commands=task.validation,
+        )
+    if profile.tooling.default_validation:
+        return EffectiveValidation(
+            source="profile", commands=profile.tooling.default_validation
+        )
+    return EffectiveValidation(source="none", commands=())
 
 
 class ProfileNotFoundError(FileNotFoundError):

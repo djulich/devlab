@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import re
 import shutil
 import sys
 import tomllib
@@ -10,6 +11,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 from devlab._logging import logger
 from devlab.agent_config import (
@@ -34,10 +36,15 @@ from devlab.clarifications import (
     expected_file_edit_paths,
     option_text,
 )
-from devlab.environment import EnvironmentCommandError, EnvironmentManager
+from devlab.environment import (
+    EnvironmentCommandError,
+    EnvironmentManager,
+    ValidationRun,
+    run_validation_commands,
+)
 from devlab.executable_config import ExecutableConfigSnapshot
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
-from devlab.git import VersionControlError
+from devlab.git import VersionControlError, run_git
 from devlab.handoffs import (
     DEVLAB_PYTHON_ENV,
     HANDOFF_CANDIDATE_FILE,
@@ -47,6 +54,7 @@ from devlab.handoffs import (
     SESSION_ENVELOPE_FILE,
     SESSION_RESULT_FILE,
     Handoff,
+    HandoffCandidate,
     HandoffError,
     HandoffFailureReason,
     HandoffSubmissionError,
@@ -61,7 +69,13 @@ from devlab.handoffs import (
     submission_attempt_count,
     write_session_envelope,
 )
-from devlab.profiles import Profile, ProfileNotFoundError, load_profile, profile_from_snapshot
+from devlab.profiles import (
+    Profile,
+    ProfileNotFoundError,
+    effective_validation,
+    load_profile,
+    profile_from_snapshot,
+)
 from devlab.prompt_resources import read_prompt_resource
 from devlab.prompts import (
     build_base_prompt,
@@ -74,7 +88,7 @@ from devlab.spec_reconciliation import (
     SpecReconciliationStatus,
     inspect_spec_reconciliation,
 )
-from devlab.task_tracker import Task, TaskStatus
+from devlab.task_tracker import DEVELOPABLE_STATUSES, Task, TaskStatus
 from devlab.version_control import (
     assert_clean_worktree,
     commit_all,
@@ -83,7 +97,7 @@ from devlab.version_control import (
 from devlab.version_control import (
     tag as create_git_tag,
 )
-from devlab.workflow_events import append_workflow_event
+from devlab.workflow_events import append_workflow_event, load_workflow_events
 from devlab.workflow_state import (
     ResumeState,
     WorkflowState,
@@ -124,6 +138,9 @@ class RunStopReason(StrEnum):
     SESSION_LIMIT = "session_limit"
     CLARIFICATION_BLOCKED = "clarification_blocked"
     NO_ELIGIBLE_ROLE = "no_eligible_role"
+    DEVELOPER_NON_ADVANCING = "developer_non_advancing"
+    TASK_CONTRACT_INVALID = "task_contract_invalid"
+    VALIDATION_FAILED = "validation_failed"
     ERROR = "error"
 
 
@@ -143,14 +160,17 @@ class RunResult:
 
 
 def _error_result(
-    sessions_run: int, error: SessionError, *additional: SessionError
+    sessions_run: int,
+    error: SessionError,
+    *additional: SessionError,
+    reason: RunStopReason = RunStopReason.ERROR,
 ) -> RunResult:
     return RunResult(
         sessions_run,
         False,
         error.exit_code,
         (error, *additional),
-        RunStopReason.ERROR,
+        reason,
     )
 
 
@@ -258,6 +278,24 @@ class SessionMetadata:
     provider_version: str = ""
     executable_config_digest: str = ""
     executable_config_authorization: str = ""
+    progress: str = ""
+
+
+class SessionProgress(StrEnum):
+    """Observed repository/workflow effect of one accepted role session."""
+
+    PRODUCT_CHANGE = "product_change"
+    WORKFLOW_ADVANCE = "workflow_advance"
+    LEGITIMATE_STOP = "legitimate_stop"
+    NON_ADVANCING = "non_advancing"
+
+
+@dataclasses.dataclass(frozen=True)
+class SessionProgressBaseline:
+    tasks: dict[str, tuple[TaskStatus, bool, bool, str]]
+    milestones: dict[str, object]
+    workflow_state: WorkflowState
+    findings: tuple[object, ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -386,6 +424,8 @@ def submit_session_handoff(
         handoff = candidate.as_handoff(handoff_path, envelope.role)
         snapshot = Workspace(root).snapshot
         validate_handoff(handoff, snapshot)
+        if envelope.role == "developer" and candidate.outcome == "completed":
+            _validate_completed_developer_candidate(snapshot, envelope, candidate)
         if envelope.role == "planner" and not envelope.allow_active_task_replacement:
             current_ids = {task.id for task in snapshot.list_tasks()}
             deleted = sorted(set(envelope.protected_active_tasks) - current_ids)
@@ -423,6 +463,47 @@ def submit_session_handoff(
         role_name=envelope.role,
         result_path=result_path,
         handoff_path=handoff_path,
+    )
+
+
+def _validate_completed_developer_candidate(
+    snapshot: WorkspaceSnapshot,
+    envelope: SessionEnvelope,
+    candidate: HandoffCandidate,
+) -> None:
+    """Require a completed developer result to satisfy its task postconditions."""
+    if candidate.open_issues:
+        raise HandoffError(
+            "completed developer result must not report open issues; use outcome "
+            "failed or needs_clarification",
+            reason=HandoffFailureReason.SEMANTIC_CONFLICT,
+        )
+    if not envelope.task:
+        raise HandoffError(
+            "completed developer session has no assigned task",
+            reason=HandoffFailureReason.SESSION_PROTOCOL,
+        )
+    task = next((task for task in snapshot.list_tasks() if task.id == envelope.task), None)
+    if task is None:
+        raise HandoffError(
+            f"completed developer session references unknown task {envelope.task}",
+            reason=HandoffFailureReason.REFERENCE,
+        )
+    if task.status not in DEVELOPABLE_STATUSES:
+        raise HandoffError(
+            f"assigned task {task.id} is not developable (status={task.status.value})",
+            reason=HandoffFailureReason.SEMANTIC_CONFLICT,
+        )
+    if task.acceptance_criteria_complete:
+        return
+    unchecked = task.unchecked_acceptance_criteria
+    detail = "; ".join(criterion or "<empty criterion>" for criterion in unchecked)
+    if not detail:
+        detail = "task has no complete Acceptance Criteria checklist"
+    raise HandoffError(
+        f"completed developer result left acceptance criteria incomplete for "
+        f"{task.id}: {detail}",
+        reason=HandoffFailureReason.SEMANTIC_CONFLICT,
     )
 
 
@@ -920,10 +1001,13 @@ def _attempt_handoff_correction(
     ctx: SessionContext,
     agent_provider: AgentProvider,
     issues: tuple[str, ...],
+    *,
+    semantic_task: Task | None = None,
 ) -> SessionError | None:
-    """Run one correction-only invocation and enforce non-artifact isolation."""
+    """Run one correction-only invocation and enforce narrow edit isolation."""
     artifacts_dir = ctx.root / ARTIFACTS_DIR / ctx.role_name
     before = _handoff_correction_snapshot(ctx.root, artifacts_dir)
+    task_before = semantic_task.path.read_text() if semantic_task is not None else None
     correction_id = ctx.invocation_id + "_handoff-correction"
     correction_ctx = dataclasses.replace(
         ctx,
@@ -934,15 +1018,32 @@ def _attempt_handoff_correction(
         session_prompt_log=None,
     )
     diagnostics = "\n".join(f"- {issue}" for issue in issues) or "- No candidate was submitted."
-    system_prompt = (
-        "You are repairing only the result submission for a completed DevLab role "
-        "session. Do not redo role work or edit product, task, milestone, finding, "
-        "workflow, or configuration files."
-    )
+    if semantic_task is None:
+        system_prompt = (
+            "You are repairing only the result submission for a completed DevLab role "
+            "session. Do not redo role work or edit product, task, milestone, finding, "
+            "workflow, or configuration files."
+        )
+        edit_instruction = (
+            f"Edit only {ARTIFACTS_DIR}/{ctx.role_name}/{HANDOFF_CANDIDATE_FILE}"
+        )
+    else:
+        relative_task = semantic_task.path.relative_to(ctx.root).as_posix()
+        system_prompt = (
+            "You are repairing only the completion bookkeeping for a finished DevLab "
+            "developer session. You may check acceptance-criteria boxes in the assigned "
+            "task and repair the result candidate. Do not change criterion text, product "
+            "code, task metadata/status, requested changes, plans, milestones, findings, "
+            "workflow state, or configuration."
+        )
+        edit_instruction = (
+            f"Edit only acceptance-criteria checkboxes in {relative_task} and "
+            f"{ARTIFACTS_DIR}/{ctx.role_name}/{HANDOFF_CANDIDATE_FILE}"
+        )
     session_prompt = (
         f"The completed {ctx.role_name} session did not publish an accepted result.\n\n"
         f"Validation diagnostics:\n{diagnostics}\n\n"
-        f"Edit only {ARTIFACTS_DIR}/{ctx.role_name}/{HANDOFF_CANDIDATE_FILE}, then "
+        f"{edit_instruction}, then "
         "run `\"$DEVLAB_PYTHON\" -m devlab.cli session handoff submit`. "
         "Finish only after DevLab reports "
         "Accepted. Existing workspace changes are evidence; do not modify them."
@@ -952,7 +1053,16 @@ def _attempt_handoff_correction(
         agent_provider=agent_provider,
     )
     after = _handoff_correction_snapshot(ctx.root, artifacts_dir)
-    unexpected = _changed_snapshot_paths(before, after)
+    changed = set(_changed_snapshot_paths(before, after))
+    if semantic_task is not None:
+        relative_task = semantic_task.path.relative_to(ctx.root).as_posix()
+        if relative_task in changed:
+            task_after = semantic_task.path.read_text()
+            if task_before is not None and _only_acceptance_boxes_checked(
+                task_before, task_after
+            ):
+                changed.remove(relative_task)
+    unexpected = tuple(sorted(changed))
     if unexpected:
         return SessionError(
             "handoff_correction",
@@ -974,12 +1084,40 @@ def _attempt_handoff_correction(
     return None
 
 
+def _only_acceptance_boxes_checked(before: str, after: str) -> bool:
+    """Return whether only unchecked Acceptance Criteria boxes became checked."""
+    heading = re.compile(r"^## Acceptance Criteria\s*$", re.MULTILINE)
+    before_match = heading.search(before)
+    after_match = heading.search(after)
+    if before_match is None or after_match is None:
+        return False
+
+    def split(text: str, match: re.Match[str]) -> tuple[str, str, str]:
+        start = match.end()
+        next_heading = re.search(r"^##\s+", text[start:], flags=re.MULTILINE)
+        end = start + next_heading.start() if next_heading else len(text)
+        return text[:start], text[start:end], text[end:]
+
+    before_prefix, before_section, before_suffix = split(before, before_match)
+    after_prefix, after_section, after_suffix = split(after, after_match)
+    if before_prefix != after_prefix or before_suffix != after_suffix:
+        return False
+    normalized_after = re.sub(r"^(\s*- )\[[xX]\]", r"\1[ ]", after_section, flags=re.MULTILINE)
+    normalized_before = re.sub(r"^(\s*- )\[[xX]\]", r"\1[ ]", before_section, flags=re.MULTILINE)
+    if normalized_before != normalized_after or before_section == after_section:
+        return False
+    before_checked = len(re.findall(r"^\s*- \[[xX]\]", before_section, flags=re.MULTILINE))
+    after_checked = len(re.findall(r"^\s*- \[[xX]\]", after_section, flags=re.MULTILINE))
+    return after_checked > before_checked
+
+
 def _build_session_metadata(
     ctx: SessionContext,
     agent_result: AgentResult,
     resolved_agent_configs: dict[str, ResolvedAgentConfig] | None,
     task_id: str | None,
     executable_config: ExecutableConfigSnapshot | None = None,
+    progress: SessionProgress | None = None,
 ) -> SessionMetadata:
     provider = ""
     model = ""
@@ -1009,6 +1147,130 @@ def _build_session_metadata(
             and executable_config.authorization is not None
             else ""
         ),
+        progress=progress.value if progress is not None else "",
+    )
+
+
+def _classify_session_progress(
+    root: Path,
+    before: SessionProgressBaseline,
+    after: WorkspaceSnapshot,
+    process_result: ProcessResult,
+) -> SessionProgress:
+    """Classify progress from Git and durable workflow facts, not handoff claims."""
+    if _git_has_product_changes(root):
+        return SessionProgress.PRODUCT_CHANGE
+    if process_result.clarification_id is not None:
+        return SessionProgress.LEGITIMATE_STOP
+    after_tasks = {
+        task.id: (
+            task.status,
+            task.acceptance_criteria_complete,
+            task.review_approved,
+            task.body,
+        )
+        for task in after.list_tasks()
+    }
+    after_milestones = {
+        milestone.id: milestone for milestone in after.list_milestones()
+    }
+    if (
+        before.tasks != after_tasks
+        or before.milestones != after_milestones
+        or before.workflow_state != after.workflow_state()
+        or before.findings != tuple(after.list_findings())
+    ):
+        return SessionProgress.WORKFLOW_ADVANCE
+    return SessionProgress.NON_ADVANCING
+
+
+def _session_progress_baseline(snapshot: WorkspaceSnapshot) -> SessionProgressBaseline:
+    return SessionProgressBaseline(
+        tasks={
+            task.id: (
+                task.status,
+                task.acceptance_criteria_complete,
+                task.review_approved,
+                task.body,
+            )
+            for task in snapshot.list_tasks()
+        },
+        milestones={
+            milestone.id: milestone for milestone in snapshot.list_milestones()
+        },
+        workflow_state=snapshot.workflow_state(),
+        findings=tuple(snapshot.list_findings()),
+    )
+
+
+def _git_has_product_changes(root: Path) -> bool:
+    try:
+        lines = run_git(root, "status", "--porcelain").stdout.splitlines()
+    except VersionControlError:
+        return False
+    for line in lines:
+        path = line[3:].split(" -> ")[-1]
+        if path and not path.startswith(".devlab/"):
+            return True
+    return False
+
+
+def _is_non_advancing_recovery(root: Path, route: SessionRoute) -> bool:
+    """Return whether the last accepted session stalled on this exact route."""
+    events = load_workflow_events(root)
+    for event in reversed(events):
+        if event.type != "session_progress":
+            continue
+        return (
+            event.data.get("role") == route.role_name
+            and event.data.get("task") == (route.task_id or "")
+            and event.data.get("progress") == SessionProgress.NON_ADVANCING.value
+        )
+    return False
+
+
+def _recovery_prompt(route: SessionRoute) -> str:
+    return (
+        "## Bounded Recovery\n\n"
+        f"The previous `{route.role_name}` session for task "
+        f"`{route.task_id or 'none'}` claimed completion but produced no relevant "
+        "product change, workflow transition, or legitimate bounded stop. This is "
+        "the single recovery attempt. Inspect the remaining task state and make "
+        "concrete progress; another non-advancing result will stop the workflow."
+    )
+
+
+def _latest_validation_failure(root: Path, task_id: str) -> dict[str, object] | None:
+    records = sorted((root / ".devlab/verification/tasks" / task_id).glob("*.json"))
+    for path in reversed(records):
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if data.get("source") == "task" and data.get("outcome") in {
+            "failed",
+            "timeout",
+            "infrastructure_error",
+        }:
+            return data
+        return None
+    return None
+
+
+def _validation_recovery_prompt(record: dict[str, object]) -> str:
+    commands = record.get("commands")
+    detail = "the recorded validation command"
+    if isinstance(commands, list) and commands and isinstance(commands[-1], dict):
+        command_result = cast("dict[str, object]", commands[-1])
+        command = command_result.get("command")
+        outcome = command_result.get("outcome")
+        if isinstance(command, str) and isinstance(outcome, str):
+            detail = f"`{command}` ({outcome})"
+    return (
+        "## Validation Recovery\n\n"
+        f"The previous developer submission failed {detail}. Inspect the durable "
+        "validation record and correct the implementation. A repeated deterministic "
+        "failure will stop the workflow."
     )
 
 
@@ -2012,6 +2274,33 @@ def run_loop(
             else None
         )
         route = _select_session_route(start_snapshot, role_name)
+        progress_baseline = _session_progress_baseline(start_snapshot)
+        non_advancing_recovery = (
+            role_name == "developer" and _is_non_advancing_recovery(root, route)
+        )
+        prior_validation_failure = (
+            _latest_validation_failure(root, route.task_id)
+            if role_name == "developer" and route.task_id is not None
+            else None
+        )
+        if role_name == "developer" and route.task is not None:
+            contract_errors = route.task.contract_errors
+            if contract_errors:
+                message = "; ".join(contract_errors)
+                logger.error(
+                    "Task %s has an invalid work packet: %s. Stopping.",
+                    route.task.id,
+                    message,
+                )
+                return _error_result(
+                    sessions_run,
+                    SessionError(
+                        "task_contract",
+                        f"task {route.task.id} is not executable: {message}",
+                        1,
+                    ),
+                    reason=RunStopReason.TASK_CONTRACT_INVALID,
+                )
         role = ROLES[role_name]
         ctx = _build_session_context(
             root, sessions_run + 1, role_name, retain_prompts=retain_prompts,
@@ -2069,6 +2358,12 @@ def run_loop(
                 fresh_generation=planning_only and fresh_generation_plan,
                 spec_reconciliation=reconcile_plan,
             )
+            if non_advancing_recovery:
+                session_prompt += "\n\n" + _recovery_prompt(route)
+            if prior_validation_failure is not None:
+                session_prompt += "\n\n" + _validation_recovery_prompt(
+                    prior_validation_failure
+                )
             ctx.write_prompt_logs(base_prompt, session_prompt)
             environment = _environment_for_session(
                 root,
@@ -2114,19 +2409,31 @@ def run_loop(
         result_path = artifacts_dir / SESSION_RESULT_FILE
         if not result_path.exists():
             submission_issues: tuple[str, ...]
+            submission_reason = HandoffFailureReason.CONTRACT
             try:
                 submit_session_handoff(
                     root, envelope_path=artifacts_dir / SESSION_ENVELOPE_FILE
                 )
             except HandoffSubmissionError as exc:
                 submission_issues = exc.issues
+                submission_reason = exc.reason
             except HandoffError as exc:
                 submission_issues = (str(exc),)
+                submission_reason = exc.reason
             else:
                 submission_issues = ()
             if not result_path.exists() and handoff_correction:
+                semantic_task = (
+                    route.task
+                    if role_name == "developer"
+                    and submission_reason == HandoffFailureReason.SEMANTIC_CONFLICT
+                    else None
+                )
                 correction_error = _attempt_handoff_correction(
-                    ctx, agent_provider, submission_issues
+                    ctx,
+                    agent_provider,
+                    submission_issues,
+                    semantic_task=semantic_task,
                 )
                 if correction_error is not None:
                     logger.error("%s. Stopping.", correction_error.message)
@@ -2195,6 +2502,63 @@ def run_loop(
             task_id=route.task_id,
             milestone_id=route.milestone_id,
         )
+        validation_run: ValidationRun | None = None
+        repeated_validation_failure = False
+        accepted_result = load_session_result(result_path)
+        if (
+            role_name == "developer"
+            and route.task is not None
+            and accepted_result.candidate.outcome == "completed"
+            and process_result.clarification_id is None
+        ):
+            profile = (
+                profile_from_snapshot(
+                    frozen_profiles, route.task.profile, root=root
+                )
+                if frozen_profiles is not None
+                else load_profile(root, route.task.profile)
+            )
+            validation = effective_validation(route.task, profile)
+            validation_run = run_validation_commands(
+                root,
+                role_name=role_name,
+                task_id=route.task.id,
+                session_id=ctx.invocation_id,
+                commands=validation.commands,
+                source=validation.source,
+                timeout=profile.environment.timeouts.setup,
+            )
+            if validation_run.outcome in {
+                "failed",
+                "timeout",
+                "infrastructure_error",
+            } and validation.source == "task":
+                failed = validation_run.commands[-1]
+                workspace.tasks().get(route.task.id).record_validation_failure(
+                    f"{failed.command!r} ({failed.outcome}); see {failed.log_path}"
+                )
+                logger.warning(
+                    "Task %s validation %s; returned to development",
+                    route.task.id,
+                    validation_run.outcome,
+                )
+                repeated_validation_failure = prior_validation_failure is not None
+            elif validation_run.outcome in {
+                "failed",
+                "timeout",
+                "infrastructure_error",
+            }:
+                logger.warning(
+                    "Task %s profile validation %s; recorded as a soft task-level "
+                    "warning",
+                    route.task.id,
+                    validation_run.outcome,
+                )
+            elif validation_run.outcome == "missing_tool":
+                logger.warning(
+                    "Task %s validation prerequisite is missing; leaving it unverified",
+                    route.task.id,
+                )
         if planning_only and not plan_started_recorded and role_name in {"architect", "planner"}:
             append_workflow_event(
                 root,
@@ -2215,14 +2579,6 @@ def run_loop(
                 generation=active_generation(root),
                 planning_complete=workspace.snapshot.workflow_state().planning.complete,
             )
-        metadata = _build_session_metadata(
-            ctx,
-            agent_result,
-            resolved_agent_configs,
-            route.task_id,
-            executable_config,
-        )
-        ctx.write_session_metadata(metadata)
         if (
             active_resume is not None
             and active_resume.command == requested_command
@@ -2231,6 +2587,48 @@ def run_loop(
             clear_resume_state(root)
             workspace.did_mutate()
             active_resume = None
+        progress = _classify_session_progress(
+            root, progress_baseline, workspace.snapshot, process_result
+        )
+        append_workflow_event(
+            root,
+            "session_progress",
+            role=role_name,
+            task=route.task_id or "",
+            milestone=route.milestone_id or "",
+            progress=progress.value,
+        )
+        metadata = _build_session_metadata(
+            ctx,
+            agent_result,
+            resolved_agent_configs,
+            route.task_id,
+            executable_config,
+            progress,
+        )
+        ctx.write_session_metadata(metadata)
+        if non_advancing_recovery and progress == SessionProgress.NON_ADVANCING:
+            message = (
+                f"developer recovery for task {route.task_id or 'unknown'} did not "
+                "advance product or workflow state"
+            )
+            logger.error("%s. Stopping.", message)
+            return _error_result(
+                sessions_run + 1,
+                SessionError("non_advancing_session", message, 1),
+                reason=RunStopReason.DEVELOPER_NON_ADVANCING,
+            )
+        if repeated_validation_failure:
+            message = (
+                f"task {route.task_id or 'unknown'} repeated a failing validation "
+                "outcome after one bounded developer recovery"
+            )
+            logger.error("%s. Stopping.", message)
+            return _error_result(
+                sessions_run + 1,
+                SessionError("task_validation", message, 1),
+                reason=RunStopReason.VALIDATION_FAILED,
+            )
         if automatic_version_control:
             try:
                 workspace.sync()

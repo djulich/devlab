@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import subprocess
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+
+from devlab._files import atomic_write_text
 
 ENVIRONMENT_LOG_DIR = ".devlab/logs/environment"
 
@@ -38,6 +41,84 @@ class EnvironmentCommandError(RuntimeError):
             f"environment {self.phase} command failed ({code}): {self.command!r}; "
             f"see {self.log_path}"
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class ValidationCommandResult:
+    command: str
+    outcome: str
+    return_code: int | None
+    log_path: str
+
+
+@dataclasses.dataclass(frozen=True)
+class ValidationRun:
+    source: str
+    outcome: str
+    commands: tuple[ValidationCommandResult, ...]
+
+
+def run_validation_commands(
+    root: Path,
+    *,
+    role_name: str,
+    task_id: str,
+    session_id: str,
+    commands: tuple[str, ...],
+    source: str = "none",
+    timeout: int = 600,
+) -> ValidationRun:
+    """Run target-owned validation and persist compact observed outcomes."""
+    results: list[ValidationCommandResult] = []
+    overall = "not_configured" if not commands else "passed"
+    for index, command in enumerate(commands, start=1):
+        log_path = root / ENVIRONMENT_LOG_DIR / f"{session_id}_{role_name}_validation_{index}.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            result = subprocess.run(
+                command,
+                cwd=root,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            log_path.write_text(
+                f"command: {command}\noutcome: timeout\n\n"
+                + _decode_output(exc.stdout)
+                + "\n"
+                + _decode_output(exc.stderr)
+            )
+            results.append(ValidationCommandResult(command, "timeout", None, str(log_path)))
+            overall = "timeout"
+            break
+        except OSError as exc:
+            log_path.write_text(f"command: {command}\noutcome: infrastructure_error\n{exc}\n")
+            results.append(
+                ValidationCommandResult(command, "infrastructure_error", None, str(log_path))
+            )
+            overall = "infrastructure_error"
+            break
+        outcome = "passed" if result.returncode == 0 else (
+            "missing_tool" if result.returncode == 127 else "failed"
+        )
+        log_path.write_text(
+            f"command: {command}\noutcome: {outcome}\nexit_code: {result.returncode}\n\n"
+            f"## stdout\n{result.stdout}\n## stderr\n{result.stderr}"
+        )
+        results.append(
+            ValidationCommandResult(command, outcome, result.returncode, str(log_path))
+        )
+        if outcome != "passed":
+            overall = outcome
+            break
+    run = ValidationRun(source, overall, tuple(results))
+    record_path = root / ".devlab/verification/tasks" / task_id / f"{session_id}.json"
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(record_path, json.dumps(dataclasses.asdict(run), indent=2) + "\n")
+    return run
 
 
 class EnvironmentManager:

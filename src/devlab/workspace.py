@@ -241,6 +241,10 @@ class WorkspaceTask:
         self.workspace._task_tracker().mark_changes_requested(self.id)
         self.workspace.did_mutate()
 
+    def record_validation_failure(self, summary: str) -> None:
+        self.workspace._task_tracker().record_validation_failure(self.id, summary)
+        self.workspace.did_mutate()
+
     def close(self) -> None:
         self.workspace._task_tracker().close(self.id)
         self.workspace.did_mutate()

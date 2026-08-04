@@ -160,3 +160,32 @@ def test_implement_summary_continues_incremental_planning_with_implement(
 
     assert summary.next_role == "planner"
     assert summary.next_commands == ("devlab implement",)
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        RunStopReason.DEVELOPER_NON_ADVANCING,
+        RunStopReason.TASK_CONTRACT_INVALID,
+        RunStopReason.VALIDATION_FAILED,
+    ],
+)
+def test_guard_stop_reasons_request_operator_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reason: RunStopReason,
+) -> None:
+    monkeypatch.setenv(DEVLAB_STATE_HOME_ENV, str(tmp_path / "operator-state"))
+    init_workspace(tmp_path)
+    initial = build_executable_config_snapshot(tmp_path)
+    trust_executable_config(initial)
+
+    summary = build_run_summary(
+        tmp_path,
+        command="implement",
+        result=_result(reason),
+        initial_executable_config=initial,
+    )
+
+    text = format_run_summary(summary)
+    assert "run devlab doctor before retrying" in text

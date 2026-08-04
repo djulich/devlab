@@ -45,7 +45,7 @@ The developer implements exactly one eligible task per session.
 Before submitting the handoff candidate, confirm:
 - [ ] If task `validation` is present and non-empty, all listed commands pass.
 - [ ] If task `validation` is omitted, default validation from the resolved task profile passes.
-- [ ] If task `validation = []`, no validation commands are required; state in the handoff whether any validation was run and why.
+- [ ] If task `validation = []`, no mechanical validation commands are required; report only relevant manual checks or deliberately skipped checks that DevLab cannot infer.
 - [ ] Any skipped or inapplicable validation command is explained in the handoff.
 - [ ] Only files relevant to the task were changed
 - [ ] No unrelated refactoring was introduced
