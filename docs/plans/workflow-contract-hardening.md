@@ -2,6 +2,19 @@
 
 This plan implements TODO #1 from `docs/todo.md`: make workflow state transitions depend on well-defined artifact contracts instead of fragile broad Markdown/text searches.
 
+## Implementation Status and Policy Precedence
+
+The original handoff-contract phases and most task-level validation work are
+implemented. The remaining and partially implemented work is reconciled in
+[`workflow-contract-hardening-remaining.md`](workflow-contract-hardening-remaining.md).
+
+`unattended-workflow-progress-and-rework.md` is the newer, governing policy for
+task validation, bounded recovery, progress classification, and stop behavior. If
+this document's prospective wording conflicts with that plan or with its documented
+implementation policy, the unattended-workflow plan takes precedence. In
+particular, task validation remains a developer-completion boundary before review;
+the older suggestion below to run it after reviewer approval is superseded.
+
 ## Goal
 
 DevLab should fail fast on ambiguous or malformed role artifacts instead of silently making incorrect workflow transitions.

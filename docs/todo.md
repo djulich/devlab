@@ -8,6 +8,8 @@ Only open or partially complete work is listed here. Completed implementation-hi
 
 Status: **task-level hardening implemented; milestone verification remains**. DevLab now validates handoff section order/structure, uses strict `- None` semantics, requires completed developer submissions to satisfy task acceptance criteria, permits one restricted bookkeeping correction, detects repeated non-advancing sessions, resolves and records task validation, bounds explicit task-validation recovery, rejects structurally invalid task work packets, and reports semantic task-quality warnings.
 
+Implementation continuation: [`plans/workflow-contract-hardening-remaining.md`](plans/workflow-contract-hardening-remaining.md). That plan treats `plans/unattended-workflow-progress-and-rework.md` as the governing policy wherever the older workflow-contract plan overlaps or conflicts.
+
 Open work:
 
 - Complete milestone-level validation enforcement: before marking a milestone integrated, require configured validation to pass or create integration findings for explicit gaps. Task-level validation is now orchestrator-owned and observable; explicit task commands receive bounded recovery while profile-default failures remain soft during incremental work.
