@@ -1,5 +1,15 @@
 # Workflow Contract Hardening: Remaining Work
 
+## Implementation Status
+
+Implemented on 2026-08-06. The delivered behavior preserves the governing
+unattended-workflow task policy, completes observed validation facts and safe-stop
+categories, enforces configured validation at milestone integration, writes
+orchestrator-owned milestone TOML records, captures narrow integrator/architect
+judgment, and exposes the result through status, doctor, diagnostics, run summaries,
+and deterministic evaluations. Strict task-validation mode remains rejected for this
+scope; semantic task-warning calibration remains ongoing evaluation work.
+
 ## Purpose
 
 Finish the unresolved and partially implemented parts of

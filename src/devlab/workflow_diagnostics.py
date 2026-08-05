@@ -107,6 +107,14 @@ class SessionProgressMetrics:
 
 
 @dataclasses.dataclass(frozen=True)
+class MilestoneVerificationMetrics:
+    total: int
+    by_state: dict[str, int]
+    untested_claims: int
+    design_drift: int
+
+
+@dataclasses.dataclass(frozen=True)
 class GenerationMetrics:
     active: int
     archived: list[int]
@@ -152,6 +160,7 @@ class WorkflowDiagnostics:
     agent_logs: AgentLogMetrics
     prompt_logs: PromptLogMetrics
     session_progress: SessionProgressMetrics
+    milestone_verification: MilestoneVerificationMetrics
     quality: QualitySummary
 
     def as_dict(self) -> dict[str, object]:
@@ -191,6 +200,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
         agent_logs=collect_agent_log_metrics(root),
         prompt_logs=collect_prompt_log_metrics(root),
         session_progress=collect_session_progress_metrics(root),
+        milestone_verification=collect_milestone_verification_metrics(snapshot),
         quality=quality_summary(
             checks=[],
             task_metrics=task_metrics,
@@ -200,6 +210,25 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
             integrator_rework=integrator_rework,
             clarification_metrics=clarification_metrics,
         ),
+    )
+
+
+def collect_milestone_verification_metrics(
+    snapshot: WorkspaceSnapshot,
+) -> MilestoneVerificationMetrics:
+    records = [
+        record
+        for milestone in snapshot.list_milestones()
+        if (record := snapshot.milestone_verification(milestone.id)) is not None
+    ]
+    by_state: dict[str, int] = {}
+    for record in records:
+        by_state[record.state] = by_state.get(record.state, 0) + 1
+    return MilestoneVerificationMetrics(
+        total=len(records),
+        by_state=by_state,
+        untested_claims=sum(len(record.untested_claims) for record in records),
+        design_drift=sum(len(record.design_drift) for record in records),
     )
 
 
@@ -248,17 +277,13 @@ def collect_clarification_metrics(
         superseded=sum(
             1 for item in clarifications if item.status == ClarificationStatus.SUPERSEDED
         ),
-        answered_latency_seconds_avg=(
-            sum(latencies) / len(latencies) if latencies else None
-        ),
+        answered_latency_seconds_avg=(sum(latencies) / len(latencies) if latencies else None),
         repeated_roles=sorted(role for role, count in stops_by_role.items() if count > 1),
         repeated_scopes=sorted(scope for scope, count in scope_counts.items() if count > 1),
     )
 
 
-def collect_task_metrics(
-    root: Path, *, snapshot: WorkspaceSnapshot | None = None
-) -> TaskMetrics:
+def collect_task_metrics(root: Path, *, snapshot: WorkspaceSnapshot | None = None) -> TaskMetrics:
     tasks = (snapshot or Workspace(root).snapshot).list_tasks()
     by_status: dict[str, int] = {}
     for task in tasks:
@@ -324,9 +349,7 @@ def collect_profile_metrics(
         ids=ids,
         non_default_ids=[profile_id for profile_id in ids if profile_id != DEFAULT_PROFILE],
         items=profiles,
-        tasks_by_profile={
-            key: sorted(value) for key, value in sorted(tasks_by_profile.items())
-        },
+        tasks_by_profile={key: sorted(value) for key, value in sorted(tasks_by_profile.items())},
     )
 
 
@@ -369,9 +392,7 @@ def collect_prompt_log_metrics(root: Path) -> PromptLogMetrics:
     return PromptLogMetrics(
         base_count=len(base_logs),
         session_count=len(session_logs),
-        max_base_prompt_bytes=max(
-            (path.stat().st_size for path in base_logs), default=0
-        ),
+        max_base_prompt_bytes=max((path.stat().st_size for path in base_logs), default=0),
         max_session_prompt_bytes=max((path.stat().st_size for path in session_logs), default=0),
     )
 
@@ -495,9 +516,7 @@ def _format_clarification_summary(clarifications: ClarificationMetrics) -> str:
         else "unknown"
     )
     roles = (
-        ", ".join(
-            f"{role}={count}" for role, count in clarifications.stops_by_role.items()
-        )
+        ", ".join(f"{role}={count}" for role, count in clarifications.stops_by_role.items())
         if clarifications.stops_by_role
         else "none"
     )
@@ -537,12 +556,8 @@ def _format_artifact_hygiene_summary(artifact_hygiene: ArtifactHygiene) -> str:
 
 
 def _format_session_progress_summary(progress: SessionProgressMetrics) -> str:
-    kinds = ", ".join(
-        f"{kind}={count}" for kind, count in progress.by_kind.items()
-    ) or "none"
-    return (
-        f"Session progress: {kinds}; unclassified={progress.unclassified}"
-    )
+    kinds = ", ".join(f"{kind}={count}" for kind, count in progress.by_kind.items()) or "none"
+    return f"Session progress: {kinds}; unclassified={progress.unclassified}"
 
 
 def _format_artifact_contributor(contributor: ArtifactContributor) -> str:
@@ -555,8 +570,7 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
         for session in diagnostics.sessions:
             task_text = f" task={session.task_id}" if session.task_id else ""
             lines.append(
-                f"- {session.index}: {session.role}{task_text} "
-                f"source={session.task_id_source}"
+                f"- {session.index}: {session.role}{task_text} source={session.task_id_source}"
             )
     else:
         lines.append("- none")
@@ -615,8 +629,7 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     )
     latency = diagnostics.clarifications.answered_latency_seconds_avg
     lines.append(
-        "- avg_answer_latency_seconds: "
-        + (f"{latency:.0f}" if latency is not None else "unknown")
+        "- avg_answer_latency_seconds: " + (f"{latency:.0f}" if latency is not None else "unknown")
     )
     repeated_roles = ", ".join(diagnostics.clarifications.repeated_roles) or "none"
     repeated_scopes = ", ".join(diagnostics.clarifications.repeated_scopes) or "none"
@@ -627,17 +640,20 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     lines.append("Artifact contributors:")
     lines.extend(
         _format_artifact_contributor_group(
-            "product", diagnostics.artifact_hygiene.product_top_contributors,
+            "product",
+            diagnostics.artifact_hygiene.product_top_contributors,
         )
     )
     lines.extend(
         _format_artifact_contributor_group(
-            "ignored", diagnostics.artifact_hygiene.ignored_top_contributors,
+            "ignored",
+            diagnostics.artifact_hygiene.ignored_top_contributors,
         )
     )
     lines.extend(
         _format_artifact_contributor_group(
-            "devlab", diagnostics.artifact_hygiene.devlab_top_contributors,
+            "devlab",
+            diagnostics.artifact_hygiene.devlab_top_contributors,
         )
     )
     return lines

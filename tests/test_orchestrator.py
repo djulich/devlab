@@ -22,7 +22,7 @@ from devlab.handoffs import (
     parse_handoff,
     write_session_envelope,
 )
-from devlab.milestones import FileMilestoneTracker, MilestoneStatus
+from devlab.milestones import FileMilestoneTracker, MilestoneStatus, MilestoneVerification
 from devlab.orchestrator import (
     RunStopReason,
     _timestamp,
@@ -2391,6 +2391,53 @@ class TestRunLoop:
         assert milestone.status == MilestoneStatus.INTEGRATED
         assert milestone.integrated is True
         assert milestone.integration_handoff.endswith("_integrator_handoff.md")
+        verification = FileMilestoneTracker(tmp_path).read_verification("M1")
+        assert verification is not None
+        assert verification.state == "unverified_not_configured"
+
+    def test_failing_milestone_validation_blocks_integration_and_creates_finding(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path, "T0001", "Done", status="closed", milestone="M1",
+            validation=["false"],
+        )
+
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": MockProvider()})
+
+        milestone = FileMilestoneTracker(tmp_path).get("M1")
+        assert milestone.integrated is False
+        assert milestone.status == MilestoneStatus.INTEGRATION_FAILED
+        findings = FileFindingTracker(tmp_path).open_findings()
+        assert len(findings) == 1
+        assert "`false` exited with 1" in findings[0].body
+        verification = FileMilestoneTracker(tmp_path).read_verification("M1")
+        assert verification is not None
+        assert verification.state == "blocked_product_failure"
+        assert verification.commands[0].outcome == "failed"
+
+    def test_missing_milestone_validation_tool_stops_without_integrating(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path, "T0001", "Done", status="closed", milestone="M1",
+            validation=["devlab-command-that-does-not-exist"],
+        )
+
+        result = run_loop(
+            tmp_path, max_sessions=1, agent_providers={"default": MockProvider()}
+        )
+
+        assert result.stop_reason == RunStopReason.VALIDATION_PREREQUISITE_MISSING
+        assert FileMilestoneTracker(tmp_path).get("M1").integrated is False
+        assert FileFindingTracker(tmp_path).open_findings() == []
+        verification = FileMilestoneTracker(tmp_path).read_verification("M1")
+        assert verification is not None
+        assert verification.state == "blocked_prerequisite"
 
     def test_integrator_open_issues_create_finding_and_mark_milestone_failed(
         self, tmp_path: Path
@@ -2480,6 +2527,41 @@ class TestRunLoop:
         assert milestone.status == MilestoneStatus.ARCHITECTURE_REVIEWED
         assert milestone.architecture_reviewed is True
         assert milestone.architecture_review_handoff.endswith("_architect_handoff.md")
+
+    def test_architect_review_enriches_milestone_verification(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
+        _write_milestone(tmp_path, "M1", integrated=True, task_ids=["T0001"])
+        FileMilestoneTracker(tmp_path).write_verification(
+            MilestoneVerification(
+                milestone_id="M1",
+                state="verified",
+                repository_revision="abc",
+                closed_task_ids=("T0001",),
+                commands=(),
+            )
+        )
+        provider = MockProvider(
+            handoff_text=(
+                "# Handoff: architect\n"
+                "## Done\n- Reviewed architecture.\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- None\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nNone.\n"
+                "## Design Drift\n- Documentation naming differs from the plan.\n"
+            )
+        )
+
+        run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+
+        verification = FileMilestoneTracker(tmp_path).read_verification("M1")
+        assert verification is not None
+        assert verification.design_drift == (
+            "Documentation naming differs from the plan.",
+        )
+        assert verification.architecture_handoff.endswith("_architect_handoff.md")
 
     def test_architect_review_open_issues_create_finding(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

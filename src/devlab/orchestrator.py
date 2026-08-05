@@ -43,6 +43,7 @@ from devlab.environment import (
     run_validation_commands,
 )
 from devlab.executable_config import ExecutableConfigSnapshot
+from devlab.findings import Finding
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
 from devlab.git import VersionControlError, run_git
 from devlab.handoffs import (
@@ -69,11 +70,18 @@ from devlab.handoffs import (
     submission_attempt_count,
     write_session_envelope,
 )
+from devlab.milestones import (
+    MilestoneVerification,
+    MilestoneVerificationCommand,
+)
 from devlab.profiles import (
+    EffectiveMilestoneValidation,
     Profile,
     ProfileNotFoundError,
+    effective_milestone_validation,
     effective_validation,
     load_profile,
+    load_profiles,
     profile_from_snapshot,
 )
 from devlab.prompt_resources import read_prompt_resource
@@ -141,6 +149,8 @@ class RunStopReason(StrEnum):
     DEVELOPER_NON_ADVANCING = "developer_non_advancing"
     TASK_CONTRACT_INVALID = "task_contract_invalid"
     VALIDATION_FAILED = "validation_failed"
+    VALIDATION_PREREQUISITE_MISSING = "validation_prerequisite_missing"
+    VALIDATION_INFRASTRUCTURE_ERROR = "validation_infrastructure_error"
     ERROR = "error"
 
 
@@ -216,9 +226,7 @@ class SessionContext:
     base_prompt_log: Path | None
     session_prompt_log: Path | None
 
-    def build_invocation(
-        self, base_prompt: str, session_prompt: str
-    ) -> AgentInvocation:
+    def build_invocation(self, base_prompt: str, session_prompt: str) -> AgentInvocation:
         envelope = self.root / ARTIFACTS_DIR / self.role_name / SESSION_ENVELOPE_FILE
         return AgentInvocation(
             root=self.root,
@@ -327,9 +335,7 @@ def _build_session_context(
         stdout_log=_agent_log_path(root, invocation_id, "stdout.log"),
         stderr_log=_agent_log_path(root, invocation_id, "stderr.log"),
         base_prompt_log=(
-            _agent_log_path(root, invocation_id, "base-prompt.md")
-            if retain_prompts
-            else None
+            _agent_log_path(root, invocation_id, "base-prompt.md") if retain_prompts else None
         ),
         session_prompt_log=(
             _agent_log_path(root, invocation_id, "session-prompt.md") if retain_prompts else None
@@ -337,9 +343,7 @@ def _build_session_context(
     )
 
 
-def _select_session_route(
-    snapshot: WorkspaceSnapshot, role_name: str
-) -> SessionRoute:
+def _select_session_route(snapshot: WorkspaceSnapshot, role_name: str) -> SessionRoute:
     milestone_id = (
         snapshot.select_integration_milestone()
         if role_name == "integrator"
@@ -371,7 +375,9 @@ def invoke_session(
     duration_info = f" duration={duration:.1f}s" if duration is not None else ""
     logger.info(
         "%s session exited with code %s%s",
-        invocation.role_name, result.return_code, duration_info,
+        invocation.role_name,
+        result.return_code,
+        duration_info,
     )
     return result
 
@@ -447,14 +453,10 @@ def submit_session_handoff(
                 reason=HandoffFailureReason.SEMANTIC_CONFLICT,
             )
     except HandoffSubmissionError as exc:
-        record_submission_attempt(
-            resolved_envelope, accepted=False, issues=exc.issues
-        )
+        record_submission_attempt(resolved_envelope, accepted=False, issues=exc.issues)
         raise
     except HandoffError as exc:
-        record_submission_attempt(
-            resolved_envelope, accepted=False, issues=(str(exc),)
-        )
+        record_submission_attempt(resolved_envelope, accepted=False, issues=(str(exc),))
         raise HandoffSubmissionError((str(exc),), reason=exc.reason) from exc
     publish_session_result(resolved_envelope, envelope, candidate)
     record_submission_attempt(resolved_envelope, accepted=True)
@@ -501,8 +503,7 @@ def _validate_completed_developer_candidate(
     if not detail:
         detail = "task has no complete Acceptance Criteria checklist"
     raise HandoffError(
-        f"completed developer result left acceptance criteria incomplete for "
-        f"{task.id}: {detail}",
+        f"completed developer result left acceptance criteria incomplete for {task.id}: {detail}",
         reason=HandoffFailureReason.SEMANTIC_CONFLICT,
     )
 
@@ -519,15 +520,11 @@ def validate_handoff(
     if handoff.role_name == "planner":
         planner_error = _validate_planner_addressed_findings(snapshot, handoff)
         if planner_error:
-            raise HandoffError(
-                planner_error, reason=HandoffFailureReason.REFERENCE
-            )
+            raise HandoffError(planner_error, reason=HandoffFailureReason.REFERENCE)
     if handoff.role_name == "reviewer":
         reviewer_error = _validate_reviewer_outcome(snapshot, handoff)
         if reviewer_error:
-            raise HandoffError(
-                reviewer_error, reason=HandoffFailureReason.SEMANTIC_CONFLICT
-            )
+            raise HandoffError(reviewer_error, reason=HandoffFailureReason.SEMANTIC_CONFLICT)
 
 
 def archive_handoff(root: Path, role_name: str) -> Path:
@@ -623,10 +620,13 @@ def _apply_planner_workflow_state(
         str(planning_complete).lower(),
     )
 
+
 @dataclasses.dataclass(frozen=True)
 class ProcessResult:
     integrated_milestone: str | None = None
     clarification_id: str | None = None
+    stop_reason: RunStopReason | None = None
+    stop_message: str = ""
 
 
 def process_handoff(
@@ -637,6 +637,8 @@ def process_handoff(
     session_id: str = "",
     task_id: str | None = None,
     milestone_id: str | None = None,
+    milestone_validation: ValidationRun | None = None,
+    milestone_validation_contract: EffectiveMilestoneValidation | None = None,
 ) -> ProcessResult:
     archived = archive_handoff(workspace.root, handoff.role_name)
     logger.info("Handoff archived to %s", archived.name)
@@ -691,6 +693,26 @@ def process_handoff(
                 )
                 logger.info("Architecture review reported open issues; finding created")
             workspace.milestones().get(milestone).mark_architecture_reviewed(archived)
+            verification = workspace.snapshot.milestone_verification(milestone)
+            if verification is not None:
+                milestone_findings = tuple(
+                    finding
+                    for finding in workspace.snapshot.list_findings()
+                    if finding.milestone == milestone
+                )
+                workspace.milestones().get(milestone).write_verification(
+                    dataclasses.replace(
+                        verification,
+                        architecture_session=session_id,
+                        architecture_handoff=archived.name,
+                        design_drift=handoff.design_drift,
+                        finding_ids=tuple(finding.id for finding in milestone_findings),
+                        finding_statuses=tuple(
+                            f"{finding.id}:{finding.status.value}"
+                            for finding in milestone_findings
+                        ),
+                    )
+                )
             logger.info("Milestone %s marked architecture-reviewed", milestone)
         return ProcessResult()
     elif handoff.role_name == "developer":
@@ -740,23 +762,166 @@ def process_handoff(
         return ProcessResult()
     elif handoff.role_name == "integrator":
         milestone = workspace.snapshot.select_integration_milestone()
-        if handoff.has_open_issues:
-            finding = workspace.findings().create_from_handoff(
-                source="integrator",
-                milestone=milestone,
-                handoff_path=archived,
-            )
-            if milestone is not None:
-                workspace.milestones().get(milestone).mark_integration_failed(finding.id)
-            logger.info(
-                "Integration reported open issues; finding created for planner follow-up"
-            )
+        if milestone is None:
             return ProcessResult()
-        if milestone is not None:
-            workspace.milestones().get(milestone).mark_integrated(archived)
-            logger.info("Milestone %s marked integrated", milestone)
-            return ProcessResult(integrated_milestone=milestone)
+        if milestone_validation is None or milestone_validation_contract is None:
+            raise RuntimeError("integrator processing requires milestone validation facts")
+        validation_failed = milestone_validation.outcome == "failed"
+        if handoff.has_open_issues or validation_failed:
+            finding = _create_integration_finding(
+                workspace,
+                milestone=milestone,
+                handoff=handoff,
+                handoff_path=archived,
+                validation=milestone_validation,
+            )
+            workspace.milestones().get(milestone).mark_integration_failed(finding.id)
+            _write_milestone_verification(
+                workspace,
+                milestone,
+                archived,
+                handoff,
+                milestone_validation_contract,
+                milestone_validation,
+                state="blocked_product_failure",
+            )
+            logger.info("Integration reported open issues; finding created for planner follow-up")
+            return ProcessResult()
+        if milestone_validation.outcome in {"missing_tool", "timeout", "infrastructure_error"}:
+            state = (
+                "blocked_prerequisite"
+                if milestone_validation.outcome == "missing_tool"
+                else "blocked_infrastructure"
+            )
+            _write_milestone_verification(
+                workspace,
+                milestone,
+                archived,
+                handoff,
+                milestone_validation_contract,
+                milestone_validation,
+                state=state,
+            )
+            reason = (
+                RunStopReason.VALIDATION_PREREQUISITE_MISSING
+                if milestone_validation.outcome == "missing_tool"
+                else RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR
+            )
+            message = (
+                f"milestone {milestone} validation {milestone_validation.outcome}; "
+                "integration was not recorded"
+            )
+            return ProcessResult(stop_reason=reason, stop_message=message)
+        state = (
+            "unverified_not_configured"
+            if milestone_validation.outcome == "not_configured"
+            else "verified"
+        )
+        workspace.milestones().get(milestone).mark_integrated(archived)
+        _write_milestone_verification(
+            workspace,
+            milestone,
+            archived,
+            handoff,
+            milestone_validation_contract,
+            milestone_validation,
+            state=state,
+        )
+        logger.info("Milestone %s marked integrated", milestone)
+        return ProcessResult(integrated_milestone=milestone)
     return ProcessResult()
+
+
+def _create_integration_finding(
+    workspace: Workspace,
+    *,
+    milestone: str,
+    handoff: Handoff,
+    handoff_path: Path,
+    validation: ValidationRun,
+) -> Finding:
+    issues = handoff.open_issues.strip() if handoff.has_open_issues else "- None"
+    validation_text = ""
+    if validation.outcome == "failed" and validation.commands:
+        failed = validation.commands[-1]
+        validation_text = (
+            "\n\n## Mechanical Validation Failure\n"
+            f"- `{failed.command}` exited with {failed.return_code}; see `{failed.log_path}`."
+        )
+    return workspace.findings().create(
+        title=f"{milestone} integration validation failed",
+        source="integrator",
+        milestone=milestone,
+        handoff=handoff_path.name,
+        body=(
+            f"# {milestone} integration validation failed\n\n"
+            f"## Finding\n{issues}{validation_text}\n\n"
+            "## Requested Planning\nCreate all required follow-up task(s) for this "
+            "finding. Each task must list this finding in `addresses_findings`.\n"
+        ),
+    )
+
+
+def _write_milestone_verification(
+    workspace: Workspace,
+    milestone: str,
+    archived: Path,
+    handoff: Handoff,
+    contract: EffectiveMilestoneValidation,
+    run: ValidationRun,
+    *,
+    state: str,
+) -> None:
+    results = {result.command: result for result in run.commands}
+    commands: list[MilestoneVerificationCommand] = []
+    for resolved in contract.commands:
+        result = results.get(resolved.command)
+        commands.append(
+            MilestoneVerificationCommand(
+                command=resolved.command,
+                task_ids=resolved.task_ids,
+                sources=resolved.sources,
+                outcome=result.outcome if result is not None else "not_run",
+                exit_code=result.return_code if result is not None else None,
+                duration_seconds=result.duration_seconds if result is not None else 0.0,
+                output_summary=result.output_summary if result is not None else "",
+                log_path=result.log_path if result is not None else "",
+            )
+        )
+    tasks = workspace.snapshot.tasks_for_milestone(milestone)
+    finding_ids = tuple(
+        finding.id
+        for finding in workspace.snapshot.list_findings()
+        if finding.milestone == milestone
+    )
+    finding_statuses = tuple(
+        f"{finding.id}:{finding.status.value}"
+        for finding in workspace.snapshot.list_findings()
+        if finding.milestone == milestone
+    )
+    workspace.milestones().get(milestone).write_verification(
+        MilestoneVerification(
+            milestone_id=milestone,
+            state=state,
+            repository_revision=run.repository_revision,
+            closed_task_ids=tuple(task.id for task in tasks if task.status == TaskStatus.CLOSED),
+            commands=tuple(commands),
+            integration_session=run.session_id,
+            integration_handoff=archived.name,
+            finding_ids=finding_ids,
+            finding_statuses=finding_statuses,
+            semantic_integration_concerns=handoff.semantic_integration_concerns,
+            untested_claims=handoff.untested_claims,
+        )
+    )
+    append_workflow_event(
+        workspace.root,
+        "milestone_validation",
+        milestone=milestone,
+        session=run.session_id,
+        outcome=run.outcome,
+        state=state,
+    )
 
 
 def _clarification_body(title: str, details: str) -> str:
@@ -829,8 +994,6 @@ def _environment_for_session(
     return EnvironmentManager(root, profile.environment)
 
 
-
-
 def _validate_exhausted_backlog_planner_progress(
     before: WorkspaceSnapshot,
     after: WorkspaceSnapshot,
@@ -879,10 +1042,7 @@ def _needs_incremental_planning(snapshot: WorkspaceSnapshot) -> bool:
 
 
 def _has_actionable_or_planned_work(snapshot: WorkspaceSnapshot) -> bool:
-    return any(
-        task.status != TaskStatus.CLOSED for task in snapshot.current_generation_tasks()
-    )
-
+    return any(task.status != TaskStatus.CLOSED for task in snapshot.current_generation_tasks())
 
 
 def _failed_session_cleanup_hint() -> str:
@@ -890,7 +1050,6 @@ def _failed_session_cleanup_hint() -> str:
         "Inspect logs/artifacts, then run 'devlab clean-failed-session' to remove "
         "untracked failed-session diagnostics before retrying."
     )
-
 
 
 def _preflight_agent_executable(
@@ -909,10 +1068,7 @@ def _preflight_agent_executable(
     )
 
 
-
-def _agent_error_message(
-    ctx: SessionContext, result: AgentResult, config_log: Path | None
-) -> str:
+def _agent_error_message(ctx: SessionContext, result: AgentResult, config_log: Path | None) -> str:
     details = [
         f"{ctx.role_name} session failed ({result.failure_kind})",
         f"exit_code={result.return_code}",
@@ -930,9 +1086,7 @@ def _agent_error_message(
     return "; ".join(details)
 
 
-def _handoff_error_message(
-    ctx: SessionContext, error: str, config_log: Path | None
-) -> str:
+def _handoff_error_message(ctx: SessionContext, error: str, config_log: Path | None) -> str:
     details = [error]
     details.extend(_log_path_details(ctx.stdout_log, ctx.stderr_log, config_log))
     details.extend(_log_command_details(ctx.stdout_log, ctx.stderr_log, config_log))
@@ -985,15 +1139,9 @@ def _handoff_correction_snapshot(root: Path, artifacts_dir: Path) -> dict[str, s
     return snapshot
 
 
-def _changed_snapshot_paths(
-    before: dict[str, str], after: dict[str, str]
-) -> tuple[str, ...]:
+def _changed_snapshot_paths(before: dict[str, str], after: dict[str, str]) -> tuple[str, ...]:
     return tuple(
-        sorted(
-            path
-            for path in set(before) | set(after)
-            if before.get(path) != after.get(path)
-        )
+        sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
     )
 
 
@@ -1024,9 +1172,7 @@ def _attempt_handoff_correction(
             "session. Do not redo role work or edit product, task, milestone, finding, "
             "workflow, or configuration files."
         )
-        edit_instruction = (
-            f"Edit only {ARTIFACTS_DIR}/{ctx.role_name}/{HANDOFF_CANDIDATE_FILE}"
-        )
+        edit_instruction = f"Edit only {ARTIFACTS_DIR}/{ctx.role_name}/{HANDOFF_CANDIDATE_FILE}"
     else:
         relative_task = semantic_task.path.relative_to(ctx.root).as_posix()
         system_prompt = (
@@ -1044,7 +1190,7 @@ def _attempt_handoff_correction(
         f"The completed {ctx.role_name} session did not publish an accepted result.\n\n"
         f"Validation diagnostics:\n{diagnostics}\n\n"
         f"{edit_instruction}, then "
-        "run `\"$DEVLAB_PYTHON\" -m devlab.cli session handoff submit`. "
+        'run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`. '
         "Finish only after DevLab reports "
         "Accepted. Existing workspace changes are evidence; do not modify them."
     )
@@ -1058,9 +1204,7 @@ def _attempt_handoff_correction(
         relative_task = semantic_task.path.relative_to(ctx.root).as_posix()
         if relative_task in changed:
             task_after = semantic_task.path.read_text()
-            if task_before is not None and _only_acceptance_boxes_checked(
-                task_before, task_after
-            ):
+            if task_before is not None and _only_acceptance_boxes_checked(task_before, task_after):
                 changed.remove(relative_task)
     unexpected = tuple(sorted(changed))
     if unexpected:
@@ -1143,8 +1287,7 @@ def _build_session_metadata(
         ),
         executable_config_authorization=(
             executable_config.authorization.source.value
-            if executable_config is not None
-            and executable_config.authorization is not None
+            if executable_config is not None and executable_config.authorization is not None
             else ""
         ),
         progress=progress.value if progress is not None else "",
@@ -1171,9 +1314,7 @@ def _classify_session_progress(
         )
         for task in after.list_tasks()
     }
-    after_milestones = {
-        milestone.id: milestone for milestone in after.list_milestones()
-    }
+    after_milestones = {milestone.id: milestone for milestone in after.list_milestones()}
     if (
         before.tasks != after_tasks
         or before.milestones != after_milestones
@@ -1195,9 +1336,7 @@ def _session_progress_baseline(snapshot: WorkspaceSnapshot) -> SessionProgressBa
             )
             for task in snapshot.list_tasks()
         },
-        milestones={
-            milestone.id: milestone for milestone in snapshot.list_milestones()
-        },
+        milestones={milestone.id: milestone for milestone in snapshot.list_milestones()},
         workflow_state=snapshot.workflow_state(),
         findings=tuple(snapshot.list_findings()),
     )
@@ -1240,21 +1379,64 @@ def _recovery_prompt(route: SessionRoute) -> str:
     )
 
 
-def _latest_validation_failure(root: Path, task_id: str) -> dict[str, object] | None:
+def _latest_validation_record(root: Path, task_id: str) -> dict[str, object] | None:
     records = sorted((root / ".devlab/verification/tasks" / task_id).glob("*.json"))
     for path in reversed(records):
         try:
-            data = json.loads(path.read_text())
+            return cast("dict[str, object]", json.loads(path.read_text()))
         except (OSError, UnicodeError, json.JSONDecodeError):
             continue
-        if data.get("source") == "task" and data.get("outcome") in {
-            "failed",
-            "timeout",
-            "infrastructure_error",
-        }:
-            return data
-        return None
     return None
+
+
+def _latest_validation_failure(root: Path, task_id: str) -> dict[str, object] | None:
+    data = _latest_validation_record(root, task_id)
+    if data is not None and data.get("source") == "task" and data.get("outcome") == "failed":
+        return data
+    return None
+
+
+def _retry_unverified_task_validation(
+    workspace: Workspace,
+    profiles: dict[str, Profile],
+) -> tuple[RunStopReason, str] | None:
+    task = workspace.snapshot.select_next_review_task()
+    if task is None:
+        return None
+    previous = _latest_validation_record(workspace.root, task.id)
+    if previous is None or previous.get("outcome") not in {
+        "missing_tool",
+        "timeout",
+        "infrastructure_error",
+    }:
+        return None
+    profile = profile_from_snapshot(profiles, task.profile, root=workspace.root)
+    validation = effective_validation(task, profile)
+    run = run_validation_commands(
+        workspace.root,
+        role_name="orchestrator",
+        task_id=task.id,
+        session_id=f"{_timestamp()}_validation_retry",
+        commands=validation.commands,
+        source=validation.source,
+        timeout=profile.environment.timeouts.setup,
+        recovery_of=str(previous.get("session_id") or ""),
+    )
+    if run.outcome in {"passed", "not_configured"}:
+        return None
+    if run.outcome == "failed":
+        if validation.source == "task" and run.commands:
+            failed = run.commands[-1]
+            workspace.tasks().get(task.id).record_validation_failure(
+                f"{failed.command!r} ({failed.outcome}); see {failed.log_path}"
+            )
+        return None
+    reason = (
+        RunStopReason.VALIDATION_PREREQUISITE_MISSING
+        if run.outcome == "missing_tool"
+        else RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR
+    )
+    return reason, f"task {task.id} validation {run.outcome}"
 
 
 def _validation_recovery_prompt(record: dict[str, object]) -> str:
@@ -1340,11 +1522,7 @@ def _validate_resolver_file_edits(
     require_expected: bool,
 ) -> str | None:
     after = _resolver_file_snapshot(root)
-    changed = {
-        path
-        for path in set(before) | set(after)
-        if before.get(path) != after.get(path)
-    }
+    changed = {path for path in set(before) | set(after) if before.get(path) != after.get(path)}
     allowed = (
         set(expected_file_edit_paths(clarification.body))
         if clarification.answer_shape.value == "file-edit"
@@ -1359,10 +1537,7 @@ def _validate_resolver_file_edits(
         return None
     _restore_forbidden_resolver_edits(root, unexpected, forbidden_before)
     joined = ", ".join(sorted(unexpected))
-    return (
-        "clarification resolver changed paths outside its allowed file-edit set: "
-        f"{joined}"
-    )
+    return f"clarification resolver changed paths outside its allowed file-edit set: {joined}"
 
 
 def _resolver_repair_guidance(clarification_id: str, command: str) -> str:
@@ -1376,8 +1551,7 @@ def _resolver_repair_guidance(clarification_id: str, command: str) -> str:
 def _parse_resolver_answer(root: Path, path: Path, clarification: Clarification) -> str:
     if not path.exists():
         raise HandoffError(
-            "clarification resolver did not write "
-            f"{path.relative_to(root).as_posix()}"
+            f"clarification resolver did not write {path.relative_to(root).as_posix()}"
         )
     try:
         data = json.loads(path.read_text())
@@ -1388,14 +1562,12 @@ def _parse_resolver_answer(root: Path, path: Path, clarification: Clarification)
     found_id = data.get("clarification_id")
     if found_id != clarification.id:
         raise HandoffError(
-            "clarification resolver answer.json clarification_id must be "
-            f"{clarification.id!r}"
+            f"clarification resolver answer.json clarification_id must be {clarification.id!r}"
         )
     answer_shape = clarification.answer_shape.value
     if data.get("answer_shape") != answer_shape:
         raise HandoffError(
-            "clarification resolver answer.json answer_shape must be "
-            f"{answer_shape!r}"
+            f"clarification resolver answer.json answer_shape must be {answer_shape!r}"
         )
     if answer_shape == "choice":
         if set(data) != {"clarification_id", "answer_shape", "choice"}:
@@ -1522,17 +1694,11 @@ def _invoke_clarification_resolver(
     except OSError as exc:
         edit_error = f"Cannot validate clarification resolver file edits: {exc}"
     if edit_error is not None:
-        guidance = _resolver_repair_guidance(
-            clarification_id, workflow_state.resume.command
-        )
-        return SessionError(
-            "clarification_resolver", f"{edit_error}. {guidance}", 1
-        ), True
+        guidance = _resolver_repair_guidance(clarification_id, workflow_state.resume.command)
+        return SessionError("clarification_resolver", f"{edit_error}. {guidance}", 1), True
     if not agent_result.succeeded:
         message = _agent_error_message(ctx, agent_result, None)
-        guidance = _resolver_repair_guidance(
-            clarification_id, workflow_state.resume.command
-        )
+        guidance = _resolver_repair_guidance(clarification_id, workflow_state.resume.command)
         return SessionError(
             "clarification_resolver",
             f"{message} {guidance}",
@@ -1548,9 +1714,7 @@ def _invoke_clarification_resolver(
             resolver_session_id=ctx.invocation_id,
         )
     except HandoffError as exc:
-        message = _resolver_repair_guidance(
-            clarification_id, workflow_state.resume.command
-        )
+        message = _resolver_repair_guidance(clarification_id, workflow_state.resume.command)
         return SessionError("clarification_resolver", f"{exc}. {message}", 1), True
 
     _notify_session_progress(
@@ -1727,9 +1891,7 @@ def _resume_validation_error(
         if task is None:
             return error(f"Interrupted task {resume.task} no longer exists.")
         if task.status != TaskStatus.IN_REVIEW:
-            return error(
-                f"Interrupted task {resume.task} is {task.status.value}, not in_review."
-            )
+            return error(f"Interrupted task {resume.task} is {task.status.value}, not in_review.")
         if role_name != resume.role:
             selected = role_name or "no role"
             return error(
@@ -1738,9 +1900,7 @@ def _resume_validation_error(
             )
         if task_id != resume.task:
             selected = task_id or "none"
-            return error(
-                f"Next review task is {selected}, not interrupted task {resume.task}."
-            )
+            return error(f"Next review task is {selected}, not interrupted task {resume.task}.")
 
     elif resume.role in {"integrator", "architect"} and resume.milestone:
         if role_name != resume.role:
@@ -1752,8 +1912,7 @@ def _resume_validation_error(
         if milestone_id != resume.milestone:
             selected = milestone_id or "none"
             return error(
-                f"Selected milestone is {selected}, not interrupted milestone "
-                f"{resume.milestone}."
+                f"Selected milestone is {selected}, not interrupted milestone {resume.milestone}."
             )
 
     elif role_name != resume.role:
@@ -1850,9 +2009,7 @@ def _invoke_role_agent(
             "agent_invocation",
             _agent_error_message(
                 ctx,
-                dataclasses.replace(
-                    agent_result, message=f"agent provider error: {exc}"
-                ),
+                dataclasses.replace(agent_result, message=f"agent provider error: {exc}"),
                 config_log,
             ),
             1,
@@ -2119,15 +2276,12 @@ def run_loop(
             logger.error("%s. Stopping.", exc)
             return _error_result(0, SessionError("generation_archive", str(exc), 1))
     forced_planning_roles = (
-        ("architect", "planner")
-        if revise_plan or fresh_generation_plan or adopt_existing
-        else ()
+        ("architect", "planner") if revise_plan or fresh_generation_plan or adopt_existing else ()
     )
     planning_update = PlanningStateUpdate(
         last_planned_spec_commit=(
             spec_status.latest_spec_commit
-            if spec_status is not None
-            and (planning_only or not spec_status.baseline_exists)
+            if spec_status is not None and (planning_only or not spec_status.baseline_exists)
             else None
         ),
     )
@@ -2139,8 +2293,19 @@ def run_loop(
                 assert_clean_worktree(root)
             except VersionControlError as exc:
                 logger.error("%s. Stopping.", exc)
+                return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
+        if not planning_only:
+            retry_profiles = (
+                frozen_profiles if frozen_profiles is not None else load_profiles(root)
+            )
+            retry_stop = _retry_unverified_task_validation(workspace, retry_profiles)
+            if retry_stop is not None:
+                reason, message = retry_stop
+                logger.error("%s. Stopping.", message)
                 return _error_result(
-                    sessions_run, SessionError("version_control", str(exc), 1)
+                    sessions_run,
+                    SessionError("task_validation", message, 1),
+                    reason=reason,
                 )
         clarification_error = _blocking_clarification_error(workspace.snapshot)
         if clarification_error is not None:
@@ -2183,8 +2348,7 @@ def run_loop(
         if role_name is None:
             if workspace.snapshot.blocked_tasks():
                 logger.info(
-                    "No task is eligible; remaining development tasks"
-                    " are blocked by dependencies."
+                    "No task is eligible; remaining development tasks are blocked by dependencies."
                 )
                 reason = RunStopReason.NO_ELIGIBLE_ROLE
             else:
@@ -2267,16 +2431,13 @@ def run_loop(
         planner_generation_update = (
             planning_update
             if role_name == "planner"
-            and (
-                planning_only
-                or (spec_status is not None and not spec_status.baseline_exists)
-            )
+            and (planning_only or (spec_status is not None and not spec_status.baseline_exists))
             else None
         )
         route = _select_session_route(start_snapshot, role_name)
         progress_baseline = _session_progress_baseline(start_snapshot)
-        non_advancing_recovery = (
-            role_name == "developer" and _is_non_advancing_recovery(root, route)
+        non_advancing_recovery = role_name == "developer" and _is_non_advancing_recovery(
+            root, route
         )
         prior_validation_failure = (
             _latest_validation_failure(root, route.task_id)
@@ -2303,7 +2464,10 @@ def run_loop(
                 )
         role = ROLES[role_name]
         ctx = _build_session_context(
-            root, sessions_run + 1, role_name, retain_prompts=retain_prompts,
+            root,
+            sessions_run + 1,
+            role_name,
+            retain_prompts=retain_prompts,
         )
         config_log: Path | None = None
 
@@ -2332,9 +2496,7 @@ def run_loop(
                 role=role_name,
                 task=route.task_id or "",
                 milestone=route.milestone_id or "",
-                protected_active_tasks=tuple(
-                    task.id for task in start_snapshot.active_tasks()
-                ),
+                protected_active_tasks=tuple(task.id for task in start_snapshot.active_tasks()),
                 incremental_planning_required=(
                     role_name == "planner" and _needs_incremental_planning(start_snapshot)
                 ),
@@ -2344,9 +2506,7 @@ def run_loop(
 
         try:
             snapshot = workspace.snapshot
-            base_prompt = build_base_prompt(
-                root, role, snapshot=snapshot, role_name=role_name
-            )
+            base_prompt = build_base_prompt(root, role, snapshot=snapshot, role_name=role_name)
             session_prompt = build_session_prompt(
                 snapshot,
                 role_name,
@@ -2361,9 +2521,7 @@ def run_loop(
             if non_advancing_recovery:
                 session_prompt += "\n\n" + _recovery_prompt(route)
             if prior_validation_failure is not None:
-                session_prompt += "\n\n" + _validation_recovery_prompt(
-                    prior_validation_failure
-                )
+                session_prompt += "\n\n" + _validation_recovery_prompt(prior_validation_failure)
             ctx.write_prompt_logs(base_prompt, session_prompt)
             environment = _environment_for_session(
                 root,
@@ -2373,9 +2531,7 @@ def run_loop(
             )
         except ProfileNotFoundError as exc:
             logger.error("%s. Stopping.", exc)
-            return _error_result(
-                sessions_run, SessionError("profile_resolution", str(exc), 1)
-            )
+            return _error_result(sessions_run, SessionError("profile_resolution", str(exc), 1))
 
         agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
         lifecycle = _invoke_role_agent(
@@ -2400,9 +2556,7 @@ def run_loop(
                 executable_config,
             )
             ctx.write_session_metadata(metadata)
-            return _error_result(
-                sessions_run, primary_error, *lifecycle.errors[1:]
-            )
+            return _error_result(sessions_run, primary_error, *lifecycle.errors[1:])
 
         workspace.did_mutate()
 
@@ -2411,9 +2565,7 @@ def run_loop(
             submission_issues: tuple[str, ...]
             submission_reason = HandoffFailureReason.CONTRACT
             try:
-                submit_session_handoff(
-                    root, envelope_path=artifacts_dir / SESSION_ENVELOPE_FILE
-                )
+                submit_session_handoff(root, envelope_path=artifacts_dir / SESSION_ENVELOPE_FILE)
             except HandoffSubmissionError as exc:
                 submission_issues = exc.issues
                 submission_reason = exc.reason
@@ -2489,11 +2641,30 @@ def run_loop(
                 executable_config,
             )
             ctx.write_session_metadata(metadata)
-            return _error_result(
-                sessions_run, SessionError("handoff_validation", message, 1)
-            )
+            return _error_result(sessions_run, SessionError("handoff_validation", message, 1))
 
         commit_message = _commit_message(workspace.snapshot, handoff)
+        milestone_validation: ValidationRun | None = None
+        milestone_validation_contract: EffectiveMilestoneValidation | None = None
+        if role_name == "integrator" and route.milestone_id is not None:
+            profiles = frozen_profiles if frozen_profiles is not None else load_profiles(root)
+            milestone_tasks = workspace.snapshot.tasks_for_milestone(route.milestone_id)
+            milestone_validation_contract = effective_milestone_validation(
+                milestone_tasks, profiles, root=root
+            )
+            timeouts = [
+                profile_from_snapshot(profiles, task.profile, root=root).environment.timeouts.setup
+                for task in milestone_tasks
+            ]
+            milestone_validation = run_validation_commands(
+                root,
+                role_name=role_name,
+                milestone_id=route.milestone_id,
+                session_id=ctx.invocation_id,
+                commands=tuple(item.command for item in milestone_validation_contract.commands),
+                source="milestone",
+                timeout=max(timeouts, default=600),
+            )
         process_result = process_handoff(
             handoff,
             workspace,
@@ -2501,9 +2672,12 @@ def run_loop(
             session_id=ctx.invocation_id,
             task_id=route.task_id,
             milestone_id=route.milestone_id,
+            milestone_validation=milestone_validation,
+            milestone_validation_contract=milestone_validation_contract,
         )
         validation_run: ValidationRun | None = None
         repeated_validation_failure = False
+        task_validation_stop: tuple[RunStopReason, str] | None = None
         accepted_result = load_session_result(result_path)
         if (
             role_name == "developer"
@@ -2512,9 +2686,7 @@ def run_loop(
             and process_result.clarification_id is None
         ):
             profile = (
-                profile_from_snapshot(
-                    frozen_profiles, route.task.profile, root=root
-                )
+                profile_from_snapshot(frozen_profiles, route.task.profile, root=root)
                 if frozen_profiles is not None
                 else load_profile(root, route.task.profile)
             )
@@ -2527,12 +2699,13 @@ def run_loop(
                 commands=validation.commands,
                 source=validation.source,
                 timeout=profile.environment.timeouts.setup,
+                recovery_of=(
+                    str(prior_validation_failure.get("session_id") or "")
+                    if prior_validation_failure is not None
+                    else ""
+                ),
             )
-            if validation_run.outcome in {
-                "failed",
-                "timeout",
-                "infrastructure_error",
-            } and validation.source == "task":
+            if validation_run.outcome == "failed" and validation.source == "task":
                 failed = validation_run.commands[-1]
                 workspace.tasks().get(route.task.id).record_validation_failure(
                     f"{failed.command!r} ({failed.outcome}); see {failed.log_path}"
@@ -2543,14 +2716,9 @@ def run_loop(
                     validation_run.outcome,
                 )
                 repeated_validation_failure = prior_validation_failure is not None
-            elif validation_run.outcome in {
-                "failed",
-                "timeout",
-                "infrastructure_error",
-            }:
+            elif validation_run.outcome == "failed":
                 logger.warning(
-                    "Task %s profile validation %s; recorded as a soft task-level "
-                    "warning",
+                    "Task %s profile validation %s; recorded as a soft task-level warning",
                     route.task.id,
                     validation_run.outcome,
                 )
@@ -2558,6 +2726,15 @@ def run_loop(
                 logger.warning(
                     "Task %s validation prerequisite is missing; leaving it unverified",
                     route.task.id,
+                )
+                task_validation_stop = (
+                    RunStopReason.VALIDATION_PREREQUISITE_MISSING,
+                    f"task {route.task.id} validation prerequisite is missing",
+                )
+            elif validation_run.outcome in {"timeout", "infrastructure_error"}:
+                task_validation_stop = (
+                    RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR,
+                    f"task {route.task.id} validation {validation_run.outcome}",
                 )
         if planning_only and not plan_started_recorded and role_name in {"architect", "planner"}:
             append_workflow_event(
@@ -2567,11 +2744,7 @@ def run_loop(
                 generation=active_generation(root),
             )
             plan_started_recorded = True
-        if (
-            planning_only
-            and role_name == "planner"
-            and process_result.clarification_id is None
-        ):
+        if planning_only and role_name == "planner" and process_result.clarification_id is None:
             append_workflow_event(
                 root,
                 "plan_completed",
@@ -2629,6 +2802,39 @@ def run_loop(
                 SessionError("task_validation", message, 1),
                 reason=RunStopReason.VALIDATION_FAILED,
             )
+        if task_validation_stop is not None:
+            reason, message = task_validation_stop
+            logger.error("%s. Stopping.", message)
+            if automatic_version_control:
+                try:
+                    workspace.sync()
+                    commit_all(root, "Record blocked task validation")
+                except VersionControlError as exc:
+                    return _error_result(
+                        sessions_run + 1,
+                        SessionError("version_control", str(exc), 1),
+                    )
+            return _error_result(
+                sessions_run + 1,
+                SessionError("task_validation", message, 1),
+                reason=reason,
+            )
+        if process_result.stop_reason is not None:
+            logger.error("%s. Stopping.", process_result.stop_message)
+            if automatic_version_control:
+                try:
+                    workspace.sync()
+                    commit_all(root, "Record blocked milestone validation")
+                except VersionControlError as exc:
+                    return _error_result(
+                        sessions_run + 1,
+                        SessionError("version_control", str(exc), 1),
+                    )
+            return _error_result(
+                sessions_run + 1,
+                SessionError("milestone_validation", process_result.stop_message, 1),
+                reason=process_result.stop_reason,
+            )
         if automatic_version_control:
             try:
                 workspace.sync()
@@ -2649,9 +2855,7 @@ def run_loop(
                     )
             except VersionControlError as exc:
                 logger.error("%s. Stopping.", exc)
-                return _error_result(
-                    sessions_run, SessionError("version_control", str(exc), 1)
-                )
+                return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
         finish_context = session_finish_context(
             workspace.snapshot,
             role_name,

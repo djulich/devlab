@@ -13,7 +13,7 @@ from pathlib import Path
 from devlab.clarifications import Clarification, FileClarificationTracker
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.generations import active_generation
-from devlab.milestones import FileMilestoneTracker, Milestone
+from devlab.milestones import FileMilestoneTracker, Milestone, MilestoneVerification
 from devlab.task_tracker import (
     FileTaskTracker,
     Task,
@@ -62,15 +62,9 @@ class Workspace:
     """
 
     root: Path
-    _snapshot: WorkspaceSnapshot | None = dataclasses.field(
-        default=None, init=False, repr=False
-    )
-    _tasks: FileTaskTracker | None = dataclasses.field(
-        default=None, init=False, repr=False
-    )
-    _findings: FileFindingTracker | None = dataclasses.field(
-        default=None, init=False, repr=False
-    )
+    _snapshot: WorkspaceSnapshot | None = dataclasses.field(default=None, init=False, repr=False)
+    _tasks: FileTaskTracker | None = dataclasses.field(default=None, init=False, repr=False)
+    _findings: FileFindingTracker | None = dataclasses.field(default=None, init=False, repr=False)
     _milestones: FileMilestoneTracker | None = dataclasses.field(
         default=None, init=False, repr=False
     )
@@ -167,6 +161,21 @@ class WorkspaceFindings:
             source=source,
             milestone=milestone,
             handoff_path=handoff_path,
+        )
+        self.workspace.did_mutate()
+        return finding
+
+    def create(
+        self,
+        *,
+        title: str,
+        source: str,
+        milestone: str | None,
+        body: str,
+        handoff: str | None = None,
+    ) -> Finding:
+        finding = self.workspace._finding_tracker().create(
+            title=title, source=source, milestone=milestone, body=body, handoff=handoff
         )
         self.workspace.did_mutate()
         return finding
@@ -292,6 +301,12 @@ class WorkspaceMilestone:
         self.workspace._milestone_tracker().mark_architecture_reviewed(self.id, handoff_path)
         self.workspace.did_mutate()
 
+    def write_verification(self, verification: MilestoneVerification) -> None:
+        if verification.milestone_id != self.id:
+            raise ValueError("milestone verification id does not match workspace handle")
+        self.workspace._milestone_tracker().write_verification(verification)
+        self.workspace.did_mutate()
+
 
 @dataclasses.dataclass(frozen=True)
 class WorkspaceFinding:
@@ -365,7 +380,6 @@ class WorkspaceClarification:
         return clarification
 
 
-
 @dataclasses.dataclass
 class WorkspaceSnapshot:
     """Cached read-only snapshot of DevLab workspace files.
@@ -387,9 +401,7 @@ class WorkspaceSnapshot:
     _clarifications: list[Clarification] | None = dataclasses.field(
         default=None, init=False, repr=False
     )
-    _workflow_state: WorkflowState | None = dataclasses.field(
-        default=None, init=False, repr=False
-    )
+    _workflow_state: WorkflowState | None = dataclasses.field(default=None, init=False, repr=False)
 
     def list_tasks(self) -> list[Task]:
         if self._tasks is None:
@@ -408,6 +420,9 @@ class WorkspaceSnapshot:
         if self._milestones is None:
             self._milestones = self._milestone_tracker.list_milestones()
         return list(self._milestones)
+
+    def milestone_verification(self, milestone_id: str) -> MilestoneVerification | None:
+        return self._milestone_tracker.read_verification(milestone_id)
 
     def list_clarifications(self) -> list[Clarification]:
         if self._clarifications is None:

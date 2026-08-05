@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import subprocess
+import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ class EnvironmentConfig:
     post_session: tuple[str, ...] = ()
     timeouts: EnvironmentTimeouts = EnvironmentTimeouts()
 
+
 @dataclasses.dataclass(frozen=True)
 class EnvironmentCommandError(RuntimeError):
     phase: str
@@ -49,6 +51,8 @@ class ValidationCommandResult:
     outcome: str
     return_code: int | None
     log_path: str
+    duration_seconds: float
+    output_summary: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -56,24 +60,39 @@ class ValidationRun:
     source: str
     outcome: str
     commands: tuple[ValidationCommandResult, ...]
+    role: str
+    session_id: str
+    context_kind: str
+    context_id: str
+    repository_revision: str
+    recovery_of: str
 
 
 def run_validation_commands(
     root: Path,
     *,
     role_name: str,
-    task_id: str,
+    task_id: str | None = None,
+    milestone_id: str | None = None,
     session_id: str,
     commands: tuple[str, ...],
     source: str = "none",
     timeout: int = 600,
+    recovery_of: str = "",
 ) -> ValidationRun:
     """Run target-owned validation and persist compact observed outcomes."""
+    if (task_id is None) == (milestone_id is None):
+        raise ValueError("validation requires exactly one task_id or milestone_id")
+    context_kind = "task" if task_id is not None else "milestone"
+    context_id = task_id or milestone_id or ""
+    revision = _repository_revision(root)
     results: list[ValidationCommandResult] = []
     overall = "not_configured" if not commands else "passed"
     for index, command in enumerate(commands, start=1):
         log_path = root / ENVIRONMENT_LOG_DIR / f"{session_id}_{role_name}_validation_{index}.log"
+        stored_log_path = log_path.relative_to(root).as_posix()
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
         try:
             result = subprocess.run(
                 command,
@@ -91,34 +110,93 @@ def run_validation_commands(
                 + "\n"
                 + _decode_output(exc.stderr)
             )
-            results.append(ValidationCommandResult(command, "timeout", None, str(log_path)))
+            output = _decode_output(exc.stdout) + "\n" + _decode_output(exc.stderr)
+            results.append(
+                ValidationCommandResult(
+                    command,
+                    "timeout",
+                    None,
+                    stored_log_path,
+                    round(time.monotonic() - started, 3),
+                    _output_summary(output),
+                )
+            )
             overall = "timeout"
             break
         except OSError as exc:
             log_path.write_text(f"command: {command}\noutcome: infrastructure_error\n{exc}\n")
             results.append(
-                ValidationCommandResult(command, "infrastructure_error", None, str(log_path))
+                ValidationCommandResult(
+                    command,
+                    "infrastructure_error",
+                    None,
+                    stored_log_path,
+                    round(time.monotonic() - started, 3),
+                    _output_summary(str(exc)),
+                )
             )
             overall = "infrastructure_error"
             break
-        outcome = "passed" if result.returncode == 0 else (
-            "missing_tool" if result.returncode == 127 else "failed"
+        outcome = (
+            "passed"
+            if result.returncode == 0
+            else ("missing_tool" if result.returncode == 127 else "failed")
         )
         log_path.write_text(
             f"command: {command}\noutcome: {outcome}\nexit_code: {result.returncode}\n\n"
             f"## stdout\n{result.stdout}\n## stderr\n{result.stderr}"
         )
         results.append(
-            ValidationCommandResult(command, outcome, result.returncode, str(log_path))
+            ValidationCommandResult(
+                command,
+                outcome,
+                result.returncode,
+                stored_log_path,
+                round(time.monotonic() - started, 3),
+                _output_summary(result.stdout + "\n" + result.stderr),
+            )
         )
         if outcome != "passed":
             overall = outcome
             break
-    run = ValidationRun(source, overall, tuple(results))
-    record_path = root / ".devlab/verification/tasks" / task_id / f"{session_id}.json"
-    record_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(record_path, json.dumps(dataclasses.asdict(run), indent=2) + "\n")
+    run = ValidationRun(
+        source,
+        overall,
+        tuple(results),
+        role_name,
+        session_id,
+        context_kind,
+        context_id,
+        revision,
+        recovery_of,
+    )
+    if task_id is not None:
+        record_path = root / ".devlab/verification/tasks" / task_id / f"{session_id}.json"
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(record_path, json.dumps(dataclasses.asdict(run), indent=2) + "\n")
     return run
+
+
+def _repository_revision(root: Path) -> str:
+    try:
+        result = subprocess.run(
+            ("git", "rev-parse", "HEAD"),
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _output_summary(output: str, limit: int = 1000) -> str:
+    normalized = "\n".join(line.rstrip() for line in output.strip().splitlines())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3] + "..."
 
 
 class EnvironmentManager:

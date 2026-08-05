@@ -19,10 +19,13 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 1. Read the assigned completed milestone and its task files.
 2. Inspect the relevant current code paths across components and prior milestones.
 3. Run default validation from the resolved/default profile and relevant integration/end-to-end checks. The orchestrator has already run the profile environment lifecycle before the session.
-4. If integration passes, write a handoff with Open Issues set to `None`.
-5. If implementation contradicts existing `CONTEXT.md` terminology or ADR decisions, document the issue in the handoff's Open Issues.
-6. If integration fails or required integration/end-to-end coverage is missing, document the issue in the handoff's Open Issues; the orchestrator will create a finding for planner follow-up.
-7. Fill the initialized handoff candidate and run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`; correct reported errors until DevLab accepts it.
+4. Record semantic concerns and behavior claims not covered by mechanical validation
+   in the candidate's dedicated fields. Do not repeat commands, task IDs, exit
+   statuses, or findings that DevLab can infer.
+5. If integration passes, write a handoff with Open Issues set to `None`.
+6. If implementation contradicts existing `CONTEXT.md` terminology or ADR decisions, document the issue in the handoff's Open Issues.
+7. If integration fails or required integration/end-to-end coverage is missing, document the issue in the handoff's Open Issues; the orchestrator will create a finding for planner follow-up.
+8. Fill the initialized handoff candidate and run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`; correct reported errors until DevLab accepts it.
 
 ## Constraints
 

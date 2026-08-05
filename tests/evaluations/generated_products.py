@@ -71,7 +71,7 @@ def write_mixed_rust_go_integration(root: Path) -> None:
         ".PHONY: check\n"
         "check:\n"
         "\tcargo test --manifest-path rust-component/Cargo.toml\n"
-        "\tcd go-component && go test ./...\n"
+        "\tcd go-component && GOCACHE=/tmp/devlab-evaluation-go-cache go test ./...\n"
     )
     gitignore = root / ".gitignore"
     existing = gitignore.read_text() if gitignore.exists() else ""

@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import re
 import tomllib
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from devlab._toml import format_toml_value
 from devlab.task_tracker import FileTaskTracker, Task
 
 MILESTONES_DIR = ".devlab/milestones"
+MILESTONE_VERIFICATION_DIR = ".devlab/verification/milestones"
 MILESTONE_ID_RE = re.compile(r"(?<![A-Z0-9])M\d{1,5}(?!\d)")
 _PROJECT_PLAN_HEADING_RE = re.compile(r"^##\s+(M\d{1,5})(?::\s*(.+?))?\s*$", re.MULTILINE)
 
@@ -42,6 +44,38 @@ class Milestone:
     metadata: dict[str, Any]
 
 
+@dataclasses.dataclass(frozen=True)
+class MilestoneVerificationCommand:
+    command: str
+    task_ids: tuple[str, ...]
+    sources: tuple[str, ...]
+    outcome: str = "not_run"
+    exit_code: int | None = None
+    duration_seconds: float = 0.0
+    output_summary: str = ""
+    log_path: str = ""
+
+
+@dataclasses.dataclass(frozen=True)
+class MilestoneVerification:
+    milestone_id: str
+    state: str
+    repository_revision: str
+    closed_task_ids: tuple[str, ...]
+    commands: tuple[MilestoneVerificationCommand, ...]
+    integration_session: str = ""
+    integration_handoff: str = ""
+    finding_ids: tuple[str, ...] = ()
+    finding_statuses: tuple[str, ...] = ()
+    semantic_integration_concerns: tuple[str, ...] = ()
+    untested_claims: tuple[str, ...] = ()
+    architecture_session: str = ""
+    architecture_handoff: str = ""
+    design_drift: tuple[str, ...] = ()
+    updated_at: str = ""
+    schema_version: int = 1
+
+
 class FileMilestoneTracker:
     """File-backed milestone state tracker.
 
@@ -65,6 +99,18 @@ class FileMilestoneTracker:
         if not path.exists():
             raise KeyError(f"unknown milestone id: {milestone_id}")
         return self._read_milestone(path)
+
+    def read_verification(self, milestone_id: str) -> MilestoneVerification | None:
+        path = self.root / MILESTONE_VERIFICATION_DIR / f"{milestone_id}.toml"
+        if not path.exists():
+            return None
+        return _read_verification(path)
+
+    def write_verification(self, verification: MilestoneVerification) -> None:
+        path = self.root / MILESTONE_VERIFICATION_DIR / f"{verification.milestone_id}.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        value = dataclasses.replace(verification, updated_at=datetime.now(UTC).isoformat())
+        atomic_write_text(path, _format_verification(value))
 
     def upsert_from_tasks(
         self,
@@ -240,6 +286,101 @@ def _format_milestone_file(metadata: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _format_verification(value: MilestoneVerification) -> str:
+    scalar_fields: tuple[tuple[str, object], ...] = (
+        ("schema_version", value.schema_version),
+        ("milestone_id", value.milestone_id),
+        ("state", value.state),
+        ("repository_revision", value.repository_revision),
+        ("updated_at", value.updated_at),
+        ("closed_task_ids", value.closed_task_ids),
+        ("integration_session", value.integration_session),
+        ("integration_handoff", value.integration_handoff),
+        ("finding_ids", value.finding_ids),
+        ("finding_statuses", value.finding_statuses),
+        ("semantic_integration_concerns", value.semantic_integration_concerns),
+        ("untested_claims", value.untested_claims),
+        ("architecture_session", value.architecture_session),
+        ("architecture_handoff", value.architecture_handoff),
+        ("design_drift", value.design_drift),
+    )
+    lines = [f"{key} = {format_toml_value(item)}" for key, item in scalar_fields]
+    for command in value.commands:
+        lines.extend(
+            (
+                "",
+                "[[commands]]",
+                f"command = {format_toml_value(command.command)}",
+                f"task_ids = {format_toml_value(command.task_ids)}",
+                f"sources = {format_toml_value(command.sources)}",
+                f"outcome = {format_toml_value(command.outcome)}",
+            )
+        )
+        if command.exit_code is not None:
+            lines.append(f"exit_code = {command.exit_code}")
+        lines.extend(
+            (
+                f"duration_seconds = {command.duration_seconds}",
+                f"output_summary = {format_toml_value(command.output_summary)}",
+                f"log_path = {format_toml_value(command.log_path)}",
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _read_verification(path: Path) -> MilestoneVerification:
+    data = tomllib.loads(path.read_text())
+    version = data.get("schema_version")
+    if version != 1:
+        raise ValueError(f"unsupported milestone verification schema version {version!r}")
+    milestone_id = str(data.get("milestone_id") or "")
+    if not milestone_id:
+        raise ValueError(f"milestone verification has no milestone_id: {path}")
+    raw_commands = data.get("commands", [])
+    if not isinstance(raw_commands, list):
+        raise ValueError("milestone verification commands must be an array of tables")
+    commands: list[MilestoneVerificationCommand] = []
+    for raw in raw_commands:
+        if not isinstance(raw, dict):
+            raise ValueError("milestone verification command must be a table")
+        exit_code = raw.get("exit_code")
+        if exit_code is not None and not isinstance(exit_code, int):
+            raise ValueError("milestone verification command exit_code must be an integer")
+        commands.append(
+            MilestoneVerificationCommand(
+                command=str(raw.get("command") or ""),
+                task_ids=_string_tuple(raw.get("task_ids", []), "commands.task_ids"),
+                sources=_string_tuple(raw.get("sources", []), "commands.sources"),
+                outcome=str(raw.get("outcome") or "not_run"),
+                exit_code=exit_code,
+                duration_seconds=float(raw.get("duration_seconds") or 0.0),
+                output_summary=str(raw.get("output_summary") or ""),
+                log_path=str(raw.get("log_path") or ""),
+            )
+        )
+    return MilestoneVerification(
+        schema_version=1,
+        milestone_id=milestone_id,
+        state=str(data.get("state") or ""),
+        repository_revision=str(data.get("repository_revision") or ""),
+        updated_at=str(data.get("updated_at") or ""),
+        closed_task_ids=_string_tuple(data.get("closed_task_ids", []), "closed_task_ids"),
+        commands=tuple(commands),
+        integration_session=str(data.get("integration_session") or ""),
+        integration_handoff=str(data.get("integration_handoff") or ""),
+        finding_ids=_string_tuple(data.get("finding_ids", []), "finding_ids"),
+        finding_statuses=_string_tuple(data.get("finding_statuses", []), "finding_statuses"),
+        semantic_integration_concerns=_string_tuple(
+            data.get("semantic_integration_concerns", []),
+            "semantic_integration_concerns",
+        ),
+        untested_claims=_string_tuple(data.get("untested_claims", []), "untested_claims"),
+        architecture_session=str(data.get("architecture_session") or ""),
+        architecture_handoff=str(data.get("architecture_handoff") or ""),
+        design_drift=_string_tuple(data.get("design_drift", []), "design_drift"),
+    )
+
+
 def _parse_status(value: object) -> MilestoneStatus:
     if value is None:
         return MilestoneStatus.PLANNED
@@ -263,7 +404,6 @@ def _milestone_titles_from_project_plan(text: str) -> dict[str, str]:
         match.group(1): (match.group(2) or match.group(1)).strip()
         for match in _PROJECT_PLAN_HEADING_RE.finditer(text)
     }
-
 
 
 def _natural_sort_key(value: str) -> tuple[str, int, str]:

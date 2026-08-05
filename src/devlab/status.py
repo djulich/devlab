@@ -6,7 +6,7 @@ from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_c
 from devlab.clarifications import Clarification
 from devlab.findings import Finding
 from devlab.generations import active_generation, archived_generation_numbers
-from devlab.milestones import Milestone
+from devlab.milestones import Milestone, MilestoneVerification
 from devlab.prompt_context import PromptContextReport, build_prompt_context_report
 from devlab.task_tracker import Task, TaskStatus
 from devlab.workspace import Workspace, WorkspaceSnapshot
@@ -87,7 +87,9 @@ def _format_milestone_status(snapshot: WorkspaceSnapshot) -> list[str]:
         return ["Milestones: none"]
     lines = ["Milestones:"]
     for milestone in milestones:
-        lines.extend(_format_milestone(milestone, tasks))
+        lines.extend(
+            _format_milestone(milestone, tasks, snapshot.milestone_verification(milestone.id))
+        )
     for milestone_id in missing_milestones:
         task_ids = [task.id for task in tasks if task.milestone == milestone_id]
         lines.extend(
@@ -100,7 +102,11 @@ def _format_milestone_status(snapshot: WorkspaceSnapshot) -> list[str]:
     return lines
 
 
-def _format_milestone(milestone: Milestone, tasks: list[Task]) -> list[str]:
+def _format_milestone(
+    milestone: Milestone,
+    tasks: list[Task],
+    verification: MilestoneVerification | None = None,
+) -> list[str]:
     milestone_tasks = [task for task in tasks if task.milestone == milestone.id]
     closed = sum(1 for task in milestone_tasks if task.status == TaskStatus.CLOSED)
     active = len(milestone_tasks) - closed
@@ -120,6 +126,16 @@ def _format_milestone(milestone: Milestone, tasks: list[Task]) -> list[str]:
         lines.append("  findings: " + ", ".join(milestone.findings))
     else:
         lines.append("  findings: none")
+    if verification is not None:
+        lines.extend(
+            (
+                f"  verification: {verification.state}",
+                f"  verification_revision: {verification.repository_revision or 'unknown'}",
+                f"  verification_commands: {len(verification.commands)}",
+                f"  untested_claims: {len(verification.untested_claims)}",
+                f"  design_drift: {len(verification.design_drift)}",
+            )
+        )
     return lines
 
 

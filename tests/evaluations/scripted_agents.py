@@ -169,7 +169,11 @@ class CompiledLanguageScriptedAgent:
 def _compiled_profile(language: str) -> str:
     commands = {
         "rust": ["cargo fmt --check", "cargo test"],
-        "go": ["gofmt -l . | (! grep .)", "go vet ./...", "go test ./..."],
+        "go": [
+            "gofmt -l . | (! grep .)",
+            "GOCACHE=/tmp/devlab-evaluation-go-cache go vet ./...",
+            "GOCACHE=/tmp/devlab-evaluation-go-cache go test ./...",
+        ],
         "c": ["cmake --preset dev", "cmake --build --preset dev", "ctest --preset dev"],
         "cpp": ["cmake --preset dev", "cmake --build --preset dev", "ctest --preset dev"],
     }[language]
@@ -219,8 +223,18 @@ class MixedLanguageScriptedAgent:
             "- T0003: Add cross-component validation\n"
         )
         profiles = root / ".devlab/config/profiles"
-        (profiles / "rust.toml").write_text(_named_profile("rust", ["cargo test"]))
-        (profiles / "go.toml").write_text(_named_profile("go", ["go test ./..."]))
+        (profiles / "rust.toml").write_text(
+            _named_profile("rust", ["cd rust-component && cargo test"])
+        )
+        (profiles / "go.toml").write_text(
+            _named_profile(
+                "go",
+                [
+                    "cd go-component && "
+                    "GOCACHE=/tmp/devlab-evaluation-go-cache go test ./..."
+                ],
+            )
+        )
         (profiles / "integration.toml").write_text(_named_profile("integration", ["make check"]))
         tasks = (
             ("T0001", "Implement Rust component", "rust", []),

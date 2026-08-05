@@ -8,7 +8,12 @@ from devlab.clarifications import CLARIFICATIONS_DIR, FileClarificationTracker
 from devlab.doctor_common import DoctorProblem, display_path
 from devlab.findings import FindingStatus
 from devlab.git import VersionControlError, run_git
-from devlab.milestones import MILESTONE_ID_RE, MILESTONES_DIR, FileMilestoneTracker
+from devlab.milestones import (
+    MILESTONE_ID_RE,
+    MILESTONE_VERIFICATION_DIR,
+    MILESTONES_DIR,
+    FileMilestoneTracker,
+)
 from devlab.profiles import profile_path
 from devlab.task_tracker import DEFAULT_TASK_DOMAIN
 from devlab.workflow_state import WORKFLOW_STATE, load_workflow_state
@@ -308,6 +313,50 @@ def check_milestones(root: Path, snapshot: WorkspaceSnapshot) -> list[DoctorProb
                         path_display,
                         f"findings references {finding_id!r} but finding milestone is "
                         f"{finding.milestone!r}",
+                    )
+                )
+    verification_dir = root / MILESTONE_VERIFICATION_DIR
+    for path in sorted(verification_dir.glob("*.toml")):
+        path_display = display_path(path, root)
+        try:
+            verification = milestone_tracker.read_verification(path.stem)
+        except (tomllib.TOMLDecodeError, ValueError) as exc:
+            problems.append(DoctorProblem(path_display, str(exc)))
+            continue
+        if verification is None:
+            continue
+        if verification.milestone_id != path.stem:
+            problems.append(DoctorProblem(path_display, "milestone_id does not match filename"))
+        if verification.milestone_id not in milestone_by_id:
+            problems.append(DoctorProblem(path_display, "references unknown milestone"))
+        for task_id in verification.closed_task_ids:
+            if task_id not in task_by_id:
+                problems.append(
+                    DoctorProblem(path_display, f"references unknown task {task_id!r}")
+                )
+        for finding_id in verification.finding_ids:
+            if finding_id not in finding_ids:
+                problems.append(
+                    DoctorProblem(path_display, f"references unknown finding {finding_id!r}")
+                )
+        for handoff in (
+            verification.integration_handoff,
+            verification.architecture_handoff,
+        ):
+            if handoff and not (root / ".devlab/history" / handoff).exists():
+                problems.append(
+                    DoctorProblem(path_display, f"references missing handoff {handoff!r}")
+                )
+        for command in verification.commands:
+            log_path = Path(command.log_path)
+            if (
+                command.log_path
+                and not (log_path if log_path.is_absolute() else root / log_path).exists()
+            ):
+                problems.append(
+                    DoctorProblem(
+                        path_display,
+                        f"references missing validation log {command.log_path!r}",
                     )
                 )
     return problems

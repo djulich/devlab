@@ -6,11 +6,50 @@ import pytest
 
 from devlab.profiles import (
     ProfileNotFoundError,
+    effective_milestone_validation,
     effective_profile_id,
     effective_validation,
     load_profile,
 )
 from devlab.task_tracker import FileTaskTracker
+
+
+def test_effective_milestone_validation_deduplicates_with_provenance(
+    tmp_path: Path,
+) -> None:
+    profiles = tmp_path / ".devlab/config/profiles"
+    profiles.mkdir(parents=True)
+    (profiles / "default.toml").write_text(
+        'version = 1\nid = "default"\n[tooling]\n'
+        'default_validation = ["make check", "ruff check"]\n'
+    )
+    tasks = tmp_path / ".devlab/tasks"
+    tasks.mkdir(parents=True)
+    (tasks / "T0001_first.md").write_text(
+        '+++\nid = "T0001"\ntitle = "First"\nstatus = "closed"\n+++\n\n'
+        '# T0001: First\n\n## Acceptance Criteria\n- [x] Done\n'
+    )
+    (tasks / "T0002_second.md").write_text(
+        '+++\nid = "T0002"\ntitle = "Second"\nstatus = "closed"\n'
+        'validation = ["make check", "pytest"]\n+++\n\n'
+        '# T0002: Second\n\n## Acceptance Criteria\n- [x] Done\n'
+    )
+    profile = load_profile(tmp_path, "default")
+    tracker = FileTaskTracker(tmp_path)
+
+    result = effective_milestone_validation(
+        [tracker.get("T0001"), tracker.get("T0002")],
+        {"default": profile},
+        root=tmp_path,
+    )
+
+    assert [item.command for item in result.commands] == [
+        "make check",
+        "ruff check",
+        "pytest",
+    ]
+    assert result.commands[0].task_ids == ("T0001", "T0002")
+    assert result.commands[0].sources == ("profile", "task")
 
 
 def test_omitted_profile_resolves_to_default() -> None:

@@ -6,15 +6,13 @@ Only open or partially complete work is listed here. Completed implementation-hi
 
 ## 1. Workflow Contract Hardening
 
-Status: **task-level hardening implemented; milestone verification remains**. DevLab now validates handoff section order/structure, uses strict `- None` semantics, requires completed developer submissions to satisfy task acceptance criteria, permits one restricted bookkeeping correction, detects repeated non-advancing sessions, resolves and records task validation, bounds explicit task-validation recovery, rejects structurally invalid task work packets, and reports semantic task-quality warnings.
+Status: **contract hardening implemented; live calibration remains**. DevLab validates handoff contracts and task work packets, preserves bounded task recovery with graded task outcomes, strictly gates configured milestone validation, records milestone verification facts separately from role judgment, and reports safe validation stops without installing host prerequisites.
 
 Implementation continuation: [`plans/workflow-contract-hardening-remaining.md`](plans/workflow-contract-hardening-remaining.md). That plan treats `plans/unattended-workflow-progress-and-rework.md` as the governing policy wherever the older workflow-contract plan overlaps or conflicts.
 
 Open work:
 
-- Complete milestone-level validation enforcement: before marking a milestone integrated, require configured validation to pass or create integration findings for explicit gaps. Task-level validation is now orchestrator-owned and observable; explicit task commands receive bounded recovery while profile-default failures remain soft during incremental work.
 - Continue calibrating semantic task-quality warnings from live evidence. Structural work-packet checks are enforced before developer invocation; vague and compound criteria remain non-blocking until their false-positive rate is understood. Reference: GSD [Plan a phase](https://github.com/open-gsd/gsd-core/blob/next/docs/how-to/plan-a-phase.md).
-- Add an orchestrator-owned structured milestone verification record generated from DevLab facts plus narrow integrator/architecture-review judgment sections. The record should distinguish validation commands run, acceptance criteria or behavior checked, requirements/decisions covered, behavior that is claimed but untested, and findings opened for gaps without asking agents to duplicate task lists, command results, or other facts DevLab already owns. This is the DevLab-shaped version of GSD's post-execution verification idea, without adding a separate verifier role. References: GSD [The phase loop](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/the-phase-loop.md) and [Planning artifacts](https://github.com/open-gsd/gsd-core/blob/next/docs/reference/planning-artifacts.md).
 
 ## 2. DevLab Workflow Evaluations
 

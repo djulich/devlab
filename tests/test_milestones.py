@@ -4,8 +4,46 @@ from pathlib import Path
 
 import pytest
 
-from devlab.milestones import FileMilestoneTracker, MilestoneStatus
+from devlab.milestones import (
+    FileMilestoneTracker,
+    MilestoneStatus,
+    MilestoneVerification,
+    MilestoneVerificationCommand,
+)
 from devlab.task_tracker import FileTaskTracker
+
+
+def test_milestone_verification_round_trip(tmp_path: Path) -> None:
+    tracker = FileMilestoneTracker(tmp_path)
+    tracker.write_verification(
+        MilestoneVerification(
+            milestone_id="M1",
+            state="verified",
+            repository_revision="abc123",
+            closed_task_ids=("T0001",),
+            commands=(
+                MilestoneVerificationCommand(
+                    command="pytest",
+                    task_ids=("T0001",),
+                    sources=("task",),
+                    outcome="passed",
+                    exit_code=0,
+                    duration_seconds=1.25,
+                    output_summary="ok",
+                    log_path="validation.log",
+                ),
+            ),
+            untested_claims=("manual documentation review",),
+        )
+    )
+
+    record = tracker.read_verification("M1")
+
+    assert record is not None
+    assert record.state == "verified"
+    assert record.commands[0].command == "pytest"
+    assert record.commands[0].exit_code == 0
+    assert record.untested_claims == ("manual documentation review",)
 
 
 def test_upsert_from_tasks_creates_missing_milestone_files(tmp_path: Path) -> None:

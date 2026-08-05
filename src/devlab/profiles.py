@@ -37,6 +37,20 @@ class EffectiveValidation:
     commands: tuple[str, ...]
 
 
+@dataclasses.dataclass(frozen=True)
+class MilestoneValidationCommand:
+    """One deduplicated milestone command with all task/profile provenance."""
+
+    command: str
+    task_ids: tuple[str, ...]
+    sources: tuple[Literal["task", "profile"], ...]
+
+
+@dataclasses.dataclass(frozen=True)
+class EffectiveMilestoneValidation:
+    commands: tuple[MilestoneValidationCommand, ...]
+
+
 def effective_validation(task: Task, profile: Profile) -> EffectiveValidation:
     """Resolve task validation without executing commands or mutating state."""
     if task.validation is not None:
@@ -45,10 +59,38 @@ def effective_validation(task: Task, profile: Profile) -> EffectiveValidation:
             commands=task.validation,
         )
     if profile.tooling.default_validation:
-        return EffectiveValidation(
-            source="profile", commands=profile.tooling.default_validation
-        )
+        return EffectiveValidation(source="profile", commands=profile.tooling.default_validation)
     return EffectiveValidation(source="none", commands=())
+
+
+def effective_milestone_validation(
+    tasks: list[Task], profiles: dict[str, Profile], *, root: Path
+) -> EffectiveMilestoneValidation:
+    """Aggregate task contracts in stable order without changing precedence."""
+    ordered: list[str] = []
+    task_ids: dict[str, list[str]] = {}
+    sources: dict[str, list[Literal["task", "profile"]]] = {}
+    for task in tasks:
+        profile = profile_from_snapshot(profiles, task.profile, root=root)
+        validation = effective_validation(task, profile)
+        if validation.source == "none":
+            continue
+        source = validation.source
+        for command in validation.commands:
+            if command not in task_ids:
+                ordered.append(command)
+                task_ids[command] = []
+                sources[command] = []
+            if task.id not in task_ids[command]:
+                task_ids[command].append(task.id)
+            if source not in sources[command]:
+                sources[command].append(source)
+    return EffectiveMilestoneValidation(
+        tuple(
+            MilestoneValidationCommand(command, tuple(task_ids[command]), tuple(sources[command]))
+            for command in ordered
+        )
+    )
 
 
 class ProfileNotFoundError(FileNotFoundError):
@@ -82,8 +124,7 @@ def load_profiles(root: Path) -> dict[str, Profile]:
     if not profiles_dir.exists():
         return {}
     return {
-        path.stem: _read_profile(path, path.stem)
-        for path in sorted(profiles_dir.glob("*.toml"))
+        path.stem: _read_profile(path, path.stem) for path in sorted(profiles_dir.glob("*.toml"))
     }
 
 
@@ -128,7 +169,6 @@ def _read_profile(path: Path, expected_id: str) -> Profile:
         ),
         path=path,
     )
-
 
 
 def _table(data: dict[str, Any], key: str) -> dict[str, Any]:

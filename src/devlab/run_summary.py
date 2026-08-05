@@ -179,9 +179,7 @@ def _next_milestone(
     if milestone_id is None:
         return None
     milestone = next(
-        item
-        for item in snapshot.current_generation_milestones()
-        if item.id == milestone_id
+        item for item in snapshot.current_generation_milestones() if item.id == milestone_id
     )
     return RunMilestoneSummary(milestone.id, milestone.title)
 
@@ -226,6 +224,8 @@ def _next_commands(
         RunStopReason.DEVELOPER_NON_ADVANCING,
         RunStopReason.TASK_CONTRACT_INVALID,
         RunStopReason.VALIDATION_FAILED,
+        RunStopReason.VALIDATION_PREREQUISITE_MISSING,
+        RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR,
     }:
         return ("Inspect the errors above and run devlab doctor before retrying.",)
     if executable_config.state == "invalid":
@@ -258,5 +258,7 @@ def _stop_reason_text(reason: RunStopReason) -> str:
         RunStopReason.DEVELOPER_NON_ADVANCING: "developer recovery made no progress",
         RunStopReason.TASK_CONTRACT_INVALID: "task contract is invalid",
         RunStopReason.VALIDATION_FAILED: "task validation failed after bounded recovery",
+        RunStopReason.VALIDATION_PREREQUISITE_MISSING: ("validation prerequisite is missing"),
+        RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR: ("validation infrastructure failed"),
         RunStopReason.ERROR: "workflow error",
     }[reason]

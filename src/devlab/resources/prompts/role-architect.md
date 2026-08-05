@@ -24,6 +24,9 @@ The architect translates the system specification into a design plan and reviews
    - Compare the design plan to the system specification and to any project-specific deployment requirements. Ignore placeholder deployment template text when deployment is not requested.
    - Update the design plan if implementation legitimately changed the architecture.
    - Report implementation/design/spec drift in Open Issues when follow-up planning or implementation is needed.
+   - Record observed design drift in the candidate's `design_drift` field without
+     repeating milestone facts DevLab can infer. Actionable drift must also remain
+     in Open Issues so the existing finding workflow receives it.
    - Leave Open Issues as `None` only when no unplanned architecture/spec drift remains.
 4. Create or update `CONTEXT.md` when initial domain framing, context boundaries, or architecture-significant terminology is clarified.
 5. Create or update an ADR only when a decision is hard to reverse, surprising without context, and the result of a real trade-off.

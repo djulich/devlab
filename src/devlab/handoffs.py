@@ -20,7 +20,14 @@ REQUIRED_HANDOFF_HEADINGS = (
     "Addressed Findings",
     "Next Session Hint",
 )
-OPTIONAL_HANDOFF_HEADINGS = ("Planning State", "Commit Message", "Clarification Request")
+OPTIONAL_HANDOFF_HEADINGS = (
+    "Planning State",
+    "Commit Message",
+    "Semantic Integration Concerns",
+    "Untested Claims",
+    "Design Drift",
+    "Clarification Request",
+)
 
 _HEADING_RE = re.compile(r"^## (?P<heading>.+?)[ \t]*$", re.MULTILINE)
 _NONE_LINES = {"none", "- none"}
@@ -74,6 +81,9 @@ class HandoffCandidate:
     addressed_findings: tuple[str, ...]
     next_session_hint: str
     planning_complete: bool | None = None
+    semantic_integration_concerns: tuple[str, ...] = ()
+    untested_claims: tuple[str, ...] = ()
+    design_drift: tuple[str, ...] = ()
     clarification: ClarificationRequest | None = None
 
     def as_handoff(self, path: Path, role_name: str) -> Handoff:
@@ -147,6 +157,18 @@ class Handoff:
 
     def addressed_finding_tasks(self) -> dict[str, tuple[str, ...]]:
         return addressed_finding_tasks(self.addressed_findings)
+
+    @property
+    def semantic_integration_concerns(self) -> tuple[str, ...]:
+        return _section_entries(self.section("Semantic Integration Concerns"))
+
+    @property
+    def untested_claims(self) -> tuple[str, ...]:
+        return _section_entries(self.section("Untested Claims"))
+
+    @property
+    def design_drift(self) -> tuple[str, ...]:
+        return _section_entries(self.section("Design Drift"))
 
 
 class HandoffError(ValueError):
@@ -242,9 +264,7 @@ def active_session_envelope(root: Path, explicit: Path | None = None) -> Path:
     return matches[0].resolve()
 
 
-def initialize_handoff_candidate(
-    root: Path, explicit_envelope: Path | None = None
-) -> Path:
+def initialize_handoff_candidate(root: Path, explicit_envelope: Path | None = None) -> Path:
     envelope_path = active_session_envelope(root.resolve(), explicit_envelope)
     envelope = load_session_envelope(envelope_path)
     candidate_path = envelope_path.with_name(HANDOFF_CANDIDATE_FILE)
@@ -371,6 +391,10 @@ def render_candidate_template(role_name: str) -> str:
     ]
     if role_name == "planner":
         lines.append("planning_complete = false")
+    if role_name == "integrator":
+        lines.extend(("semantic_integration_concerns = []", "untested_claims = []"))
+    if role_name == "architect":
+        lines.append("design_drift = []")
     return "\n".join(lines) + "\n"
 
 
@@ -387,6 +411,16 @@ def render_handoff(candidate: HandoffCandidate, role_name: str) -> str:
     if role_name == "planner":
         value = "true" if candidate.planning_complete else "false"
         parts.append(f"## Planning State\nplanning_complete = {value}")
+    if role_name == "integrator":
+        parts.extend(
+            (
+                "## Semantic Integration Concerns\n"
+                + _markdown_list(candidate.semantic_integration_concerns),
+                "## Untested Claims\n" + _markdown_list(candidate.untested_claims),
+            )
+        )
+    if role_name == "architect" and candidate.design_drift:
+        parts.append("## Design Drift\n" + _markdown_list(candidate.design_drift))
     if candidate.clarification is not None:
         clarification = candidate.clarification
         header = [
@@ -397,9 +431,7 @@ def render_handoff(candidate: HandoffCandidate, role_name: str) -> str:
             f"answer_shape = {_toml_string(clarification.answer_shape)}",
         ]
         if clarification.recommended_option:
-            header.append(
-                f"recommended_option = {_toml_string(clarification.recommended_option)}"
-            )
+            header.append(f"recommended_option = {_toml_string(clarification.recommended_option)}")
         parts.append(
             "## Clarification Request\n"
             + "\n".join(header)
@@ -422,6 +454,9 @@ def candidate_from_handoff(handoff: Handoff) -> HandoffCandidate:
         addressed_findings=_section_entries(handoff.section("Addressed Findings")),
         next_session_hint=handoff.section("Next Session Hint").strip(),
         planning_complete=handoff.planning_complete,
+        semantic_integration_concerns=handoff.semantic_integration_concerns,
+        untested_claims=handoff.untested_claims,
+        design_drift=handoff.design_drift,
         clarification=clarification,
     )
 
@@ -461,14 +496,10 @@ def parse_planning_state(section: str) -> bool:
     except tomllib.TOMLDecodeError as exc:
         raise HandoffError("handoff section ## Planning State must be TOML") from exc
     if set(data) != {"planning_complete"}:
-        raise HandoffError(
-            "handoff section ## Planning State must contain only planning_complete"
-        )
+        raise HandoffError("handoff section ## Planning State must contain only planning_complete")
     planning_complete = data["planning_complete"]
     if not isinstance(planning_complete, bool):
-        raise HandoffError(
-            "handoff section ## Planning State planning_complete must be a boolean"
-        )
+        raise HandoffError("handoff section ## Planning State planning_complete must be a boolean")
     return planning_complete
 
 
@@ -549,18 +580,17 @@ def addressed_finding_tasks(section: str) -> dict[str, tuple[str, ...]]:
 def _parse_sections(text: str, role_name: str) -> dict[str, str]:
     matches = list(_HEADING_RE.finditer(text))
     if not matches:
-        raise HandoffError("handoff is missing required heading(s): " + ", ".join(
-            f"## {heading}" for heading in REQUIRED_HANDOFF_HEADINGS
-        ))
+        raise HandoffError(
+            "handoff is missing required heading(s): "
+            + ", ".join(f"## {heading}" for heading in REQUIRED_HANDOFF_HEADINGS)
+        )
 
     headings = [match.group("heading").strip() for match in matches]
     recognized_headings = set(REQUIRED_HANDOFF_HEADINGS) | set(OPTIONAL_HANDOFF_HEADINGS)
     for heading in recognized_headings:
         if headings.count(heading) > 1:
             if heading in REQUIRED_HANDOFF_HEADINGS:
-                raise HandoffError(
-                    f"handoff has duplicate required heading: ## {heading}"
-                )
+                raise HandoffError(f"handoff has duplicate required heading: ## {heading}")
             raise HandoffError(f"handoff has duplicate heading: ## {heading}")
 
     missing = [heading for heading in REQUIRED_HANDOFF_HEADINGS if heading not in headings]
@@ -602,9 +632,7 @@ def _validate_planning_state_section(sections: dict[str, str], role_name: str) -
     section = sections.get("Planning State", "")
     if role_name == "planner":
         if not section:
-            raise HandoffError(
-                "planner handoff is missing required heading: ## Planning State"
-            )
+            raise HandoffError("planner handoff is missing required heading: ## Planning State")
         parse_planning_state(section)
         return
     if section:
@@ -634,9 +662,7 @@ def _validate_addressed_findings_section(section: str) -> None:
     for line in lines:
         match = _ADDRESSED_FINDING_LINE_RE.fullmatch(line)
         if match is None:
-            raise HandoffError(
-                "Addressed Findings entries must use '- FXXXX: TXXXX[, TXXXX]'"
-            )
+            raise HandoffError("Addressed Findings entries must use '- FXXXX: TXXXX[, TXXXX]'")
         finding_id = match.group("finding")
         if finding_id in seen_findings:
             raise HandoffError(f"Addressed Findings lists {finding_id} more than once")
@@ -671,9 +697,7 @@ def _clarification_string(data: dict[str, object], key: str) -> str:
         )
     value = value.strip()
     if key == "title" and ("\n" in value or "\r" in value):
-        raise HandoffError(
-            "handoff section ## Clarification Request title must be a single line"
-        )
+        raise HandoffError("handoff section ## Clarification Request title must be a single line")
     if key == "title" and len(value) > 160:
         raise HandoffError(
             "handoff section ## Clarification Request title must be at most 160 characters"
@@ -682,18 +706,24 @@ def _clarification_string(data: dict[str, object], key: str) -> str:
 
 
 def _validate_clarification_scope(scope: str) -> None:
-    if re.fullmatch(
-        r"workspace|planning|milestone:[A-Za-z0-9_.-]+|task:T\d{3,5}|finding:F\d{4,5}",
-        scope,
-    ) is None:
+    if (
+        re.fullmatch(
+            r"workspace|planning|milestone:[A-Za-z0-9_.-]+|task:T\d{3,5}|finding:F\d{4,5}",
+            scope,
+        )
+        is None
+    ):
         raise HandoffError(f"invalid clarification scope: {scope}")
 
 
 def _validate_clarification_blocks(blocks: str) -> None:
-    if re.fullmatch(
-        r"planning|implementation|milestone:[A-Za-z0-9_.-]+|task:T\d{3,5}|none",
-        blocks,
-    ) is None:
+    if (
+        re.fullmatch(
+            r"planning|implementation|milestone:[A-Za-z0-9_.-]+|task:T\d{3,5}|none",
+            blocks,
+        )
+        is None
+    ):
         raise HandoffError(f"invalid clarification blocks: {blocks}")
 
 
@@ -701,18 +731,12 @@ def _require_clarification_detail(details: str, heading: str) -> None:
     pattern = rf"^### {re.escape(heading)}[ \t]*$([\s\S]*?)(?=^###\s|\Z)"
     match = re.search(pattern, details, flags=re.MULTILINE)
     if match is None or not match.group(1).strip():
-        raise HandoffError(
-            f"handoff section ## Clarification Request is missing ### {heading}"
-        )
+        raise HandoffError(f"handoff section ## Clarification Request is missing ### {heading}")
 
 
-def _validate_recommended_clarification_option(
-    details: str, recommended_option: str
-) -> None:
+def _validate_recommended_clarification_option(details: str, recommended_option: str) -> None:
     options = _clarification_detail(details, "Options")
-    pattern = re.compile(
-        rf"^\s*[-*]\s+{re.escape(recommended_option)}:\s+.+$", re.MULTILINE
-    )
+    pattern = re.compile(rf"^\s*[-*]\s+{re.escape(recommended_option)}:\s+.+$", re.MULTILINE)
     if pattern.search(options) is None:
         raise HandoffError(
             "handoff section ## Clarification Request recommended_option "
@@ -738,7 +762,16 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
         "next_session_hint",
         "clarification",
     }
-    allowed = common | ({"planning_complete"} if role_name == "planner" else set())
+    role_fields = (
+        {"planning_complete"}
+        if role_name == "planner"
+        else {"semantic_integration_concerns", "untested_claims"}
+        if role_name == "integrator"
+        else {"design_drift"}
+        if role_name == "architect"
+        else set()
+    )
+    allowed = common | role_fields
     issues: list[str] = []
     unexpected = sorted(set(data) - allowed)
     if unexpected:
@@ -754,14 +787,17 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
     if "\n" in commit_message or "\r" in commit_message:
         issues.append("commit_message must be a single line")
     done = _candidate_string_list(data, "done", issues, allow_empty=False)
-    changed_artifacts = _candidate_string_list(
-        data, "changed_artifacts", issues, allow_empty=True
-    )
+    changed_artifacts = _candidate_string_list(data, "changed_artifacts", issues, allow_empty=True)
     open_issues = _candidate_string_list(data, "open_issues", issues, allow_empty=True)
     addressed_findings = _candidate_string_list(
         data, "addressed_findings", issues, allow_empty=True
     )
     next_session_hint = _candidate_string(data, "next_session_hint", issues)
+    semantic_concerns = _candidate_optional_string_list(
+        data, "semantic_integration_concerns", issues
+    )
+    untested_claims = _candidate_optional_string_list(data, "untested_claims", issues)
+    design_drift = _candidate_optional_string_list(data, "design_drift", issues)
 
     planning_complete: bool | None = None
     if role_name == "planner":
@@ -781,9 +817,7 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
 
     for entry in addressed_findings:
         if _ADDRESSED_FINDING_LINE_RE.fullmatch(f"- {entry}") is None:
-            issues.append(
-                "addressed_findings entries must use 'FXXXX: TXXXX[, TXXXX]'"
-            )
+            issues.append("addressed_findings entries must use 'FXXXX: TXXXX[, TXXXX]'")
             break
     if issues:
         raise HandoffSubmissionError(tuple(issues))
@@ -797,13 +831,14 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
         addressed_findings=addressed_findings,
         next_session_hint=next_session_hint,
         planning_complete=planning_complete,
+        semantic_integration_concerns=semantic_concerns,
+        untested_claims=untested_claims,
+        design_drift=design_drift,
         clarification=clarification,
     )
 
 
-def _candidate_clarification(
-    value: object, issues: list[str]
-) -> ClarificationRequest | None:
+def _candidate_clarification(value: object, issues: list[str]) -> ClarificationRequest | None:
     if value is None:
         return None
     if not isinstance(value, dict):
@@ -826,9 +861,7 @@ def _candidate_clarification(
     scope = _candidate_string(value, "scope", local)
     blocks = _candidate_string(value, "blocks", local)
     answer_shape = _candidate_string(value, "answer_shape", local)
-    recommended = _candidate_string(
-        value, "recommended_option", local, allow_empty=True
-    )
+    recommended = _candidate_string(value, "recommended_option", local, allow_empty=True)
     details = _candidate_string(value, "details", local)
     if local:
         issues.extend(f"clarification.{issue}" for issue in local)
@@ -904,6 +937,14 @@ def _candidate_string_list(
     return tuple(entries)
 
 
+def _candidate_optional_string_list(
+    data: dict[str, object], key: str, issues: list[str]
+) -> tuple[str, ...]:
+    if key not in data:
+        return ()
+    return _candidate_string_list(data, key, issues, allow_empty=True)
+
+
 def _load_toml_file(path: Path, label: str) -> dict[str, object]:
     try:
         return tomllib.loads(path.read_text())
@@ -939,9 +980,7 @@ def _required_string(data: dict[str, object], key: str, label: str) -> str:
     return value.strip()
 
 
-def _required_string_tuple(
-    data: dict[str, object], key: str, label: str
-) -> tuple[str, ...]:
+def _required_string_tuple(data: dict[str, object], key: str, label: str) -> tuple[str, ...]:
     value = data.get(key)
     if not isinstance(value, list):
         raise HandoffError(
@@ -1002,8 +1041,7 @@ def _render_result(result: SessionResult) -> str:
         f"role = {_toml_string(result.envelope.role)}",
         f"task = {_toml_string(result.envelope.task)}",
         f"milestone = {_toml_string(result.envelope.milestone)}",
-        "protected_active_tasks = "
-        f"{_toml_array(result.envelope.protected_active_tasks)}",
+        f"protected_active_tasks = {_toml_array(result.envelope.protected_active_tasks)}",
         "incremental_planning_required = "
         + ("true" if result.envelope.incremental_planning_required else "false"),
         "allow_active_task_replacement = "
@@ -1017,9 +1055,17 @@ def _render_result(result: SessionResult) -> str:
         f"next_session_hint = {_toml_string(candidate.next_session_hint)}",
     ]
     if candidate.planning_complete is not None:
-        lines.append(
-            "planning_complete = " + ("true" if candidate.planning_complete else "false")
+        lines.append("planning_complete = " + ("true" if candidate.planning_complete else "false"))
+    if result.envelope.role == "integrator":
+        lines.extend(
+            (
+                "semantic_integration_concerns = "
+                + _toml_array(candidate.semantic_integration_concerns),
+                "untested_claims = " + _toml_array(candidate.untested_claims),
+            )
         )
+    if result.envelope.role == "architect" and candidate.design_drift:
+        lines.append("design_drift = " + _toml_array(candidate.design_drift))
     if candidate.clarification is not None:
         clarification = candidate.clarification
         lines.extend(
