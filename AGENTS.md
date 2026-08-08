@@ -1,6 +1,11 @@
 # AGENTS.md
 
-For agents changing DevLab itself. Packaged prompts in `src/devlab/resources/prompts/` are for DevLab-spawned worker agents.
+## Scope
+
+These instructions apply only to agents changing DevLab itself. They are not
+instructions for DevLab-spawned role sessions in target workspaces. Those
+sessions use the packaged prompts in `src/devlab/resources/prompts/` together
+with target-workspace context.
 
 ## Goal
 
