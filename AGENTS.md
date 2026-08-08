@@ -20,10 +20,13 @@ DevLab is developed and maintained by AI agents. Code and project structure must
 - Reporting/validation paths (`status`, `doctor`, prompt assembly, prompt context) must not mutate state.
 - DevLab may invoke deployment tools via target-owned verification commands, but must not install missing host tools; report them as unverified user/CI prerequisites.
 - Keep provider-specific invocation in `agents.py`, not orchestration.
+- Preserve the possibility of separating a domain-neutral workflow kernel from domain-specific workflow packages. For each new workflow capability, explicitly distinguish reusable workflow mechanics—such as bounded session requests, durable state, validated handoffs, provenance, interruption, and resume—from software-development policy—such as eligible requesting roles, planning effects, task transitions, artifact meaning, and required follow-up.
+- Keep DevLab's current software-workflow contracts explicit and enforced. Do not introduce speculative generic abstractions, generic names for software-specific concepts, or configuration that moves correctness-critical policy back into prompts. Extract a kernel interface only when its semantics are genuinely domain-neutral and supported by a concrete second workflow.
 
 ## Durable knowledge
 
 - `CONTEXT.md`: DevLab terminology.
+- `docs/vision.md`: fundamental motivation, suitable target projects, and the prospective kernel/domain-package direction.
 - `docs/adr/`: durable architectural decisions that are hard to reverse, surprising without context, and trade-off based.
 - `AGENTS.md`: operational instructions for coding agents.
 - `docs/design.md`: human-oriented overview; do not make it the only source for agent-critical terms, constraints, or decisions.
@@ -63,7 +66,7 @@ Diagnostics:
 ## Coding standards
 
 - Preserve separation of concerns; put behavior in the owning module/abstraction.
-- Prefer domain names: task, milestone, finding, profile, handoff, provider, workspace.
+- Prefer precise names from the owning domain. Within DevLab's software workflow, prefer task, milestone, finding, profile, handoff, provider, and workspace. Use domain-neutral names only for contracts whose semantics are genuinely independent of software development.
 - Add concise docstrings only when they clarify purpose, contracts, invariants, or tradeoffs.
 - Add focused tests for behavior changes, especially state transitions, file formats, CLI output, and validation errors.
 - Run the complete development validation (`make check`, including Ruff, ty, and pytest) for code changes.
