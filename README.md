@@ -2,6 +2,13 @@
 
 DevLab is a reusable CLI and Python package for running an auditable, file-backed, role-based agentic software development workflow inside a target repository. DevLab itself requires Python, but target projects may use Python, Rust, Go, C, C++, or mixed toolchains.
 
+DevLab exists because substantial projects cannot be created reliably in a
+single agent session. It decomposes software development into bounded sessions
+whose intent, decisions, progress, and feedback survive as durable project
+state. See the [project vision](docs/vision.md) for the motivation, suitable
+target projects, and a possible future separation between a reusable workflow
+kernel and domain-specific workflow packages.
+
 DevLab provides the orchestrator and packaged worker prompts. The target repository stores product-specific specs, plans, tasks, milestones, findings, handoffs, configuration, and logs under `.devlab/`.
 
 ## Maturity

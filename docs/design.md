@@ -2,6 +2,12 @@
 
 This document explains the design of DevLab for human readers. It is intentionally broader than the role-specific packaged prompt resources in `src/devlab/resources/prompts/`: those files tell agents what to do in a session, while this document explains why the system is shaped this way.
 
+**Motivation**: Substantial projects cannot be delivered reliably in a single agent session: their relevant context and decisions exceed what one bounded interaction can manage consistently, while iteration and review require continuity across sessions.
+
+**Core concept**: Turn durable intent into reviewed artifacts through bounded, role-based sessions connected by explicit workflow state.
+
+The [project vision](vision.md) expands on this motivation, identifies the characteristics of suitable target projects, and describes a possible future separation between a domain-neutral workflow kernel and domain-specific workflow packages. This document describes DevLab’s current, software-specific design.
+
 ## Purpose
 
 DevLab is a small orchestration system for agentic software development. Its long-term goal is to take a system specification as input and drive a software development lifecycle toward a usable product or release.
