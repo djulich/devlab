@@ -33,39 +33,55 @@ DevLab is developed and maintained by AI agents. Code and project structure must
 - `CONTEXT.md`: DevLab terminology.
 - `docs/vision.md`: fundamental motivation, suitable target projects, and the prospective kernel/domain-package direction.
 - `docs/adr/`: durable architectural decisions that are hard to reverse, surprising without context, and trade-off based.
-- `AGENTS.md`: operational instructions for coding agents.
 - `docs/design.md`: human-oriented overview; do not make it the only source for agent-critical terms, constraints, or decisions.
 
-## Module boundaries
+## Ownership boundaries
+
+This map identifies the primary owners of behavior; it is not an exhaustive file inventory.
 
 Workflow core:
 - `orchestrator.py`: workflow loop, session lifecycle, handoff processing, error recovery.
 - `workspace.py`: mutation boundary (`Workspace`/handles) and cached read-only view (`WorkspaceSnapshot`).
+- `workflow_state.py`: orchestrator-owned durable workflow-control state and resume pointers.
+- `workflow_events.py`: append-only durable workflow event records.
 - `handoffs.py`: handoff parsing and validation.
 - `agents.py`: provider-specific invocation, not orchestration logic.
 - `agent_config.py`: `agents.toml` loading and role/provider resolution.
+- `executable_config.py`: executable-configuration fingerprinting and authorization.
 - `roles.py`: provider-independent workflow role definitions and prompt/environment needs.
 
 Domain state (file-backed trackers):
 - `task_tracker.py`, `milestones.py`, `findings.py`, `profiles.py`: one tracker per domain.
+- `clarifications.py`: clarification record storage; `clarification_ops.py`: validated answer and resume operations.
+- `generations.py`: archived planning-generation storage.
 - `environment.py`: profile lifecycle command execution, not profile loading.
 
 Prompts and knowledge:
 - `prompts.py`: system/session prompt assembly from read-only state.
 - `prompt_context.py`: prompt size reporting, not prompt construction.
 - `knowledge.py`: target-workspace context and ADR discovery.
+- `spec_reconciliation.py`: specification-change detection and planning reconciliation policy.
 
 Git:
 - `git.py`: low-level subprocess wrapper and read-only helpers.
 - `version_control.py`: mutation-oriented operations; uses `git.py`.
 
-Diagnostics:
+Diagnostics and reporting:
 - `workflow_diagnostics.py`: quality metrics facade.
 - `workflow_history.py`: session/task-cycle derivation from handoff files.
 - `history.py`: session history reporting from metadata files.
 - `artifact_hygiene.py`: git-based artifact classification.
-- `doctor.py`: workspace validation checks.
-- `status.py`, `session_logging.py`, `cli.py`, `init.py`, `_logging.py`, `_toml.py`.
+- `doctor.py` and `doctor_*.py`: workspace validation facade and domain-specific checks.
+- `status.py`: workspace status reporting.
+- `workflow_state_report.py`: operator-facing lifecycle state reporting.
+- `run_summary.py`: structured workflow-run outcome summaries.
+
+CLI and shared infrastructure:
+- `cli.py`: command parsing and thin operator-interface adapters.
+- `init.py`: target-workspace initialization.
+- `session_logging.py`: session metadata and agent log paths.
+- `_logging.py`: package logging configuration.
+- `_toml.py`: shared TOML parsing helpers.
 - `_files.py`: low-level atomic text replacement for authoritative workflow files.
 
 ## Coding standards
