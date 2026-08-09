@@ -96,6 +96,26 @@ class TestFileTaskTrackerParsing:
         assert task.title == "First"
         assert task.status == TaskStatus.OPEN
 
+    def test_detailed_acceptance_criterion_is_not_warned_for_conjunctions(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tasks_dir(tmp_path)
+        _write_task(
+            tmp_path,
+            "T0001",
+            body=(
+                "# T0001: Test task\n\n"
+                "## Goal\nImplement the contract.\n\n"
+                "## Acceptance Criteria\n"
+                "- [ ] Inputs are validated and persisted and reported clearly.\n"
+            ),
+        )
+
+        task = FileTaskTracker(tmp_path).get("T0001")
+
+        assert task.contract_errors == ()
+        assert task.contract_warnings == ()
+
     def test_ignores_legacy_planning_generation_metadata(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
         _write_task(tmp_path, "T0001", extra_metadata="planning_generation = 3\n")

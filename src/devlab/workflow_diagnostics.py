@@ -207,6 +207,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
             artifact_hygiene=artifact_hygiene,
             sessions_run=len(sessions),
             task_rework=task_rework,
+            task_cycles=task_cycles,
             integrator_rework=integrator_rework,
             clarification_metrics=clarification_metrics,
         ),
@@ -404,6 +405,7 @@ def quality_summary(
     artifact_hygiene: ArtifactHygiene,
     sessions_run: int,
     task_rework: TaskReworkSummary | None = None,
+    task_cycles: TaskCycleMetrics | None = None,
     integrator_rework: IntegratorReworkSummary | None = None,
     clarification_metrics: ClarificationMetrics | None = None,
 ) -> QualitySummary:
@@ -419,6 +421,15 @@ def quality_summary(
         warnings.extend(
             f"task rework detected: {task_id}" for task_id in task_rework.tasks_with_rework
         )
+    if task_cycles is not None:
+        conflicts = task_cycles.attribution_sources.get("conflicting_task_sources", 0)
+        if conflicts:
+            warnings.append(f"conflicting task attribution sources: {conflicts}")
+        if task_cycles.unattributed_developer_reviewer_sessions:
+            warnings.append(
+                "unattributed developer/reviewer sessions: "
+                f"{task_cycles.unattributed_developer_reviewer_sessions}"
+            )
     if integrator_rework is not None and integrator_rework.findings_created:
         warnings.append(f"integrator findings created: {integrator_rework.findings_created}")
     if clarification_metrics is not None:
@@ -432,13 +443,15 @@ def quality_summary(
         )
     if closed and sessions_run / closed > HIGH_SESSIONS_PER_CLOSED_TASK_WARNING:
         warnings.append(f"high session count per closed task: {sessions_run}/{closed}")
-    if artifact_hygiene.ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING:
+    if artifact_hygiene.other_ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING:
         warnings.append(
-            f"large ignored artifact footprint: {artifact_hygiene.ignored_total_bytes} bytes"
+            "large other ignored artifact footprint: "
+            f"{artifact_hygiene.other_ignored_total_bytes} bytes"
         )
-    if artifact_hygiene.ignored_file_count > LARGE_IGNORED_FILES_WARNING:
+    if artifact_hygiene.other_ignored_file_count > LARGE_IGNORED_FILES_WARNING:
         warnings.append(
-            f"large ignored artifact file count: {artifact_hygiene.ignored_file_count}"
+            "large other ignored artifact file count: "
+            f"{artifact_hygiene.other_ignored_file_count}"
         )
     correctness_checked = bool(checks)
     correctness_passed = all(check.passed for check in checks) if correctness_checked else None
@@ -460,6 +473,7 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
         "Role sequence: " + (" -> ".join(diagnostics.roles) if diagnostics.roles else "none")
     )
     lines.append(_format_task_summary(diagnostics.tasks))
+    lines.append(_format_task_attribution_summary(diagnostics.task_cycles))
     lines.append(_format_rework_summary(diagnostics.task_rework))
     lines.append(_format_integrator_summary(diagnostics.integrator_rework))
     lines.append(_format_clarification_summary(diagnostics.clarifications))
@@ -471,10 +485,10 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
         lines.append("Warnings:")
         lines.extend(f"- {warning}" for warning in diagnostics.quality.warnings)
         if has_large_ignored_artifacts(diagnostics.artifact_hygiene):
-            lines.append("Top ignored artifact contributors:")
+            lines.append("Top other ignored artifact contributors:")
             lines.extend(
                 _format_artifact_contributor(contributor)
-                for contributor in diagnostics.artifact_hygiene.ignored_top_contributors[:3]
+                for contributor in diagnostics.artifact_hygiene.other_ignored_top_contributors[:3]
             )
     else:
         lines.append("Warnings: none")
@@ -497,6 +511,17 @@ def _format_rework_summary(task_rework: TaskReworkSummary) -> str:
     if task_rework.tasks_with_rework:
         return "Task rework: " + ", ".join(task_rework.tasks_with_rework)
     return "Task rework: none"
+
+
+def _format_task_attribution_summary(task_cycles: TaskCycleMetrics) -> str:
+    sources = task_cycles.attribution_sources
+    return (
+        "Task attribution: "
+        f"{sources.get('structured_result', 0)} structured, "
+        f"{sources.get('changed_task_artifact_fallback', 0)} legacy fallback, "
+        f"{sources.get('conflicting_task_sources', 0)} conflicting, "
+        f"{task_cycles.unattributed_developer_reviewer_sessions} unattributed"
+    )
 
 
 def _format_integrator_summary(integrator_rework: IntegratorReworkSummary) -> str:
@@ -550,7 +575,9 @@ def _format_artifact_hygiene_summary(artifact_hygiene: ArtifactHygiene) -> str:
     return (
         "Artifact hygiene: "
         f"{artifact_hygiene.product_file_count} product files, "
-        f"{artifact_hygiene.ignored_file_count} ignored files, "
+        f"{artifact_hygiene.ignored_file_count} ignored files "
+        f"({artifact_hygiene.conventional_ignored_file_count} conventional, "
+        f"{artifact_hygiene.other_ignored_file_count} other), "
         f"{len(artifact_hygiene.flagged_paths)} flagged paths"
     )
 
@@ -646,8 +673,14 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     )
     lines.extend(
         _format_artifact_contributor_group(
-            "ignored",
-            diagnostics.artifact_hygiene.ignored_top_contributors,
+            "conventional ignored",
+            diagnostics.artifact_hygiene.conventional_ignored_top_contributors,
+        )
+    )
+    lines.extend(
+        _format_artifact_contributor_group(
+            "other ignored",
+            diagnostics.artifact_hygiene.other_ignored_top_contributors,
         )
     )
     lines.extend(

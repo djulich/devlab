@@ -1198,6 +1198,49 @@ def test_task_cycle_metrics_count_unattributed_task_sessions(tmp_path: Path) -> 
     assert task_cycles.unattributed_developer_reviewer_sessions == 1
 
 
+def test_task_cycle_metrics_use_structured_result_without_task_artifact(
+    tmp_path: Path,
+) -> None:
+    tasks_dir = tmp_path / ".devlab/tasks"
+    history = tmp_path / ".devlab/history"
+    tasks_dir.mkdir(parents=True)
+    history.mkdir(parents=True)
+    _write_minimal_task(tasks_dir / "T0001_first.md", "T0001", "First")
+    handoff = history / "20260519T091112_developer_handoff.md"
+    _write_handoff(handoff, "developer", "src/app.py")
+    _write_session_result(handoff, "developer", "T0001", outcome="failed")
+
+    sessions = derive_session_records(tmp_path)
+    task_cycles = derive_task_cycle_metrics(tmp_path, sessions)
+
+    assert sessions[0].task_id == "T0001"
+    assert sessions[0].task_id_source == "structured_result"
+    assert task_cycles.tasks["T0001"].developer_sessions == 1
+    assert task_cycles.unattributed_developer_reviewer_sessions == 0
+
+
+def test_task_cycle_metrics_reject_conflicting_structured_and_artifact_tasks(
+    tmp_path: Path,
+) -> None:
+    tasks_dir = tmp_path / ".devlab/tasks"
+    history = tmp_path / ".devlab/history"
+    tasks_dir.mkdir(parents=True)
+    history.mkdir(parents=True)
+    _write_minimal_task(tasks_dir / "T0001_first.md", "T0001", "First")
+    _write_minimal_task(tasks_dir / "T0002_second.md", "T0002", "Second")
+    handoff = history / "20260519T091112_reviewer_handoff.md"
+    _write_handoff(handoff, "reviewer", ".devlab/tasks/T0002_second.md")
+    _write_session_result(handoff, "reviewer", "T0001")
+
+    sessions = derive_session_records(tmp_path)
+    task_cycles = derive_task_cycle_metrics(tmp_path, sessions)
+
+    assert sessions[0].task_id == ""
+    assert sessions[0].task_id_source == "conflicting_task_sources"
+    assert task_cycles.unattributed_developer_reviewer_sessions == 1
+    assert task_cycles.attribution_sources == {"conflicting_task_sources": 1}
+
+
 def test_live_review_rejections_count_reviewer_handoffs_with_open_issues(
     tmp_path: Path,
 ) -> None:
@@ -1274,6 +1317,8 @@ def test_quality_summary_warns_for_rework_and_large_ignored_artifacts() -> None:
             ignored_file_count=5_001, ignored_total_bytes=100_000_001,
             devlab_file_count=0, devlab_total_bytes=0,
             flagged_paths=[],
+            other_ignored_file_count=5_001,
+            other_ignored_total_bytes=100_000_001,
         ),
         sessions_run=7,
         task_rework=TaskReworkSummary(
@@ -1291,8 +1336,8 @@ def test_quality_summary_warns_for_rework_and_large_ignored_artifacts() -> None:
     assert "task rework detected: T0001" in summary.warnings
     assert "integrator findings created: 1" in summary.warnings
     assert "high session count per closed task: 7/1" in summary.warnings
-    assert "large ignored artifact footprint: 100000001 bytes" in summary.warnings
-    assert "large ignored artifact file count: 5001" in summary.warnings
+    assert "large other ignored artifact footprint: 100000001 bytes" in summary.warnings
+    assert "large other ignored artifact file count: 5001" in summary.warnings
 
 
 def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
@@ -1317,6 +1362,8 @@ def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
 
     assert hygiene.product_file_count == 3
     assert hygiene.ignored_file_count == 3
+    assert hygiene.conventional_ignored_file_count == 3
+    assert hygiene.other_ignored_file_count == 0
     assert hygiene.devlab_file_count == 1
     assert hygiene.flagged_paths == []
     assert {item.path for item in hygiene.product_top_contributors} == {
@@ -1352,7 +1399,7 @@ def test_diagnostics_verbose_reports_product_ignored_and_devlab_contributors(
 
     assert "Artifact contributors:" in output
     assert "- product: src/: 1 files, 8 bytes" in output
-    assert "- ignored: cache/: 1 files, 8 bytes" in output
+    assert "- other ignored: cache/: 1 files, 8 bytes" in output
     assert "- devlab: .devlab/logs/: 1 files, 7 bytes" in output
 
 
@@ -1370,10 +1417,26 @@ def test_diagnostics_reports_top_ignored_artifact_contributors(
 
     output = format_workflow_diagnostics(tmp_path)
 
-    assert "large ignored artifact footprint: 15 bytes" in output
-    assert "Top ignored artifact contributors:" in output
+    assert "large other ignored artifact footprint: 15 bytes" in output
+    assert "Top other ignored artifact contributors:" in output
     assert "- build/: 1 files, 10 bytes" in output
     assert "- cache/: 1 files, 5 bytes" in output
+
+
+def test_diagnostics_treats_large_conventional_cache_as_informational(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git(tmp_path, "init")
+    (tmp_path / ".gitignore").write_text(".venv/\n")
+    (tmp_path / ".venv/lib").mkdir(parents=True)
+    (tmp_path / ".venv/lib/site.py").write_bytes(b"x" * 10)
+    monkeypatch.setattr("devlab.artifact_hygiene.LARGE_IGNORED_BYTES_WARNING", 1)
+    monkeypatch.setattr("devlab.workflow_diagnostics.LARGE_IGNORED_BYTES_WARNING", 1)
+
+    output = format_workflow_diagnostics(tmp_path)
+
+    assert "1 ignored files (1 conventional, 0 other)" in output
+    assert "large other ignored artifact footprint" not in output
 
 
 def test_artifact_hygiene_counts_unignored_files_as_product(tmp_path: Path) -> None:
@@ -1543,6 +1606,36 @@ def _write_handoff(path: Path, role: str, changed_artifact: str) -> None:
         "## Open Issues\n- None\n"
         "## Addressed Findings\n- None\n"
         "## Next Session Hint\nContinue.\n"
+    )
+
+
+def _write_session_result(
+    handoff_path: Path,
+    role: str,
+    task_id: str,
+    *,
+    outcome: str = "completed",
+) -> None:
+    result_path = handoff_path.with_name(
+        handoff_path.name.removesuffix("_handoff.md") + "_result.toml"
+    )
+    open_issues = '["More work remains."]' if outcome == "failed" else "[]"
+    result_path.write_text(
+        "schema_version = 1\n"
+        'session_id = "session-1"\n'
+        f'role = "{role}"\n'
+        f'task = "{task_id}"\n'
+        'milestone = ""\n'
+        f'protected_active_tasks = ["{task_id}"]\n'
+        "incremental_planning_required = false\n"
+        "allow_active_task_replacement = false\n"
+        f'outcome = "{outcome}"\n'
+        'commit_message = "Test result"\n'
+        'done = ["Done."]\n'
+        'changed_artifacts = []\n'
+        f"open_issues = {open_issues}\n"
+        "addressed_findings = []\n"
+        'next_session_hint = "Continue."\n'
     )
 
 

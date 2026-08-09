@@ -12,7 +12,7 @@ Implementation continuation: [`plans/workflow-contract-hardening-remaining.md`](
 
 Open work:
 
-- Continue calibrating semantic task-quality warnings from live evidence. Structural work-packet checks are enforced before developer invocation; vague and compound criteria remain non-blocking until their false-positive rate is understood. Reference: GSD [Plan a phase](https://github.com/open-gsd/gsd-core/blob/next/docs/how-to/plan-a-phase.md).
+- Continue calibrating semantic task-quality checks from live evidence. Structural work-packet checks are enforced before developer invocation; the conjunction-based compound-criterion warning was retired after live use showed poor precision. Do not add another prose heuristic without labeled evidence. Reference: GSD [Plan a phase](https://github.com/open-gsd/gsd-core/blob/next/docs/how-to/plan-a-phase.md).
 
 ## 2. DevLab Workflow Evaluations
 
@@ -32,8 +32,7 @@ Open work:
 - Run the opt-in `live-stateful-web-api-happy-path` evaluation across any remaining local provider environments. Passing Claude and Codex baselines: `docs/plans/stateful-web-api-live-baseline-2026-06-24.md`.
 - Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect additional baseline outcomes, especially `live-static-frontend-todo-app-happy-path` and additional `live-deployable-web-api-happy-path` runs across provider environments. Initial deployment baseline: `docs/plans/deployment-live-baseline-2026-06-06.md`.
 - Collect initial outcomes for `live-react-vite-todo-app-happy-path` once at least one local provider environment is ready for a Node-project generation run.
-- Calibrate quality-warning thresholds after more live baselines, especially high sessions per closed task, same-task rework warnings, integrator finding warnings, and large ignored artifact footprints.
-- Decide from live baselines whether developer/reviewer task attribution from changed `.devlab/tasks/TXXXX_*.md` artifacts is sufficient, or whether fallback handoff parsing is needed.
+- Calibrate remaining quality-warning thresholds after more live baselines, especially high sessions per closed task, same-task rework warnings, and integrator finding warnings. Ignored-artifact warnings now exclude conventional dependency environments and tool caches while retaining their totals as information.
 
 ## 3. Trust and Safety Model for Executable Configuration
 

@@ -92,17 +92,8 @@ class Task:
 
     @property
     def contract_warnings(self) -> tuple[str, ...]:
-        """Return conservative, non-blocking task-quality observations."""
-        criteria = _markdown_section(self.body, "Acceptance Criteria")
-        warnings: list[str] = []
-        for line in criteria.splitlines():
-            match = re.match(r"^\s*- \[[ xX]\]\s*(.+)$", line)
-            if match and match.group(1).lower().count(" and ") >= 2:
-                warnings.append(
-                    "compound acceptance criterion may hide independently "
-                    f"falsifiable behavior: {match.group(1).strip()}"
-                )
-        return tuple(warnings)
+        """Return calibrated, non-blocking task-quality observations."""
+        return ()
 
 
 class FileTaskTracker:

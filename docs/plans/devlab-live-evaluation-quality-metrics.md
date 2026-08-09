@@ -1,6 +1,6 @@
 # DevLab Live Evaluation Quality Metrics Plan
 
-Status: implemented and refined with live stateful web API, deployable web API, and static frontend baselines. Diagnostics now include live role sequence, per-session task attribution, task cycle/rework metrics, integrator finding/rework metrics, task metrics, artifact hygiene warnings, agent/prompt log metrics, quality summary, DevLab session start/finish logs for live runs, stronger calculator black-box checks, and stricter scenario contracts. Target-owned test-suite execution remains deferred.
+Status: implemented and refined with live stateful web API, deployable web API, static frontend, and trading-bot baselines. Diagnostics now use DevLab-published structured results for task attribution with a legacy artifact fallback, classify conventional dependency environments/tool caches separately from other ignored artifacts, and no longer emit the low-precision conjunction-based task warning. Target-owned test-suite execution remains deferred.
 
 ## Goal
 

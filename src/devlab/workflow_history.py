@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import dataclasses
 import re
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
 from devlab.findings import Finding, FindingStatus
-from devlab.handoffs import HandoffError, parse_handoff
+from devlab.handoffs import HandoffError, load_session_result, parse_handoff
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
 _HANDOFF_FILENAME_RE = re.compile(r"^(\d{8}T\d{6})(?:_(\d+))?_([a-z_]+)_handoff\.md$")
@@ -41,6 +42,7 @@ class TaskCycleEntry:
 class TaskCycleMetrics:
     tasks: dict[str, TaskCycleEntry]
     unattributed_developer_reviewer_sessions: int
+    attribution_sources: dict[str, int] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -94,17 +96,34 @@ def derive_session_records(root: Path) -> list[SessionRecord]:
 def _task_id_for_session(path: Path, role: str) -> tuple[str, str]:
     if role not in {"developer", "reviewer"}:
         return "", "not_task_role"
+    artifact_task_ids = _task_ids_from_changed_artifacts(path, role)
+    result_path = path.with_name(path.name.removesuffix("_handoff.md") + "_result.toml")
+    if result_path.exists():
+        try:
+            result = load_session_result(result_path)
+        except HandoffError:
+            return "", "unparseable_structured_result"
+        if result.envelope.role != role or not result.envelope.task:
+            return "", "invalid_structured_result_identity"
+        result_task_id = result.envelope.task
+        if artifact_task_ids and artifact_task_ids != {result_task_id}:
+            return "", "conflicting_task_sources"
+        return result_task_id, "structured_result"
+
+    if len(artifact_task_ids) == 1:
+        return next(iter(artifact_task_ids)), "changed_task_artifact_fallback"
+    if len(artifact_task_ids) > 1:
+        return "", "ambiguous_changed_task_artifacts"
+    return "", "missing_structured_result"
+
+
+def _task_ids_from_changed_artifacts(path: Path, role: str) -> set[str]:
     try:
         handoff = parse_handoff(path, role)
     except HandoffError:
-        return "", "unparseable_handoff"
+        return set()
     changed_artifacts = handoff.section("Changed Artifacts")
-    task_ids = sorted(set(_TASK_ARTIFACT_RE.findall(changed_artifacts)))
-    if len(task_ids) == 1:
-        return task_ids[0], "changed_task_artifact"
-    if len(task_ids) > 1:
-        return "", "ambiguous_changed_task_artifacts"
-    return "", "no_changed_task_artifact"
+    return set(_TASK_ARTIFACT_RE.findall(changed_artifacts))
 
 
 def derive_task_cycle_metrics(
@@ -138,6 +157,15 @@ def derive_task_cycle_metrics(
             for task_id, c in counts.items()
         },
         unattributed_developer_reviewer_sessions=unattributed,
+        attribution_sources=dict(
+            sorted(
+                Counter(
+                    session.task_id_source
+                    for session in session_records
+                    if session.role in {"developer", "reviewer"}
+                ).items()
+            )
+        ),
     )
 
 

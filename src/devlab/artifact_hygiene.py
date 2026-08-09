@@ -37,10 +37,32 @@ class ArtifactHygiene:
     devlab_top_contributors: list[ArtifactContributor] = dataclasses.field(
         default_factory=list,
     )
+    conventional_ignored_file_count: int = 0
+    conventional_ignored_total_bytes: int = 0
+    other_ignored_file_count: int = 0
+    other_ignored_total_bytes: int = 0
+    conventional_ignored_top_contributors: list[ArtifactContributor] = dataclasses.field(
+        default_factory=list,
+    )
+    other_ignored_top_contributors: list[ArtifactContributor] = dataclasses.field(
+        default_factory=list,
+    )
 
 
 LARGE_IGNORED_BYTES_WARNING = 100_000_000
 LARGE_IGNORED_FILES_WARNING = 5_000
+
+_CONVENTIONAL_IGNORED_DIRS = {
+    ".mypy_cache",
+    ".nox",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    "__pycache__",
+    "node_modules",
+    "venv",
+}
 
 
 def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
@@ -68,6 +90,12 @@ def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
         for path in root.rglob(".devlab/**/*")
         if path.is_file()
     ]
+    conventional_ignored_files = [
+        path for path in ignored_files if _is_conventional_ignored_artifact(path)
+    ]
+    other_ignored_files = [
+        path for path in ignored_files if not _is_conventional_ignored_artifact(path)
+    ]
     product_total_bytes = _total_bytes(root, product_files)
     ignored_total_bytes = _total_bytes(root, ignored_files)
     devlab_total_bytes = _total_bytes(root, devlab_files)
@@ -90,14 +118,28 @@ def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
         devlab_top_contributors=_top_artifact_contributors(
             root, devlab_files, _devlab_contributor_key,
         ),
+        conventional_ignored_file_count=len(conventional_ignored_files),
+        conventional_ignored_total_bytes=_total_bytes(root, conventional_ignored_files),
+        other_ignored_file_count=len(other_ignored_files),
+        other_ignored_total_bytes=_total_bytes(root, other_ignored_files),
+        conventional_ignored_top_contributors=_top_artifact_contributors(
+            root, conventional_ignored_files, _ignored_artifact_contributor_key,
+        ),
+        other_ignored_top_contributors=_top_artifact_contributors(
+            root, other_ignored_files, _ignored_artifact_contributor_key,
+        ),
     )
 
 
 def has_large_ignored_artifacts(artifact_hygiene: ArtifactHygiene) -> bool:
     return (
-        artifact_hygiene.ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING
-        or artifact_hygiene.ignored_file_count > LARGE_IGNORED_FILES_WARNING
+        artifact_hygiene.other_ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING
+        or artifact_hygiene.other_ignored_file_count > LARGE_IGNORED_FILES_WARNING
     )
+
+
+def _is_conventional_ignored_artifact(relative_path: str) -> bool:
+    return any(part in _CONVENTIONAL_IGNORED_DIRS for part in Path(relative_path).parts)
 
 
 def _top_artifact_contributors(
