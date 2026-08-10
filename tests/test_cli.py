@@ -461,7 +461,7 @@ def test_cli_doctor_reports_ok_for_initialized_workspace(
 
     output = capsys.readouterr().out
     assert "DevLab doctor: OK" in output
-    assert "Executable configuration: not trusted (exec-v1:" in output
+    assert "Executable configuration: not trusted (exec-v2:" in output
 
 
 def test_cli_implement_emits_progress_logs_by_default(
@@ -502,7 +502,7 @@ def test_cli_trust_executable_config_approves_shows_and_revokes(
         "--show",
     )
     shown = capsys.readouterr().out
-    assert "Fingerprint: exec-v1:" in shown
+    assert "Fingerprint: exec-v2:" in shown
     assert "Trust status: not trusted" in shown
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
@@ -513,7 +513,7 @@ def test_cli_trust_executable_config_approves_shows_and_revokes(
         str(tmp_path),
         "executable-config",
     )
-    assert "Trusted executable configuration exec-v1:" in capsys.readouterr().out
+    assert "Trusted executable configuration exec-v2:" in capsys.readouterr().out
 
     _run_cli(
         monkeypatch,

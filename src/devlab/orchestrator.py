@@ -15,6 +15,7 @@ from typing import cast
 
 from devlab._logging import logger
 from devlab.agent_config import (
+    AGENTS_CONFIG,
     ResolvedAgentConfig,
     find_agent_executable_problems,
     format_resolved_agent_config,
@@ -42,7 +43,10 @@ from devlab.environment import (
     ValidationRun,
     run_validation_commands,
 )
-from devlab.executable_config import ExecutableConfigSnapshot
+from devlab.executable_config import (
+    ExecutableConfigSnapshot,
+    build_executable_config_snapshot,
+)
 from devlab.findings import Finding
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
 from devlab.git import VersionControlError, run_git
@@ -143,6 +147,7 @@ class RunStopReason(StrEnum):
 
     WORKFLOW_COMPLETE = "workflow_complete"
     COMMAND_COMPLETE = "command_complete"
+    EXECUTABLE_CONFIG_CHANGED = "executable_config_changed"
     SESSION_LIMIT = "session_limit"
     CLARIFICATION_BLOCKED = "clarification_blocked"
     NO_ELIGIBLE_ROLE = "no_eligible_role"
@@ -192,6 +197,7 @@ def _stop_result(
     completed = reason in {
         RunStopReason.WORKFLOW_COMPLETE,
         RunStopReason.COMMAND_COMPLETE,
+        RunStopReason.EXECUTABLE_CONFIG_CHANGED,
     }
     return RunResult(sessions_run, completed, 0, errors, reason)
 
@@ -2116,6 +2122,7 @@ def run_loop(
             ),
         )
     sessions_run = 0
+    last_completed_task_id: str | None = None
     spec_status: SpecReconciliationStatus | None = None
     workflow_state: WorkflowState | None = None
     active_plan_exists = has_active_plan(root)
@@ -2288,6 +2295,42 @@ def run_loop(
     plan_started_recorded = False
 
     while sessions_run < max_sessions:
+        prior_task_still_active = last_completed_task_id is not None and any(
+            task.id == last_completed_task_id and task.status != TaskStatus.CLOSED
+            for task in workspace.snapshot.list_tasks()
+        )
+        if sessions_run > 0 and not prior_task_still_active and executable_config is not None:
+            try:
+                current_executable_config = build_executable_config_snapshot(
+                    root,
+                    config_path=(
+                        None
+                        if executable_config.config_path
+                        == (root / AGENTS_CONFIG).resolve()
+                        else executable_config.config_path
+                    ),
+                    provider=executable_config.provider_override,
+                    model=executable_config.model_override,
+                    effort=executable_config.effort_override,
+                )
+            except (OSError, ValueError, KeyError) as exc:
+                message = f"executable configuration changed and is now invalid: {exc}"
+                logger.error("%s. Stopping before another session.", message)
+                return _error_result(
+                    sessions_run,
+                    SessionError("executable_configuration", message, 1),
+                )
+            if current_executable_config.digest != executable_config.digest:
+                logger.info(
+                    "Executable configuration changed from %s to %s. "
+                    "Stopping before another session for renewed authorization.",
+                    executable_config.digest,
+                    current_executable_config.digest,
+                )
+                return _stop_result(
+                    sessions_run,
+                    RunStopReason.EXECUTABLE_CONFIG_CHANGED,
+                )
         if automatic_version_control:
             try:
                 assert_clean_worktree(root)
@@ -2471,6 +2514,37 @@ def run_loop(
         )
         config_log: Path | None = None
 
+        try:
+            snapshot = workspace.snapshot
+            base_prompt = build_base_prompt(root, role, snapshot=snapshot, role_name=role_name)
+            session_prompt = build_session_prompt(
+                snapshot,
+                role_name,
+                profiles=frozen_profiles,
+                profile_texts=frozen_profile_texts,
+                planning_revision=planning_only
+                and (revise_plan or fresh_generation_plan or adopt_existing),
+                adopt_existing=planning_only and adopt_existing,
+                fresh_generation=planning_only and fresh_generation_plan,
+                spec_reconciliation=reconcile_plan,
+            )
+            if non_advancing_recovery:
+                session_prompt += "\n\n" + _recovery_prompt(route)
+            if prior_validation_failure is not None:
+                session_prompt += "\n\n" + _validation_recovery_prompt(
+                    prior_validation_failure
+                )
+            environment = _environment_for_session(
+                root,
+                snapshot,
+                role_name,
+                frozen_profiles,
+            )
+        except ProfileNotFoundError as exc:
+            logger.error("%s. Stopping.", exc)
+            return _error_result(sessions_run, SessionError("profile_resolution", str(exc), 1))
+        agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
+
         logger.info(
             "Starting session %s: %s %s",
             ctx.session_number,
@@ -2503,37 +2577,8 @@ def run_loop(
                 allow_active_task_replacement=fresh_generation_plan,
             ),
         )
+        ctx.write_prompt_logs(base_prompt, session_prompt)
 
-        try:
-            snapshot = workspace.snapshot
-            base_prompt = build_base_prompt(root, role, snapshot=snapshot, role_name=role_name)
-            session_prompt = build_session_prompt(
-                snapshot,
-                role_name,
-                profiles=frozen_profiles,
-                profile_texts=frozen_profile_texts,
-                planning_revision=planning_only
-                and (revise_plan or fresh_generation_plan or adopt_existing),
-                adopt_existing=planning_only and adopt_existing,
-                fresh_generation=planning_only and fresh_generation_plan,
-                spec_reconciliation=reconcile_plan,
-            )
-            if non_advancing_recovery:
-                session_prompt += "\n\n" + _recovery_prompt(route)
-            if prior_validation_failure is not None:
-                session_prompt += "\n\n" + _validation_recovery_prompt(prior_validation_failure)
-            ctx.write_prompt_logs(base_prompt, session_prompt)
-            environment = _environment_for_session(
-                root,
-                workspace.snapshot,
-                role_name,
-                frozen_profiles,
-            )
-        except ProfileNotFoundError as exc:
-            logger.error("%s. Stopping.", exc)
-            return _error_result(sessions_run, SessionError("profile_resolution", str(exc), 1))
-
-        agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
         lifecycle = _invoke_role_agent(
             ctx,
             role,
@@ -2873,6 +2918,7 @@ def run_loop(
         )
         _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
+        last_completed_task_id = route.task_id
         if process_result.clarification_id is not None:
             if clarification_mode == "operator":
                 logger.info(

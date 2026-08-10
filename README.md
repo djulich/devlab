@@ -51,12 +51,16 @@ In particular:
 DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab implement`, especially in cloned or agent-modified workspaces.
 
 Before starting configured processes, DevLab fingerprints the effective provider
-and profile lifecycle configuration. Operators can approve that fingerprint in
+and profile lifecycle/default-validation configuration. Operators can approve that fingerprint in
 user-local state with `devlab trust executable-config`, require an independently
 approved digest in CI, or explicitly accept the current snapshot for one
 externally contained invocation. DevLab treats provider permission and sandbox
 options as opaque operator-owned policy. Trusting configured process entry points
 does not certify the commands or their transitive behavior as safe.
+
+If a reviewed task changes executable configuration, DevLab stops cleanly before
+preparing a session outside that task cycle. The running command never adopts the
+changed snapshot; inspect and authorize its new digest, then start a fresh command.
 
 ## Prerequisites
 

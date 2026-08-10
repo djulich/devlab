@@ -232,11 +232,17 @@ devlab trust executable-config
 Trust is stored outside the target repository in user-local DevLab state and is
 scoped to the canonical workspace, agent-config source, and digest. A target
 repository cannot carry its own operator trust record. Editing executable
-configuration produces a new digest and requires another approval:
+configuration produces a new digest and requires another approval. A profile-changing
+task may finish review with the command's frozen snapshot, but DevLab then stops
+before preparing a session outside that task cycle. Review and authorize the new
+snapshot, then start a fresh command; DevLab never adopts it in place:
 
 ```bash
 devlab trust executable-config --revoke
 ```
+
+Profile default-validation commands are executable configuration alongside lifecycle
+commands. Changes to either alter the fingerprint.
 
 Unattended CI can require an independently approved full digest:
 

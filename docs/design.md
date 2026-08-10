@@ -397,6 +397,12 @@ trust. This protects the transition from unreviewed executable configuration to
 execution, but does not certify transitive command behavior or contain the
 resulting process. See ADR 0010.
 
+The snapshot includes provider invocation, profile lifecycle, and profile default
+validation commands. A task may author and review executable-configuration changes
+while the orchestrator continues to use the original frozen snapshot. Once that task
+cycle closes, DevLab stops successfully before preparing another session. A fresh
+invocation must authorize the new digest; the running command never adopts it.
+
 ## Prompt context monitoring
 
 DevLab estimates prompt context size per role using the same prompt builders used for sessions. The report separates base prompt, session prompt, and total estimated tokens, and compares totals against configurable warning and critical thresholds from `.devlab/config/agents.toml`.

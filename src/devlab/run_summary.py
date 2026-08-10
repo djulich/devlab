@@ -252,6 +252,9 @@ def _stop_reason_text(reason: RunStopReason) -> str:
     return {
         RunStopReason.WORKFLOW_COMPLETE: "workflow complete",
         RunStopReason.COMMAND_COMPLETE: "command completed at its intended boundary",
+        RunStopReason.EXECUTABLE_CONFIG_CHANGED: (
+            "executable configuration changed; a fresh authorized run is required"
+        ),
         RunStopReason.SESSION_LIMIT: "session limit reached; work remains",
         RunStopReason.CLARIFICATION_BLOCKED: "operator clarification required",
         RunStopReason.NO_ELIGIBLE_ROLE: "no eligible workflow role",

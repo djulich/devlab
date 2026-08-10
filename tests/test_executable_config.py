@@ -48,6 +48,22 @@ def test_snapshot_digest_includes_invocation_overrides(tmp_path: Path) -> None:
     assert overridden.digest != default.digest
 
 
+def test_snapshot_digest_includes_profile_default_validation(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    initial = build_executable_config_snapshot(tmp_path)
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text().replace(
+            "default_validation = []",
+            'default_validation = ["make check"]',
+        )
+    )
+
+    changed = build_executable_config_snapshot(tmp_path)
+
+    assert changed.digest != initial.digest
+
+
 def test_snapshot_keeps_provider_and_profile_configuration_frozen(tmp_path: Path) -> None:
     init_workspace(tmp_path)
     snapshot = build_executable_config_snapshot(tmp_path)

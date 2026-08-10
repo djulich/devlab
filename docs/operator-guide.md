@@ -52,16 +52,22 @@ required` and includes `devlab clarify show`, `devlab clarify answer`, and
 `devlab resume` guidance. It requires operator intent unless unattended
 clarification resolution was selected.
 
-Profiles and agent configuration are executable configuration. If a session
-changes them, the final summary compares the command's frozen authorized digest
-with the repository's current digest. Review and authorize an untrusted current
-snapshot before continuation:
+Profiles and agent configuration are executable configuration. If a session changes
+them, its bounded task review may finish using the command's frozen snapshot, but
+DevLab stops successfully before preparing work outside that task. The worktree
+remains clean, and the final summary compares the frozen authorized digest with the
+repository's current digest. Review and authorize an untrusted current snapshot
+before continuation:
 
 ```bash
 devlab trust executable-config --show
 devlab trust executable-config
 devlab implement
 ```
+
+DevLab does not execute the changed configuration or create the next session's
+artifacts in the original invocation. Invalid changed configuration is reported
+before another session is prepared.
 
 The summary is read-only. It does not trust configuration, answer
 clarifications, repair state, or alter role selection and exit behavior.

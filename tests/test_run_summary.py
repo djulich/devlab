@@ -65,6 +65,32 @@ def test_summary_reports_requested_changes_and_new_untrusted_configuration(
     assert text.rstrip().endswith("devlab implement")
 
 
+def test_summary_reports_executable_configuration_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEVLAB_STATE_HOME_ENV, str(tmp_path / "operator-state"))
+    init_workspace(tmp_path)
+    (tmp_path / ".devlab/plans/design-plan.md").write_text("# Design\n")
+    _write_task(tmp_path)
+    initial = build_executable_config_snapshot(tmp_path)
+    trust_executable_config(initial)
+    profile = tmp_path / ".devlab/config/profiles/default.toml"
+    profile.write_text(profile.read_text().replace("setup = []", 'setup = ["uv sync"]'))
+
+    summary = build_run_summary(
+        tmp_path,
+        command="implement",
+        result=_result(RunStopReason.EXECUTABLE_CONFIG_CHANGED, sessions=1),
+        initial_executable_config=initial,
+    )
+    text = format_run_summary(summary)
+
+    assert "fresh authorized run is required" in text
+    assert "changed during this run and is not trusted" in text
+    assert "devlab trust executable-config --show" in text
+    assert text.rstrip().endswith("devlab implement")
+
+
 def test_summary_prioritizes_durable_clarification(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

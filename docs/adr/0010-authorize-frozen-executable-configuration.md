@@ -21,10 +21,10 @@ DevLab treats provider-native permission, approval, authentication, network, and
 sandbox policy as opaque and operator-owned.
 
 Operator-facing commands that start configured processes build a canonical,
-versioned snapshot of effective provider invocation and profile lifecycle
-configuration. DevLab computes its digest before configured version discovery or
-other target-owned execution, obtains authorization, and uses the frozen parsed
-snapshot for the entire command.
+versioned snapshot of effective provider invocation and profile lifecycle and
+default-validation configuration. DevLab computes its digest before configured
+version discovery or other target-owned execution, obtains authorization, and uses
+the frozen parsed snapshot for the entire command.
 
 Authorization is provided by exactly one of:
 
@@ -44,7 +44,14 @@ digest and authorization source.
 - Formatting-only configuration changes do not require renewed trust.
 - Executable-value or invocation-override changes require renewed authorization.
 - Configuration changes made during a run cannot take effect in that run.
-- A newly referenced profile absent from the frozen snapshot stops the run.
+- A task that changes executable configuration may finish its bounded
+  developer/reviewer cycle using the frozen snapshot. DevLab then stops successfully
+  before preparing a session outside that task cycle, leaving a clean worktree and
+  requiring a fresh authorized invocation.
+- A newly referenced profile absent from the frozen snapshot fails before DevLab
+  creates session artifacts.
+- Invalid replacement executable configuration stops cleanly before another session
+  is prepared and must be corrected before it can be authorized.
 - Expected digests support verification-oriented ephemeral CI without allowing
   the repository to approve an arbitrary current value.
 - Explicit current-snapshot acceptance supports contained environments but

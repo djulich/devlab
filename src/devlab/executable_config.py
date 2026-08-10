@@ -20,7 +20,7 @@ from devlab.agent_config import (
 )
 from devlab.profiles import Profile, load_profiles
 
-EXECUTABLE_CONFIG_SCHEMA = 1
+EXECUTABLE_CONFIG_SCHEMA = 2
 TRUST_RECORD_SCHEMA = 1
 DEVLAB_STATE_HOME_ENV = "DEVLAB_STATE_HOME"
 
@@ -113,6 +113,7 @@ def build_executable_config_snapshot(
         },
         "profiles": {
             profile_id: {
+                "default_validation": list(profile.tooling.default_validation),
                 "managed_roles": list(profile.environment.managed_roles),
                 "pre_session": list(profile.environment.pre_session),
                 "setup": list(profile.environment.setup),

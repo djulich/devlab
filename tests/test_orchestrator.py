@@ -13,6 +13,7 @@ import pytest
 from devlab._logging import logger
 from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider, ProviderError
 from devlab.clarifications import FileClarificationTracker
+from devlab.executable_config import build_executable_config_snapshot
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.handoffs import (
     Handoff,
@@ -1403,6 +1404,109 @@ class TestRunLoop:
         assert result.completed is True
         assert [call.role_name for call in provider.calls] == ["architect", "planner"]
         assert Workspace(tmp_path).snapshot.assess_state() == "developer"
+
+    def test_reviewed_executable_config_change_stops_before_dependent_task(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        _write_task(tmp_path, "T0001", "Add runtime profile")
+        _write_task(
+            tmp_path,
+            "T0002",
+            "Use runtime profile",
+            profile="runtime",
+            depends_on=["T0001"],
+        )
+        _write_system_spec(tmp_path, "# Spec\n")
+        _init_git_repo(tmp_path)
+        baseline = _commit_all(tmp_path, "init")
+        _write_workflow_state(tmp_path, baseline=baseline)
+        _commit_all(tmp_path, "record planning baseline")
+        executable_config = build_executable_config_snapshot(tmp_path)
+
+        def on_invoke(call: AgentCall) -> None:
+            if call.role_name == "developer":
+                complete_acceptance(call.root, "T0001")
+                _write_profile(
+                    call.root,
+                    "runtime",
+                    environment=(
+                        "\n[environment]\n"
+                        'managed_roles = ["developer", "reviewer", "integrator"]\n'
+                        'setup = ["./scripts/runtime-setup"]\n'
+                    ),
+                )
+            elif call.role_name == "reviewer":
+                task = FileTaskTracker(call.root).get("T0001")
+                task.path.write_text(task.path.read_text() + "\n## Review\n- [x] Approved\n")
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=5,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+            executable_config=executable_config,
+        )
+
+        status = subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        session = tmp_path / ARTIFACTS_DIR / "developer" / "session.toml"
+
+        assert result.stop_reason == RunStopReason.EXECUTABLE_CONFIG_CHANGED
+        assert result.completed is True
+        assert result.exit_code == 0
+        assert result.sessions_run == 2
+        assert [call.role_name for call in provider.calls] == ["developer", "reviewer"]
+        assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.CLOSED
+        assert FileTaskTracker(tmp_path).get("T0002").status == TaskStatus.OPEN
+        assert 'task = "T0001"' in session.read_text()
+        assert status == ""
+
+    def test_missing_frozen_profile_fails_before_session_artifacts_change(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+        _write_task(tmp_path, "T0001", "Use missing profile", profile="missing")
+        _write_system_spec(tmp_path, "# Spec\n")
+        artifacts = tmp_path / ARTIFACTS_DIR / "developer"
+        artifacts.mkdir(parents=True)
+        (artifacts / "session.toml").write_text("previous session\n")
+        _init_git_repo(tmp_path)
+        baseline = _commit_all(tmp_path, "init")
+        _write_workflow_state(tmp_path, baseline=baseline)
+        _commit_all(tmp_path, "record planning baseline")
+        executable_config = build_executable_config_snapshot(tmp_path)
+        provider = MockProvider()
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=1,
+            automatic_version_control=True,
+            agent_providers={"default": provider},
+            executable_config=executable_config,
+        )
+
+        status = subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+
+        assert result.stop_reason == RunStopReason.ERROR
+        assert result.errors[0].phase == "profile_resolution"
+        assert provider.calls == []
+        assert (artifacts / "session.toml").read_text() == "previous session\n"
+        assert not list((tmp_path / AGENT_LOG_DIR).glob("*"))
+        assert status == ""
 
     def test_planning_only_records_lifecycle_events(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
