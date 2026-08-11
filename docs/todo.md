@@ -157,6 +157,27 @@ Design pressure:
 - Keep CLI commands thin enough that future server/API handlers can call the same operations.
 - Do not let external adapters bypass clarification validation, resume semantics, spec reconciliation guards, or planning/implementation command boundaries.
 
+## 9. Durable Research Sessions
+
+Priority: medium-high. Architect, planner, and developer sessions currently
+research within their own bounded session or proceed without a durable research
+route. DevLab should support one on-demand bounded researcher session, persist a
+validated evidence-backed result with provenance, and resume the exact
+requesting route.
+
+Research resolves discoverable facts; clarification obtains operator intent.
+The researcher must not directly mutate specifications, plans, tasks, ADRs,
+dependencies, product files, or workflow transitions. The resumed software role
+decides how the result affects its work.
+
+Implementation plan: [`plans/durable-research-sessions.md`](plans/durable-research-sessions.md).
+
+The first implementation must remain a concrete DevLab software-workflow
+capability. It should distinguish potentially reusable subordinate-session
+mechanics from research result semantics and software-specific policy, but must
+not extract a generic kernel until a second workflow demonstrates shared
+semantics.
+
 ## Later / Non-goals for Now
 
 - Automatic execution of task validation commands by the orchestrator beyond post-reviewer structural validation (see item 1).
