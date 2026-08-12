@@ -428,6 +428,7 @@ do not rely on session logs as authoritative state.
 ### Phase 1: Records and request contract
 
 1. Add research domain types, tracker, canonical formatting, and focused tests.
+   Detailed task plan: [`research-domain-tracker.md`](research-domain-tracker.md).
 2. Expose read/mutation access through `WorkspaceSnapshot` and `Workspace`.
 3. Extend structured session results and handoff rendering with
    `needs_research` and `[research]`.
