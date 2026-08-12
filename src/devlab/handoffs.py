@@ -27,6 +27,7 @@ OPTIONAL_HANDOFF_HEADINGS = (
     "Untested Claims",
     "Design Drift",
     "Clarification Request",
+    "Research Request",
 )
 
 _HEADING_RE = re.compile(r"^## (?P<heading>.+?)[ \t]*$", re.MULTILINE)
@@ -85,6 +86,7 @@ class HandoffCandidate:
     untested_claims: tuple[str, ...] = ()
     design_drift: tuple[str, ...] = ()
     clarification: ClarificationRequest | None = None
+    research: ResearchRequest | None = None
 
     def as_handoff(self, path: Path, role_name: str) -> Handoff:
         text = render_handoff(self, role_name)
@@ -112,6 +114,16 @@ class ClarificationRequest:
     answer_shape: str
     recommended_option: str
     details: str
+
+
+@dataclasses.dataclass(frozen=True)
+class ResearchRequest:
+    title: str
+    scope: str
+    question: str
+    context: str
+    desired_outcome: str
+    acceptance_criteria: tuple[str, ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -154,6 +166,13 @@ class Handoff:
         if not section:
             return None
         return parse_clarification_request(section)
+
+    @property
+    def research_request(self) -> ResearchRequest | None:
+        section = self.section("Research Request")
+        if not section:
+            return None
+        return parse_research_request(section)
 
     def addressed_finding_tasks(self) -> dict[str, tuple[str, ...]]:
         return addressed_finding_tasks(self.addressed_findings)
@@ -438,15 +457,34 @@ def render_handoff(candidate: HandoffCandidate, role_name: str) -> str:
             + "\n\n"
             + clarification.details.strip()
         )
+    if candidate.research is not None:
+        research = candidate.research
+        parts.append(
+            "## Research Request\n"
+            "research_required = true\n"
+            f"title = {_toml_string(research.title)}\n"
+            f"scope = {_toml_string(research.scope)}\n"
+            f"question = {_toml_string(research.question)}\n"
+            f"context = {_toml_string(research.context)}\n"
+            f"desired_outcome = {_toml_string(research.desired_outcome)}\n"
+            f"acceptance_criteria = {_toml_array(research.acceptance_criteria)}"
+        )
     return "\n\n".join(parts) + "\n"
 
 
 def candidate_from_handoff(handoff: Handoff) -> HandoffCandidate:
     """Adapt a parsed legacy handoff for test providers and migration tooling."""
     clarification = handoff.clarification_request
+    research = handoff.research_request
     return HandoffCandidate(
         schema_version=SESSION_RESULT_SCHEMA_VERSION,
-        outcome="needs_clarification" if clarification is not None else "completed",
+        outcome=(
+            "needs_clarification"
+            if clarification is not None
+            else "needs_research"
+            if research is not None
+            else "completed"
+        ),
         commit_message=handoff.commit_message,
         done=_section_entries(handoff.section("Done")),
         changed_artifacts=_section_entries(handoff.section("Changed Artifacts")),
@@ -458,6 +496,7 @@ def candidate_from_handoff(handoff: Handoff) -> HandoffCandidate:
         untested_claims=handoff.untested_claims,
         design_drift=handoff.design_drift,
         clarification=clarification,
+        research=research,
     )
 
 
@@ -562,6 +601,65 @@ def parse_clarification_request(section: str) -> ClarificationRequest:
     )
 
 
+def parse_research_request(section: str) -> ResearchRequest:
+    try:
+        data = tomllib.loads(section)
+    except tomllib.TOMLDecodeError as exc:
+        raise HandoffError("handoff section ## Research Request must be TOML") from exc
+    expected = {
+        "research_required",
+        "title",
+        "scope",
+        "question",
+        "context",
+        "desired_outcome",
+        "acceptance_criteria",
+    }
+    missing = sorted(expected - set(data))
+    unexpected = sorted(set(data) - expected)
+    if missing:
+        raise HandoffError(
+            "handoff section ## Research Request is missing required key(s): "
+            + ", ".join(missing)
+        )
+    if unexpected:
+        raise HandoffError(
+            "handoff section ## Research Request has unexpected key(s): "
+            + ", ".join(unexpected)
+        )
+    if data.get("research_required") is not True:
+        raise HandoffError(
+            "handoff section ## Research Request research_required must be true"
+        )
+    issues: list[str] = []
+    title = _candidate_string(data, "title", issues)
+    scope = _candidate_string(data, "scope", issues)
+    question = _candidate_string(data, "question", issues)
+    context = _candidate_string(data, "context", issues)
+    desired_outcome = _candidate_string(data, "desired_outcome", issues)
+    acceptance_criteria = _candidate_string_list(
+        data, "acceptance_criteria", issues, allow_empty=False
+    )
+    _validate_research_values(
+        title,
+        scope,
+        acceptance_criteria,
+        issues,
+    )
+    if issues:
+        raise HandoffError(
+            "handoff section ## Research Request is invalid: " + "; ".join(issues)
+        )
+    return ResearchRequest(
+        title=title,
+        scope=scope,
+        question=question,
+        context=context,
+        desired_outcome=desired_outcome,
+        acceptance_criteria=acceptance_criteria,
+    )
+
+
 def addressed_finding_tasks(section: str) -> dict[str, tuple[str, ...]]:
     lines = _meaningful_lines(section)
     if len(lines) == 1 and lines[0].lower() in _NONE_LINES:
@@ -625,6 +723,17 @@ def _parse_sections(text: str, role_name: str) -> dict[str, str]:
     _validate_planning_state_section(sections, role_name)
     if sections.get("Clarification Request"):
         parse_clarification_request(sections["Clarification Request"])
+    if sections.get("Research Request"):
+        if role_name not in {"architect", "planner", "developer"}:
+            raise HandoffError(
+                "handoff section ## Research Request is only allowed for architect, "
+                "planner, and developer handoffs"
+            )
+        parse_research_request(sections["Research Request"])
+    if sections.get("Clarification Request") and sections.get("Research Request"):
+        raise HandoffError(
+            "handoff cannot contain both ## Clarification Request and ## Research Request"
+        )
     return sections
 
 
@@ -761,6 +870,7 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
         "addressed_findings",
         "next_session_hint",
         "clarification",
+        "research",
     }
     role_fields = (
         {"planning_complete"}
@@ -781,8 +891,15 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
     if schema_version is not None and schema_version != SESSION_RESULT_SCHEMA_VERSION:
         issues.append(f"unsupported schema_version: {schema_version}")
     outcome = _candidate_string(data, "outcome", issues)
-    if outcome and outcome not in {"completed", "needs_clarification", "failed"}:
-        issues.append("outcome must be one of: completed, needs_clarification, failed")
+    if outcome and outcome not in {
+        "completed",
+        "needs_clarification",
+        "needs_research",
+        "failed",
+    }:
+        issues.append(
+            "outcome must be one of: completed, needs_clarification, needs_research, failed"
+        )
     commit_message = _candidate_string(data, "commit_message", issues, allow_empty=True)
     if "\n" in commit_message or "\r" in commit_message:
         issues.append("commit_message must be a single line")
@@ -808,10 +925,23 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
             planning_complete = value
 
     clarification = _candidate_clarification(data.get("clarification"), issues)
+    research = _candidate_research(data.get("research"), issues)
     if outcome == "needs_clarification" and clarification is None:
         issues.append("outcome needs_clarification requires [clarification]")
     if outcome != "needs_clarification" and clarification is not None:
         issues.append("[clarification] is only allowed for outcome needs_clarification")
+    if outcome == "needs_research" and research is None:
+        issues.append("outcome needs_research requires [research]")
+    if outcome != "needs_research" and research is not None:
+        issues.append("[research] is only allowed for outcome needs_research")
+    if clarification is not None and research is not None:
+        issues.append("[clarification] and [research] are mutually exclusive")
+    if (outcome == "needs_research" or research is not None) and role_name not in {
+        "architect",
+        "planner",
+        "developer",
+    }:
+        issues.append("research requests are only allowed for architect, planner, and developer")
     if outcome == "failed" and not open_issues:
         issues.append("outcome failed requires at least one open_issues entry")
 
@@ -835,6 +965,7 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
         untested_claims=untested_claims,
         design_drift=design_drift,
         clarification=clarification,
+        research=research,
     )
 
 
@@ -889,6 +1020,72 @@ def _candidate_clarification(value: object, issues: list[str]) -> ClarificationR
         issues.append(f"clarification: {exc}")
         return None
     return request
+
+
+def _candidate_research(value: object, issues: list[str]) -> ResearchRequest | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        issues.append("research must be a TOML table")
+        return None
+    value = cast(dict[str, object], value)
+    expected = {
+        "title",
+        "scope",
+        "question",
+        "context",
+        "desired_outcome",
+        "acceptance_criteria",
+    }
+    unexpected = sorted(set(value) - expected)
+    if unexpected:
+        issues.append("research has unexpected field(s): " + ", ".join(unexpected))
+    local: list[str] = []
+    title = _candidate_string(value, "title", local)
+    scope = _candidate_string(value, "scope", local)
+    question = _candidate_string(value, "question", local)
+    context = _candidate_string(value, "context", local)
+    desired_outcome = _candidate_string(value, "desired_outcome", local)
+    acceptance_criteria = _candidate_string_list(
+        value, "acceptance_criteria", local, allow_empty=False
+    )
+    _validate_research_values(
+        title,
+        scope,
+        acceptance_criteria,
+        local,
+    )
+    if local:
+        issues.extend(f"research.{issue}" for issue in local)
+        return None
+    return ResearchRequest(
+        title=title,
+        scope=scope,
+        question=question,
+        context=context,
+        desired_outcome=desired_outcome,
+        acceptance_criteria=acceptance_criteria,
+    )
+
+
+def _validate_research_values(
+    title: str,
+    scope: str,
+    acceptance_criteria: tuple[str, ...],
+    issues: list[str],
+) -> None:
+    if title and ("\n" in title or "\r" in title):
+        issues.append("title must be a single line")
+    if len(title) > 160:
+        issues.append("title must be at most 160 characters")
+    if scope and re.fullmatch(
+        r"workspace|planning|milestone:M\d{1,5}|task:T\d{3,5}", scope
+    ) is None:
+        issues.append("scope must be workspace, planning, milestone:<id>, or task:<id>")
+    if any("\n" in criterion or "\r" in criterion for criterion in acceptance_criteria):
+        issues.append("acceptance_criteria entries must be single lines")
+    if len(acceptance_criteria) != len(set(acceptance_criteria)):
+        issues.append("acceptance_criteria entries must be unique")
 
 
 def _candidate_int(data: dict[str, object], key: str, issues: list[str]) -> int | None:
@@ -1078,6 +1275,20 @@ def _render_result(result: SessionResult) -> str:
                 f"answer_shape = {_toml_string(clarification.answer_shape)}",
                 f"recommended_option = {_toml_string(clarification.recommended_option)}",
                 f"details = {_toml_string(clarification.details)}",
+            ]
+        )
+    if candidate.research is not None:
+        research = candidate.research
+        lines.extend(
+            [
+                "",
+                "[research]",
+                f"title = {_toml_string(research.title)}",
+                f"scope = {_toml_string(research.scope)}",
+                f"question = {_toml_string(research.question)}",
+                f"context = {_toml_string(research.context)}",
+                f"desired_outcome = {_toml_string(research.desired_outcome)}",
+                f"acceptance_criteria = {_toml_array(research.acceptance_criteria)}",
             ]
         )
     return "\n".join(lines) + "\n"

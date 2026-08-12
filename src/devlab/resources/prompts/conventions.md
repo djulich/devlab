@@ -123,9 +123,11 @@ The common candidate fields are:
     addressed_findings = []
     next_session_hint = "What the next session should prioritize."
 
-Use `outcome = "needs_clarification"` only with one `[clarification]` table, and
-use `outcome = "failed"` only with at least one actionable `open_issues` entry.
-Planner candidates additionally contain `planning_complete = true` or `false`.
+Use `outcome = "needs_clarification"` only with one `[clarification]` table.
+Architect, planner, and developer sessions may use `outcome = "needs_research"`
+only with one `[research]` table. Use `outcome = "failed"` only with at least
+one actionable `open_issues` entry. Planner candidates additionally contain
+`planning_complete = true` or `false`.
 
 For planner `addressed_findings`, use `"FXXXX: TXXXX[, TXXXX]"` entries to
 assert the complete follow-up task set for each addressed finding. Use an empty
@@ -155,6 +157,25 @@ If continuing would require inventing operator intent, set
 Allowed `answer_shape` values are `choice`, `text`, and `file-edit`. Use
 `### Expected Answer` for text answers and `### Expected File Edits` for
 file-edit answers. Ask only one specific, bounded clarification.
+
+If continuing requires a discoverable fact that cannot be established reliably
+within this bounded session, an architect, planner, or developer may set
+`outcome = "needs_research"` and add:
+
+    [research]
+    title = "Specific research title"
+    scope = "task:T0001"
+    question = "One answerable factual question"
+    context = "Why the current work depends on this answer"
+    desired_outcome = "The decision-ready result the requesting role needs"
+    acceptance_criteria = [
+      "Required evidence or comparison.",
+      "Required primary or repository source.",
+    ]
+
+Research resolves discoverable facts; clarification obtains operator intent.
+Request only one bounded research question. Reviewer and integrator sessions
+cannot request research in the initial workflow.
 
 Do not include the task ID or role prefix in `commit_message`; the orchestrator
 adds that prefix when creating the commit.

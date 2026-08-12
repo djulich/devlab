@@ -434,8 +434,13 @@ do not rely on session logs as authoritative state.
    Implemented with cached snapshot queries and invalidating mutation handles.
 3. Extend structured session results and handoff rendering with
    `needs_research` and `[research]`.
+   Implemented with strict candidate parsing, canonical result/handoff
+   round trips, and packaged submission guidance.
 4. Enforce requesting-role eligibility, scope/route consistency, exclusivity
    with clarification, and no normal role transition.
+   Role eligibility, scope syntax, clarification exclusivity, and a fail-closed
+   transition guard are implemented. Exact active-route consistency remains for
+   the durable request-processing slice.
 5. Add the compatible typed resume blocker and doctor validation.
 
 At the end of this phase, a request can be durably recorded but should stop

@@ -74,6 +74,181 @@ def test_publish_and_load_session_result_round_trip(tmp_path: Path) -> None:
     assert "## Done\n- Implemented behavior" in handoff.path.read_text()
 
 
+def test_research_candidate_publish_and_handoff_round_trip(tmp_path: Path) -> None:
+    envelope_path = tmp_path / "developer" / "session.toml"
+    envelope = SessionEnvelope(1, "s1", "developer", task="T0001", milestone="M1")
+    write_session_envelope(envelope_path, envelope)
+    candidate_path = envelope_path.with_name(HANDOFF_CANDIDATE_FILE)
+    candidate_path.write_text(_research_candidate_text())
+
+    candidate = parse_handoff_candidate(candidate_path, "developer")
+    assert candidate.outcome == "needs_research"
+    assert candidate.research is not None
+    assert candidate.research.title == "Lock behavior"
+    assert candidate.research.scope == "task:T0001"
+    assert candidate.research.acceptance_criteria == (
+        "Use primary documentation.",
+        "Explain connection-pool implications.",
+    )
+
+    publish_session_result(envelope_path, envelope, candidate)
+    result = load_session_result(envelope_path.with_name(SESSION_RESULT_FILE))
+    handoff = result.as_handoff(envelope_path.with_name("handoff.md"))
+
+    assert result.candidate.research == candidate.research
+    assert handoff.research_request == candidate.research
+    assert "## Research Request\nresearch_required = true" in handoff.path.read_text()
+    assert "[research]\n" in envelope_path.with_name(SESSION_RESULT_FILE).read_text()
+
+
+def test_research_candidate_requires_matching_outcome_and_table(tmp_path: Path) -> None:
+    path = tmp_path / HANDOFF_CANDIDATE_FILE
+    path.write_text(_research_candidate_text().split("\n[research]", 1)[0] + "\n")
+
+    with pytest.raises(HandoffSubmissionError) as error:
+        parse_handoff_candidate(path, "developer")
+    assert "outcome needs_research requires [research]" in error.value.issues
+
+    path.write_text(
+        _research_candidate_text().replace(
+            'outcome = "needs_research"', 'outcome = "completed"'
+        )
+    )
+    with pytest.raises(HandoffSubmissionError) as error:
+        parse_handoff_candidate(path, "developer")
+    assert "[research] is only allowed for outcome needs_research" in error.value.issues
+
+
+@pytest.mark.parametrize("role_name", ["reviewer", "integrator"])
+def test_research_candidate_rejects_ineligible_roles(
+    tmp_path: Path, role_name: str
+) -> None:
+    path = tmp_path / HANDOFF_CANDIDATE_FILE
+    text = _research_candidate_text()
+    if role_name == "integrator":
+        text = text.replace(
+            "\n[research]",
+            "\nsemantic_integration_concerns = []\nuntested_claims = []\n\n[research]",
+        )
+    path.write_text(text)
+
+    with pytest.raises(HandoffSubmissionError) as error:
+        parse_handoff_candidate(path, role_name)
+
+    assert any(
+        "only allowed for architect, planner, and developer" in issue
+        for issue in error.value.issues
+    )
+
+
+@pytest.mark.parametrize("role_name", ["architect", "planner"])
+def test_research_candidate_accepts_other_eligible_roles(
+    tmp_path: Path, role_name: str
+) -> None:
+    path = tmp_path / HANDOFF_CANDIDATE_FILE
+    text = _research_candidate_text()
+    if role_name == "planner":
+        text = text.replace("\n[research]", "\nplanning_complete = false\n\n[research]")
+    path.write_text(text)
+
+    candidate = parse_handoff_candidate(path, role_name)
+
+    assert candidate.research is not None
+    assert candidate.outcome == "needs_research"
+
+
+def test_research_candidate_is_mutually_exclusive_with_clarification(tmp_path: Path) -> None:
+    path = tmp_path / HANDOFF_CANDIDATE_FILE
+    path.write_text(
+        _research_candidate_text()
+        + "\n[clarification]\n"
+        'title = "Choice"\n'
+        'scope = "planning"\n'
+        'blocks = "planning"\n'
+        'answer_shape = "text"\n'
+        'recommended_option = ""\n'
+        'details = "### Context\\nC\\n\\n### Question\\nQ\\n\\n### Expected Answer\\nA"\n'
+    )
+
+    with pytest.raises(HandoffSubmissionError) as error:
+        parse_handoff_candidate(path, "developer")
+
+    assert "[clarification] and [research] are mutually exclusive" in error.value.issues
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ('scope = "task:T0001"', 'scope = "finding:F0001"', "scope must be"),
+        (
+            'acceptance_criteria = ["Use primary documentation.", '
+            '"Explain connection-pool implications."]',
+            'acceptance_criteria = ["Same.", "Same."]',
+            "must be unique",
+        ),
+        ('title = "Lock behavior"', 'title = "First\\nSecond"', "single line"),
+        ('question = "How do session locks behave?"\n', "", "question must be a string"),
+        (
+            "[research]\n",
+            "[research]\nunexpected = true\n",
+            "unexpected field",
+        ),
+    ],
+)
+def test_research_candidate_rejects_malformed_request(
+    tmp_path: Path, old: str, new: str, message: str
+) -> None:
+    path = tmp_path / HANDOFF_CANDIDATE_FILE
+    text = _research_candidate_text()
+    assert old in text
+    path.write_text(text.replace(old, new, 1))
+
+    with pytest.raises(HandoffSubmissionError) as error:
+        parse_handoff_candidate(path, "developer")
+
+    assert any(message in issue for issue in error.value.issues)
+
+
+def test_parse_handoff_reads_and_validates_research_request(tmp_path: Path) -> None:
+    section = (
+        "## Research Request\n"
+        "research_required = true\n"
+        'title = "Lock behavior"\n'
+        'scope = "task:T0001"\n'
+        'question = "How do session locks behave?"\n'
+        'context = "The implementation needs a cross-process lock."\n'
+        'desired_outcome = "Recommend a safe approach."\n'
+        'acceptance_criteria = ["Use primary documentation."]\n'
+    )
+    path = _write_handoff(tmp_path, extra_after=section)
+
+    request = parse_handoff(path, "developer").research_request
+
+    assert request is not None
+    assert request.question == "How do session locks behave?"
+    assert request.acceptance_criteria == ("Use primary documentation.",)
+
+
+def test_parse_handoff_rejects_research_for_ineligible_role(tmp_path: Path) -> None:
+    path = _write_handoff(
+        tmp_path,
+        role_name="reviewer",
+        extra_after=(
+            "## Research Request\n"
+            "research_required = true\n"
+            'title = "Lock behavior"\n'
+            'scope = "task:T0001"\n'
+            'question = "Question?"\n'
+            'context = "Context."\n'
+            'desired_outcome = "Outcome."\n'
+            'acceptance_criteria = ["Criterion."]\n'
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="only allowed for architect, planner, and developer"):
+        parse_handoff(path, "reviewer")
+
+
 def test_parse_valid_handoff(tmp_path: Path) -> None:
     path = _write_handoff(tmp_path)
 
@@ -574,3 +749,21 @@ def _write_handoff(
     )
     path.write_text(text)
     return path
+
+
+def _research_candidate_text() -> str:
+    return (
+        'schema_version = 1\noutcome = "needs_research"\n'
+        'commit_message = ""\n'
+        'done = ["Identified a bounded research question."]\n'
+        'changed_artifacts = []\nopen_issues = ["Research is required."]\n'
+        'addressed_findings = []\nnext_session_hint = "Research lock behavior."\n\n'
+        "[research]\n"
+        'title = "Lock behavior"\n'
+        'scope = "task:T0001"\n'
+        'question = "How do session locks behave?"\n'
+        'context = "The implementation needs a cross-process lock."\n'
+        'desired_outcome = "Recommend a safe approach."\n'
+        'acceptance_criteria = ["Use primary documentation.", '
+        '"Explain connection-pool implications."]\n'
+    )

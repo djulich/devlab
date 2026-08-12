@@ -329,6 +329,38 @@ def test_process_handoff_creates_clarification_without_developer_transition(
     assert resume.task == "T0001"
 
 
+def test_process_handoff_fails_closed_for_unimplemented_research_transition(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    path = _write_session_handoff(
+        tmp_path,
+        "developer",
+        (
+            "# Handoff: developer\n"
+            "## Done\n- Identified a research question.\n"
+            "## Changed Artifacts\n- None\n"
+            "## Open Issues\n- Research is required.\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nResearch lock behavior.\n"
+            "## Research Request\n"
+            "research_required = true\n"
+            'title = "Lock behavior"\n'
+            'scope = "task:T0001"\n'
+            'question = "How do session locks behave?"\n'
+            'context = "The implementation needs a lock."\n'
+            'desired_outcome = "Recommend an approach."\n'
+            'acceptance_criteria = ["Use primary documentation."]\n'
+        ),
+    )
+    handoff = parse_handoff(path, "developer")
+
+    with pytest.raises(HandoffError, match="refusing normal role transition"):
+        process_handoff(handoff, Workspace(tmp_path))
+
+    assert list((tmp_path / HISTORY_DIR).iterdir()) == []
+
+
 def test_process_handoff_creates_clarification_without_planner_state_update(
     tmp_path: Path,
 ) -> None:

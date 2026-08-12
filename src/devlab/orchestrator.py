@@ -448,6 +448,7 @@ def submit_session_handoff(
                 )
         if (
             envelope.role == "planner"
+            and candidate.outcome == "completed"
             and envelope.incremental_planning_required
             and not candidate.planning_complete
             and not _has_actionable_or_planned_work(snapshot)
@@ -483,7 +484,7 @@ def _validate_completed_developer_candidate(
     if candidate.open_issues:
         raise HandoffError(
             "completed developer result must not report open issues; use outcome "
-            "failed or needs_clarification",
+            "failed, needs_clarification, or needs_research",
             reason=HandoffFailureReason.SEMANTIC_CONFLICT,
         )
     if not envelope.task:
@@ -646,6 +647,10 @@ def process_handoff(
     milestone_validation: ValidationRun | None = None,
     milestone_validation_contract: EffectiveMilestoneValidation | None = None,
 ) -> ProcessResult:
+    if handoff.research_request is not None:
+        raise HandoffError(
+            "research request processing is not implemented; refusing normal role transition"
+        )
     archived = archive_handoff(workspace.root, handoff.role_name)
     logger.info("Handoff archived to %s", archived.name)
 
@@ -2650,6 +2655,11 @@ def run_loop(
                 route=route,
             )
             validate_handoff(handoff, workspace.snapshot)
+            if handoff.research_request is not None:
+                raise HandoffError(
+                    "research request processing is not implemented; refusing "
+                    "normal role transition"
+                )
             if handoff.clarification_request is None:
                 planner_task_error = _validate_planner_preserved_active_tasks(
                     start_snapshot,
