@@ -14,6 +14,7 @@ from devlab.clarifications import Clarification, FileClarificationTracker
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.generations import active_generation
 from devlab.milestones import FileMilestoneTracker, Milestone, MilestoneVerification
+from devlab.research import FileResearchTracker, Research, ResearchResult, ResearchStatus
 from devlab.task_tracker import (
     FileTaskTracker,
     Task,
@@ -71,6 +72,7 @@ class Workspace:
     _clarifications: FileClarificationTracker | None = dataclasses.field(
         default=None, init=False, repr=False
     )
+    _research: FileResearchTracker | None = dataclasses.field(default=None, init=False, repr=False)
 
     def _task_tracker(self) -> FileTaskTracker:
         if self._tasks is None:
@@ -92,6 +94,11 @@ class Workspace:
             self._clarifications = FileClarificationTracker(self.root)
         return self._clarifications
 
+    def _research_tracker(self) -> FileResearchTracker:
+        if self._research is None:
+            self._research = FileResearchTracker(self.root)
+        return self._research
+
     @property
     def snapshot(self) -> WorkspaceSnapshot:
         if self._snapshot is None:
@@ -101,6 +108,7 @@ class Workspace:
                 _finding_tracker=self._finding_tracker(),
                 _milestone_tracker=self._milestone_tracker(),
                 _clarification_tracker=self._clarification_tracker(),
+                _research_tracker=self._research_tracker(),
             )
         return self._snapshot
 
@@ -123,6 +131,9 @@ class Workspace:
 
     def clarifications(self) -> WorkspaceClarifications:
         return WorkspaceClarifications(self)
+
+    def research(self) -> WorkspaceResearch:
+        return WorkspaceResearch(self)
 
     def did_mutate(self) -> None:
         self._snapshot = None
@@ -226,6 +237,49 @@ class WorkspaceClarifications:
         )
         self.workspace.did_mutate()
         return clarification
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceResearch:
+    """Research domain handle bound to a target workspace."""
+
+    workspace: Workspace
+
+    def get(self, research_id: str) -> WorkspaceResearchRecord:
+        return WorkspaceResearchRecord(self.workspace, research_id)
+
+    def create(
+        self,
+        *,
+        title: str,
+        asking_role: str,
+        asking_session_id: str,
+        command: str,
+        scope: str,
+        question: str,
+        context: str,
+        desired_outcome: str,
+        acceptance_criteria: tuple[str, ...] | list[str],
+        task: str = "",
+        milestone: str = "",
+        created_at: str | None = None,
+    ) -> Research:
+        research = self.workspace._research_tracker().create(
+            title=title,
+            asking_role=asking_role,
+            asking_session_id=asking_session_id,
+            command=command,
+            scope=scope,
+            question=question,
+            context=context,
+            desired_outcome=desired_outcome,
+            acceptance_criteria=acceptance_criteria,
+            task=task,
+            milestone=milestone,
+            created_at=created_at,
+        )
+        self.workspace.did_mutate()
+        return research
 
 
 @dataclasses.dataclass(frozen=True)
@@ -380,6 +434,36 @@ class WorkspaceClarification:
         return clarification
 
 
+@dataclasses.dataclass(frozen=True)
+class WorkspaceResearchRecord:
+    """Mutable research record handle bound to a target workspace."""
+
+    workspace: Workspace
+    id: str
+
+    def read(self) -> Research:
+        return self.workspace._research_tracker().get(self.id)
+
+    def complete(
+        self,
+        result: ResearchResult,
+        *,
+        researcher_session_id: str,
+        researcher_provider: str,
+        researcher_model: str = "",
+        completed_at: str | None = None,
+    ) -> Research:
+        research = self.workspace._research_tracker().complete(
+            self.id,
+            result,
+            researcher_session_id=researcher_session_id,
+            researcher_provider=researcher_provider,
+            researcher_model=researcher_model,
+            completed_at=completed_at,
+        )
+        self.workspace.did_mutate()
+        return research
+
 @dataclasses.dataclass
 class WorkspaceSnapshot:
     """Cached read-only snapshot of DevLab workspace files.
@@ -395,12 +479,14 @@ class WorkspaceSnapshot:
     _finding_tracker: FileFindingTracker = dataclasses.field(repr=False)
     _milestone_tracker: FileMilestoneTracker = dataclasses.field(repr=False)
     _clarification_tracker: FileClarificationTracker = dataclasses.field(repr=False)
+    _research_tracker: FileResearchTracker = dataclasses.field(repr=False)
     _tasks: list[Task] | None = dataclasses.field(default=None, init=False, repr=False)
     _findings: list[Finding] | None = dataclasses.field(default=None, init=False, repr=False)
     _milestones: list[Milestone] | None = dataclasses.field(default=None, init=False, repr=False)
     _clarifications: list[Clarification] | None = dataclasses.field(
         default=None, init=False, repr=False
     )
+    _research: list[Research] | None = dataclasses.field(default=None, init=False, repr=False)
     _workflow_state: WorkflowState | None = dataclasses.field(default=None, init=False, repr=False)
 
     def list_tasks(self) -> list[Task]:
@@ -441,6 +527,24 @@ class WorkspaceSnapshot:
             clarification
             for clarification in self.pending_clarifications()
             if clarification.blocks != "none"
+        ]
+
+    def list_research(self) -> list[Research]:
+        if self._research is None:
+            self._research = self._research_tracker.list_research()
+        return list(self._research)
+
+    def get_research(self, research_id: str) -> Research:
+        for research in self.list_research():
+            if research.id == research_id:
+                return research
+        raise KeyError(f"unknown research id: {research_id}")
+
+    def requested_research(self) -> list[Research]:
+        return [
+            research
+            for research in self.list_research()
+            if research.status == ResearchStatus.REQUESTED
         ]
 
     def workflow_state(self) -> WorkflowState:

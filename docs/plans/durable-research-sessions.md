@@ -1,6 +1,7 @@
 # Durable Research Sessions
 
-Status: **proposed**.
+Status: **in progress**. The research tracker and workspace access boundary are
+implemented; handoff, resume, invocation, and reporting work remain.
 
 This plan adds an on-demand, bounded research session that an architect,
 planner, or developer can request when a discoverable fact cannot be resolved
@@ -430,6 +431,7 @@ do not rely on session logs as authoritative state.
 1. Add research domain types, tracker, canonical formatting, and focused tests.
    Detailed task plan: [`research-domain-tracker.md`](research-domain-tracker.md).
 2. Expose read/mutation access through `WorkspaceSnapshot` and `Workspace`.
+   Implemented with cached snapshot queries and invalidating mutation handles.
 3. Extend structured session results and handoff rendering with
    `needs_research` and `[research]`.
 4. Enforce requesting-role eligibility, scope/route consistency, exclusivity

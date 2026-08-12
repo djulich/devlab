@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
 from devlab.findings import FileFindingTracker
 from devlab.milestones import FileMilestoneTracker
+from devlab.research import (
+    FileResearchTracker,
+    ResearchConfidence,
+    ResearchEvidence,
+    ResearchResult,
+    ResearchSource,
+)
 from devlab.task_tracker import FileTaskTracker
 from devlab.workspace import Workspace
 
@@ -58,6 +66,86 @@ def test_workspace_task_handle_invalidates_cached_snapshot(tmp_path: Path) -> No
     assert workspace.snapshot.list_tasks()[0].status == "closed"
 
 
+def test_workspace_snapshot_caches_research_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = Workspace(tmp_path)
+    workspace.research().create(**_research_request())
+    calls = 0
+    original = FileResearchTracker.list_research
+
+    def counting_list_research(self: FileResearchTracker):
+        nonlocal calls
+        calls += 1
+        return original(self)
+
+    monkeypatch.setattr(FileResearchTracker, "list_research", counting_list_research)
+    snapshot = workspace.snapshot
+
+    assert [research.id for research in snapshot.list_research()] == ["RS0001"]
+    assert snapshot.get_research("RS0001").title == "Lock behavior"
+    assert [research.id for research in snapshot.requested_research()] == ["RS0001"]
+    assert calls == 1
+
+
+def test_workspace_research_create_invalidates_cached_snapshot(tmp_path: Path) -> None:
+    workspace = Workspace(tmp_path)
+    snapshot = workspace.snapshot
+    assert snapshot.list_research() == []
+
+    research = workspace.research().create(**_research_request())
+
+    assert snapshot.list_research() == []
+    assert workspace.snapshot is not snapshot
+    assert workspace.snapshot.get_research(research.id) == research
+
+
+def test_workspace_research_completion_invalidates_cached_snapshot(tmp_path: Path) -> None:
+    workspace = Workspace(tmp_path)
+    research = workspace.research().create(**_research_request())
+    snapshot = workspace.snapshot
+    assert snapshot.requested_research() == [research]
+
+    completed = workspace.research().get(research.id).complete(
+        _research_result(),
+        researcher_session_id="researcher-session",
+        researcher_provider="codex",
+        researcher_model="gpt-5",
+        completed_at="2026-08-12T10:20:00+00:00",
+    )
+
+    assert snapshot.requested_research() == [research]
+    assert workspace.snapshot is not snapshot
+    assert workspace.snapshot.get_research(research.id) == completed
+    assert workspace.snapshot.requested_research() == []
+    assert workspace.research().get(research.id).read() == completed
+
+
+def test_failed_workspace_research_mutation_preserves_snapshot(tmp_path: Path) -> None:
+    workspace = Workspace(tmp_path)
+    research = workspace.research().create(**_research_request())
+    snapshot = workspace.snapshot
+    before = research.path.read_bytes()
+
+    with pytest.raises(ValueError, match="unknown source"):
+        workspace.research().get(research.id).complete(
+            ResearchResult(
+                summary="Summary.",
+                evidence=(ResearchEvidence("Claim.", ("S2",)),),
+                sources=(ResearchSource("S1", "Source", "docs/source.md", "repository"),),
+                recommendation="Recommendation.",
+                confidence=ResearchConfidence.LOW,
+                unresolved_questions=(),
+            ),
+            researcher_session_id="researcher-session",
+            researcher_provider="codex",
+        )
+
+    assert workspace.snapshot is snapshot
+    assert research.path.read_bytes() == before
+    assert snapshot.get_research(research.id) == research
+
+
 def test_workspace_milestone_handle_exposes_tasks_and_transitions(tmp_path: Path) -> None:
     _write_task(tmp_path, "T0001", milestone="M1")
     _write_milestone(tmp_path, "M1")
@@ -87,10 +175,11 @@ def test_production_workflow_mutations_do_not_bypass_workspace_handles() -> None
         "task_tracker.py",
         "findings.py",
         "milestones.py",
+        "research.py",
     }
     pattern = re.compile(
-        r"File(?:Task|Finding|Milestone)Tracker\([^\n]*\)\."
-        r"(?:create|create_from_handoff|mark_|close|upsert_from_tasks)"
+        r"File(?:Task|Finding|Milestone|Research)Tracker\([^\n]*\)\."
+        r"(?:create|create_from_handoff|complete|mark_|close|upsert_from_tasks)"
     )
 
     violations = []
@@ -110,6 +199,7 @@ def test_workspace_domain_handles_do_not_expose_raw_trackers(tmp_path: Path) -> 
     assert not isinstance(workspace.tasks(), FileTaskTracker)
     assert not isinstance(workspace.findings(), FileFindingTracker)
     assert not isinstance(workspace.milestones(), FileMilestoneTracker)
+    assert not isinstance(workspace.research(), FileResearchTracker)
     assert not hasattr(workspace, "task")
     assert not hasattr(workspace, "task_from_path")
     assert not hasattr(workspace, "finding")
@@ -238,4 +328,50 @@ def _write_workflow_state(root: Path, *, generation: int) -> None:
         "[planning]\n"
         "complete = true\n"
         f"generation = {generation}\n"
+    )
+
+
+class _ResearchRequest(TypedDict):
+    title: str
+    asking_role: str
+    asking_session_id: str
+    command: str
+    scope: str
+    question: str
+    context: str
+    desired_outcome: str
+    acceptance_criteria: list[str]
+    created_at: str
+
+
+def _research_request() -> _ResearchRequest:
+    return {
+        "title": "Lock behavior",
+        "asking_role": "planner",
+        "asking_session_id": "planner-session",
+        "command": "plan",
+        "scope": "planning",
+        "question": "How do these locks behave?",
+        "context": "The design needs a cross-process lock.",
+        "desired_outcome": "Recommend a safe locking approach.",
+        "acceptance_criteria": ["Use primary documentation."],
+        "created_at": "2026-08-12T10:15:00+00:00",
+    }
+
+
+def _research_result() -> ResearchResult:
+    return ResearchResult(
+        summary="The lock is session scoped.",
+        evidence=(ResearchEvidence("The lock ends with the session.", ("S1",)),),
+        sources=(
+            ResearchSource(
+                id="S1",
+                title="Lock documentation",
+                location="docs/locks.md",
+                source_type="repository",
+            ),
+        ),
+        recommendation="Use a dedicated session.",
+        confidence=ResearchConfidence.HIGH,
+        unresolved_questions=(),
     )
