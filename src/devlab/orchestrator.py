@@ -150,6 +150,7 @@ class RunStopReason(StrEnum):
     EXECUTABLE_CONFIG_CHANGED = "executable_config_changed"
     SESSION_LIMIT = "session_limit"
     CLARIFICATION_BLOCKED = "clarification_blocked"
+    RESEARCH_PENDING = "research_pending"
     NO_ELIGIBLE_ROLE = "no_eligible_role"
     DEVELOPER_NON_ADVANCING = "developer_non_advancing"
     TASK_CONTRACT_INVALID = "task_contract_invalid"
@@ -632,6 +633,7 @@ def _apply_planner_workflow_state(
 class ProcessResult:
     integrated_milestone: str | None = None
     clarification_id: str | None = None
+    research_id: str | None = None
     stop_reason: RunStopReason | None = None
     stop_message: str = ""
 
@@ -647,12 +649,55 @@ def process_handoff(
     milestone_validation: ValidationRun | None = None,
     milestone_validation_contract: EffectiveMilestoneValidation | None = None,
 ) -> ProcessResult:
-    if handoff.research_request is not None:
-        raise HandoffError(
-            "research request processing is not implemented; refusing normal role transition"
+    research_request = handoff.research_request
+    if research_request is not None:
+        _validate_research_request_route(
+            research_request.scope,
+            command=command,
+            role=handoff.role_name,
+            task_id=task_id,
+            milestone_id=milestone_id,
         )
     archived = archive_handoff(workspace.root, handoff.role_name)
     logger.info("Handoff archived to %s", archived.name)
+
+    if research_request is not None:
+        research = workspace.research().create(
+            title=research_request.title,
+            asking_role=handoff.role_name,
+            asking_session_id=session_id,
+            command=command,
+            scope=research_request.scope,
+            task=task_id or "",
+            milestone=milestone_id or "",
+            question=research_request.question,
+            context=research_request.context,
+            desired_outcome=research_request.desired_outcome,
+            acceptance_criteria=research_request.acceptance_criteria,
+        )
+        set_resume_state(
+            workspace.root,
+            ResumeState(
+                blocked_by=research.id,
+                blocked_kind="research",
+                command=command,
+                role=handoff.role_name,
+                task=task_id or "",
+                milestone=milestone_id or "",
+            ),
+        )
+        workspace.did_mutate()
+        append_workflow_event(
+            workspace.root,
+            "research_requested",
+            research=research.id,
+            role=handoff.role_name,
+            command=command,
+            task=task_id or "",
+            milestone=milestone_id or "",
+        )
+        logger.info("Workflow stopped: research required: %s %s", research.id, research.title)
+        return ProcessResult(research_id=research.id)
 
     clarification_request = handoff.clarification_request
     if clarification_request is not None:
@@ -841,6 +886,34 @@ def process_handoff(
         logger.info("Milestone %s marked integrated", milestone)
         return ProcessResult(integrated_milestone=milestone)
     return ProcessResult()
+
+
+def _validate_research_request_route(
+    scope: str,
+    *,
+    command: str,
+    role: str,
+    task_id: str | None,
+    milestone_id: str | None,
+) -> None:
+    if role not in {"architect", "planner", "developer"}:
+        raise HandoffError(f"role {role} may not request research")
+    if command not in {"plan", "implement"}:
+        raise HandoffError("research request requires an active plan or implement command")
+    expected_scope = (
+        f"task:{task_id}"
+        if task_id is not None
+        else f"milestone:{milestone_id}"
+        if milestone_id is not None
+        else "planning"
+        if command == "plan"
+        else "workspace"
+    )
+    if scope != expected_scope:
+        raise HandoffError(
+            f"research scope {scope!r} does not match the active route "
+            f"scope {expected_scope!r}"
+        )
 
 
 def _create_integration_finding(
@@ -1315,6 +1388,8 @@ def _classify_session_progress(
     if _git_has_product_changes(root):
         return SessionProgress.PRODUCT_CHANGE
     if process_result.clarification_id is not None:
+        return SessionProgress.LEGITIMATE_STOP
+    if process_result.research_id is not None:
         return SessionProgress.LEGITIMATE_STOP
     after_tasks = {
         task.id: (
@@ -2227,6 +2302,19 @@ def run_loop(
         logger.error("%s. Stopping.", resume_command_error.message)
         return _error_result(0, resume_command_error)
     active_resume = workflow_state.resume
+    if active_resume is not None and active_resume.blocked_kind == "research":
+        try:
+            research = workspace.snapshot.get_research(active_resume.blocked_by)
+        except KeyError:
+            message = f"research resume pointer references missing {active_resume.blocked_by}"
+            return _error_result(0, SessionError("research_resume", message, 1))
+        if research.status.value != "requested":
+            message = (
+                f"research resume pointer references {research.id} with status "
+                f"{research.status.value}, not requested"
+            )
+            return _error_result(0, SessionError("research_resume", message, 1))
+        return _stop_result(0, RunStopReason.RESEARCH_PENDING)
     resolved_agent_configs = None
     frozen_profiles: dict[str, Profile] | None = None
     frozen_profile_texts: dict[str, str] | None = None
@@ -2655,12 +2743,10 @@ def run_loop(
                 route=route,
             )
             validate_handoff(handoff, workspace.snapshot)
-            if handoff.research_request is not None:
-                raise HandoffError(
-                    "research request processing is not implemented; refusing "
-                    "normal role transition"
-                )
-            if handoff.clarification_request is None:
+            if (
+                handoff.clarification_request is None
+                and handoff.research_request is None
+            ):
                 planner_task_error = _validate_planner_preserved_active_tasks(
                     start_snapshot,
                     workspace.snapshot,
@@ -2799,7 +2885,12 @@ def run_loop(
                 generation=active_generation(root),
             )
             plan_started_recorded = True
-        if planning_only and role_name == "planner" and process_result.clarification_id is None:
+        if (
+            planning_only
+            and role_name == "planner"
+            and process_result.clarification_id is None
+            and process_result.research_id is None
+        ):
             append_workflow_event(
                 root,
                 "plan_completed",
@@ -2811,6 +2902,7 @@ def run_loop(
             active_resume is not None
             and active_resume.command == requested_command
             and process_result.clarification_id is None
+            and process_result.research_id is None
         ):
             clear_resume_state(root)
             workspace.did_mutate()
@@ -2929,6 +3021,8 @@ def run_loop(
         _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
         last_completed_task_id = route.task_id
+        if process_result.research_id is not None:
+            return _stop_result(sessions_run, RunStopReason.RESEARCH_PENDING)
         if process_result.clarification_id is not None:
             if clarification_mode == "operator":
                 logger.info(

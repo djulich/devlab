@@ -29,6 +29,7 @@ class ResumeState:
     role: str
     task: str = ""
     milestone: str = ""
+    blocked_kind: str = "clarification"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -223,6 +224,7 @@ def _format_resume_table(resume: ResumeState) -> str:
     return (
         "[resume]\n"
         f"blocked_by = {format_toml_value(resume.blocked_by)}\n"
+        f"blocked_kind = {format_toml_value(resume.blocked_kind)}\n"
         f"command = {format_toml_value(resume.command)}\n"
         f"role = {format_toml_value(resume.role)}\n"
         f"task = {format_toml_value(resume.task)}\n"
@@ -270,18 +272,24 @@ def _parse_resume_state(value: object) -> ResumeState:
         raise ValueError(f"{WORKFLOW_STATE}.resume must be a TOML table")
     resume = cast("dict[str, Any]", value)
     blocked_by = _resume_string(resume, "blocked_by")
+    blocked_kind = _resume_optional_string(resume, "blocked_kind") or "clarification"
     command = _resume_string(resume, "command")
     role = _resume_string(resume, "role")
     task = _resume_optional_string(resume, "task")
     milestone = _resume_optional_string(resume, "milestone")
     if command not in {"plan", "implement"}:
         raise ValueError(f"{WORKFLOW_STATE}.resume.command must be plan or implement")
+    if blocked_kind not in {"clarification", "research"}:
+        raise ValueError(
+            f"{WORKFLOW_STATE}.resume.blocked_kind must be clarification or research"
+        )
     return ResumeState(
         blocked_by=blocked_by,
         command=command,
         role=role,
         task=task,
         milestone=milestone,
+        blocked_kind=blocked_kind,
     )
 
 

@@ -329,7 +329,7 @@ def test_process_handoff_creates_clarification_without_developer_transition(
     assert resume.task == "T0001"
 
 
-def test_process_handoff_fails_closed_for_unimplemented_research_transition(
+def test_process_handoff_records_research_and_exact_resume_route(
     tmp_path: Path,
 ) -> None:
     _setup_tree(tmp_path)
@@ -355,10 +355,85 @@ def test_process_handoff_fails_closed_for_unimplemented_research_transition(
     )
     handoff = parse_handoff(path, "developer")
 
-    with pytest.raises(HandoffError, match="refusing normal role transition"):
-        process_handoff(handoff, Workspace(tmp_path))
+    result = process_handoff(
+        handoff,
+        Workspace(tmp_path),
+        command="implement",
+        session_id="20260707T101500_001_developer",
+        task_id="T0001",
+    )
 
+    assert result.research_id == "RS0001"
+    research = Workspace(tmp_path).snapshot.get_research("RS0001")
+    assert research.asking_role == "developer"
+    assert research.task == "T0001"
+    resume = load_workflow_state(tmp_path).resume
+    assert resume == ResumeState(
+        blocked_by="RS0001",
+        blocked_kind="research",
+        command="implement",
+        role="developer",
+        task="T0001",
+    )
+    assert len(list((tmp_path / HISTORY_DIR).iterdir())) == 1
+
+
+def test_process_handoff_rejects_research_scope_route_mismatch(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    path = _write_session_handoff(
+        tmp_path,
+        "developer",
+        (
+            "# Handoff: developer\n## Done\n- Research.\n## Changed Artifacts\n- None\n"
+            "## Open Issues\n- Research.\n## Addressed Findings\n- None\n"
+            "## Next Session Hint\nResearch.\n## Research Request\n"
+            "research_required = true\n"
+            'title = "Lock behavior"\nscope = "task:T0002"\n'
+            'question = "How?"\ncontext = "Context."\n'
+            'desired_outcome = "Decide."\nacceptance_criteria = ["Use docs."]\n'
+        ),
+    )
+
+    with pytest.raises(HandoffError, match="does not match the active route"):
+        process_handoff(
+            parse_handoff(path, "developer"),
+            Workspace(tmp_path),
+            command="implement",
+            task_id="T0001",
+        )
+
+    assert not (tmp_path / ".devlab/research").exists()
     assert list((tmp_path / HISTORY_DIR).iterdir()) == []
+
+
+def test_run_loop_stops_successfully_for_durable_pending_research(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    research = Workspace(tmp_path).research().create(
+        title="Lock behavior",
+        asking_role="planner",
+        asking_session_id="s1",
+        command="plan",
+        scope="planning",
+        question="How do locks behave?",
+        context="Planning needs evidence.",
+        desired_outcome="Recommend an approach.",
+        acceptance_criteria=("Use primary documentation.",),
+    )
+    set_resume_state(
+        tmp_path,
+        ResumeState(
+            blocked_by=research.id,
+            blocked_kind="research",
+            command="plan",
+            role="planner",
+        ),
+    )
+
+    result = run_loop(tmp_path, max_sessions=1, planning_only=True)
+
+    assert result.exit_code == 0
+    assert result.sessions_run == 0
+    assert result.stop_reason == RunStopReason.RESEARCH_PENDING
 
 
 def test_process_handoff_creates_clarification_without_planner_state_update(

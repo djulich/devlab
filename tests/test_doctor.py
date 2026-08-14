@@ -4,6 +4,8 @@ from pathlib import Path
 
 from devlab.doctor import check_workspace, format_doctor_report
 from devlab.init import init_workspace
+from devlab.workflow_state import ResumeState, set_resume_state
+from devlab.workspace import Workspace
 
 
 def test_doctor_accepts_missing_agents_config(tmp_path: Path) -> None:
@@ -206,6 +208,51 @@ def test_doctor_reports_choice_clarification_answer_mismatch(tmp_path: Path) -> 
     messages = _messages(tmp_path)
 
     assert any("choice answer must match one listed option" in message for message in messages)
+
+
+def test_doctor_reports_requested_research_without_resume_pointer(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    Workspace(tmp_path).research().create(
+        title="Lock behavior",
+        asking_role="planner",
+        asking_session_id="s1",
+        command="plan",
+        scope="planning",
+        question="How do locks behave?",
+        context="Planning needs evidence.",
+        desired_outcome="Recommend an approach.",
+        acceptance_criteria=("Use primary documentation.",),
+    )
+
+    assert "requested research has no matching research resume pointer" in _messages(tmp_path)
+
+
+def test_doctor_reports_research_resume_route_mismatch(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    research = Workspace(tmp_path).research().create(
+        title="Lock behavior",
+        asking_role="developer",
+        asking_session_id="s1",
+        command="implement",
+        scope="task:T0001",
+        task="T0001",
+        question="How do locks behave?",
+        context="Implementation needs evidence.",
+        desired_outcome="Recommend an approach.",
+        acceptance_criteria=("Use primary documentation.",),
+    )
+    set_resume_state(
+        tmp_path,
+        ResumeState(
+            blocked_by=research.id,
+            blocked_kind="research",
+            command="implement",
+            role="developer",
+            task="T0002",
+        ),
+    )
+
+    assert any("research resume task 'T0002' does not match" in m for m in _messages(tmp_path))
 
 
 def test_doctor_reports_dirty_git_worktree(tmp_path: Path) -> None:

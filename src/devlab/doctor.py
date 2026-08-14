@@ -11,6 +11,7 @@ from devlab.doctor_workflow_state import (
     check_clarifications,
     check_git_worktree,
     check_milestones,
+    check_research_resume_state,
     check_task_contracts,
     check_task_domains,
     check_workflow_state,
@@ -30,6 +31,7 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     if not agent_problems and not workflow_problems:
         problems.extend(_check_prompt_context_sizes(snapshot))
     problems.extend(check_clarifications(root))
+    problems.extend(check_research_resume_state(root))
     problems.extend(check_milestones(root, snapshot))
     problems.extend(check_task_domains(snapshot))
     problems.extend(check_task_contracts(snapshot))

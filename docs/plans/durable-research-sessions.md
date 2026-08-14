@@ -1,7 +1,8 @@
 # Durable Research Sessions
 
-Status: **in progress**. The research tracker and workspace access boundary are
-implemented; handoff, resume, invocation, and reporting work remain.
+Status: **in progress**. Phase 1 is implemented through the durable research
+interruption boundary; researcher invocation, result handling, resume
+consumption, and reporting remain.
 
 This plan adds an on-demand, bounded research session that an architect,
 planner, or developer can request when a discoverable fact cannot be resolved
@@ -438,13 +439,14 @@ do not rely on session logs as authoritative state.
    round trips, and packaged submission guidance.
 4. Enforce requesting-role eligibility, scope/route consistency, exclusivity
    with clarification, and no normal role transition.
-   Role eligibility, scope syntax, clarification exclusivity, and a fail-closed
-   transition guard are implemented. Exact active-route consistency remains for
-   the durable request-processing slice.
-5. Add the compatible typed resume blocker and doctor validation.
+   Implemented with exact active-route validation before durable mutation and
+   request outcomes isolated from ordinary role transitions and validation.
+5. Add the compatible typed resume blocker and doctor validation. Implemented
+   with legacy clarification compatibility and read-only record/pointer checks.
 
 At the end of this phase, a request can be durably recorded but should stop
-safely if automatic researcher invocation is not yet implemented.
+safely with `research_pending` because automatic researcher invocation is not
+yet implemented.
 
 ### Phase 2: Bounded researcher invocation
 

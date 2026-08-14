@@ -108,6 +108,7 @@ def test_format_workflow_state_writes_resume_state() -> None:
         "complete = true\n\n"
         "[resume]\n"
         'blocked_by = "CL0001"\n'
+        'blocked_kind = "clarification"\n'
         'command = "implement"\n'
         'role = "developer"\n'
         'task = "T0003"\n'
@@ -138,6 +139,24 @@ def test_load_workflow_state_reads_resume_state(tmp_path: Path) -> None:
         role="planner",
         task="",
         milestone="",
+    )
+
+
+def test_load_workflow_state_reads_typed_research_resume_state(tmp_path: Path) -> None:
+    path = tmp_path / ".devlab/workflow.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "version = 1\n\n[planning]\ncomplete = true\n\n[resume]\n"
+        'blocked_by = "RS0001"\nblocked_kind = "research"\n'
+        'command = "plan"\nrole = "planner"\ntask = ""\nmilestone = "M2"\n'
+    )
+
+    assert load_workflow_state(tmp_path).resume == ResumeState(
+        blocked_by="RS0001",
+        blocked_kind="research",
+        command="plan",
+        role="planner",
+        milestone="M2",
     )
 
 

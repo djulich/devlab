@@ -15,6 +15,7 @@ from devlab.milestones import (
     FileMilestoneTracker,
 )
 from devlab.profiles import profile_path
+from devlab.research import RESEARCH_DIR, FileResearchTracker, ResearchStatus
 from devlab.task_tracker import DEFAULT_TASK_DOMAIN
 from devlab.workflow_state import WORKFLOW_STATE, load_workflow_state
 from devlab.workspace import WorkspaceSnapshot
@@ -40,6 +41,91 @@ def check_workflow_state(root: Path) -> list[DoctorProblem]:
     except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
         return [DoctorProblem(WORKFLOW_STATE, str(exc))]
     return []
+
+
+def check_research_resume_state(root: Path) -> list[DoctorProblem]:
+    """Report inconsistent requested-research and resume-pointer pairs read-only."""
+    research_dir = root / RESEARCH_DIR
+    if not research_dir.exists():
+        return []
+    try:
+        research = FileResearchTracker(root).list_research()
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        return [DoctorProblem(RESEARCH_DIR, str(exc))]
+    try:
+        resume = load_workflow_state(root).resume
+    except (OSError, ValueError, tomllib.TOMLDecodeError):
+        return []
+    requested = [item for item in research if item.status == ResearchStatus.REQUESTED]
+    problems: list[DoctorProblem] = []
+    if resume is None or resume.blocked_kind != "research":
+        for item in requested:
+            problems.append(
+                DoctorProblem(
+                    display_path(item.path, root),
+                    "requested research has no matching research resume pointer",
+                )
+            )
+        return problems
+    matches = [item for item in research if item.id == resume.blocked_by]
+    if not matches:
+        problems.append(
+            DoctorProblem(
+                WORKFLOW_STATE,
+                f"research resume references missing {resume.blocked_by}",
+            )
+        )
+        return problems
+    item = matches[0]
+    if item.status != ResearchStatus.REQUESTED:
+        problems.append(
+            DoctorProblem(
+                WORKFLOW_STATE,
+                f"research resume references {item.id} with status "
+                f"{item.status.value}, not requested",
+            )
+        )
+    route_pairs = (
+        ("command", resume.command, item.command),
+        ("role", resume.role, item.asking_role),
+        ("task", resume.task, item.task),
+        ("milestone", resume.milestone, item.milestone),
+    )
+    for field, pointer_value, record_value in route_pairs:
+        if pointer_value != record_value:
+            problems.append(
+                DoctorProblem(
+                    WORKFLOW_STATE,
+                    f"research resume {field} {pointer_value!r} does not match "
+                    f"{item.id} value {record_value!r}",
+                )
+            )
+    expected_scope = (
+        f"task:{item.task}"
+        if item.task
+        else f"milestone:{item.milestone}"
+        if item.milestone
+        else "planning"
+        if item.command == "plan"
+        else "workspace"
+    )
+    if item.scope != expected_scope:
+        problems.append(
+            DoctorProblem(
+                display_path(item.path, root),
+                f"research scope {item.scope!r} does not match stored route "
+                f"scope {expected_scope!r}",
+            )
+        )
+    for other in requested:
+        if other.id != item.id:
+            problems.append(
+                DoctorProblem(
+                    display_path(other.path, root),
+                    "requested research has no matching research resume pointer",
+                )
+            )
+    return problems
 
 
 def check_git_worktree(root: Path) -> list[DoctorProblem]:
