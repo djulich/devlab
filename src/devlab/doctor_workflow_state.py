@@ -77,14 +77,6 @@ def check_research_resume_state(root: Path) -> list[DoctorProblem]:
         )
         return problems
     item = matches[0]
-    if item.status != ResearchStatus.REQUESTED:
-        problems.append(
-            DoctorProblem(
-                WORKFLOW_STATE,
-                f"research resume references {item.id} with status "
-                f"{item.status.value}, not requested",
-            )
-        )
     route_pairs = (
         ("command", resume.command, item.command),
         ("role", resume.role, item.asking_role),

@@ -10,6 +10,7 @@ from typing import Any, cast
 
 from devlab.agent_config import (
     AGENTS_CONFIG,
+    AUXILIARY_ROLE_NAMES,
     ROLE_NAMES,
     ResolvedAgentConfig,
     agent_prompt_transport_problems,
@@ -48,7 +49,7 @@ def check_agents_config(root: Path) -> list[DoctorProblem]:
         _check_role_values(defaults, "defaults", display_path, problems)
     if roles is not None:
         for role_name, role_value in roles.items():
-            if role_name not in ROLE_NAMES:
+            if role_name not in ROLE_NAMES + AUXILIARY_ROLE_NAMES:
                 problems.append(
                     DoctorProblem(display_path, f"roles.{role_name} is not a known role")
                 )
@@ -427,7 +428,10 @@ def _check_provider_references(
     if defaults is not None and isinstance(defaults.get("provider"), str):
         default_provider = cast("str", defaults["provider"])
     role_tables = roles or {}
-    for role_name in ROLE_NAMES:
+    configured_roles = ROLE_NAMES + tuple(
+        role_name for role_name in AUXILIARY_ROLE_NAMES if role_name in role_tables
+    )
+    for role_name in configured_roles:
         role_value = role_tables.get(role_name, {})
         role_provider = default_provider
         if isinstance(role_value, dict) and isinstance(role_value.get("provider"), str):

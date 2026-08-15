@@ -406,7 +406,7 @@ def test_process_handoff_rejects_research_scope_route_mismatch(tmp_path: Path) -
     assert list((tmp_path / HISTORY_DIR).iterdir()) == []
 
 
-def test_run_loop_stops_successfully_for_durable_pending_research(tmp_path: Path) -> None:
+def test_run_loop_completes_durable_pending_research_on_restart(tmp_path: Path) -> None:
     _setup_tree(tmp_path)
     research = Workspace(tmp_path).research().create(
         title="Lock behavior",
@@ -429,11 +429,137 @@ def test_run_loop_stops_successfully_for_durable_pending_research(tmp_path: Path
         ),
     )
 
-    result = run_loop(tmp_path, max_sessions=1, planning_only=True)
+    def on_invoke(call: AgentCall) -> None:
+        assert call.role_name == "researcher"
+        assert "## Research Request" in call.session_prompt
+        _write_researcher_result(call, research.id)
+
+    provider = MockProvider(on_invoke=on_invoke)
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        planning_only=True,
+        agent_providers={"mock": provider},
+        role_agent_providers={"planner": "mock"},
+    )
 
     assert result.exit_code == 0
-    assert result.sessions_run == 0
+    assert result.sessions_run == 1
+    assert result.stop_reason == RunStopReason.RESEARCH_COMPLETED
+    completed = Workspace(tmp_path).snapshot.get_research(research.id)
+    assert completed.status.value == "completed"
+    assert completed.researcher_session_id.endswith("_researcher")
+    assert load_workflow_state(tmp_path).resume is not None
+
+
+def _write_researcher_result(call: AgentCall, research_id: str) -> None:
+    result_path = call.root / ARTIFACTS_DIR / "researcher" / "result.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "research_id": research_id,
+                "summary": "Session locks survive transaction boundaries.",
+                "evidence": [
+                    {"claim": "Locks are session scoped.", "source_ids": ["S1"]}
+                ],
+                "sources": [
+                    {
+                        "id": "S1",
+                        "title": "Database documentation",
+                        "location": "https://example.invalid/locks",
+                        "source_type": "primary",
+                    }
+                ],
+                "recommendation": "Use a dedicated connection.",
+                "confidence": "medium",
+                "unresolved_questions": [],
+            }
+        )
+    )
+
+
+def test_researcher_forbidden_edit_is_restored_and_request_remains_pending(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    protected = tmp_path / "README.md"
+    protected.write_text("original\n")
+    research = Workspace(tmp_path).research().create(
+        title="Lock behavior",
+        asking_role="planner",
+        asking_session_id="s1",
+        command="plan",
+        scope="planning",
+        question="How do locks behave?",
+        context="Planning needs evidence.",
+        desired_outcome="Recommend an approach.",
+        acceptance_criteria=("Use primary documentation.",),
+    )
+    set_resume_state(
+        tmp_path,
+        ResumeState(
+            blocked_by=research.id,
+            blocked_kind="research",
+            command="plan",
+            role="planner",
+        ),
+    )
+
+    def on_invoke(call: AgentCall) -> None:
+        protected.write_text("changed\n")
+        _write_researcher_result(call, research.id)
+
+    provider = MockProvider(on_invoke=on_invoke)
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        planning_only=True,
+        agent_providers={"mock": provider},
+        role_agent_providers={"planner": "mock"},
+    )
+
+    assert result.exit_code == 1
+    assert "forbidden workspace path" in result.errors[0].message
+    assert protected.read_text() == "original\n"
+    assert Workspace(tmp_path).snapshot.get_research(research.id).status.value == "requested"
+
+
+def test_researcher_waits_when_requester_consumes_session_limit(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001")
+    provider = MockProvider(
+        handoff_text=(
+            "# Handoff: developer\n"
+            "## Done\n- Identified a research question.\n"
+            "## Changed Artifacts\n- None\n"
+            "## Open Issues\n- Research is required.\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nResearch lock behavior.\n"
+            "## Research Request\n"
+            "research_required = true\n"
+            'title = "Lock behavior"\n'
+            'scope = "task:T0001"\n'
+            'question = "How do session locks behave?"\n'
+            'context = "The implementation needs a lock."\n'
+            'desired_outcome = "Recommend an approach."\n'
+            'acceptance_criteria = ["Use primary documentation."]\n'
+        )
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": provider},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 0
     assert result.stop_reason == RunStopReason.RESEARCH_PENDING
+    assert [call.role_name for call in provider.calls] == ["developer"]
+    assert Workspace(tmp_path).snapshot.get_research("RS0001").status.value == "requested"
 
 
 def test_process_handoff_creates_clarification_without_planner_state_update(

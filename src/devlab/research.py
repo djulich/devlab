@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import re
 import tomllib
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from devlab._files import atomic_write_text
 from devlab._toml import format_toml_value
@@ -111,6 +112,115 @@ class Research:
     acceptance_criteria: tuple[str, ...]
     result: ResearchResult | None
     metadata: dict[str, Any]
+
+
+def parse_research_result_candidate(path: Path, *, research_id: str) -> ResearchResult:
+    """Parse one strict staged researcher result for the expected request."""
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError as exc:
+        raise ValueError(f"researcher did not write {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError("researcher result.json is invalid JSON") from exc
+    if not isinstance(data, dict):
+        raise ValueError("researcher result.json must contain an object")
+    expected = {
+        "schema_version",
+        "research_id",
+        "summary",
+        "evidence",
+        "sources",
+        "recommendation",
+        "confidence",
+        "unresolved_questions",
+    }
+    unexpected = sorted(set(data) - expected)
+    missing = sorted(expected - set(data))
+    if unexpected:
+        raise ValueError(
+            "researcher result.json has unexpected field(s): " + ", ".join(unexpected)
+        )
+    if missing:
+        raise ValueError("researcher result.json is missing field(s): " + ", ".join(missing))
+    if data["schema_version"] != 1:
+        raise ValueError("researcher result.json schema_version must be 1")
+    if data["research_id"] != research_id:
+        raise ValueError(f"researcher result.json research_id must be {research_id!r}")
+    sources_value = data["sources"]
+    if not isinstance(sources_value, list) or not sources_value:
+        raise ValueError("researcher result.json sources must be a non-empty array")
+    sources: list[ResearchSource] = []
+    for index, value in enumerate(sources_value):
+        if not isinstance(value, dict) or set(value) != {"id", "title", "location", "source_type"}:
+            raise ValueError(
+                f"researcher result.json sources[{index}] must contain exactly "
+                "id, title, location, and source_type"
+            )
+        value = cast("dict[str, Any]", value)
+        sources.append(
+            ResearchSource(
+                id=_json_required_string(value, "id", f"sources[{index}]"),
+                title=_json_required_string(value, "title", f"sources[{index}]"),
+                location=_json_required_string(value, "location", f"sources[{index}]"),
+                source_type=_json_required_string(value, "source_type", f"sources[{index}]"),
+            )
+        )
+    evidence_value = data["evidence"]
+    if not isinstance(evidence_value, list) or not evidence_value:
+        raise ValueError("researcher result.json evidence must be a non-empty array")
+    evidence: list[ResearchEvidence] = []
+    for index, value in enumerate(evidence_value):
+        if not isinstance(value, dict) or set(value) != {"claim", "source_ids"}:
+            raise ValueError(
+                f"researcher result.json evidence[{index}] must contain exactly "
+                "claim and source_ids"
+            )
+        value = cast("dict[str, Any]", value)
+        source_ids = value["source_ids"]
+        if (
+            not isinstance(source_ids, list)
+            or not source_ids
+            or any(not isinstance(item, str) or not item.strip() for item in source_ids)
+        ):
+            raise ValueError(
+                f"researcher result.json evidence[{index}].source_ids must be a "
+                "non-empty string array"
+            )
+        source_ids = cast("list[str]", source_ids)
+        evidence.append(
+            ResearchEvidence(
+                claim=_json_required_string(value, "claim", f"evidence[{index}]"),
+                source_ids=tuple(item.strip() for item in source_ids),
+            )
+        )
+    unresolved = data["unresolved_questions"]
+    if not isinstance(unresolved, list) or any(
+        not isinstance(item, str) or not item.strip() for item in unresolved
+    ):
+        raise ValueError("researcher result.json unresolved_questions must be a string array")
+    try:
+        confidence = ResearchConfidence(data["confidence"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "researcher result.json confidence must be high, medium, or low"
+        ) from exc
+    return _validate_result(
+        ResearchResult(
+            summary=_json_required_string(data, "summary", "result"),
+            evidence=tuple(evidence),
+            sources=tuple(sources),
+            recommendation=_json_required_string(data, "recommendation", "result"),
+            confidence=confidence,
+            unresolved_questions=tuple(item.strip() for item in unresolved),
+        )
+    )
+
+
+def _json_required_string(data: dict[str, Any], key: str, context: str) -> str:
+    value = data.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"researcher result.json {context}.{key} must be a non-empty string")
+    return value.strip()
 
 
 class FileResearchTracker:

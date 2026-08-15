@@ -14,6 +14,7 @@ from devlab.agents import AgentProvider, CliAgentProvider
 
 AGENTS_CONFIG = ".devlab/config/agents.toml"
 ROLE_NAMES = ("architect", "planner", "developer", "reviewer", "integrator")
+AUXILIARY_ROLE_NAMES = ("researcher",)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -207,7 +208,10 @@ def resolve_agent_configuration(
             uses_stdin=invocation.uses_stdin,
         )
 
-    for role_name in ROLE_NAMES:
+    configured_roles = ROLE_NAMES + tuple(
+        role_name for role_name in AUXILIARY_ROLE_NAMES if role_name in roles
+    )
+    for role_name in configured_roles:
         role_table = _table(roles.get(role_name, {}), f"roles.{role_name}")
         values = {**defaults, **role_table}
         if provider is not None:

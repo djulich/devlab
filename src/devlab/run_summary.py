@@ -228,6 +228,11 @@ def _next_commands(
         RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR,
     }:
         return ("Inspect the errors above and run devlab doctor before retrying.",)
+    if result.stop_reason in {
+        RunStopReason.RESEARCH_PENDING,
+        RunStopReason.RESEARCH_COMPLETED,
+    }:
+        return (f"devlab {command}",)
     if executable_config.state == "invalid":
         return ("devlab doctor",)
     if executable_config.state == "untrusted":
@@ -257,6 +262,8 @@ def _stop_reason_text(reason: RunStopReason) -> str:
         ),
         RunStopReason.SESSION_LIMIT: "session limit reached; work remains",
         RunStopReason.CLARIFICATION_BLOCKED: "operator clarification required",
+        RunStopReason.RESEARCH_PENDING: "research request is pending",
+        RunStopReason.RESEARCH_COMPLETED: "research completed; requesting route remains",
         RunStopReason.NO_ELIGIBLE_ROLE: "no eligible workflow role",
         RunStopReason.DEVELOPER_NON_ADVANCING: "developer recovery made no progress",
         RunStopReason.TASK_CONTRACT_INVALID: "task contract is invalid",

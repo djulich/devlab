@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -16,6 +17,7 @@ from devlab.research import (
     ResearchResult,
     ResearchSource,
     ResearchStatus,
+    parse_research_result_candidate,
 )
 
 
@@ -560,3 +562,63 @@ def test_completion_rejects_earlier_timestamp_and_multiline_provenance(tmp_path:
             researcher_session_id="bad\nsession",
             researcher_provider="provider",
         )
+
+
+def test_parse_research_result_candidate_validates_and_builds_result(tmp_path: Path) -> None:
+    path = tmp_path / "result.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "research_id": "RS0001",
+                "summary": "Summary",
+                "evidence": [{"claim": "Claim", "source_ids": ["S1"]}],
+                "sources": [
+                    {
+                        "id": "S1",
+                        "title": "Primary docs",
+                        "location": "docs/reference.md",
+                        "source_type": "primary",
+                    }
+                ],
+                "recommendation": "Proceed carefully.",
+                "confidence": "low",
+                "unresolved_questions": ["Confirm deployment behavior."],
+            }
+        )
+    )
+
+    result = parse_research_result_candidate(path, research_id="RS0001")
+
+    assert result.confidence == ResearchConfidence.LOW
+    assert result.evidence[0].source_ids == ("S1",)
+
+
+def test_parse_research_result_candidate_rejects_unknown_evidence_source(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "result.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "research_id": "RS0001",
+                "summary": "Summary",
+                "evidence": [{"claim": "Claim", "source_ids": ["S2"]}],
+                "sources": [
+                    {
+                        "id": "S1",
+                        "title": "Primary docs",
+                        "location": "docs/reference.md",
+                        "source_type": "primary",
+                    }
+                ],
+                "recommendation": "Proceed carefully.",
+                "confidence": "medium",
+                "unresolved_questions": [],
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="unknown source"):
+        parse_research_result_candidate(path, research_id="RS0001")

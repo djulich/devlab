@@ -92,8 +92,10 @@ from devlab.prompt_resources import read_prompt_resource
 from devlab.prompts import (
     build_base_prompt,
     build_clarification_resolver_prompt,
+    build_researcher_prompt,
     build_session_prompt,
 )
+from devlab.research import ResearchStatus, parse_research_result_candidate
 from devlab.roles import ROLES, RoleConfig
 from devlab.session_logging import session_finish_context, session_start_context
 from devlab.spec_reconciliation import (
@@ -128,6 +130,7 @@ from devlab.workspace import (
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
 CLARIFICATION_RESOLVER_ROLE = "clarification-resolver"
+RESEARCHER_ROLE = "researcher"
 CLARIFICATION_MODES = {"operator", "agent"}
 
 SessionProgressCallback = Callable[[str, int, str], None]
@@ -151,6 +154,7 @@ class RunStopReason(StrEnum):
     SESSION_LIMIT = "session_limit"
     CLARIFICATION_BLOCKED = "clarification_blocked"
     RESEARCH_PENDING = "research_pending"
+    RESEARCH_COMPLETED = "research_completed"
     NO_ELIGIBLE_ROLE = "no_eligible_role"
     DEVELOPER_NON_ADVANCING = "developer_non_advancing"
     TASK_CONTRACT_INVALID = "task_contract_invalid"
@@ -1810,6 +1814,185 @@ def _invoke_clarification_resolver(
     return None, True
 
 
+def _research_result_path(root: Path) -> Path:
+    return root / ARTIFACTS_DIR / RESEARCHER_ROLE / "result.json"
+
+
+def _researcher_file_contents(root: Path) -> dict[str, bytes]:
+    contents: dict[str, bytes] = {}
+    exclusions = (".git/", f"{AGENT_LOG_DIR}/", f"{ARTIFACTS_DIR}/{RESEARCHER_ROLE}/")
+    for path in root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if any(
+            relative == prefix.rstrip("/") or relative.startswith(prefix)
+            for prefix in exclusions
+        ):
+            continue
+        contents[relative] = path.read_bytes()
+    return contents
+
+
+def _restore_researcher_edits(root: Path, before: dict[str, bytes]) -> tuple[str, ...]:
+    after = _researcher_file_contents(root)
+    changed = tuple(
+        sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+    )
+    for relative in changed:
+        path = root / relative
+        original = before.get(relative)
+        if original is None:
+            if path.exists() or path.is_symlink():
+                path.unlink()
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.is_symlink():
+                path.unlink()
+            path.write_bytes(original)
+    return changed
+
+
+def _researcher_provider(
+    blocked_role: str,
+    agent_providers: dict[str, AgentProvider],
+    role_agent_providers: dict[str, str] | None,
+) -> tuple[AgentProvider, str]:
+    selected_role = (
+        RESEARCHER_ROLE
+        if role_agent_providers is not None and RESEARCHER_ROLE in role_agent_providers
+        else blocked_role
+    )
+    provider = provider_for_role(selected_role, agent_providers, role_agent_providers)
+    provider_name = (
+        role_agent_providers.get(selected_role, "default")
+        if role_agent_providers is not None
+        else "default"
+    )
+    return provider, provider_name
+
+
+def _invoke_researcher(
+    root: Path,
+    *,
+    research_id: str,
+    session_number: int,
+    agent_providers: dict[str, AgentProvider],
+    role_agent_providers: dict[str, str] | None,
+    resolved_agent_configs: dict[str, ResolvedAgentConfig] | None,
+    retain_prompts: bool,
+    session_progress: SessionProgressCallback | None,
+    executable_config: ExecutableConfigSnapshot | None,
+) -> SessionError | None:
+    workspace = Workspace(root)
+    resume = load_workflow_state(root).resume
+    if resume is None or resume.blocked_kind != "research" or resume.blocked_by != research_id:
+        return SessionError(
+            "researcher", "Cannot run researcher without its matching resume pointer.", 1
+        )
+    try:
+        research = workspace.snapshot.get_research(research_id)
+    except KeyError:
+        return SessionError("researcher", f"Cannot resolve unknown research {research_id}.", 1)
+    if research.status != ResearchStatus.REQUESTED:
+        return SessionError("researcher", f"Research {research_id} is not requested.", 1)
+
+    artifacts_dir = root / ARTIFACTS_DIR / RESEARCHER_ROLE
+    if artifacts_dir.exists():
+        shutil.rmtree(artifacts_dir)
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    ctx = _build_session_context(
+        root, session_number, RESEARCHER_ROLE, retain_prompts=retain_prompts
+    )
+    base_prompt = read_prompt_resource("role-researcher.md")
+    session_prompt = build_researcher_prompt(workspace.snapshot, research, resume)
+    ctx.write_prompt_logs(base_prompt, session_prompt)
+    invocation = ctx.build_invocation(base_prompt, session_prompt)
+    agent_provider, fallback_provider_name = _researcher_provider(
+        resume.role, agent_providers, role_agent_providers
+    )
+    selected_config = None
+    if resolved_agent_configs is not None:
+        selected_config = resolved_agent_configs.get(
+            RESEARCHER_ROLE
+        ) or resolved_agent_configs.get(resume.role)
+    config_log = ctx.log_resolved_config(selected_config) if selected_config is not None else None
+    if selected_config is not None:
+        preflight_error = _preflight_agent_executable(RESEARCHER_ROLE, selected_config)
+        if preflight_error is not None:
+            return preflight_error
+    try:
+        before = _researcher_file_contents(root)
+    except OSError as exc:
+        return SessionError("researcher", f"Cannot snapshot workspace before researcher: {exc}", 1)
+
+    logger.info("Starting session %s: %s", ctx.session_number, RESEARCHER_ROLE)
+    _notify_session_progress(session_progress, "start", ctx.session_number, RESEARCHER_ROLE)
+    try:
+        agent_result = invoke_session(invocation, agent_provider=agent_provider)
+    except ProviderError as exc:
+        agent_result = AgentResult(
+            return_code=1,
+            failure_kind="provider_error",
+            message=f"agent provider error: {exc}",
+        )
+    metadata_configs = (
+        {RESEARCHER_ROLE: selected_config} if selected_config is not None else None
+    )
+    ctx.write_session_metadata(
+        _build_session_metadata(
+            ctx, agent_result, metadata_configs, None, executable_config
+        )
+    )
+    try:
+        changed = _restore_researcher_edits(root, before)
+    except OSError as exc:
+        return SessionError("researcher", f"Cannot validate researcher file edits: {exc}", 1)
+    if changed:
+        return SessionError(
+            "researcher",
+            "researcher changed forbidden workspace path(s), which were restored: "
+            + ", ".join(changed),
+            1,
+        )
+    if not agent_result.succeeded:
+        return SessionError(
+            "researcher",
+            _agent_error_message(ctx, agent_result, config_log),
+            agent_result.return_code or 1,
+        )
+    try:
+        result = parse_research_result_candidate(
+            _research_result_path(root), research_id=research_id
+        )
+        provider_name = (
+            selected_config.provider
+            if selected_config is not None
+            else fallback_provider_name
+        )
+        model_name = selected_config.model if selected_config is not None else ""
+        workspace.research().get(research_id).complete(
+            result,
+            researcher_session_id=ctx.invocation_id,
+            researcher_provider=provider_name,
+            researcher_model=model_name,
+        )
+        append_workflow_event(
+            root,
+            "research_completed",
+            research=research_id,
+            role=resume.role,
+            command=resume.command,
+            task=resume.task,
+            milestone=resume.milestone,
+        )
+    except (OSError, ValueError) as exc:
+        return SessionError("researcher", str(exc), 1)
+    _notify_session_progress(session_progress, "finish", ctx.session_number, RESEARCHER_ROLE)
+    logger.info("Finished session %s: %s", ctx.session_number, RESEARCHER_ROLE)
+    return None
+
+
 def _dirty_spec_error(paths: tuple[str, ...]) -> SessionError:
     joined = ", ".join(paths)
     return SessionError(
@@ -2302,19 +2485,6 @@ def run_loop(
         logger.error("%s. Stopping.", resume_command_error.message)
         return _error_result(0, resume_command_error)
     active_resume = workflow_state.resume
-    if active_resume is not None and active_resume.blocked_kind == "research":
-        try:
-            research = workspace.snapshot.get_research(active_resume.blocked_by)
-        except KeyError:
-            message = f"research resume pointer references missing {active_resume.blocked_by}"
-            return _error_result(0, SessionError("research_resume", message, 1))
-        if research.status.value != "requested":
-            message = (
-                f"research resume pointer references {research.id} with status "
-                f"{research.status.value}, not requested"
-            )
-            return _error_result(0, SessionError("research_resume", message, 1))
-        return _stop_result(0, RunStopReason.RESEARCH_PENDING)
     resolved_agent_configs = None
     frozen_profiles: dict[str, Profile] | None = None
     frozen_profile_texts: dict[str, str] | None = None
@@ -2340,6 +2510,38 @@ def run_loop(
     if executable_config is not None:
         frozen_profiles = executable_config.profiles
         frozen_profile_texts = executable_config.profile_texts
+    if active_resume is not None and active_resume.blocked_kind == "research":
+        try:
+            research = workspace.snapshot.get_research(active_resume.blocked_by)
+        except KeyError:
+            message = f"research resume pointer references missing {active_resume.blocked_by}"
+            return _error_result(0, SessionError("research_resume", message, 1))
+        if research.status == ResearchStatus.COMPLETED:
+            return _stop_result(0, RunStopReason.RESEARCH_COMPLETED)
+        if automatic_version_control:
+            try:
+                commit_all(root, f"Record DevLab research request {research.id}")
+            except VersionControlError as exc:
+                return _error_result(0, SessionError("version_control", str(exc), 1))
+        researcher_error = _invoke_researcher(
+            root,
+            research_id=research.id,
+            session_number=1,
+            agent_providers=agent_providers,
+            role_agent_providers=role_agent_providers,
+            resolved_agent_configs=resolved_agent_configs,
+            retain_prompts=retain_prompts,
+            session_progress=session_progress,
+            executable_config=executable_config,
+        )
+        if researcher_error is not None:
+            return _error_result(1, researcher_error)
+        if automatic_version_control:
+            try:
+                commit_all(root, f"Complete DevLab research {research.id}")
+            except VersionControlError as exc:
+                return _error_result(1, SessionError("version_control", str(exc), 1))
+        return _stop_result(1, RunStopReason.RESEARCH_COMPLETED)
 
     reconcile_plan = bool(spec_status and spec_status.changed)
     planning_event_mode = _planning_event_mode(
@@ -3022,7 +3224,38 @@ def run_loop(
         sessions_run += 1
         last_completed_task_id = route.task_id
         if process_result.research_id is not None:
-            return _stop_result(sessions_run, RunStopReason.RESEARCH_PENDING)
+            if sessions_run >= max_sessions:
+                return _stop_result(sessions_run, RunStopReason.RESEARCH_PENDING)
+            researcher_error = _invoke_researcher(
+                root,
+                research_id=process_result.research_id,
+                session_number=sessions_run + 1,
+                agent_providers=agent_providers,
+                role_agent_providers=role_agent_providers,
+                resolved_agent_configs=resolved_agent_configs,
+                retain_prompts=retain_prompts,
+                session_progress=session_progress,
+                executable_config=executable_config,
+            )
+            sessions_run += 1
+            if researcher_error is not None:
+                return _error_result(sessions_run, researcher_error)
+            if automatic_version_control:
+                try:
+                    committed = commit_all(
+                        root,
+                        f"Complete DevLab research {process_result.research_id}",
+                    )
+                    if committed:
+                        logger.info(
+                            "Committed completed research: %s",
+                            process_result.research_id,
+                        )
+                except VersionControlError as exc:
+                    return _error_result(
+                        sessions_run, SessionError("version_control", str(exc), 1)
+                    )
+            return _stop_result(sessions_run, RunStopReason.RESEARCH_COMPLETED)
         if process_result.clarification_id is not None:
             if clarification_mode == "operator":
                 logger.info(

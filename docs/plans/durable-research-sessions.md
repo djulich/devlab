@@ -1,8 +1,8 @@
 # Durable Research Sessions
 
-Status: **in progress**. Phase 1 is implemented through the durable research
-interruption boundary; researcher invocation, result handling, resume
-consumption, and reporting remain.
+Status: **in progress**. Phases 1 and 2 are implemented through bounded
+researcher invocation and durable result completion; exact-route resume
+consumption and reporting remain.
 
 This plan adds an on-demand, bounded research session that an architect,
 planner, or developer can request when a discoverable fact cannot be resolved
@@ -450,14 +450,11 @@ yet implemented.
 
 ### Phase 2: Bounded researcher invocation
 
-1. Add the minimal packaged researcher prompt and result-candidate schema.
-2. Resolve the researcher through executable configuration and include it in
-   fingerprint authorization.
-3. Build relevant read-only prompt context and staged result paths.
-4. Add workspace edit isolation, candidate validation, canonical persistence,
-   provenance, and workflow events.
-5. Count the researcher against the session limit and preserve retryable state
-   on failure.
+Implemented with a minimal auxiliary-role prompt, strict staged JSON result
+schema, explicit provider configuration with requesting-role fallback,
+conservative prompt context, workspace edit isolation, canonical completion
+with session provenance, workflow events, bounded session accounting, and
+retryable requested state on failure.
 
 ### Phase 3: Exact-route resume
 

@@ -520,6 +520,42 @@ def test_format_resolved_agent_config_does_not_include_prompts(tmp_path: Path) -
     assert '"{session_prompt}"' in text
 
 
+def test_researcher_configuration_is_resolved_only_when_explicit(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "default"
+
+        [roles.researcher]
+        provider = "research"
+        model = "research-model"
+
+        [providers.default]
+        command = "agent"
+        args = ["{system_prompt}", "{session_prompt}"]
+
+        [providers.research]
+        command = "research-agent"
+        args = ["{system_prompt}", "{session_prompt}"]
+        """,
+    )
+
+    configured = load_agent_configuration(tmp_path)
+
+    assert configured.resolved["researcher"].provider == "research"
+    assert configured.resolved["researcher"].model == "research-model"
+    assert "researcher" in configured.role_providers
+
+    (tmp_path / ".devlab/config/agents.toml").write_text(
+        "[defaults]\nprovider = \"default\"\n\n"
+        "[providers.default]\ncommand = \"agent\"\n"
+        "args = [\"{system_prompt}\", \"{session_prompt}\"]\n"
+    )
+    fallback = load_agent_configuration(tmp_path)
+    assert "researcher" not in fallback.resolved
+
+
 def test_provider_renders_configured_template_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
