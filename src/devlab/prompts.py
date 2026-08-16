@@ -76,15 +76,11 @@ def build_session_prompt(
     if role_name == "planner":
         prompt = _build_planner_prompt(snapshot, profile_texts=profile_texts)
     elif role_name == "developer":
-        prompt = _build_developer_prompt(
-            snapshot, profiles=profiles, assigned_task=assigned_task
-        )
+        prompt = _build_developer_prompt(snapshot, profiles=profiles, assigned_task=assigned_task)
     elif role_name == "reviewer":
         prompt = _build_reviewer_prompt(snapshot, profiles=profiles)
     elif role_name == "architect":
-        prompt = _build_architect_prompt(
-            snapshot, assigned_milestone=assigned_milestone
-        )
+        prompt = _build_architect_prompt(snapshot, assigned_milestone=assigned_milestone)
     else:
         prompt = builders[role_name](snapshot)
     knowledge = _format_project_knowledge(discover_project_knowledge(snapshot.root))
@@ -382,7 +378,7 @@ def _handoff_reminder(role_name: str) -> str:
     return (
         "\n\nIMPORTANT: Before exiting, fill "
         f".devlab/session-artifacts/{role_name}/handoff-candidate.toml and run "
-        "`\"$DEVLAB_PYTHON\" -m devlab.cli session handoff submit`. The session "
+        '`"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`. The session '
         "is complete only when DevLab reports that the handoff was accepted. "
         "Correct all reported "
         "errors and resubmit; do not edit result.toml or handoff.md directly."
@@ -469,9 +465,7 @@ def _architecture_review_prompt_sections(
     return parts
 
 
-def _format_milestone_finding_sections(
-    snapshot: WorkspaceSnapshot, milestone_id: str
-) -> str:
+def _format_milestone_finding_sections(snapshot: WorkspaceSnapshot, milestone_id: str) -> str:
     findings = [
         finding
         for finding in snapshot.list_findings()
@@ -552,9 +546,7 @@ def _validation_prompt_section(task: Task, profile: Profile) -> str:
     )
 
 
-def _format_profile_listing(
-    root: Path, profile_texts: dict[str, str] | None = None
-) -> str:
+def _format_profile_listing(root: Path, profile_texts: dict[str, str] | None = None) -> str:
     if profile_texts is not None:
         return "\n\n".join(
             f"### {profile_id}.toml\n\n{text.strip()}"

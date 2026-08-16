@@ -27,12 +27,12 @@ def test_effective_milestone_validation_deduplicates_with_provenance(
     tasks.mkdir(parents=True)
     (tasks / "T0001_first.md").write_text(
         '+++\nid = "T0001"\ntitle = "First"\nstatus = "closed"\n+++\n\n'
-        '# T0001: First\n\n## Acceptance Criteria\n- [x] Done\n'
+        "# T0001: First\n\n## Acceptance Criteria\n- [x] Done\n"
     )
     (tasks / "T0002_second.md").write_text(
         '+++\nid = "T0002"\ntitle = "Second"\nstatus = "closed"\n'
         'validation = ["make check", "pytest"]\n+++\n\n'
-        '# T0002: Second\n\n## Acceptance Criteria\n- [x] Done\n'
+        "# T0002: Second\n\n## Acceptance Criteria\n- [x] Done\n"
     )
     profile = load_profile(tmp_path, "default")
     tracker = FileTaskTracker(tmp_path)
@@ -61,19 +61,19 @@ def test_loads_profile_tooling_and_environment(tmp_path: Path) -> None:
     profiles = tmp_path / ".devlab/config/profiles"
     profiles.mkdir(parents=True)
     (profiles / "api.toml").write_text(
-        'version = 1\n'
+        "version = 1\n"
         'id = "api"\n'
         'title = "API"\n'
-        '\n[tooling]\n'
+        "\n[tooling]\n"
         'summary = "Python API"\n'
         'default_validation = ["uv run pytest tests/api"]\n'
-        '\n[environment]\n'
+        "\n[environment]\n"
         'managed_roles = ["developer"]\n'
         'pre_session = ["echo pre"]\n'
         'setup = ["uv sync"]\n'
         'post_session = ["echo post"]\n'
-        '\n[timeouts]\n'
-        'setup = 42\n'
+        "\n[timeouts]\n"
+        "setup = 42\n"
     )
 
     profile = load_profile(tmp_path, "api")
@@ -144,9 +144,7 @@ def test_effective_validation_resolution(
     validation_line = (
         ""
         if task_validation is None
-        else "validation = ["
-        + ", ".join(f'\"{command}\"' for command in task_validation)
-        + "]\n"
+        else "validation = [" + ", ".join(f'"{command}"' for command in task_validation) + "]\n"
     )
     (tasks / "T0001_task.md").write_text(
         "+++\n"
@@ -159,10 +157,9 @@ def test_effective_validation_resolution(
     )
     profiles = tmp_path / ".devlab/config/profiles"
     profiles.mkdir(parents=True)
-    values = ", ".join(f'\"{command}\"' for command in profile_validation)
+    values = ", ".join(f'"{command}"' for command in profile_validation)
     (profiles / "default.toml").write_text(
-        'version = 1\nid = "default"\n[tooling]\n'
-        f"default_validation = [{values}]\n"
+        f'version = 1\nid = "default"\n[tooling]\ndefault_validation = [{values}]\n'
     )
 
     resolved = effective_validation(

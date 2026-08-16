@@ -64,10 +64,10 @@ def _setup_tree(root: Path) -> None:
     (root / ".devlab/config/tooling.md").write_text("# Tooling\n")
     (root / ".devlab/config/profiles").mkdir(parents=True)
     (root / ".devlab/config/profiles/default.toml").write_text(
-        'version = 1\n'
+        "version = 1\n"
         'id = "default"\n'
         'title = "Default"\n'
-        '\n[environment]\n'
+        "\n[environment]\n"
         'managed_roles = ["developer", "reviewer", "integrator"]\n'
     )
 
@@ -93,9 +93,7 @@ def _write_task(
     milestone_line = f'milestone = "{milestone}"\n' if milestone is not None else ""
     profile_line = f'profile = "{profile}"\n' if profile is not None else ""
     domain_line = f'domain = "{domain}"\n' if domain is not None else ""
-    generation_line = (
-        f"planning_generation = {generation}\n" if generation is not None else ""
-    )
+    generation_line = f"planning_generation = {generation}\n" if generation is not None else ""
     validation_line = ""
     addresses_findings = addresses_findings or []
     addresses_findings_text = ", ".join(f'"{finding_id}"' for finding_id in addresses_findings)
@@ -144,9 +142,7 @@ def _write_milestone(
     else:
         status = "planned"
     task_ids_text = ", ".join(f'"{task_id}"' for task_id in (task_ids or []))
-    generation_line = (
-        f"planning_generation = {generation}\n" if generation is not None else ""
-    )
+    generation_line = f"planning_generation = {generation}\n" if generation is not None else ""
     path.write_text(
         "version = 1\n"
         f'id = "{milestone_id}"\n'
@@ -178,8 +174,8 @@ def _write_profile(
     path = profiles / f"{profile_id}.toml"
     path.write_text(
         "version = 1\n"
-        f"id = \"{profile_id}\"\n"
-        f"title = \"{profile_id}\"\n"
+        f'id = "{profile_id}"\n'
+        f'title = "{profile_id}"\n'
         "\n[tooling]\n"
         f"default_validation = [{validation_text}]\n"
         f"{environment}"
@@ -234,9 +230,9 @@ def _write_workflow_state(
         "[planning]\n"
         "complete = true\n"
         f"generation = {generation}\n"
-    )
+    )  # fmt: skip
     if baseline is not None:
-        text += "\n[specs]\n" f'last_planned_spec_commit = "{baseline}"\n'
+        text += f'\n[specs]\nlast_planned_spec_commit = "{baseline}"\n'
     (root / ".devlab/workflow.toml").write_text(text)
 
 
@@ -268,7 +264,7 @@ def _clarification_handoff(
             if answer_shape == "file-edit"
             else "### Expected Answer\nA concise timeout policy.\n"
         )
-    )
+    )  # fmt: skip
     return (
         f"# Handoff: {role_name}\n"
         "## Done\n"
@@ -308,7 +304,7 @@ def test_process_handoff_creates_clarification_without_developer_transition(
             "## Acceptance Criteria\n"
             "- [x] Implement auth sessions\n"
         ),
-    )
+    )  # fmt: skip
     path = _write_session_handoff(tmp_path, "developer", _clarification_handoff())
     handoff = parse_handoff(path, "developer")
 
@@ -414,16 +410,20 @@ def test_process_handoff_rejects_research_scope_route_mismatch(tmp_path: Path) -
 
 def test_run_loop_completes_durable_pending_research_on_restart(tmp_path: Path) -> None:
     _setup_tree(tmp_path)
-    research = Workspace(tmp_path).research().create(
-        title="Lock behavior",
-        asking_role="planner",
-        asking_session_id="s1",
-        command="plan",
-        scope="planning",
-        question="How do locks behave?",
-        context="Planning needs evidence.",
-        desired_outcome="Recommend an approach.",
-        acceptance_criteria=("Use primary documentation.",),
+    research = (
+        Workspace(tmp_path)
+        .research()
+        .create(
+            title="Lock behavior",
+            asking_role="planner",
+            asking_session_id="s1",
+            command="plan",
+            scope="planning",
+            question="How do locks behave?",
+            context="Planning needs evidence.",
+            desired_outcome="Recommend an approach.",
+            acceptance_criteria=("Use primary documentation.",),
+        )
     )
     set_resume_state(
         tmp_path,
@@ -466,9 +466,7 @@ def _write_researcher_result(call: AgentCall, research_id: str) -> None:
                 "schema_version": 1,
                 "research_id": research_id,
                 "summary": "Session locks survive transaction boundaries.",
-                "evidence": [
-                    {"claim": "Locks are session scoped.", "source_ids": ["S1"]}
-                ],
+                "evidence": [{"claim": "Locks are session scoped.", "source_ids": ["S1"]}],
                 "sources": [
                     {
                         "id": "S1",
@@ -494,26 +492,28 @@ def _create_completed_research(
     task: str = "",
     milestone: str = "",
 ) -> str:
-    research = Workspace(root).research().create(
-        title="Lock behavior",
-        asking_role=role,
-        asking_session_id="requester-session",
-        command=command,
-        scope=scope,
-        task=task,
-        milestone=milestone,
-        question="How do locks behave?",
-        context="The route needs evidence.",
-        desired_outcome="Recommend an approach.",
-        acceptance_criteria=("Use primary documentation.",),
+    research = (
+        Workspace(root)
+        .research()
+        .create(
+            title="Lock behavior",
+            asking_role=role,
+            asking_session_id="requester-session",
+            command=command,
+            scope=scope,
+            task=task,
+            milestone=milestone,
+            question="How do locks behave?",
+            context="The route needs evidence.",
+            desired_outcome="Recommend an approach.",
+            acceptance_criteria=("Use primary documentation.",),
+        )
     )
     Workspace(root).research().get(research.id).complete(
         ResearchResult(
             summary="Locks are connection scoped.",
             evidence=(ResearchEvidence("Locks survive transactions.", ("S1",)),),
-            sources=(
-                ResearchSource("S1", "Primary docs", "docs/locks.md", "primary"),
-            ),
+            sources=(ResearchSource("S1", "Primary docs", "docs/locks.md", "primary"),),
             recommendation="Use a dedicated connection.",
             confidence=ResearchConfidence.MEDIUM,
             unresolved_questions=(),
@@ -536,16 +536,12 @@ def _create_completed_research(
 
 
 @pytest.mark.parametrize("role", ["architect", "planner"])
-def test_completed_research_resumes_matching_planning_role(
-    tmp_path: Path, role: str
-) -> None:
+def test_completed_research_resumes_matching_planning_role(tmp_path: Path, role: str) -> None:
     _setup_tree(tmp_path)
     (tmp_path / ".devlab/workflow.toml").write_text(
         "version = 1\n\n[planning]\ncomplete = false\n"
     )
-    research_id = _create_completed_research(
-        tmp_path, role=role, command="plan", scope="planning"
-    )
+    research_id = _create_completed_research(tmp_path, role=role, command="plan", scope="planning")
 
     def on_invoke(call: AgentCall) -> None:
         assert call.role_name == role
@@ -566,8 +562,7 @@ def test_completed_research_resumes_matching_planning_role(
     assert [call.role_name for call in provider.calls] == [role]
     assert load_workflow_state(tmp_path).resume is None
     assert any(
-        event.type == "research_resume_completed"
-        and event.data.get("research") == research_id
+        event.type == "research_resume_completed" and event.data.get("research") == research_id
         for event in load_workflow_events(tmp_path)
     )
 
@@ -811,16 +806,20 @@ def test_researcher_forbidden_edit_is_restored_and_request_remains_pending(
     _setup_tree(tmp_path)
     protected = tmp_path / "README.md"
     protected.write_text("original\n")
-    research = Workspace(tmp_path).research().create(
-        title="Lock behavior",
-        asking_role="planner",
-        asking_session_id="s1",
-        command="plan",
-        scope="planning",
-        question="How do locks behave?",
-        context="Planning needs evidence.",
-        desired_outcome="Recommend an approach.",
-        acceptance_criteria=("Use primary documentation.",),
+    research = (
+        Workspace(tmp_path)
+        .research()
+        .create(
+            title="Lock behavior",
+            asking_role="planner",
+            asking_session_id="s1",
+            command="plan",
+            scope="planning",
+            question="How do locks behave?",
+            context="Planning needs evidence.",
+            desired_outcome="Recommend an approach.",
+            acceptance_criteria=("Use primary documentation.",),
+        )
     )
     set_resume_state(
         tmp_path,
@@ -896,9 +895,7 @@ def test_process_handoff_creates_clarification_without_planner_state_update(
         "version = 1\n\n[planning]\ncomplete = false\n"
     )
     handoff_text = (
-        _clarification_handoff("planner")
-        + "\n## Planning State\n"
-        "planning_complete = true\n"
+        _clarification_handoff("planner") + "\n## Planning State\nplanning_complete = true\n"
     )
     path = _write_session_handoff(tmp_path, "planner", handoff_text)
     handoff = parse_handoff(path, "planner")
@@ -960,20 +957,24 @@ def test_run_loop_clears_matching_resume_pointer_after_session(
             "## Acceptance Criteria\n"
             "- [x] Done\n"
         ),
-    )
-    clarification = Workspace(tmp_path).clarifications().create(
-        title="Auth session timeout",
-        asking_role="developer",
-        session_id="s1",
-        scope="task:T0001",
-        blocks="implementation",
-        answer_shape="text",
-        body=(
-            "# Auth session timeout\n\n"
-            "## Context\nC\n\n"
-            "## Question\nQ\n\n"
-            "## Expected Answer\nA\n"
-        ),
+    )  # fmt: skip
+    clarification = (
+        Workspace(tmp_path)
+        .clarifications()
+        .create(
+            title="Auth session timeout",
+            asking_role="developer",
+            session_id="s1",
+            scope="task:T0001",
+            blocks="implementation",
+            answer_shape="text",
+            body=(
+                "# Auth session timeout\n\n"
+                "## Context\nC\n\n"
+                "## Question\nQ\n\n"
+                "## Expected Answer\nA\n"
+            ),
+        )
     )
     Workspace(tmp_path).clarifications().get(clarification.id).answer("Use 24h.")
     (tmp_path / ".devlab/workflow.toml").write_text(
@@ -1035,16 +1036,10 @@ def test_run_loop_agent_clarification_mode_invokes_resolver_and_resumes(
 
     def on_invoke(call: AgentCall) -> None:
         if call.role_name == "clarification-resolver":
-            answer_path = (
-                call.root
-                / ARTIFACTS_DIR
-                / "clarification-resolver"
-                / "answer.json"
-            )
+            answer_path = call.root / ARTIFACTS_DIR / "clarification-resolver" / "answer.json"
             answer_path.parent.mkdir(parents=True, exist_ok=True)
             answer_path.write_text(
-                '{"clarification_id":"CL0001","answer_shape":"choice",'
-                '"choice":"A"}'
+                '{"clarification_id":"CL0001","answer_shape":"choice","choice":"A"}'
             )
             assert "## Clarification To Resolve" in call.session_prompt
             assert "<clarification-data>" in call.session_prompt
@@ -1069,9 +1064,7 @@ def test_run_loop_agent_clarification_mode_invokes_resolver_and_resumes(
     ]
     clarification = FileClarificationTracker(tmp_path).get("CL0001")
     assert clarification.status.value == "answered"
-    assert clarification.metadata["answered_by"].startswith(
-        "agent:clarification-resolver:"
-    )
+    assert clarification.metadata["answered_by"].startswith("agent:clarification-resolver:")
     assert load_workflow_state(tmp_path).resume is None
     assert 'status = "in_review"' in task.read_text()
 
@@ -1086,16 +1079,10 @@ def test_run_loop_agent_clarification_mode_stops_on_invalid_resolver_answer(
 
     def on_invoke(call: AgentCall) -> None:
         if call.role_name == "clarification-resolver":
-            answer_path = (
-                call.root
-                / ARTIFACTS_DIR
-                / "clarification-resolver"
-                / "answer.json"
-            )
+            answer_path = call.root / ARTIFACTS_DIR / "clarification-resolver" / "answer.json"
             answer_path.parent.mkdir(parents=True, exist_ok=True)
             answer_path.write_text(
-                '{"clarification_id":"CL0001","answer_shape":"choice",'
-                '"choice":"C"}'
+                '{"clarification_id":"CL0001","answer_shape":"choice","choice":"C"}'
             )
 
     provider = MockProvider(
@@ -1158,9 +1145,7 @@ def test_run_loop_agent_clarification_mode_resolves_non_choice_answers(
         if call.role_name == "developer":
             developer_calls += 1
             if developer_calls == 1:
-                return _clarification_handoff(
-                    "developer", answer_shape=answer_shape
-                )
+                return _clarification_handoff("developer", answer_shape=answer_shape)
         return (
             "# Handoff: developer\n"
             "## Done\n- Completed task.\n"
@@ -1276,13 +1261,10 @@ def test_run_loop_resolver_rejects_and_restores_forbidden_workflow_edit(
         (call.root / ".devlab/workflow.toml").write_text("corrupted = true\n")
         answer_path = call.root / ARTIFACTS_DIR / call.role_name / "answer.json"
         answer_path.write_text(
-            '{"clarification_id":"CL0001","answer_shape":"choice",'
-            '"choice":"A"}'
+            '{"clarification_id":"CL0001","answer_shape":"choice","choice":"A"}'
         )
 
-    provider = MockProvider(
-        handoff_text=_clarification_handoff("developer"), on_invoke=on_invoke
-    )
+    provider = MockProvider(handoff_text=_clarification_handoff("developer"), on_invoke=on_invoke)
 
     result = run_loop(
         tmp_path,
@@ -1327,26 +1309,28 @@ def test_run_loop_file_edit_resolver_requires_declared_edit(tmp_path: Path) -> N
     )
 
     assert result.exit_code == 1
-    assert "did not edit expected path(s): docs/session-policy.md" in (
-        result.errors[0].message
-    )
+    assert "did not edit expected path(s): docs/session-policy.md" in (result.errors[0].message)
     assert FileClarificationTracker(tmp_path).get("CL0001").status.value == "pending"
 
 
 def _create_answered_clarification(root: Path) -> str:
-    clarification = Workspace(root).clarifications().create(
-        title="Auth session timeout",
-        asking_role="developer",
-        session_id="s1",
-        scope="task:T0001",
-        blocks="implementation",
-        answer_shape="text",
-        body=(
-            "# Auth session timeout\n\n"
-            "## Context\nC\n\n"
-            "## Question\nQ\n\n"
-            "## Expected Answer\nA\n"
-        ),
+    clarification = (
+        Workspace(root)
+        .clarifications()
+        .create(
+            title="Auth session timeout",
+            asking_role="developer",
+            session_id="s1",
+            scope="task:T0001",
+            blocks="implementation",
+            answer_shape="text",
+            body=(
+                "# Auth session timeout\n\n"
+                "## Context\nC\n\n"
+                "## Question\nQ\n\n"
+                "## Expected Answer\nA\n"
+            ),
+        )
     )
     Workspace(root).clarifications().get(clarification.id).answer("Use 24h.")
     return clarification.id
@@ -1501,9 +1485,7 @@ class TestAssessState:
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         assert Workspace(tmp_path).snapshot.assess_state() == "planner"
 
-    def test_empty_plan_stops_when_explicit_planning_complete(
-        self, tmp_path: Path
-    ) -> None:
+    def test_empty_plan_stops_when_explicit_planning_complete(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / ".devlab/workflow.toml").write_text(
             "version = 1\n\n[planning]\ncomplete = true\n"
@@ -1651,24 +1633,26 @@ class TestBuildSessionPrompt:
         assert "No validation commands are required" in prompt
         assert "whether any validation was run and why" in prompt
 
-    def test_developer_prompt_includes_answered_task_clarification(
-        self, tmp_path: Path
-    ) -> None:
+    def test_developer_prompt_includes_answered_task_clarification(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First")
-        clarification = Workspace(tmp_path).clarifications().create(
-            title="Auth session timeout",
-            asking_role="developer",
-            session_id="s1",
-            scope="task:T0001",
-            blocks="implementation",
-            answer_shape="text",
-            body=(
-                "# Auth session timeout\n\n"
-                "## Context\nC\n\n"
-                "## Question\nQ\n\n"
-                "## Expected Answer\nA\n"
-            ),
+        clarification = (
+            Workspace(tmp_path)
+            .clarifications()
+            .create(
+                title="Auth session timeout",
+                asking_role="developer",
+                session_id="s1",
+                scope="task:T0001",
+                blocks="implementation",
+                answer_shape="text",
+                body=(
+                    "# Auth session timeout\n\n"
+                    "## Context\nC\n\n"
+                    "## Question\nQ\n\n"
+                    "## Expected Answer\nA\n"
+                ),
+            )
         )
         Workspace(tmp_path).clarifications().get(clarification.id).answer(
             "Use a 24-hour idle timeout."
@@ -1684,19 +1668,23 @@ class TestBuildSessionPrompt:
     ) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First")
-        clarification = Workspace(tmp_path).clarifications().create(
-            title="Other task policy",
-            asking_role="developer",
-            session_id="s1",
-            scope="task:T0002",
-            blocks="implementation",
-            answer_shape="text",
-            body=(
-                "# Other task policy\n\n"
-                "## Context\nC\n\n"
-                "## Question\nQ\n\n"
-                "## Expected Answer\nA\n"
-            ),
+        clarification = (
+            Workspace(tmp_path)
+            .clarifications()
+            .create(
+                title="Other task policy",
+                asking_role="developer",
+                session_id="s1",
+                scope="task:T0002",
+                blocks="implementation",
+                answer_shape="text",
+                body=(
+                    "# Other task policy\n\n"
+                    "## Context\nC\n\n"
+                    "## Question\nQ\n\n"
+                    "## Expected Answer\nA\n"
+                ),
+            )
         )
         Workspace(tmp_path).clarifications().get(clarification.id).answer("Answer.")
 
@@ -1720,9 +1708,7 @@ class TestBuildSystemPrompt:
         prompt = build_base_prompt(tmp_path, role)
         assert "Tooling" in prompt
 
-    def test_developer_base_prompt_includes_task_domain_overlay(
-        self, tmp_path: Path
-    ) -> None:
+    def test_developer_base_prompt_includes_task_domain_overlay(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "Deploy", domain="deployment")
         role = ROLES["developer"]
@@ -1817,9 +1803,7 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment / Planner" in prompt
 
-    def test_planner_base_prompt_ignores_placeholder_deployment_spec(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planner_base_prompt_ignores_placeholder_deployment_spec(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
         deployment_spec.parent.mkdir(parents=True)
@@ -1866,14 +1850,13 @@ class TestBuildSystemPrompt:
         deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
         deployment_spec.parent.mkdir(parents=True)
         from devlab.prompts import DEPLOYMENT_PLACEHOLDER_SENTINEL
+
         init_template = (
             Path(__file__).resolve().parent.parent
             / "src/devlab/resources/init/specs/deployment/README.md"
         ).read_text()
         assert DEPLOYMENT_PLACEHOLDER_SENTINEL in init_template
-        without_sentinel = init_template.replace(
-            DEPLOYMENT_PLACEHOLDER_SENTINEL + "\n", ""
-        )
+        without_sentinel = init_template.replace(DEPLOYMENT_PLACEHOLDER_SENTINEL + "\n", "")
         deployment_spec.write_text(without_sentinel)
         role = ROLES["planner"]
 
@@ -1937,9 +1920,7 @@ class TestRunLoop:
         with pytest.raises(ValueError, match="revise_plan requires planning_only"):
             run_loop(tmp_path, max_sessions=1, revise_plan=True)
 
-    def test_planning_only_runs_architect_and_planner_then_stops(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_only_runs_architect_and_planner_then_stops(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
 
         def on_invoke(call: AgentCall) -> None:
@@ -2169,9 +2150,7 @@ class TestRunLoop:
         assert result.completed is True
         assert provider.calls == []
 
-    def test_planning_only_noop_records_missing_spec_baseline(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_only_noop_records_missing_spec_baseline(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\n")
         _write_task(tmp_path, "T0001", "First")
@@ -2190,9 +2169,10 @@ class TestRunLoop:
 
         assert result.sessions_run == 0
         assert provider.calls == []
-        assert f'last_planned_spec_commit = "{baseline}"' in (
-            tmp_path / ".devlab/workflow.toml"
-        ).read_text()
+        assert (
+            f'last_planned_spec_commit = "{baseline}"'
+            in (tmp_path / ".devlab/workflow.toml").read_text()
+        )
         assert not subprocess.run(
             ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
             text=True,
@@ -2200,9 +2180,7 @@ class TestRunLoop:
             check=True,
         ).stdout.strip()
 
-    def test_planning_only_changed_specs_force_architect_and_planner(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_only_changed_specs_force_architect_and_planner(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\n")
         (tmp_path / PROJECT_PLAN).write_text("# Project\n")
@@ -2233,9 +2211,7 @@ class TestRunLoop:
         assert (tmp_path / ".devlab/generations/0001/tasks/T0001_first.md").exists()
         assert not (tmp_path / ".devlab/tasks/T0001_first.md").exists()
 
-    def test_replace_plan_archives_active_plan(
-        self, tmp_path: Path
-    ) -> None:
+    def test_replace_plan_archives_active_plan(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\n")
         _write_task(tmp_path, "T0001", "First")
@@ -2254,9 +2230,7 @@ class TestRunLoop:
         assert not (tmp_path / ".devlab/tasks/T0001_first.md").exists()
         assert "replacement planning" in provider.calls[-1].session_prompt
 
-    def test_adopt_existing_is_rejected_when_active_plan_exists(
-        self, tmp_path: Path
-    ) -> None:
+    def test_adopt_existing_is_rejected_when_active_plan_exists(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\n")
         provider = MockProvider()
@@ -2289,9 +2263,7 @@ class TestRunLoop:
         assert result.errors[0].phase == "planning_mode"
         assert provider.calls == []
 
-    def test_adopt_existing_and_replace_plan_are_mutually_exclusive(
-        self, tmp_path: Path
-    ) -> None:
+    def test_adopt_existing_and_replace_plan_are_mutually_exclusive(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         provider = MockProvider()
 
@@ -2328,9 +2300,7 @@ class TestRunLoop:
         assert "--mark-specs-planned" in result.errors[0].message
         assert provider.calls == []
 
-    def test_adopt_existing_runs_first_planning_with_adoption_prompt(
-        self, tmp_path: Path
-    ) -> None:
+    def test_adopt_existing_runs_first_planning_with_adoption_prompt(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         provider = MockProvider()
 
@@ -2389,9 +2359,10 @@ class TestRunLoop:
         assert result.sessions_run == 0
         assert result.stop_reason == RunStopReason.COMMAND_COMPLETE
         assert provider.calls == []
-        assert f'last_planned_spec_commit = "{latest}"' in (
-            tmp_path / ".devlab/workflow.toml"
-        ).read_text()
+        assert (
+            f'last_planned_spec_commit = "{latest}"'
+            in (tmp_path / ".devlab/workflow.toml").read_text()
+        )
         assert any("bypasses the spec reconciliation guardrail" in item for item in warnings)
         events = load_workflow_events(tmp_path)
         assert events[-1].type == "specs_marked_planned"
@@ -2403,9 +2374,7 @@ class TestRunLoop:
             check=True,
         ).stdout.strip()
 
-    def test_mark_specs_planned_refuses_dirty_spec_paths(
-        self, tmp_path: Path
-    ) -> None:
+    def test_mark_specs_planned_refuses_dirty_spec_paths(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_system_spec(tmp_path, "# Spec\n")
         _init_git_repo(tmp_path)
@@ -2568,9 +2537,7 @@ class TestRunLoop:
         assert 'status = "in_review"' in task.read_text()
         assert _find_metadata(tmp_path)["progress"] == "workflow_advance"
 
-    def test_session_progress_callback_reports_start_and_finish(
-        self, tmp_path: Path
-    ) -> None:
+    def test_session_progress_callback_reports_start_and_finish(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "First")
@@ -2610,8 +2577,7 @@ class TestRunLoop:
 
         messages = [record.getMessage() for record in caplog.records]
         assert any(
-            message
-            == "Starting session 1: developer task=T0001 status=open profile=default "
+            message == "Starting session 1: developer task=T0001 status=open profile=default "
             "domain=deployment milestone=M1"
             for message in messages
         )
@@ -2631,9 +2597,7 @@ class TestRunLoop:
         assert provider.calls[0].role_name == "developer"
         assert 'status = "open"' in task.read_text()
 
-    def test_managed_role_runs_environment_lifecycle_around_session(
-        self, tmp_path: Path
-    ) -> None:
+    def test_managed_role_runs_environment_lifecycle_around_session(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "First")
@@ -2641,7 +2605,7 @@ class TestRunLoop:
             tmp_path,
             "default",
             environment=(
-                '\n[environment]\n'
+                "\n[environment]\n"
                 'managed_roles = ["developer"]\n'
                 'pre_session = ["echo pre >> env-order.log"]\n'
                 'setup = ["echo setup >> env-order.log"]\n'
@@ -2673,7 +2637,7 @@ class TestRunLoop:
             tmp_path,
             "api",
             environment=(
-                '\n[environment]\n'
+                "\n[environment]\n"
                 'managed_roles = ["developer"]\n'
                 'setup = ["echo profile >> env-order.log"]\n'
             ),
@@ -2691,7 +2655,7 @@ class TestRunLoop:
             tmp_path,
             "default",
             environment=(
-                '\n[environment]\n'
+                "\n[environment]\n"
                 'managed_roles = ["planner"]\n'
                 'pre_session = ["echo pre >> env-order.log"]\n'
                 'setup = ["echo setup >> env-order.log"]\n'
@@ -2712,16 +2676,13 @@ class TestRunLoop:
         _write_profile(
             tmp_path,
             "default",
-            environment=(
-                '\n[environment]\n'
-                'managed_roles = ["developer"]\n'
-                'setup = ["exit 7"]\n'
-            ),
+            environment=('\n[environment]\nmanaged_roles = ["developer"]\nsetup = ["exit 7"]\n'),
         )
         provider = MockProvider()
 
         result = run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -2740,7 +2701,7 @@ class TestRunLoop:
             tmp_path,
             "default",
             environment=(
-                '\n[environment]\n'
+                "\n[environment]\n"
                 'managed_roles = ["developer"]\n'
                 'post_session = ["echo post >> env-order.log"]\n'
             ),
@@ -2748,7 +2709,8 @@ class TestRunLoop:
         provider = MockProvider(return_code=3)
 
         result = run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -2801,7 +2763,8 @@ class TestRunLoop:
         assert 'status = "changes_requested"' in task.read_text()
 
     def test_reviewer_rejection_with_stale_approval_defaults_to_changes_requested(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
@@ -2824,7 +2787,8 @@ class TestRunLoop:
         )
 
         result = run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -2833,7 +2797,8 @@ class TestRunLoop:
         assert 'status = "changes_requested"' in task.read_text()
 
     def test_reviewer_approval_without_review_marker_defaults_to_changes_requested(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
@@ -2847,7 +2812,8 @@ class TestRunLoop:
         provider = MockProvider()
 
         result = run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -2862,7 +2828,8 @@ class TestRunLoop:
         provider = MockProvider(write_handoff=False)
 
         result = run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -2886,7 +2853,8 @@ class TestRunLoop:
         provider = MockProvider(on_invoke=on_invoke)
 
         result = run_loop(
-            tmp_path, max_sessions=2,
+            tmp_path,
+            max_sessions=2,
             agent_providers={"default": provider},
         )
 
@@ -2903,17 +2871,13 @@ class TestRunLoop:
         _write_task(tmp_path, "T0001", "First")
         provider = MockProvider(on_invoke=_complete_developer_task)
 
-        result = run_loop(
-            tmp_path, max_sessions=1, agent_providers={"default": provider}
-        )
+        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert result.stop_reason == RunStopReason.SESSION_LIMIT
         assert result.completed is False
         assert result.exit_code == 0
 
-    def test_blocking_clarification_precedes_no_role_selection(
-        self, tmp_path: Path
-    ) -> None:
+    def test_blocking_clarification_precedes_no_role_selection(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         (tmp_path / ".devlab/workflow.toml").write_text(
@@ -2930,9 +2894,7 @@ class TestRunLoop:
         )
         provider = MockProvider()
 
-        result = run_loop(
-            tmp_path, max_sessions=1, agent_providers={"default": provider}
-        )
+        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
 
         assert result.stop_reason == RunStopReason.CLARIFICATION_BLOCKED
         assert result.completed is False
@@ -2940,9 +2902,7 @@ class TestRunLoop:
         assert result.errors[0].phase == "clarification_required"
         assert provider.calls == []
 
-    def test_nonblocking_clarification_does_not_block_completion(
-        self, tmp_path: Path
-    ) -> None:
+    def test_nonblocking_clarification_does_not_block_completion(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         (tmp_path / ".devlab/workflow.toml").write_text(
@@ -2967,9 +2927,7 @@ class TestRunLoop:
         assert result.stop_reason == RunStopReason.WORKFLOW_COMPLETE
         assert result.completed is True
 
-    def test_dependency_blocked_tasks_have_distinct_stop_reason(
-        self, tmp_path: Path
-    ) -> None:
+    def test_dependency_blocked_tasks_have_distinct_stop_reason(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0002", "Blocked", depends_on=["T0001"])
@@ -2994,9 +2952,7 @@ class TestRunLoop:
 
         assert [call.role_name for call in provider.calls] == ["integrator"]
 
-    def test_integrated_architecture_reviewed_milestone_stops(
-        self, tmp_path: Path
-    ) -> None:
+    def test_integrated_architecture_reviewed_milestone_stops(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "Done", status="closed", milestone="M1")
@@ -3064,7 +3020,11 @@ class TestRunLoop:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(
-            tmp_path, "T0001", "Done", status="closed", milestone="M1",
+            tmp_path,
+            "T0001",
+            "Done",
+            status="closed",
+            milestone="M1",
             validation=["false"],
         )
 
@@ -3087,13 +3047,15 @@ class TestRunLoop:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(
-            tmp_path, "T0001", "Done", status="closed", milestone="M1",
+            tmp_path,
+            "T0001",
+            "Done",
+            status="closed",
+            milestone="M1",
             validation=["devlab-command-that-does-not-exist"],
         )
 
-        result = run_loop(
-            tmp_path, max_sessions=1, agent_providers={"default": MockProvider()}
-        )
+        result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": MockProvider()})
 
         assert result.stop_reason == RunStopReason.VALIDATION_PREREQUISITE_MISSING
         assert FileMilestoneTracker(tmp_path).get("M1").integrated is False
@@ -3221,9 +3183,7 @@ class TestRunLoop:
 
         verification = FileMilestoneTracker(tmp_path).read_verification("M1")
         assert verification is not None
-        assert verification.design_drift == (
-            "Documentation naming differs from the plan.",
-        )
+        assert verification.design_drift == ("Documentation naming differs from the plan.",)
         assert verification.architecture_handoff.endswith("_architect_handoff.md")
 
     def test_architect_review_open_issues_create_finding(self, tmp_path: Path) -> None:
@@ -3537,16 +3497,14 @@ class TestRunLoop:
 
         def fake_run(*args: Any, **kwargs: Any) -> object:
             if args[0] == ["mock-agent", "version"]:
+
                 class VersionResult:
                     returncode = 0
                     stdout = "mock-agent 9.8.7\n"
                     stderr = ""
 
                 return VersionResult()
-            handoff = (
-                Path(kwargs["cwd"])
-                / ".devlab/session-artifacts/developer/handoff.md"
-            )
+            handoff = Path(kwargs["cwd"]) / ".devlab/session-artifacts/developer/handoff.md"
             handoff.parent.mkdir(parents=True, exist_ok=True)
             handoff.write_text(
                 "# Handoff: developer\n"
@@ -3683,17 +3641,15 @@ class TestRunLoop:
         assert "timeout" in result.errors[0].message
         assert "timeout_seconds=1" in result.errors[0].message
 
-    def test_agent_failure_still_reports_after_environment_teardown(
-        self, tmp_path: Path
-    ) -> None:
+    def test_agent_failure_still_reports_after_environment_teardown(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(tmp_path, "T0001", "First")
         (tmp_path / ".devlab/config/profiles/default.toml").write_text(
-            'version = 1\n'
+            "version = 1\n"
             'id = "default"\n'
             'title = "Default"\n'
-            '\n[environment]\n'
+            "\n[environment]\n"
             'managed_roles = ["developer"]\n'
             'post_session = ["touch teardown-ran"]\n'
         )
@@ -3755,9 +3711,7 @@ class TestRunLoop:
         assert "stdout_log" in result.errors[0].message
         assert "stderr_log" in result.errors[0].message
 
-    def test_unrecoverable_handoff_stops_loop_without_status_change(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unrecoverable_handoff_stops_loop_without_status_change(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         task = _write_task(tmp_path, "T0001", "First", body=_checked_task_body("T0001", "First"))
@@ -3773,7 +3727,8 @@ class TestRunLoop:
         )
 
         result = run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -3891,6 +3846,7 @@ class TestRunLoop:
         assert len(archived) == 1
         assert "Mock session completed" in archived[0].read_text()
 
+
 class TestValidateHandoff:
     def test_valid_handoff(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -3938,7 +3894,10 @@ class TestValidateReviewerOutcome:
     def test_accepts_open_issues_with_approved_task(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(
-            tmp_path, "T0001", "First", status="in_review",
+            tmp_path,
+            "T0001",
+            "First",
+            status="in_review",
             body=self._approved_body("T0001", "First"),
         )
         handoff = self._handoff(tmp_path, open_issues="- Code needs refactoring.")
@@ -3962,7 +3921,10 @@ class TestValidateReviewerOutcome:
     def test_accepts_approval_without_open_issues(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(
-            tmp_path, "T0001", "First", status="in_review",
+            tmp_path,
+            "T0001",
+            "First",
+            status="in_review",
             body=self._approved_body("T0001", "First"),
         )
         handoff = self._handoff(tmp_path)
@@ -3993,7 +3955,8 @@ class TestProcessHandoffReviewerDefaults:
         )
 
     def test_no_open_issues_without_approval_defaults_to_changes_requested(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", status="in_review")
@@ -4005,11 +3968,15 @@ class TestProcessHandoffReviewerDefaults:
         assert task.status == TaskStatus.CHANGES_REQUESTED
 
     def test_open_issues_with_approved_task_defaults_to_changes_requested(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         _setup_tree(tmp_path)
         _write_task(
-            tmp_path, "T0001", "First", status="in_review",
+            tmp_path,
+            "T0001",
+            "First",
+            status="in_review",
             body=self._approved_body("T0001", "First"),
         )
         handoff = self._write_handoff(tmp_path, open_issues="- Code needs refactoring.")
@@ -4022,6 +3989,7 @@ class TestProcessHandoffReviewerDefaults:
 
 def _find_metadata(root: Path) -> dict[str, Any]:
     import json
+
     files = list((root / AGENT_LOG_DIR).glob("*.metadata.json"))
     assert len(files) == 1, f"expected 1 metadata file, found {len(files)}: {files}"
     return json.loads(files[0].read_text())
@@ -4032,13 +4000,16 @@ class TestSessionMetadata:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(
-            tmp_path, "T0001", "First",
+            tmp_path,
+            "T0001",
+            "First",
             body=_checked_task_body("T0001", "First"),
         )
         provider = MockProvider()
 
         run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -4058,7 +4029,8 @@ class TestSessionMetadata:
         )
 
         run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -4074,7 +4046,8 @@ class TestSessionMetadata:
         provider = RaisingProvider(ProviderError("connection refused"))
 
         run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -4083,18 +4056,22 @@ class TestSessionMetadata:
         assert meta["failure_kind"] == "provider_error"
 
     def test_metadata_written_for_handoff_validation_failure(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
         _write_task(
-            tmp_path, "T0001", "First",
+            tmp_path,
+            "T0001",
+            "First",
             body=_checked_task_body("T0001", "First"),
         )
         provider = MockProvider(write_handoff=False)
 
         run_loop(
-            tmp_path, max_sessions=1,
+            tmp_path,
+            max_sessions=1,
             agent_providers={"default": provider},
         )
 
@@ -4117,7 +4094,7 @@ def test_run_loop_can_use_one_opt_in_handoff_correction(tmp_path: Path) -> None:
             'schema_version = 1\noutcome = "completed"\n'
             'commit_message = "Describe architecture"\n'
             'done = ["Described the architecture"]\nchanged_artifacts = []\n'
-            'open_issues = []\naddressed_findings = []\n'
+            "open_issues = []\naddressed_findings = []\n"
             'next_session_hint = "Create the project plan."\n'
         )
         submit_session_handoff(call.root, envelope_path=envelope_path)
@@ -4133,12 +4110,9 @@ def test_run_loop_can_use_one_opt_in_handoff_correction(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert invocations == 2
-    assert provider.calls[0].environment["DEVLAB_PYTHON"] == str(
-        Path(sys.executable).absolute()
-    )
+    assert provider.calls[0].environment["DEVLAB_PYTHON"] == str(Path(sys.executable).absolute())
     assert (
-        '"$DEVLAB_PYTHON" -m devlab.cli session handoff submit'
-        in provider.calls[0].session_prompt
+        '"$DEVLAB_PYTHON" -m devlab.cli session handoff submit' in provider.calls[0].session_prompt
     )
     assert list((tmp_path / HISTORY_DIR).glob("*_architect_result.toml"))
 
@@ -4180,9 +4154,7 @@ def test_completed_developer_submission_requires_complete_acceptance(
         'next_session_hint = "Review the task."\n'
     )
 
-    with pytest.raises(
-        HandoffSubmissionError, match="Add regression coverage"
-    ):
+    with pytest.raises(HandoffSubmissionError, match="Add regression coverage"):
         submit_session_handoff(tmp_path, envelope_path=envelope_path)
 
     complete_acceptance(tmp_path, "T0001")

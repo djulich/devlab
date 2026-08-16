@@ -302,9 +302,7 @@ def test_workflow_state_reports_requested_and_completed_research_route(tmp_path:
 
 def test_malformed_workflow_state_surfaces_error(tmp_path: Path) -> None:
     init_workspace(tmp_path)
-    (tmp_path / ".devlab/workflow.toml").write_text(
-        "version = 1\n\n[planning]\ncomplete = \"no\"\n"
-    )
+    (tmp_path / ".devlab/workflow.toml").write_text('version = 1\n\n[planning]\ncomplete = "no"\n')
 
     with pytest.raises(ValueError, match=r"planning\.complete must be a boolean"):
         build_workflow_state_report(tmp_path)

@@ -59,12 +59,10 @@ def test_prompt_context_report_accounts_for_project_knowledge(tmp_path: Path) ->
     by_role = {role.role_name: role for role in report.roles}
     baseline_by_role = {role.role_name: role for role in baseline.roles}
     assert (
-        by_role["architect"].session.characters
-        > baseline_by_role["architect"].session.characters
+        by_role["architect"].session.characters > baseline_by_role["architect"].session.characters
     )
     assert (
-        by_role["developer"].session.characters
-        > baseline_by_role["developer"].session.characters
+        by_role["developer"].session.characters > baseline_by_role["developer"].session.characters
     )
 
 

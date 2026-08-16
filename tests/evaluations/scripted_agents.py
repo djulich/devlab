@@ -89,7 +89,7 @@ class CalculatorScriptedAgent:
             "# Project Plan\n\n"
             "## M1: Calculator CLI\n"
             "- T0001: Implement calculator CLI\n"
-        )
+        )  # fmt: skip
         write_task(root, "T0001", "Implement calculator CLI", "M1")
 
     def _developer(self, root: Path) -> None:
@@ -164,7 +164,7 @@ class CompiledLanguageScriptedAgent:
         profile = root / ".devlab/config/profiles/default.toml"
         profile.write_text(_compiled_profile(self.language))
         task_path = write_task(root, "T0001", title, "M1")
-        task_path.write_text(task_path.read_text().replace('validation = []\n', ""))
+        task_path.write_text(task_path.read_text().replace("validation = []\n", ""))
 
 
 def _compiled_profile(language: str) -> str:
@@ -184,7 +184,7 @@ def _compiled_profile(language: str) -> str:
         f'title = "{language} evaluation"\n\n'
         f'[tooling]\nsummary = "{language} project-owned workflow."\n'
         f"default_validation = [\n{validation}\n]\n\n"
-        '[environment]\nmanaged_roles = []\n'
+        "[environment]\nmanaged_roles = []\n"
     )
 
 
@@ -235,7 +235,7 @@ class MixedLanguageScriptedAgent:
                     "GOCACHE=/tmp/devlab-evaluation-go-cache go test ./..."
                 ],
             )
-        )
+        )  # fmt: skip
         (profiles / "integration.toml").write_text(_named_profile("integration", ["make check"]))
         tasks = (
             ("T0001", "Implement Rust component", "rust", []),
@@ -245,7 +245,7 @@ class MixedLanguageScriptedAgent:
         for task_id, title, profile, dependencies in tasks:
             path = write_task(root, task_id, title, "M1", depends_on=dependencies)
             text = path.read_text().replace('profile = "default"', f'profile = "{profile}"')
-            path.write_text(text.replace('validation = []\n', ""))
+            path.write_text(text.replace("validation = []\n", ""))
 
     def _develop(self, root: Path) -> None:
         task = FileTaskTracker(root).select_next_development_task()
@@ -265,7 +265,7 @@ def _named_profile(profile_id: str, commands: list[str]) -> str:
         f'version = 1\nid = "{profile_id}"\ntitle = "{profile_id} workflow"\n\n'
         f'[tooling]\nsummary = "{profile_id} project-owned workflow."\n'
         f"default_validation = [\n{validation}\n]\n\n"
-        '[environment]\nmanaged_roles = []\n'
+        "[environment]\nmanaged_roles = []\n"
     )
 
 
@@ -279,12 +279,10 @@ class ClarificationCalculatorScriptedAgent(CalculatorScriptedAgent):
         if invocation.role_name == "clarification-resolver":
             self._record(invocation)
             answer_path = (
-                invocation.root
-                / ".devlab/session-artifacts/clarification-resolver/answer.json"
+                invocation.root / ".devlab/session-artifacts/clarification-resolver/answer.json"
             )
             answer_path.write_text(
-                '{"clarification_id":"CL0001","answer_shape":"choice",'
-                '"choice":"A"}'
+                '{"clarification_id":"CL0001","answer_shape":"choice","choice":"A"}'
             )
             return
         super().on_invoke(invocation)
@@ -392,7 +390,7 @@ class HttpApiScriptedAgent:
                 "# Project Plan\n\n"
                 "## M1: HTTP API\n"
                 "- T0001: Implement stdlib HTTP API\n"
-            )
+            )  # fmt: skip
             write_task(invocation.root, "T0001", "Implement stdlib HTTP API", "M1")
         elif role == "developer":
             task = FileTaskTracker(invocation.root).select_next_development_task()
@@ -618,8 +616,7 @@ class SpecReconciliationScriptedAgent:
             return
         if self.role_counts["architect"] == 3:
             assert (
-                "DevLab archived the previous active planning graph"
-                in invocation.session_prompt
+                "DevLab archived the previous active planning graph" in invocation.session_prompt
             )
             _design_plan(invocation.root).write_text(
                 "# Design Plan\n\nBuild a tiny greeter CLI.\n"
@@ -633,7 +630,7 @@ class SpecReconciliationScriptedAgent:
                 "# Project Plan\n\n"
                 "## M1: Calculator CLI\n"
                 "- T0001: Implement calculator CLI\n"
-            )
+            )  # fmt: skip
             write_task(invocation.root, "T0001", "Implement calculator CLI", "M1")
             return
         assert "DevLab archived the previous active planning graph" in invocation.session_prompt
@@ -642,7 +639,7 @@ class SpecReconciliationScriptedAgent:
             "# Project Plan\n\n"
             "## M1: Greeter CLI\n"
             "- T0001: Implement greeter CLI\n"
-        )
+        )  # fmt: skip
         write_task(invocation.root, "T0001", "Implement greeter CLI", "M1")
 
     def _developer(self, root: Path) -> None:
@@ -723,7 +720,6 @@ class AdoptExistingScriptedAgent:
             "Add subtract command to existing calculator CLI",
             "M1",
         )
-
 
 
 def finding_exists(root: Path, finding_id: str) -> bool:

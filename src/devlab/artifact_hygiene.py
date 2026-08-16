@@ -86,9 +86,7 @@ def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
         if not path.startswith(".devlab/")
     ]
     devlab_files = [
-        path.relative_to(root).as_posix()
-        for path in root.rglob(".devlab/**/*")
-        if path.is_file()
+        path.relative_to(root).as_posix() for path in root.rglob(".devlab/**/*") if path.is_file()
     ]
     conventional_ignored_files = [
         path for path in ignored_files if _is_conventional_ignored_artifact(path)
@@ -110,23 +108,33 @@ def collect_artifact_hygiene(root: Path) -> ArtifactHygiene:
         devlab_total_bytes=devlab_total_bytes,
         flagged_paths=[],
         product_top_contributors=_top_artifact_contributors(
-            root, product_files, _top_level_contributor_key,
+            root,
+            product_files,
+            _top_level_contributor_key,
         ),
         ignored_top_contributors=_top_artifact_contributors(
-            root, ignored_files, _ignored_artifact_contributor_key,
+            root,
+            ignored_files,
+            _ignored_artifact_contributor_key,
         ),
         devlab_top_contributors=_top_artifact_contributors(
-            root, devlab_files, _devlab_contributor_key,
+            root,
+            devlab_files,
+            _devlab_contributor_key,
         ),
         conventional_ignored_file_count=len(conventional_ignored_files),
         conventional_ignored_total_bytes=_total_bytes(root, conventional_ignored_files),
         other_ignored_file_count=len(other_ignored_files),
         other_ignored_total_bytes=_total_bytes(root, other_ignored_files),
         conventional_ignored_top_contributors=_top_artifact_contributors(
-            root, conventional_ignored_files, _ignored_artifact_contributor_key,
+            root,
+            conventional_ignored_files,
+            _ignored_artifact_contributor_key,
         ),
         other_ignored_top_contributors=_top_artifact_contributors(
-            root, other_ignored_files, _ignored_artifact_contributor_key,
+            root,
+            other_ignored_files,
+            _ignored_artifact_contributor_key,
         ),
     )
 

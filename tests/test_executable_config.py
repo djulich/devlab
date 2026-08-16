@@ -28,9 +28,7 @@ def test_snapshot_digest_is_canonical_and_tracks_executable_values(tmp_path: Pat
     assert reformatted.digest == initial.digest
 
     profile_path = tmp_path / ".devlab/config/profiles/default.toml"
-    profile_path.write_text(
-        profile_path.read_text().replace('setup = []', 'setup = ["uv sync"]')
-    )
+    profile_path.write_text(profile_path.read_text().replace("setup = []", 'setup = ["uv sync"]'))
 
     changed = build_executable_config_snapshot(tmp_path)
 
@@ -71,7 +69,7 @@ def test_snapshot_keeps_provider_and_profile_configuration_frozen(tmp_path: Path
     agents_path.write_text(agents_path.read_text().replace('command = "claude"', 'command = "pi"'))
     profile_path = tmp_path / ".devlab/config/profiles/default.toml"
     profile_path.write_text(
-        profile_path.read_text().replace('setup = []', 'setup = ["changed setup"]')
+        profile_path.read_text().replace("setup = []", 'setup = ["changed setup"]')
     )
 
     configuration = snapshot.resolve_agents()
@@ -132,7 +130,7 @@ def test_operator_local_trust_is_workspace_and_digest_scoped(
 
     profile_path = first_root / ".devlab/config/profiles/default.toml"
     profile_path.write_text(
-        profile_path.read_text().replace('setup = []', 'setup = ["make setup"]')
+        profile_path.read_text().replace("setup = []", 'setup = ["make setup"]')
     )
     changed = build_executable_config_snapshot(first_root)
 

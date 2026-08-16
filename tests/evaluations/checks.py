@@ -337,7 +337,7 @@ def react_vite_frontend_check(root: Path) -> CheckResult:
     index = (root / "index.html").read_text()
     if "/src/main" not in index and "src/main" not in index:
         missing_snippets.append("index.html lacks script reference to src/main")
-    if "id=\"root\"" not in index and "id='root'" not in index:
+    if 'id="root"' not in index and "id='root'" not in index:
         missing_snippets.append("index.html lacks root mount element")
 
     source_text = _frontend_source_text(root, (main_path, app_path, css_path))

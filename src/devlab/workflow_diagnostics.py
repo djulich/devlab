@@ -521,8 +521,7 @@ def quality_summary(
         )
     if artifact_hygiene.other_ignored_file_count > LARGE_IGNORED_FILES_WARNING:
         warnings.append(
-            "large other ignored artifact file count: "
-            f"{artifact_hygiene.other_ignored_file_count}"
+            f"large other ignored artifact file count: {artifact_hygiene.other_ignored_file_count}"
         )
     correctness_checked = bool(checks)
     correctness_passed = all(check.passed for check in checks) if correctness_checked else None

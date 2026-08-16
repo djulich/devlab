@@ -239,9 +239,7 @@ class TestFileTaskTrackerParsing:
         with pytest.raises(ValueError, match="validation"):
             FileTaskTracker(tmp_path).list_tasks()
 
-    def test_acceptance_criteria_complete_when_all_criteria_checked(
-        self, tmp_path: Path
-    ) -> None:
+    def test_acceptance_criteria_complete_when_all_criteria_checked(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
         _write_task(
             tmp_path,
@@ -290,9 +288,7 @@ class TestFileTaskTrackerParsing:
         assert not FileTaskTracker(tmp_path).get("T0001").acceptance_criteria_complete
         assert not FileTaskTracker(tmp_path).get("T0002").acceptance_criteria_complete
 
-    def test_acceptance_criteria_ignores_checkboxes_outside_section(
-        self, tmp_path: Path
-    ) -> None:
+    def test_acceptance_criteria_ignores_checkboxes_outside_section(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
         _write_task(
             tmp_path,
@@ -430,9 +426,7 @@ class TestFileTaskTrackerStatusTransitions:
 
         assert 'addresses_findings = ["F0001"]' in path.read_text()
 
-    def test_status_transition_drops_legacy_planning_generation(
-        self, tmp_path: Path
-    ) -> None:
+    def test_status_transition_drops_legacy_planning_generation(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
         path = _write_task(
             tmp_path,
@@ -518,9 +512,7 @@ class TestFileTaskTrackerMilestones:
 
         assert FileTaskTracker(tmp_path).milestones() == ["M2", "M10"]
 
-    def test_milestone_complete_requires_all_milestone_tasks_closed(
-        self, tmp_path: Path
-    ) -> None:
+    def test_milestone_complete_requires_all_milestone_tasks_closed(self, tmp_path: Path) -> None:
         _setup_tasks_dir(tmp_path)
         _write_task(tmp_path, "T0001", status="closed", milestone="M1")
         _write_task(tmp_path, "T0002", status="open", milestone="M1")

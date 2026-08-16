@@ -24,18 +24,23 @@ def _write_metadata(
     log_dir = root / AGENT_LOG_DIR
     log_dir.mkdir(parents=True, exist_ok=True)
     path = log_dir / f"{invocation_id}.metadata.json"
-    path.write_text(json.dumps({
-        "invocation_id": invocation_id,
-        "session_number": session_number,
-        "role_name": role_name,
-        "provider": provider,
-        "model": model,
-        "provider_version": provider_version,
-        "return_code": return_code,
-        "failure_kind": failure_kind,
-        "duration_seconds": duration_seconds,
-        "task_id": task_id,
-    }, indent=2))
+    path.write_text(
+        json.dumps(
+            {
+                "invocation_id": invocation_id,
+                "session_number": session_number,
+                "role_name": role_name,
+                "provider": provider,
+                "model": model,
+                "provider_version": provider_version,
+                "return_code": return_code,
+                "failure_kind": failure_kind,
+                "duration_seconds": duration_seconds,
+                "task_id": task_id,
+            },
+            indent=2,
+        )
+    )
     return path
 
 
@@ -57,16 +62,22 @@ class TestLoadSessionMetadata:
 
     def test_sorted_by_session_number(self, tmp_path: Path) -> None:
         _write_metadata(
-            tmp_path, "20260529T120002_003_reviewer",
-            session_number=3, role_name="reviewer",
+            tmp_path,
+            "20260529T120002_003_reviewer",
+            session_number=3,
+            role_name="reviewer",
         )
         _write_metadata(
-            tmp_path, "20260529T120000_001_architect",
-            session_number=1, role_name="architect",
+            tmp_path,
+            "20260529T120000_001_architect",
+            session_number=1,
+            role_name="architect",
         )
         _write_metadata(
-            tmp_path, "20260529T120001_002_planner",
-            session_number=2, role_name="planner",
+            tmp_path,
+            "20260529T120001_002_planner",
+            session_number=2,
+            role_name="planner",
         )
 
         entries = load_session_metadata(tmp_path)
@@ -102,8 +113,10 @@ class TestFormatHistory:
 
     def test_successful_session(self, tmp_path: Path) -> None:
         _write_metadata(
-            tmp_path, "20260529T120000_001_developer",
-            task_id="T0001", duration_seconds=98.7,
+            tmp_path,
+            "20260529T120000_001_developer",
+            task_id="T0001",
+            duration_seconds=98.7,
         )
 
         output = format_history(tmp_path)
@@ -117,8 +130,10 @@ class TestFormatHistory:
 
     def test_failed_session(self, tmp_path: Path) -> None:
         _write_metadata(
-            tmp_path, "20260529T120000_001_developer",
-            return_code=1, failure_kind="timeout",
+            tmp_path,
+            "20260529T120000_001_developer",
+            return_code=1,
+            failure_kind="timeout",
         )
 
         output = format_history(tmp_path)
@@ -128,7 +143,8 @@ class TestFormatHistory:
 
     def test_json_output(self, tmp_path: Path) -> None:
         _write_metadata(
-            tmp_path, "20260529T120000_001_developer",
+            tmp_path,
+            "20260529T120000_001_developer",
             task_id="T0001",
         )
 
@@ -143,7 +159,8 @@ class TestFormatHistory:
 
     def test_no_duration(self, tmp_path: Path) -> None:
         _write_metadata(
-            tmp_path, "20260529T120000_001_developer",
+            tmp_path,
+            "20260529T120000_001_developer",
             duration_seconds=None,
         )
 

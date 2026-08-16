@@ -68,9 +68,7 @@ def test_archive_active_generation_moves_workflow_bundle_and_keeps_specs(
     assert not (tmp_path / ".devlab/tasks/T0001_task.md").exists()
     for relative in ACTIVE_GENERATION_SKELETON_DIRS:
         assert (tmp_path / relative).is_dir()
-    assert load_generation_manifest(archive / "generation.toml").reason == (
-        "spec_reconciliation"
-    )
+    assert load_generation_manifest(archive / "generation.toml").reason == ("spec_reconciliation")
     assert active_generation(tmp_path) == 2
 
 

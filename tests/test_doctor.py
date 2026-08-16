@@ -45,7 +45,7 @@ def test_doctor_reports_additional_agents_config_misconfigurations(tmp_path: Pat
         'args = ["{unknown_prompt}"]\n'
         'prompt_args = ["--no-prompts"]\n'
         'stdin_template = "   "\n'
-        'version_command = 123\n'
+        "version_command = 123\n"
     )
 
     messages = _messages(tmp_path)
@@ -61,17 +61,13 @@ def test_doctor_reports_additional_agents_config_misconfigurations(tmp_path: Pat
     )
     assert "providers.default.stdin_template must not be empty" in messages
     assert "providers.default.version_command must be a string" in messages
-    assert any(
-        "providers.default.prompt_args is no longer supported" in m for m in messages
-    )
+    assert any("providers.default.prompt_args is no longer supported" in m for m in messages)
     assert any(
         "providers.default does not deliver required prompt placeholder" in m for m in messages
     )
 
 
-def test_doctor_reports_missing_version_command_executable(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_doctor_reports_missing_version_command_executable(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / ".devlab/config/agents.toml"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -89,14 +85,11 @@ def test_doctor_reports_missing_version_command_executable(
     messages = _messages(tmp_path)
 
     assert (
-        "providers.default.version_command executable 'missing-version-cli' "
-        "was not found on PATH"
+        "providers.default.version_command executable 'missing-version-cli' was not found on PATH"
     ) in messages
 
 
-def test_doctor_reports_missing_configured_agent_executable(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_doctor_reports_missing_configured_agent_executable(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / ".devlab/config/agents.toml"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -138,9 +131,7 @@ def test_doctor_accepts_configured_agent_executable_on_path(tmp_path: Path, monk
 
 def test_doctor_reports_invalid_workflow_state(tmp_path: Path) -> None:
     init_workspace(tmp_path)
-    (tmp_path / ".devlab/workflow.toml").write_text(
-        "version = 1\n\n[planning]\ncomplete = \"no\"\n"
-    )
+    (tmp_path / ".devlab/workflow.toml").write_text('version = 1\n\n[planning]\ncomplete = "no"\n')
 
     messages = _messages(tmp_path)
 
@@ -229,17 +220,21 @@ def test_doctor_reports_requested_research_without_resume_pointer(tmp_path: Path
 
 def test_doctor_reports_research_resume_route_mismatch(tmp_path: Path) -> None:
     init_workspace(tmp_path)
-    research = Workspace(tmp_path).research().create(
-        title="Lock behavior",
-        asking_role="developer",
-        asking_session_id="s1",
-        command="implement",
-        scope="task:T0001",
-        task="T0001",
-        question="How do locks behave?",
-        context="Implementation needs evidence.",
-        desired_outcome="Recommend an approach.",
-        acceptance_criteria=("Use primary documentation.",),
+    research = (
+        Workspace(tmp_path)
+        .research()
+        .create(
+            title="Lock behavior",
+            asking_role="developer",
+            asking_session_id="s1",
+            command="implement",
+            scope="task:T0001",
+            task="T0001",
+            question="How do locks behave?",
+            context="Implementation needs evidence.",
+            desired_outcome="Recommend an approach.",
+            acceptance_criteria=("Use primary documentation.",),
+        )
     )
     set_resume_state(
         tmp_path,
@@ -496,8 +491,7 @@ def test_doctor_reports_missing_deployment_tools(tmp_path: Path, monkeypatch) ->
     messages = _messages(tmp_path)
 
     assert any(
-        "deployment spec mentions podman but 'podman' is not on PATH" in m
-        for m in messages
+        "deployment spec mentions podman but 'podman' is not on PATH" in m for m in messages
     )
     assert any("deployment spec mentions kind but 'kind' is not on PATH" in m for m in messages)
 
@@ -546,7 +540,7 @@ def test_doctor_does_not_warn_for_non_deployment_production_mentions(
     path.write_text(
         "# Deployment Specification\n\n"
         "Use production-like sample configuration for local validation.\n"
-    )
+    )  # fmt: skip
     monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: "/usr/bin/tool")
 
     messages = _messages(tmp_path)
@@ -560,7 +554,7 @@ def test_doctor_reports_production_claim_without_boundary(tmp_path: Path, monkey
     path.write_text(
         "# Deployment Specification\n\n"
         "Deploy to production with existing automation.\n"
-    )
+    )  # fmt: skip
     monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: "/usr/bin/tool")
 
     messages = _messages(tmp_path)

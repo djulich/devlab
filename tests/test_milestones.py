@@ -88,7 +88,7 @@ def test_upsert_from_tasks_drops_legacy_generation_from_existing_milestone(
     milestones_dir = tmp_path / ".devlab/milestones"
     milestones_dir.mkdir(parents=True)
     (milestones_dir / "M1.toml").write_text(
-        'version = 1\n'
+        "version = 1\n"
         'id = "M1"\n'
         'title = "Existing"\n'
         'status = "planned"\n'
@@ -116,17 +116,17 @@ def test_upsert_from_tasks_resets_integrated_state_when_adding_task_ids(
     milestones_dir = tmp_path / ".devlab/milestones"
     milestones_dir.mkdir(parents=True)
     (milestones_dir / "M1.toml").write_text(
-        'version = 1\n'
+        "version = 1\n"
         'id = "M1"\n'
         'title = "Existing"\n'
         'status = "integrated"\n'
-        'integration_required = true\n'
-        'integrated = true\n'
-        'architecture_reviewed = false\n'
+        "integration_required = true\n"
+        "integrated = true\n"
+        "architecture_reviewed = false\n"
         'task_ids = ["T0001"]\n'
         'integration_handoff = "handoff.md"\n'
         'architecture_review_handoff = ""\n'
-        'findings = []\n'
+        "findings = []\n"
     )
     _write_task(tmp_path, "T0001", "First", milestone="M1")
     _write_task(tmp_path, "T0002", "Second", milestone="M1")
@@ -147,17 +147,17 @@ def test_upsert_from_tasks_resets_integration_when_new_task_added(
     milestones_dir = tmp_path / ".devlab/milestones"
     milestones_dir.mkdir(parents=True)
     (milestones_dir / "M1.toml").write_text(
-        'version = 1\n'
+        "version = 1\n"
         'id = "M1"\n'
         'title = "Existing"\n'
         'status = "architecture_reviewed"\n'
-        'integration_required = true\n'
-        'integrated = true\n'
-        'architecture_reviewed = true\n'
+        "integration_required = true\n"
+        "integrated = true\n"
+        "architecture_reviewed = true\n"
         'task_ids = ["T0001"]\n'
         'integration_handoff = "integrator.md"\n'
         'architecture_review_handoff = "architect.md"\n'
-        'findings = []\n'
+        "findings = []\n"
     )
     _write_task(tmp_path, "T0001", "First", milestone="M1")
     _write_task(tmp_path, "T0002", "Second", milestone="M1")

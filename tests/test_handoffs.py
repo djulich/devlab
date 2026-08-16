@@ -37,7 +37,7 @@ def test_candidate_validation_reports_all_independent_errors(tmp_path: Path) -> 
     path = tmp_path / HANDOFF_CANDIDATE_FILE
     path.write_text(
         'schema_version = 1\noutcome = "unknown"\ncommit_message = "ok"\n'
-        'done = []\nchanged_artifacts = []\nopen_issues = []\n'
+        "done = []\nchanged_artifacts = []\nopen_issues = []\n"
         'addressed_findings = []\nnext_session_hint = ""\nextra = true\n'
     )
 
@@ -59,7 +59,7 @@ def test_publish_and_load_session_result_round_trip(tmp_path: Path) -> None:
         'schema_version = 1\noutcome = "completed"\n'
         'commit_message = "Implement behavior"\n'
         'done = ["Implemented behavior"]\nchanged_artifacts = ["src/app.py"]\n'
-        'open_issues = []\naddressed_findings = []\n'
+        "open_issues = []\naddressed_findings = []\n"
         'next_session_hint = "Review the behavior."\n'
     )
     candidate = parse_handoff_candidate(candidate_path, "developer")
@@ -110,9 +110,7 @@ def test_research_candidate_requires_matching_outcome_and_table(tmp_path: Path) 
     assert "outcome needs_research requires [research]" in error.value.issues
 
     path.write_text(
-        _research_candidate_text().replace(
-            'outcome = "needs_research"', 'outcome = "completed"'
-        )
+        _research_candidate_text().replace('outcome = "needs_research"', 'outcome = "completed"')
     )
     with pytest.raises(HandoffSubmissionError) as error:
         parse_handoff_candidate(path, "developer")
@@ -120,9 +118,7 @@ def test_research_candidate_requires_matching_outcome_and_table(tmp_path: Path) 
 
 
 @pytest.mark.parametrize("role_name", ["reviewer", "integrator"])
-def test_research_candidate_rejects_ineligible_roles(
-    tmp_path: Path, role_name: str
-) -> None:
+def test_research_candidate_rejects_ineligible_roles(tmp_path: Path, role_name: str) -> None:
     path = tmp_path / HANDOFF_CANDIDATE_FILE
     text = _research_candidate_text()
     if role_name == "integrator":
@@ -142,9 +138,7 @@ def test_research_candidate_rejects_ineligible_roles(
 
 
 @pytest.mark.parametrize("role_name", ["architect", "planner"])
-def test_research_candidate_accepts_other_eligible_roles(
-    tmp_path: Path, role_name: str
-) -> None:
+def test_research_candidate_accepts_other_eligible_roles(tmp_path: Path, role_name: str) -> None:
     path = tmp_path / HANDOFF_CANDIDATE_FILE
     text = _research_candidate_text()
     if role_name == "planner":
@@ -160,8 +154,7 @@ def test_research_candidate_accepts_other_eligible_roles(
 def test_research_candidate_is_mutually_exclusive_with_clarification(tmp_path: Path) -> None:
     path = tmp_path / HANDOFF_CANDIDATE_FILE
     path.write_text(
-        _research_candidate_text()
-        + "\n[clarification]\n"
+        _research_candidate_text() + "\n[clarification]\n"
         'title = "Choice"\n'
         'scope = "planning"\n'
         'blocks = "planning"\n'
@@ -599,7 +592,7 @@ def test_parse_planner_handoff_rejects_extra_planning_state_keys(
             "planning_complete = true\n"
             "other = false\n"
         ),
-    )
+    )  # fmt: skip
 
     with pytest.raises(HandoffError, match="must contain only planning_complete"):
         parse_handoff(path, "planner")
@@ -739,14 +732,14 @@ def _write_handoff(
         f"# Handoff: {role_name}\n"
         f"## Done\n{done}\n"
         f"## Changed Artifacts\n{changed}\n"
-    )
+    )  # fmt: skip
     if include_open_issues:
         text += f"## Open Issues\n{open_issues}\n"
     text += (
         f"## Addressed Findings\n{addressed}\n"
         f"## Next Session Hint\n{hint}\n"
         f"{extra_after}"
-    )
+    )  # fmt: skip
     path.write_text(text)
     return path
 

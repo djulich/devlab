@@ -98,7 +98,7 @@ def test_rejects_invalid_finding_status(tmp_path: Path) -> None:
         'source = "integrator"\n'
         "+++\n\n"
         "# Bad\n"
-    )
+    )  # fmt: skip
 
     with pytest.raises(ValueError, match="invalid finding status"):
         FileFindingTracker(tmp_path).list_findings()

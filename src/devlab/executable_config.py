@@ -51,9 +51,7 @@ class ExecutableConfigSnapshot:
     digest: str
     authorization: ExecutableConfigAuthorization | None = None
 
-    def resolve_agents(
-        self, *, discover_provider_versions: bool = False
-    ) -> AgentConfiguration:
+    def resolve_agents(self, *, discover_provider_versions: bool = False) -> AgentConfiguration:
         return resolve_agent_configuration(
             self.agent_data,
             provider=self.provider_override,
@@ -241,11 +239,7 @@ def devlab_state_home() -> Path:
         return Path(override).expanduser().resolve()
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA")
-        return (
-            Path(base).expanduser() / "DevLab"
-            if base
-            else Path.home() / "AppData/Local/DevLab"
-        )
+        return Path(base).expanduser() / "DevLab" if base else Path.home() / "AppData/Local/DevLab"
     if sys.platform == "darwin":
         return Path.home() / "Library/Application Support/DevLab"
     xdg_state = os.environ.get("XDG_STATE_HOME")
@@ -309,9 +303,7 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
                 )
             version_command = provider_table.get("version_command")
             if isinstance(version_command, str) and version_command:
-                lines.append(
-                    f"  version discovery for {provider_name}: {version_command}"
-                )
+                lines.append(f"  version discovery for {provider_name}: {version_command}")
     lifecycle_lines = []
     for profile_id, profile in sorted(snapshot.profiles.items()):
         for phase in ("pre_session", "setup", "post_session"):
@@ -323,8 +315,7 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
     lines.extend(
         [
             "",
-            "Provider permission, sandbox, authentication, and network policy are "
-            "operator-owned.",
+            "Provider permission, sandbox, authentication, and network policy are operator-owned.",
             "Trust covers configured process entry points, not the transitive behavior "
             "of commands they invoke.",
         ]

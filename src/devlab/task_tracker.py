@@ -67,9 +67,7 @@ class Task:
         section = _markdown_section(self.body, "Acceptance Criteria")
         return tuple(
             match.strip()
-            for match in re.findall(
-                r"^\s*- \[ \]\s*(.*\S|)\s*$", section, flags=re.MULTILINE
-            )
+            for match in re.findall(r"^\s*- \[ \]\s*(.*\S|)\s*$", section, flags=re.MULTILINE)
         )
 
     @property
@@ -267,8 +265,7 @@ def eligible_tasks(tasks: list[Task]) -> list[Task]:
     return [
         task
         for task in tasks
-        if task.status in DEVELOPABLE_STATUSES
-        and set(task.depends_on).issubset(closed_ids)
+        if task.status in DEVELOPABLE_STATUSES and set(task.depends_on).issubset(closed_ids)
     ]
 
 
@@ -278,8 +275,7 @@ def blocked_tasks(tasks: list[Task]) -> list[Task]:
     return [
         task
         for task in tasks
-        if task.status in DEVELOPABLE_STATUSES
-        and not set(task.depends_on).issubset(closed_ids)
+        if task.status in DEVELOPABLE_STATUSES and not set(task.depends_on).issubset(closed_ids)
     ]
 
 
@@ -337,11 +333,8 @@ def _format_task_file(metadata: dict[str, Any], body: str) -> str:
 
 
 def _replace_markdown_section(body: str, heading: str, replacement: str) -> str:
-    pattern = re.compile(
-        rf"(^## {re.escape(heading)}\s*$)([\s\S]*?)(?=^##\s+|\Z)", re.MULTILINE
-    )
+    pattern = re.compile(rf"(^## {re.escape(heading)}\s*$)([\s\S]*?)(?=^##\s+|\Z)", re.MULTILINE)
     return pattern.sub(rf"\1\n{replacement.rstrip()}\n\n", body, count=1)
-
 
 
 def _markdown_section(text: str, heading: str) -> str:

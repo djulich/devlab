@@ -146,51 +146,76 @@ class EvaluationDiagnostics:
     )
     artifact_hygiene: ArtifactHygiene = dataclasses.field(
         default_factory=lambda: ArtifactHygiene(
-            file_count=0, total_bytes=0, product_file_count=0, product_total_bytes=0,
-            ignored_file_count=0, ignored_total_bytes=0, devlab_file_count=0,
-            devlab_total_bytes=0, flagged_paths=[],
+            file_count=0,
+            total_bytes=0,
+            product_file_count=0,
+            product_total_bytes=0,
+            ignored_file_count=0,
+            ignored_total_bytes=0,
+            devlab_file_count=0,
+            devlab_total_bytes=0,
+            flagged_paths=[],
         )
     )
     agent_logs: AgentLogMetrics = dataclasses.field(
         default_factory=lambda: AgentLogMetrics(
-            stdout_count=0, stderr_count=0, config_count=0, metadata_count=0,
+            stdout_count=0,
+            stderr_count=0,
+            config_count=0,
+            metadata_count=0,
         )
     )
     prompt_logs: PromptLogMetrics = dataclasses.field(
         default_factory=lambda: PromptLogMetrics(
-            base_count=0, session_count=0,
-            max_base_prompt_bytes=0, max_session_prompt_bytes=0,
+            base_count=0,
+            session_count=0,
+            max_base_prompt_bytes=0,
+            max_session_prompt_bytes=0,
         )
     )
     quality: QualitySummary = dataclasses.field(
         default_factory=lambda: QualitySummary(
-            correctness_checked=False, correctness_passed=None,
-            all_tasks_closed=False, has_flagged_artifacts=False,
-            session_count=0, warnings=[],
+            correctness_checked=False,
+            correctness_passed=None,
+            all_tasks_closed=False,
+            has_flagged_artifacts=False,
+            session_count=0,
+            warnings=[],
         )
     )
     sessions: list[SessionRecord] = dataclasses.field(default_factory=list)
     task_cycles: TaskCycleMetrics = dataclasses.field(
         default_factory=lambda: TaskCycleMetrics(
-            tasks={}, unattributed_developer_reviewer_sessions=0,
+            tasks={},
+            unattributed_developer_reviewer_sessions=0,
         )
     )
     task_rework: TaskReworkSummary = dataclasses.field(
         default_factory=lambda: TaskReworkSummary(
-            tasks_with_rework=[], has_task_rework=False,
-            max_developer_sessions_per_task=0, max_reviewer_sessions_per_task=0,
+            tasks_with_rework=[],
+            has_task_rework=False,
+            max_developer_sessions_per_task=0,
+            max_reviewer_sessions_per_task=0,
             unattributed_developer_reviewer_sessions=0,
         )
     )
     integrator_rework: IntegratorReworkSummary = dataclasses.field(
         default_factory=lambda: IntegratorReworkSummary(
-            findings_created=0, findings_resolved=0, findings_open=0,
-            findings_planned=0, finding_ids=[], has_integrator_rework=False,
+            findings_created=0,
+            findings_resolved=0,
+            findings_open=0,
+            findings_planned=0,
+            finding_ids=[],
+            has_integrator_rework=False,
         )
     )
     profiles: ProfileMetrics = dataclasses.field(
         default_factory=lambda: ProfileMetrics(
-            count=0, ids=[], non_default_ids=[], items=[], tasks_by_profile={},
+            count=0,
+            ids=[],
+            non_default_ids=[],
+            items=[],
+            tasks_by_profile={},
         )
     )
 
@@ -370,8 +395,7 @@ def diagnostics_for(
         target_root=root.as_posix(),
         agent_log_dir=(root / ".devlab/logs/agents").as_posix(),
         errors=[
-            EvaluationError(error.phase, error.message, error.exit_code)
-            for error in result.errors
+            EvaluationError(error.phase, error.message, error.exit_code) for error in result.errors
         ],
         git_commit=_git_commit(root),
         git=collect_git_metrics(
@@ -400,8 +424,6 @@ def diagnostics_for(
         integrator_rework=integrator_rework,
         profiles=profile_metrics,
     )
-
-
 
 
 def collect_git_metrics(
@@ -452,7 +474,6 @@ def collect_git_metrics(
     )
 
 
-
 def init_target_workspace(
     root: Path,
     system_spec: str,
@@ -468,20 +489,18 @@ def init_target_workspace(
             f"# Deployment Specification\n\n{deployment_spec}\n"
         )
     (root / ".devlab/config/profiles/default.toml").write_text(
-        'version = 1\n'
+        "version = 1\n"
         'id = "default"\n'
         'title = "Default evaluation profile"\n'
-        '\n[tooling]\n'
+        "\n[tooling]\n"
         'summary = "Evaluation profile with no environment commands."\n'
-        'default_validation = []\n'
-        '\n[environment]\n'
-        'managed_roles = []\n'
+        "default_validation = []\n"
+        "\n[environment]\n"
+        "managed_roles = []\n"
     )
     if run_git(root, "status", "--porcelain").stdout.strip():
         run_git(root, "add", ".")
         run_git(root, "commit", "-m", "Configure evaluation workspace")
-
-
 
 
 def list_artifacts(root: Path) -> list[str]:

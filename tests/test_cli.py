@@ -156,7 +156,7 @@ def test_cli_session_handoff_rejects_then_accepts_candidate(
     envelope_path.with_name("handoff-candidate.toml").write_text(
         'schema_version = 1\noutcome = "completed"\ncommit_message = "Design system"\n'
         'done = ["Designed the system"]\nchanged_artifacts = ["docs/design.md"]\n'
-        'open_issues = []\naddressed_findings = []\n'
+        "open_issues = []\naddressed_findings = []\n"
         'next_session_hint = "Create the implementation plan."\n'
     )
 
@@ -225,7 +225,7 @@ def test_cli_status_reports_next_role_for_initialized_workspace(
         "Next role: architect\n"
         "Active generation: 1\n"
         "Archived generations: none"
-    )
+    )  # fmt: skip
 
 
 def test_cli_status_verbose_reports_agent_configuration(

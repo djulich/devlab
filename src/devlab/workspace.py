@@ -464,6 +464,7 @@ class WorkspaceResearchRecord:
         self.workspace.did_mutate()
         return research
 
+
 @dataclasses.dataclass
 class WorkspaceSnapshot:
     """Cached read-only snapshot of DevLab workspace files.

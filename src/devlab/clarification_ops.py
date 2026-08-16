@@ -82,9 +82,7 @@ def validate_clarification_answer(
             clarification,
         )
 
-    validation_error = validate_clarification_answer_text(
-        clarification, clarification.answer_text
-    )
+    validation_error = validate_clarification_answer_text(clarification, clarification.answer_text)
     if validation_error is not None:
         return ClarificationAnswerValidation(False, validation_error, clarification)
 
@@ -101,10 +99,7 @@ def validate_clarification_answer_text(
     """Validate answer content without mutating its clarification record."""
     answer = answer_text.strip()
     if not answer:
-        return (
-            f"Clarification {clarification.id} is answered but has an empty "
-            "## Answer section."
-        )
+        return f"Clarification {clarification.id} is answered but has an empty ## Answer section."
     if clarification.answer_shape == ClarificationAnswerShape.CHOICE:
         first_answer_line = answer.splitlines()[0].strip()
         options = choice_option_texts(clarification.body)

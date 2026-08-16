@@ -94,7 +94,12 @@ def _compiled_language_scenario(
         scripted_agent=CompiledLanguageScriptedAgent(language),
         checks=(file_contains_check("toolchain artifact", artifact, ""), *extra_checks),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=6,
     )
@@ -139,7 +144,8 @@ def test_scripted_compiled_language_workflow_evaluation(
                 toolchain_command_check("cargo format", ["cargo", "fmt", "--check"]),
                 toolchain_command_check("cargo test", ["cargo", "test"]),
                 toolchain_command_check(
-                    "rust CLI output", ["cargo", "run", "--quiet"],
+                    "rust CLI output",
+                    ["cargo", "run", "--quiet"],
                     expected_stdout="hello from rust",
                 ),
             ),
@@ -149,9 +155,7 @@ def test_scripted_compiled_language_workflow_evaluation(
             "go.mod",
             ("gofmt", "go"),
             (
-                toolchain_command_check(
-                    "Go format", ["gofmt", "-l", "."], expected_stdout=""
-                ),
+                toolchain_command_check("Go format", ["gofmt", "-l", "."], expected_stdout=""),
                 toolchain_command_check("go test", ["go", "test", "./..."]),
                 toolchain_command_check(
                     "go CLI output", ["go", "run", "."], expected_stdout="hello from go"
@@ -164,9 +168,7 @@ def test_scripted_compiled_language_workflow_evaluation(
             ("cmake", "ctest", "make", "cc"),
             (
                 toolchain_command_check("C configure", ["cmake", "--preset", "dev"]),
-                toolchain_command_check(
-                    "C build", ["cmake", "--build", "--preset", "dev"]
-                ),
+                toolchain_command_check("C build", ["cmake", "--build", "--preset", "dev"]),
                 toolchain_command_check("C test", ["ctest", "--preset", "dev"]),
             ),
         ),
@@ -176,9 +178,7 @@ def test_scripted_compiled_language_workflow_evaluation(
             ("cmake", "ctest", "make", "c++"),
             (
                 toolchain_command_check("C++ configure", ["cmake", "--preset", "dev"]),
-                toolchain_command_check(
-                    "C++ build", ["cmake", "--build", "--preset", "dev"]
-                ),
+                toolchain_command_check("C++ build", ["cmake", "--build", "--preset", "dev"]),
                 toolchain_command_check("C++ test", ["ctest", "--preset", "dev"]),
             ),
         ),
@@ -215,9 +215,7 @@ def test_scripted_mixed_language_workflow_evaluation(tmp_path: Path) -> None:
 def test_mixed_language_toolchain_verification(tmp_path: Path) -> None:
     _require_tools(("make", "cargo", "rustc", "go"))
     scenario = _mixed_language_scenario(
-        (
-            toolchain_command_check("cross-component validation", ["make", "check"]),
-        )
+        (toolchain_command_check("cross-component validation", ["make", "check"]),)
     )
 
     diagnostics = run_scripted_evaluation(tmp_path, scenario)
@@ -243,8 +241,16 @@ def _mixed_language_scenario(
             *extra_checks,
         ),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "developer", "reviewer",
-            "developer", "reviewer", "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "developer",
+            "reviewer",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=10,
     )
@@ -261,7 +267,12 @@ def test_scripted_cli_calculator_happy_path_evaluation(tmp_path: Path) -> None:
         scripted_agent=CalculatorScriptedAgent(),
         checks=_calculator_checks(),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=6,
     )
@@ -300,9 +311,7 @@ def test_scripted_cli_calculator_unattended_clarification_evaluation(
     _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="calculator.py")
     clarification = FileClarificationTracker(tmp_path).get("CL0001")
     assert clarification.status.value == "answered"
-    assert clarification.metadata["answered_by"].startswith(
-        "agent:clarification-resolver:"
-    )
+    assert clarification.metadata["answered_by"].startswith("agent:clarification-resolver:")
 
 
 def test_scripted_cli_calculator_research_resume_evaluation(tmp_path: Path) -> None:
@@ -314,8 +323,14 @@ def test_scripted_cli_calculator_research_resume_evaluation(tmp_path: Path) -> N
         scripted_agent=ResearchCalculatorScriptedAgent(),
         checks=_calculator_checks(),
         expected_roles=(
-            "architect", "planner", "developer", "researcher", "developer",
-            "reviewer", "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "researcher",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=8,
     )
@@ -340,8 +355,14 @@ def test_scripted_cli_calculator_reviewer_rework_evaluation(tmp_path: Path) -> N
         scripted_agent=CalculatorScriptedAgent(reject_first_review=True),
         checks=_calculator_checks(),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "developer", "reviewer",
-            "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=8,
         expected_rejections=1,
@@ -367,8 +388,16 @@ def test_scripted_cli_calculator_integration_finding_evaluation(tmp_path: Path) 
             file_contains_check("smoke test artifact", "test_calculator_smoke.py", "test_smoke"),
         ),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "integrator", "planner",
-            "developer", "reviewer", "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "integrator",
+            "planner",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=10,
         expected_findings=1,
@@ -403,7 +432,12 @@ def test_scripted_tiny_http_api_evaluation(tmp_path: Path) -> None:
         scripted_agent=HttpApiScriptedAgent(),
         checks=(stdlib_http_api_check,),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=6,
     )
@@ -432,7 +466,12 @@ def test_scripted_stateful_web_api_evaluation(tmp_path: Path) -> None:
             file_contains_check("python cache gitignore", ".gitignore", "__pycache__/"),
         ),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=6,
     )
@@ -472,7 +511,12 @@ def test_scripted_static_frontend_todo_app_evaluation(tmp_path: Path) -> None:
             file_contains_check("project test command", "Makefile", "test:"),
         ),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=6,
     )
@@ -509,12 +553,18 @@ def test_scripted_deployable_web_api_evaluation(tmp_path: Path) -> None:
             file_contains_check(
                 "deployment task domain",
                 ".devlab/tasks/T0002_add-container-deployment-artifacts.md",
-                "domain = \"deployment\"",
+                'domain = "deployment"',
             ),
         ),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "developer", "reviewer",
-            "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=8,
     )
@@ -561,7 +611,7 @@ def test_optional_make_target_check_runs_enabled_target(
         ".PHONY: deployment-check\n"
         "deployment-check:\n"
         "\ttest -f Containerfile\n"
-    )
+    )  # fmt: skip
     (tmp_path / "Containerfile").write_text("FROM scratch\n")
     check = optional_make_target_check("deployment artifact command", "deployment-check")
 
@@ -579,7 +629,7 @@ def test_optional_make_target_check_fails_enabled_target(
         ".PHONY: deployment-check\n"
         "deployment-check:\n"
         "\ttest -f Missingfile\n"
-    )
+    )  # fmt: skip
     check = optional_make_target_check("deployment artifact command", "deployment-check")
 
     result = check(tmp_path)
@@ -612,12 +662,18 @@ def test_scripted_compose_deployment_evaluation(tmp_path: Path) -> None:
             file_contains_check(
                 "deployment task domain",
                 ".devlab/tasks/T0002_add-compose-deployment-artifacts.md",
-                "domain = \"deployment\"",
+                'domain = "deployment"',
             ),
         ),
         expected_roles=(
-            "architect", "planner", "developer", "reviewer", "developer", "reviewer",
-            "integrator", "architect",
+            "architect",
+            "planner",
+            "developer",
+            "reviewer",
+            "developer",
+            "reviewer",
+            "integrator",
+            "architect",
         ),
         expected_sessions=8,
     )
@@ -892,7 +948,7 @@ def test_static_frontend_check_rejects_frontend_build_artifacts(tmp_path: Path) 
     (static_dir / "app.js").write_text(
         "fetch('/todos', {method: 'POST'});\n"
         "fetch('/todos/1', {method: 'DELETE'});\n"
-    )
+    )  # fmt: skip
     (static_dir / "styles.css").write_text("body {}\n")
     (tmp_path / "README.md").write_text("Static frontend instructions.\n")
     (tmp_path / "package.json").write_text("{}\n")
@@ -924,9 +980,9 @@ def test_react_vite_frontend_check_accepts_react_vite_contract(tmp_path: Path) -
     (src_dir / "App.jsx").write_text(
         "export default function App(){\n"
         "  return <form onSubmit={async () => fetch('/todos', {method: 'POST'})}>\n"
-        "    <input aria-label=\"todo\" />\n"
+        '    <input aria-label="todo" />\n'
         "    <button onClick={() => fetch('/todos/1', {method: 'DELETE'})}>Delete</button>\n"
-        "    <p role=\"alert\">error</p>\n"
+        '    <p role="alert">error</p>\n'
         "  </form>;\n"
         "}\n"
         "fetch('/todos');\n"
@@ -1169,10 +1225,14 @@ def test_task_cycle_metrics_distinguish_planned_tasks_from_rework(tmp_path: Path
         "T0002",
     ]
     assert task_cycles.tasks["T0001"] == TaskCycleEntry(
-        developer_sessions=1, reviewer_sessions=1, has_rework=False,
+        developer_sessions=1,
+        reviewer_sessions=1,
+        has_rework=False,
     )
     assert task_cycles.tasks["T0002"] == TaskCycleEntry(
-        developer_sessions=1, reviewer_sessions=1, has_rework=False,
+        developer_sessions=1,
+        reviewer_sessions=1,
+        has_rework=False,
     )
     assert rework.tasks_with_rework == []
     assert rework.has_task_rework is False
@@ -1209,7 +1269,9 @@ def test_task_cycle_metrics_detect_repeated_same_task_cycles(tmp_path: Path) -> 
     rework = derive_task_rework_summary(task_cycles)
 
     assert task_cycles.tasks["T0001"] == TaskCycleEntry(
-        developer_sessions=2, reviewer_sessions=2, has_rework=True,
+        developer_sessions=2,
+        reviewer_sessions=2,
+        has_rework=True,
     )
     assert rework.tasks_with_rework == ["T0001"]
     assert rework.has_task_rework is True
@@ -1311,8 +1373,8 @@ def test_collect_profile_metrics_lists_profiles_and_task_usage(tmp_path: Path) -
     tasks_dir.mkdir(parents=True)
     (profiles_dir / "default.toml").write_text(
         'version = 1\nid = "default"\ntitle = "Default"\n\n'
-        '[tooling]\ndefault_validation = []\n\n'
-        '[environment]\nmanaged_roles = []\n'
+        "[tooling]\ndefault_validation = []\n\n"
+        "[environment]\nmanaged_roles = []\n"
     )
     (profiles_dir / "python-app.toml").write_text(
         'version = 1\nid = "python-app"\ntitle = "Python App"\n\n'
@@ -1342,22 +1404,33 @@ def test_quality_summary_warns_for_rework_and_large_ignored_artifacts() -> None:
         checks=[CheckResult("ok", True)],
         task_metrics=TaskMetrics(total=1, by_status={"closed": 1}, items=[]),
         artifact_hygiene=ArtifactHygiene(
-            file_count=0, total_bytes=0, product_file_count=0, product_total_bytes=0,
-            ignored_file_count=5_001, ignored_total_bytes=100_000_001,
-            devlab_file_count=0, devlab_total_bytes=0,
+            file_count=0,
+            total_bytes=0,
+            product_file_count=0,
+            product_total_bytes=0,
+            ignored_file_count=5_001,
+            ignored_total_bytes=100_000_001,
+            devlab_file_count=0,
+            devlab_total_bytes=0,
             flagged_paths=[],
             other_ignored_file_count=5_001,
             other_ignored_total_bytes=100_000_001,
         ),
         sessions_run=7,
         task_rework=TaskReworkSummary(
-            tasks_with_rework=["T0001"], has_task_rework=True,
-            max_developer_sessions_per_task=0, max_reviewer_sessions_per_task=0,
+            tasks_with_rework=["T0001"],
+            has_task_rework=True,
+            max_developer_sessions_per_task=0,
+            max_reviewer_sessions_per_task=0,
             unattributed_developer_reviewer_sessions=0,
         ),
         integrator_rework=IntegratorReworkSummary(
-            findings_created=1, findings_resolved=0, findings_open=1,
-            findings_planned=0, finding_ids=[], has_integrator_rework=True,
+            findings_created=1,
+            findings_resolved=0,
+            findings_open=1,
+            findings_planned=0,
+            finding_ids=[],
+            has_integrator_rework=True,
         ),
     )
 
@@ -1396,14 +1469,15 @@ def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
     assert hygiene.devlab_file_count == 1
     assert hygiene.flagged_paths == []
     assert {item.path for item in hygiene.product_top_contributors} == {
-        ".gitignore", "src/", "tests/",
+        ".gitignore",
+        "src/",
+        "tests/",
     }
     assert [(item.path, item.file_count) for item in hygiene.devlab_top_contributors] == [
         (".devlab/tasks/", 1),
     ]
     contributors = [
-        (item.path, item.file_count, item.total_bytes)
-        for item in hygiene.ignored_top_contributors
+        (item.path, item.file_count, item.total_bytes) for item in hygiene.ignored_top_contributors
     ]
     assert contributors == [
         (".pytest_cache/", 1, 8),
@@ -1433,7 +1507,8 @@ def test_diagnostics_verbose_reports_product_ignored_and_devlab_contributors(
 
 
 def test_diagnostics_reports_top_ignored_artifact_contributors(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _git(tmp_path, "init")
     (tmp_path / ".gitignore").write_text("build/\ncache/\n")
@@ -1453,7 +1528,8 @@ def test_diagnostics_reports_top_ignored_artifact_contributors(
 
 
 def test_diagnostics_treats_large_conventional_cache_as_informational(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _git(tmp_path, "init")
     (tmp_path / ".gitignore").write_text(".venv/\n")
@@ -1522,11 +1598,7 @@ def test_copy_live_agent_config_copies_and_commits(tmp_path: Path) -> None:
     init_target_workspace(tmp_path, "Build something small.")
     agent_config = tmp_path / "live.agents.toml"
     agent_config.write_text(
-        "[providers.mock]\n"
-        'command = "mock-agent"\n'
-        "\n"
-        "[roles.default]\n"
-        'provider = "mock"\n'
+        '[providers.mock]\ncommand = "mock-agent"\n\n[roles.default]\nprovider = "mock"\n'
     )
     before = int(_git(tmp_path, "rev-list", "--count", "HEAD").stdout.strip())
 
@@ -1661,7 +1733,7 @@ def _write_session_result(
         f'outcome = "{outcome}"\n'
         'commit_message = "Test result"\n'
         'done = ["Done."]\n'
-        'changed_artifacts = []\n'
+        "changed_artifacts = []\n"
         f"open_issues = {open_issues}\n"
         "addressed_findings = []\n"
         'next_session_hint = "Continue."\n'

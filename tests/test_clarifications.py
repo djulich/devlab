@@ -151,7 +151,7 @@ def test_answer_text_updates_answer_section(tmp_path: Path) -> None:
             "## Question\nQ\n\n"
             "## Expected Answer\nA\n"
         ),
-    )
+    )  # fmt: skip
 
     answered = tracker.answer(
         clarification.id,

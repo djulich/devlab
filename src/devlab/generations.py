@@ -90,9 +90,7 @@ def has_active_plan(root: Path) -> bool:
     ):
         if any(path.is_file() for path in devlab.glob(relative)):
             return True
-    return any(
-        path.is_file() and path.name != ".gitkeep" for path in devlab.glob("history/*")
-    )
+    return any(path.is_file() and path.name != ".gitkeep" for path in devlab.glob("history/*"))
 
 
 def archive_active_generation(
@@ -124,9 +122,7 @@ def archive_active_generation(
         reason=reason,
         spec_baseline=spec_baseline,
     )
-    atomic_write_text(
-        archive_root / GENERATION_MANIFEST, format_generation_manifest(manifest)
-    )
+    atomic_write_text(archive_root / GENERATION_MANIFEST, format_generation_manifest(manifest))
     clear_active_generation(root)
     create_active_skeleton(root)
     return manifest

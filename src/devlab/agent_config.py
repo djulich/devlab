@@ -162,9 +162,7 @@ def resolve_agent_configuration(
     provider_names = tuple(providers_config)
 
     for provider_name in provider_names:
-        provider_table = _table(
-            providers_config.get(provider_name), f"providers.{provider_name}"
-        )
+        provider_table = _table(providers_config.get(provider_name), f"providers.{provider_name}")
         provider_defaults = provider_table.get("defaults")
         if provider_defaults is None:
             continue
@@ -222,9 +220,7 @@ def resolve_agent_configuration(
             values["effort"] = effort
 
         provider_name = _string(values.get("provider", "default"), f"roles.{role_name}.provider")
-        provider_table = _table(
-            providers_config.get(provider_name), f"providers.{provider_name}"
-        )
+        provider_table = _table(providers_config.get(provider_name), f"providers.{provider_name}")
         timeout_seconds = _optional_int(
             values.get("timeout_seconds"), f"roles.{role_name}.timeout_seconds"
         )
@@ -277,7 +273,7 @@ def format_resolved_agent_config(config: ResolvedAgentConfig) -> str:
         f"uses_stdin = {_toml_bool(config.uses_stdin)}",
     ]
     if config.provider_version:
-        lines.append(f'provider_version = {_toml_string(config.provider_version)}')
+        lines.append(f"provider_version = {_toml_string(config.provider_version)}")
     if config.timeout_seconds is not None:
         lines.append(f"timeout_seconds = {config.timeout_seconds}")
     lines.append("command = [" + ", ".join(_toml_string(part) for part in config.command) + "]")
@@ -305,7 +301,8 @@ def _resolve_provider_invocation(
     command = _string(provider_table.get("command"), f"providers.{provider_name}.command")
     provider_version = (
         _provider_version(provider_table, command, template_values)
-        if discover_provider_version else ""
+        if discover_provider_version
+        else ""
     )
     return _ResolvedProviderInvocation(
         provider=CliAgentProvider.from_command(
@@ -422,8 +419,7 @@ def agent_prompt_transport_problems(
     if missing:
         names = ", ".join(f"{{{name}}}" for name in missing)
         problems.append(
-            f"providers.{provider_name} does not deliver required prompt "
-            f"placeholder(s): {names}"
+            f"providers.{provider_name} does not deliver required prompt placeholder(s): {names}"
         )
     return problems
 
@@ -515,4 +511,4 @@ def _toml_bool(value: bool) -> str:
 
 
 def _toml_string(value: str) -> str:
-    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'

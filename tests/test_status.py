@@ -103,10 +103,7 @@ def test_status_reports_pending_clarification_blockers(tmp_path: Path) -> None:
         blocks="planning",
         answer_shape="text",
         body=(
-            "# Auth session timeout\n\n"
-            "## Context\nC\n\n"
-            "## Question\nQ\n\n"
-            "## Expected Answer\nA\n"
+            "# Auth session timeout\n\n## Context\nC\n\n## Question\nQ\n\n## Expected Answer\nA\n"
         ),
     )
 
@@ -126,10 +123,7 @@ def test_status_verbose_includes_clarification_state(tmp_path: Path) -> None:
         blocks="none",
         answer_shape="text",
         body=(
-            "# Auth session timeout\n\n"
-            "## Context\nC\n\n"
-            "## Question\nQ\n\n"
-            "## Expected Answer\nA\n"
+            "# Auth session timeout\n\n## Context\nC\n\n## Question\nQ\n\n## Expected Answer\nA\n"
         ),
     )
 

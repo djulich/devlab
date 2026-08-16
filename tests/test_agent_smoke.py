@@ -711,9 +711,7 @@ def test_smoke_test_rejects_provider_with_roles(tmp_path: Path) -> None:
         run_agent_smoke_test(tmp_path, role_names=("developer",), provider="test")
 
 
-def test_smoke_test_emits_progress_events(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_smoke_test_emits_progress_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_agents_config(
         tmp_path,
         """

@@ -34,7 +34,8 @@ def format_history(root: Path, *, json_output: bool = False) -> str:
         return "Session history: none"
     if json_output:
         return json.dumps(
-            [dataclasses.asdict(entry) for entry in entries], indent=2,
+            [dataclasses.asdict(entry) for entry in entries],
+            indent=2,
         )
     lines = ["Session history:"]
     for entry in entries:

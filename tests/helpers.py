@@ -18,7 +18,7 @@ def handoff(
     planning_state = ""
     if planning_complete is not None:
         value = "true" if planning_complete else "false"
-        planning_state = "## Planning State\n" f"planning_complete = {value}\n"
+        planning_state = f"## Planning State\nplanning_complete = {value}\n"
     return (
         f"# Handoff: {role_name}\n"
         "## Done\n"
@@ -59,9 +59,9 @@ def write_task(
         f'milestone = "{milestone}"\n'
         'profile = "default"\n'
         f'domain = "{domain}"\n'
-        f'depends_on = [{depends}]\n'
-        f'addresses_findings = [{findings}]\n'
-        'validation = []\n'
+        f"depends_on = [{depends}]\n"
+        f"addresses_findings = [{findings}]\n"
+        "validation = []\n"
         "+++\n\n"
         f"# {task_id}: {title}\n\n"
         "## Goal\n"

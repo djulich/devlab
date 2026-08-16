@@ -39,9 +39,7 @@ def configure_logging(
         log_file.parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)-5s %(message)s")
-        )
+        file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s %(message)s"))
         setattr(file_handler, _DEVLAB_OWNED, True)
         logger.addHandler(file_handler)
 

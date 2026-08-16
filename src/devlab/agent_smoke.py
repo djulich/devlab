@@ -141,8 +141,7 @@ def run_agent_smoke_test(
             root=root,
             role_name=target.check_name,
             system_prompt=(
-                "DevLab agent configuration smoke test. "
-                f"Reply with exactly: {SMOKE_MARKER}"
+                f"DevLab agent configuration smoke test. Reply with exactly: {SMOKE_MARKER}"
             ),
             session_prompt=(
                 "This is a DevLab provider wiring check. "
@@ -193,8 +192,7 @@ def run_agent_smoke_test(
         ),
         executable_config_authorization=(
             executable_config.authorization.source.value
-            if executable_config is not None
-            and executable_config.authorization is not None
+            if executable_config is not None and executable_config.authorization is not None
             else ""
         ),
     )
@@ -271,11 +269,7 @@ def _select_smoke_targets(
     if role_names is not None:
         selected_roles = set(role_names)
         return (
-            [
-                target
-                for target in role_targets
-                if selected_roles.intersection(target.role_names)
-            ],
+            [target for target in role_targets if selected_roles.intersection(target.role_names)],
             [],
         )
     if use_provider_defaults:

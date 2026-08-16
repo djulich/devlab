@@ -155,13 +155,10 @@ def test_complete_writes_and_round_trips_canonical_result(tmp_path: Path) -> Non
     text = research.path.read_text()
     assert 'status = "completed"\n' in text
     assert 'researcher_model = "gpt-5"\n' in text
-    assert (
-        "- Session locks survive transactions and end with the session. [S1]\n" in text
-    )
+    assert "- Session locks survive transactions and end with the session. [S1]\n" in text
     assert "- S2 | repository | Scheduler design | docs/design.md\n" in text
     assert text.endswith(
-        "## Unresolved Questions\n"
-        "- Does the selected pool guarantee connection affinity?\n"
+        "## Unresolved Questions\n- Does the selected pool guarantee connection affinity?\n"
     )
 
 
@@ -349,9 +346,7 @@ def test_completion_preserves_unknown_metadata_in_sorted_order(tmp_path: Path) -
     _replace(
         research.path,
         'created_at = "2026-08-12T10:15:00+00:00"\n',
-        'created_at = "2026-08-12T10:15:00+00:00"\n'
-        'z_extension = "last"\n'
-        'a_extension = "first"\n',
+        'created_at = "2026-08-12T10:15:00+00:00"\nz_extension = "last"\na_extension = "first"\n',
     )
 
     completed = _complete(tracker)
@@ -417,8 +412,7 @@ def test_requested_record_forbids_result_and_provenance(tmp_path: Path) -> None:
     _replace(
         research.path,
         'created_at = "2026-08-12T10:15:00+00:00"',
-        'created_at = "2026-08-12T10:15:00+00:00"\n'
-        'researcher_session_id = "unexpected"',
+        'created_at = "2026-08-12T10:15:00+00:00"\nresearcher_session_id = "unexpected"',
     )
 
     with pytest.raises(ValueError, match="requested status forbids provenance"):

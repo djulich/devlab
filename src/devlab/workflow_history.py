@@ -188,9 +188,7 @@ def derive_integrator_rework_summary(findings: Sequence[Finding]) -> IntegratorR
 
 def derive_task_rework_summary(task_cycles: TaskCycleMetrics) -> TaskReworkSummary:
     tasks_with_rework = [
-        task_id
-        for task_id, entry in sorted(task_cycles.tasks.items())
-        if entry.has_rework
+        task_id for task_id, entry in sorted(task_cycles.tasks.items()) if entry.has_rework
     ]
     return TaskReworkSummary(
         tasks_with_rework=tasks_with_rework,

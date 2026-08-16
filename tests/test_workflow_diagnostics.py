@@ -31,9 +31,7 @@ def test_diagnostics_count_clarification_stops_by_role(tmp_path: Path) -> None:
     }
     assert diagnostics.clarifications.pending == 2
     assert "developer" in diagnostics.clarifications.repeated_roles
-    assert "repeated clarification requests by role: developer" in (
-        diagnostics.quality.warnings
-    )
+    assert "repeated clarification requests by role: developer" in (diagnostics.quality.warnings)
 
 
 def test_diagnostics_report_clarification_answer_latency(tmp_path: Path) -> None:
@@ -69,9 +67,7 @@ def test_diagnostics_warn_on_repeated_clarification_scope(tmp_path: Path) -> Non
     diagnostics = build_workflow_diagnostics(tmp_path)
 
     assert diagnostics.clarifications.repeated_scopes == ["planning"]
-    assert "repeated clarification requests for scope: planning" in (
-        diagnostics.quality.warnings
-    )
+    assert "repeated clarification requests for scope: planning" in (diagnostics.quality.warnings)
 
 
 def test_diagnostics_text_reports_clarification_summary(tmp_path: Path) -> None:
@@ -163,9 +159,4 @@ def _init_workspace(root: Path) -> None:
 
 
 def _text_body() -> str:
-    return (
-        "# Auth session timeout\n\n"
-        "## Context\nC\n\n"
-        "## Question\nQ\n\n"
-        "## Expected Answer\nA\n"
-    )
+    return "# Auth session timeout\n\n## Context\nC\n\n## Question\nQ\n\n## Expected Answer\nA\n"

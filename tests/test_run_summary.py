@@ -131,9 +131,7 @@ def test_summary_reports_complete_workflow_without_next_command(
     monkeypatch.setenv(DEVLAB_STATE_HOME_ENV, str(tmp_path / "operator-state"))
     init_workspace(tmp_path)
     (tmp_path / ".devlab/plans/design-plan.md").write_text("# Design\n")
-    (tmp_path / ".devlab/workflow.toml").write_text(
-        "version = 1\n\n[planning]\ncomplete = true\n"
-    )
+    (tmp_path / ".devlab/workflow.toml").write_text("version = 1\n\n[planning]\ncomplete = true\n")
     initial = build_executable_config_snapshot(tmp_path)
     trust_executable_config(initial)
 

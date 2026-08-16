@@ -114,9 +114,10 @@ class CliAgentProvider:
         invocation.stderr_log.parent.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
         try:
-            with invocation.stdout_log.open("w") as stdout_handle, invocation.stderr_log.open(
-                "w"
-            ) as stderr_handle:
+            with (
+                invocation.stdout_log.open("w") as stdout_handle,
+                invocation.stderr_log.open("w") as stderr_handle,
+            ):
                 result = subprocess.run(
                     cmd,
                     cwd=str(invocation.root),
@@ -277,10 +278,7 @@ class MockProvider:
         if self.handoff_text is not None:
             return self.handoff_text
         planning_state = (
-            "## Planning State\n"
-            "planning_complete = false\n"
-            if call.role_name == "planner"
-            else ""
+            "## Planning State\nplanning_complete = false\n" if call.role_name == "planner" else ""
         )
         return (
             f"# Handoff: {call.role_name}\n"

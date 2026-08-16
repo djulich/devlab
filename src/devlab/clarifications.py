@@ -81,10 +81,7 @@ class FileClarificationTracker:
 
     def list_clarifications(self) -> list[Clarification]:
         return sorted(
-            (
-                self._read_clarification(path)
-                for path in self.clarifications_path.glob("CL*.md")
-            ),
+            (self._read_clarification(path) for path in self.clarifications_path.glob("CL*.md")),
             key=lambda clarification: (
                 _clarification_sort_key(clarification.id),
                 clarification.path.name,
@@ -116,9 +113,7 @@ class FileClarificationTracker:
 
     def blocking(self) -> list[Clarification]:
         return [
-            clarification
-            for clarification in self.pending()
-            if clarification.blocks != "none"
+            clarification for clarification in self.pending() if clarification.blocks != "none"
         ]
 
     def create(
@@ -247,11 +242,13 @@ class FileClarificationTracker:
             raise ValueError(f"clarification file has no clarification id: {path}")
         if CLARIFICATION_ID_RE.fullmatch(clarification_id) is None:
             raise ValueError(f"invalid clarification id: {clarification_id}")
-        title = _validate_title(str(
-            metadata.get("title")
-            or _title_from_body(body, clarification_id)
-            or clarification_id
-        ))
+        title = _validate_title(
+            str(
+                metadata.get("title")
+                or _title_from_body(body, clarification_id)
+                or clarification_id
+            )
+        )
         status = _parse_status(metadata.get("status"))
         asking_role = _required_string(metadata, "asking_role", path)
         session_id = _required_string(metadata, "session_id", path)
@@ -345,13 +342,9 @@ def expected_file_edit_paths(body: str) -> tuple[str, ...]:
         value = match.group(1).strip().replace("\\", "/")
         path = PurePosixPath(value)
         if not value or path.is_absolute() or ".." in path.parts or value.endswith("/"):
-            raise ValueError(
-                f"invalid Expected File Edits workspace-relative path: {value!r}"
-            )
+            raise ValueError(f"invalid Expected File Edits workspace-relative path: {value!r}")
         if clarification_file_edit_path_forbidden(path.as_posix()):
-            raise ValueError(
-                f"Expected File Edits path targets DevLab workflow state: {value!r}"
-            )
+            raise ValueError(f"Expected File Edits path targets DevLab workflow state: {value!r}")
         paths.append(path.as_posix())
     if not paths:
         raise ValueError(
@@ -364,10 +357,7 @@ def expected_file_edit_paths(body: str) -> tuple[str, ...]:
 
 
 def clarification_file_edit_path_forbidden(path: str) -> bool:
-    return any(
-        path == prefix or path.startswith(prefix)
-        for prefix in _FORBIDDEN_FILE_EDIT_PATHS
-    )
+    return any(path == prefix or path.startswith(prefix) for prefix in _FORBIDDEN_FILE_EDIT_PATHS)
 
 
 def _split_front_matter(text: str) -> tuple[dict[str, Any], str]:

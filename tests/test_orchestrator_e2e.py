@@ -31,8 +31,7 @@ class HappyPathWorkflow:
                 _design_plan(call.root).write_text("# Design Plan\n\nBuild a tiny CLI.\n")
             else:
                 assert (
-                    "Assigned Integrated Milestone for Architecture Review"
-                    in call.session_prompt
+                    "Assigned Integrated Milestone for Architecture Review" in call.session_prompt
                 )
                 assert "## Integration Handoff" in call.session_prompt
                 assert "## Milestone Task Files" in call.session_prompt
@@ -42,7 +41,7 @@ class HappyPathWorkflow:
                 "# Project Plan\n\n"
                 "## M1: Foundation\n"
                 "- T0001: Implement tiny CLI\n"
-            )
+            )  # fmt: skip
             write_task(call.root, "T0001", "Implement tiny CLI", "M1")
         elif call.role_name == "developer":
             assert "## Assigned Task" in call.session_prompt
@@ -76,8 +75,7 @@ class CorrectiveWorkflow:
                 _design_plan(call.root).write_text("# Design Plan\n\nBuild a tiny CLI.\n")
             else:
                 assert (
-                    "Assigned Integrated Milestone for Architecture Review"
-                    in call.session_prompt
+                    "Assigned Integrated Milestone for Architecture Review" in call.session_prompt
                 )
         elif call.role_name == "planner":
             if count == 1:
@@ -85,7 +83,7 @@ class CorrectiveWorkflow:
                     "# Project Plan\n\n"
                     "## M1: Foundation\n"
                     "- T0001: Implement tiny CLI\n"
-                )
+                )  # fmt: skip
                 write_task(call.root, "T0001", "Implement tiny CLI", "M1")
             else:
                 assert "## Open Findings" in call.session_prompt
@@ -143,15 +141,14 @@ class ChangesRequestedWorkflow:
                 _design_plan(call.root).write_text("# Design Plan\n\nBuild a tiny CLI.\n")
             else:
                 assert (
-                    "Assigned Integrated Milestone for Architecture Review"
-                    in call.session_prompt
+                    "Assigned Integrated Milestone for Architecture Review" in call.session_prompt
                 )
         elif call.role_name == "planner":
             _project_plan(call.root).write_text(
                 "# Project Plan\n\n"
                 "## M1: Foundation\n"
                 "- T0001: Implement tiny CLI\n"
-            )
+            )  # fmt: skip
             write_task(call.root, "T0001", "Implement tiny CLI", "M1")
         elif call.role_name == "developer":
             assert "T0001" in call.session_prompt
@@ -285,14 +282,14 @@ def _init_target_workspace(root: Path) -> None:
         "# System Specification\n\nBuild a tiny CLI.\n"
     )
     (root / ".devlab/config/profiles/default.toml").write_text(
-        'version = 1\n'
+        "version = 1\n"
         'id = "default"\n'
         'title = "Default test profile"\n'
-        '\n[tooling]\n'
+        "\n[tooling]\n"
         'summary = "Test profile with no external commands."\n'
-        'default_validation = []\n'
-        '\n[environment]\n'
-        'managed_roles = []\n'
+        "default_validation = []\n"
+        "\n[environment]\n"
+        "managed_roles = []\n"
     )
 
 

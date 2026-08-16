@@ -219,8 +219,7 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     lines.append(f"Project plan: {_present_text(report.planning.project_plan_present)}")
     if report.clarifications.pending_blockers:
         lines.append(
-            "Pending clarification blockers: "
-            + str(len(report.clarifications.pending_blockers))
+            "Pending clarification blockers: " + str(len(report.clarifications.pending_blockers))
         )
         for blocker in report.clarifications.pending_blockers[:5]:
             lines.append(
@@ -259,12 +258,10 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     lines.append(f"Architect sessions: {report.history.architect_sessions}")
     lines.append(f"Planner sessions: {report.history.planner_sessions}")
     lines.append(
-        "Greenfield planning runs: "
-        + _unknown_int_text(report.history.greenfield_planning_runs)
+        "Greenfield planning runs: " + _unknown_int_text(report.history.greenfield_planning_runs)
     )
     lines.append(
-        "Adoption planning runs: "
-        + _unknown_int_text(report.history.adoption_planning_runs)
+        "Adoption planning runs: " + _unknown_int_text(report.history.adoption_planning_runs)
     )
     lines.append(f"Plan revisions: {_unknown_int_text(report.history.plan_revisions)}")
     lines.append(f"Reconciliations: {report.history.reconciliations}")
@@ -337,9 +334,7 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
     lines.append("")
     lines.append("## Clarifications")
     lines.append("")
-    lines.append(
-        f"- Pending blockers: {len(digest.clarifications.pending_blockers)}"
-    )
+    lines.append(f"- Pending blockers: {len(digest.clarifications.pending_blockers)}")
     for blocker in digest.clarifications.pending_blockers[:5]:
         lines.append(
             f"- {blocker.id}: {blocker.title} "
@@ -382,9 +377,7 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
         "- Adoption planning runs: "
         + _unknown_int_text(digest.planning_history.adoption_planning_runs)
     )
-    lines.append(
-        f"- Plan revisions: {_unknown_int_text(digest.planning_history.plan_revisions)}"
-    )
+    lines.append(f"- Plan revisions: {_unknown_int_text(digest.planning_history.plan_revisions)}")
     lines.append(f"- Reconciliations: {digest.planning_history.reconciliations}")
     lines.append(f"- Plan replacements: {digest.planning_history.plan_replacements}")
     lines.append("")
@@ -410,10 +403,7 @@ def _next_action(report: WorkflowStateReport) -> str:
         )
     if report.clarifications.resume is not None:
         resume = report.clarifications.resume
-        return (
-            f"Answer clarification {resume.blocked_by} if needed, then run "
-            "`devlab resume`."
-        )
+        return f"Answer clarification {resume.blocked_by} if needed, then run `devlab resume`."
     if report.clarifications.pending_blockers:
         first = report.clarifications.pending_blockers[0]
         return (
@@ -518,9 +508,7 @@ def _clarification_report(
     )
 
 
-def _research_report(
-    snapshot: WorkspaceSnapshot, workflow_state: object
-) -> ResearchReport | None:
+def _research_report(snapshot: WorkspaceSnapshot, workflow_state: object) -> ResearchReport | None:
     resume = getattr(workflow_state, "resume", None)
     if resume is None or resume.blocked_kind != "research":
         return None
@@ -620,9 +608,7 @@ def _planning_history_report(
             count_events(events, "plan_started", mode="greenfield") if has_events else None
         ),
         adoption_planning_runs=(
-            count_events(events, "plan_started", mode="adopt_existing")
-            if has_events
-            else None
+            count_events(events, "plan_started", mode="adopt_existing") if has_events else None
         ),
         plan_revisions=(
             count_events(events, "plan_started", mode="revise") if has_events else None

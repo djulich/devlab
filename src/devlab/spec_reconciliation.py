@@ -26,8 +26,7 @@ def inspect_spec_reconciliation(
     latest = latest_spec_commit(root)
     return SpecReconciliationStatus(
         baseline_exists=workflow_state.specs.last_planned_spec_commit is not None,
-        changed=workflow_state.specs.last_planned_spec_commit is not None
-        and latest != baseline,
+        changed=workflow_state.specs.last_planned_spec_commit is not None and latest != baseline,
         dirty_spec_paths=dirty_spec_paths(root),
         latest_spec_commit=latest,
         baseline_spec_commit=baseline,

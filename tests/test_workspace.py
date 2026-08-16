@@ -106,12 +106,16 @@ def test_workspace_research_completion_invalidates_cached_snapshot(tmp_path: Pat
     snapshot = workspace.snapshot
     assert snapshot.requested_research() == [research]
 
-    completed = workspace.research().get(research.id).complete(
-        _research_result(),
-        researcher_session_id="researcher-session",
-        researcher_provider="codex",
-        researcher_model="gpt-5",
-        completed_at="2026-08-12T10:20:00+00:00",
+    completed = (
+        workspace.research()
+        .get(research.id)
+        .complete(
+            _research_result(),
+            researcher_session_id="researcher-session",
+            researcher_provider="codex",
+            researcher_model="gpt-5",
+            completed_at="2026-08-12T10:20:00+00:00",
+        )
     )
 
     assert snapshot.requested_research() == [research]
@@ -287,7 +291,7 @@ def _write_task(
         f'id = "{task_id}"\n'
         f'title = "{task_id}"\n'
         f'status = "{status}"\n'
-        f'{f"milestone = {milestone!r}" if milestone is not None else ""}\n'
+        f"{f'milestone = {milestone!r}' if milestone is not None else ''}\n"
         f"planning_generation = {generation}\n"
         "depends_on = []\n"
         "+++\n\n"
@@ -305,30 +309,25 @@ def _write_milestone(
     path = root / ".devlab/milestones" / f"{milestone_id}.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        'version = 1\n'
+        "version = 1\n"
         f'id = "{milestone_id}"\n'
         f'title = "{milestone_id}"\n'
         'status = "planned"\n'
-        'integration_required = true\n'
-        'integrated = false\n'
-        'architecture_reviewed = false\n'
+        "integration_required = true\n"
+        "integrated = false\n"
+        "architecture_reviewed = false\n"
         f"planning_generation = {generation}\n"
         f"task_ids = {list(task_ids)!r}\n"
         'integration_handoff = ""\n'
         'architecture_review_handoff = ""\n'
-        'findings = []\n'
+        "findings = []\n"
     )
 
 
 def _write_workflow_state(root: Path, *, generation: int) -> None:
     path = root / ".devlab/workflow.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "version = 1\n\n"
-        "[planning]\n"
-        "complete = true\n"
-        f"generation = {generation}\n"
-    )
+    path.write_text(f"version = 1\n\n[planning]\ncomplete = true\ngeneration = {generation}\n")
 
 
 class _ResearchRequest(TypedDict):

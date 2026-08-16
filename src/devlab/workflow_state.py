@@ -155,11 +155,7 @@ def format_workflow_state(state: WorkflowState) -> str:
             if state.specs.last_planned_spec_commit is not None
             else ""
         )
-        + (
-            "\n" + _format_resume_table(state.resume)
-            if state.resume is not None
-            else ""
-        )
+        + ("\n" + _format_resume_table(state.resume) if state.resume is not None else "")
     )
 
 
@@ -251,12 +247,8 @@ def parse_workflow_state(data: object) -> WorkflowState:
     if not isinstance(specs, dict):
         raise ValueError(f"{WORKFLOW_STATE}.specs must be a TOML table")
     last_planned_spec_commit = specs.get("last_planned_spec_commit")
-    if last_planned_spec_commit is not None and not isinstance(
-        last_planned_spec_commit, str
-    ):
-        raise ValueError(
-            f"{WORKFLOW_STATE}.specs.last_planned_spec_commit must be a string"
-        )
+    if last_planned_spec_commit is not None and not isinstance(last_planned_spec_commit, str):
+        raise ValueError(f"{WORKFLOW_STATE}.specs.last_planned_spec_commit must be a string")
     resume = config.get("resume")
     parsed_resume = _parse_resume_state(resume) if resume is not None else None
     return WorkflowState(
@@ -280,9 +272,7 @@ def _parse_resume_state(value: object) -> ResumeState:
     if command not in {"plan", "implement"}:
         raise ValueError(f"{WORKFLOW_STATE}.resume.command must be plan or implement")
     if blocked_kind not in {"clarification", "research"}:
-        raise ValueError(
-            f"{WORKFLOW_STATE}.resume.blocked_kind must be clarification or research"
-        )
+        raise ValueError(f"{WORKFLOW_STATE}.resume.blocked_kind must be clarification or research")
     return ResumeState(
         blocked_by=blocked_by,
         command=command,

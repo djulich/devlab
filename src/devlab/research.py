@@ -201,9 +201,7 @@ def parse_research_result_candidate(path: Path, *, research_id: str) -> Research
     try:
         confidence = ResearchConfidence(data["confidence"])
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "researcher result.json confidence must be high, medium, or low"
-        ) from exc
+        raise ValueError("researcher result.json confidence must be high, medium, or low") from exc
     return _validate_result(
         ResearchResult(
             summary=_json_required_string(data, "summary", "result"),
@@ -251,9 +249,7 @@ class FileResearchTracker:
         return matches[0]
 
     def requested(self) -> list[Research]:
-        return [
-            item for item in self.list_research() if item.status == ResearchStatus.REQUESTED
-        ]
+        return [item for item in self.list_research() if item.status == ResearchStatus.REQUESTED]
 
     def create(
         self,
@@ -321,9 +317,7 @@ class FileResearchTracker:
         if research.status != ResearchStatus.REQUESTED:
             raise ValueError(f"research {research_id} is not requested")
         result = _validate_result(result)
-        researcher_session_id = _single_line(
-            researcher_session_id, "researcher_session_id"
-        )
+        researcher_session_id = _single_line(researcher_session_id, "researcher_session_id")
         researcher_provider = _single_line(researcher_provider, "researcher_provider")
         researcher_model = _optional_single_line(researcher_model, "researcher_model")
         completed_at = _validate_timestamp(completed_at or _utc_now(), "completed_at")
@@ -485,9 +479,7 @@ def _parse_result(sections: dict[str, str], path: Path) -> ResearchResult:
     for line in _list_lines(sections["Evidence"], "Evidence", path):
         match = _EVIDENCE_RE.fullmatch(line)
         if match is None:
-            raise ValueError(
-                f"research file {path} has malformed ## Evidence entry: {line!r}"
-            )
+            raise ValueError(f"research file {path} has malformed ## Evidence entry: {line!r}")
         source_ids = tuple(item.strip() for item in match.group(2).split(","))
         evidence.append(ResearchEvidence(claim=match.group(1).strip(), source_ids=source_ids))
 
@@ -584,8 +576,7 @@ def _validate_result(result: ResearchResult, *, path: Path | None = None) -> Res
             raise ValueError(f"{location}evidence must contain ResearchEvidence values")
         claim = _single_line(item.claim, "evidence claim", path=path)
         cited = tuple(
-            _single_line(value, "evidence source id", path=path)
-            for value in item.source_ids
+            _single_line(value, "evidence source id", path=path) for value in item.source_ids
         )
         if not cited:
             raise ValueError(f"{location}evidence claim {claim!r} requires a source")
@@ -651,8 +642,7 @@ def _format_body(
                 f"## Summary\n{_safe_markdown(result.summary)}",
                 "## Evidence\n"
                 + "\n".join(
-                    f"- {item.claim} [{', '.join(item.source_ids)}]"
-                    for item in result.evidence
+                    f"- {item.claim} [{', '.join(item.source_ids)}]" for item in result.evidence
                 ),
                 "## Sources\n"
                 + "\n".join(

@@ -927,8 +927,7 @@ def _validate_research_request_route(
     )
     if scope != expected_scope:
         raise HandoffError(
-            f"research scope {scope!r} does not match the active route "
-            f"scope {expected_scope!r}"
+            f"research scope {scope!r} does not match the active route scope {expected_scope!r}"
         )
 
 
@@ -1839,8 +1838,7 @@ def _researcher_file_contents(root: Path) -> dict[str, bytes]:
             continue
         relative = path.relative_to(root).as_posix()
         if any(
-            relative == prefix.rstrip("/") or relative.startswith(prefix)
-            for prefix in exclusions
+            relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in exclusions
         ):
             continue
         contents[relative] = path.read_bytes()
@@ -1949,13 +1947,9 @@ def _invoke_researcher(
             failure_kind="provider_error",
             message=f"agent provider error: {exc}",
         )
-    metadata_configs = (
-        {RESEARCHER_ROLE: selected_config} if selected_config is not None else None
-    )
+    metadata_configs = {RESEARCHER_ROLE: selected_config} if selected_config is not None else None
     ctx.write_session_metadata(
-        _build_session_metadata(
-            ctx, agent_result, metadata_configs, None, executable_config
-        )
+        _build_session_metadata(ctx, agent_result, metadata_configs, None, executable_config)
     )
     try:
         changed = _restore_researcher_edits(root, before)
@@ -1979,9 +1973,7 @@ def _invoke_researcher(
             _research_result_path(root), research_id=research_id
         )
         provider_name = (
-            selected_config.provider
-            if selected_config is not None
-            else fallback_provider_name
+            selected_config.provider if selected_config is not None else fallback_provider_name
         )
         model_name = selected_config.model if selected_config is not None else ""
         workspace.research().get(research_id).complete(
@@ -2219,9 +2211,7 @@ def _resume_validation_error(
     return None
 
 
-def _research_record_resume_error(
-    research: Research, resume: ResumeState
-) -> SessionError | None:
+def _research_record_resume_error(research: Research, resume: ResumeState) -> SessionError | None:
     pairs = (
         ("command", research.command, resume.command),
         ("role", research.asking_role, resume.role),
@@ -2671,8 +2661,7 @@ def run_loop(
                     root,
                     config_path=(
                         None
-                        if executable_config.config_path
-                        == (root / AGENTS_CONFIG).resolve()
+                        if executable_config.config_path == (root / AGENTS_CONFIG).resolve()
                         else executable_config.config_path
                     ),
                     provider=executable_config.provider_override,
@@ -2733,10 +2722,7 @@ def run_loop(
         if research_resume_active:
             role_name = active_resume.role
         elif (
-            planning_only
-            and not revise_plan
-            and not fresh_generation_plan
-            and not adopt_existing
+            planning_only and not revise_plan and not fresh_generation_plan and not adopt_existing
         ):
             role_name = workspace.snapshot.assess_state()
         else:
@@ -2757,8 +2743,7 @@ def run_loop(
         selected_milestone_id = (
             active_resume.milestone or None
             if research_resume_active
-            else
-            workspace.snapshot.select_integration_milestone()
+            else workspace.snapshot.select_integration_milestone()
             if role_name == "integrator"
             else workspace.snapshot.select_architecture_review_milestone()
             if role_name == "architect"
@@ -2911,9 +2896,7 @@ def run_loop(
             session_prompt = build_session_prompt(
                 snapshot,
                 role_name,
-                completed_research=(
-                    completed_resume_research if research_resume_active else None
-                ),
+                completed_research=(completed_resume_research if research_resume_active else None),
                 assigned_task=route.task,
                 assigned_milestone=route.milestone_id,
                 profiles=frozen_profiles,
@@ -2927,9 +2910,7 @@ def run_loop(
             if non_advancing_recovery:
                 session_prompt += "\n\n" + _recovery_prompt(route)
             if prior_validation_failure is not None:
-                session_prompt += "\n\n" + _validation_recovery_prompt(
-                    prior_validation_failure
-                )
+                session_prompt += "\n\n" + _validation_recovery_prompt(prior_validation_failure)
             environment = _environment_for_session(
                 root,
                 snapshot,
@@ -3047,10 +3028,7 @@ def run_loop(
                 route=route,
             )
             validate_handoff(handoff, workspace.snapshot)
-            if (
-                handoff.clarification_request is None
-                and handoff.research_request is None
-            ):
+            if handoff.clarification_request is None and handoff.research_request is None:
                 planner_task_error = _validate_planner_preserved_active_tasks(
                     start_snapshot,
                     workspace.snapshot,
@@ -3369,9 +3347,7 @@ def run_loop(
                     )
             workspace = Workspace(root)
             active_resume = load_workflow_state(root).resume
-            completed_resume_research = workspace.snapshot.get_research(
-                process_result.research_id
-            )
+            completed_resume_research = workspace.snapshot.get_research(process_result.research_id)
             if sessions_run >= max_sessions:
                 return _stop_result(sessions_run, RunStopReason.RESEARCH_COMPLETED)
             continue

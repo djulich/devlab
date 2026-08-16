@@ -18,9 +18,7 @@ def write_compiled_cli(root: Path, language: str) -> None:
             'name = "devlab-eval"\n'
             'version = "0.1.0"\n'
         )
-        (root / "src/main.rs").write_text(
-            'fn main() {\n    println!("hello from rust");\n}\n'
-        )
+        (root / "src/main.rs").write_text('fn main() {\n    println!("hello from rust");\n}\n')
         (root / ".gitignore").write_text("/target/\n")
         return
     if language == "go":
@@ -80,8 +78,7 @@ def write_mixed_rust_go_integration(root: Path) -> None:
 
 def write_calculator(root: Path, *, include_subtract: bool) -> None:
     subtract_block = (
-        "    if operation == 'subtract':\n"
-        "        return left - right\n"
+        "    if operation == 'subtract':\n        return left - right\n"
         if include_subtract
         else ""
     )
@@ -252,24 +249,24 @@ def write_static_frontend(root: Path) -> None:
     static_dir.mkdir()
     (static_dir / "index.html").write_text(
         "<!doctype html>\n"
-        "<html lang=\"en\">\n"
+        '<html lang="en">\n'
         "<head>\n"
-        "  <meta charset=\"utf-8\">\n"
+        '  <meta charset="utf-8">\n'
         "  <title>Todo App</title>\n"
-        "  <link rel=\"stylesheet\" href=\"styles.css\">\n"
+        '  <link rel="stylesheet" href="styles.css">\n'
         "</head>\n"
         "<body>\n"
         "  <main>\n"
         "    <h1>Todo App</h1>\n"
-        "    <form id=\"todo-form\">\n"
-        "      <label for=\"todo-title\">Title</label>\n"
-        "      <input id=\"todo-title\" name=\"title\" required>\n"
-        "      <button type=\"submit\">Add todo</button>\n"
+        '    <form id="todo-form">\n'
+        '      <label for="todo-title">Title</label>\n'
+        '      <input id="todo-title" name="title" required>\n'
+        '      <button type="submit">Add todo</button>\n'
         "    </form>\n"
-        "    <p id=\"error-message\" role=\"alert\"></p>\n"
-        "    <ul id=\"todo-list\"></ul>\n"
+        '    <p id="error-message" role="alert"></p>\n'
+        '    <ul id="todo-list"></ul>\n'
         "  </main>\n"
-        "  <script src=\"app.js\"></script>\n"
+        '  <script src="app.js"></script>\n'
         "</body>\n"
         "</html>\n"
     )
@@ -345,7 +342,7 @@ def write_compose_deployment_artifacts(root: Path) -> None:
         "      dockerfile: Containerfile\n"
         "    image: ${IMAGE:-todo-api:local}\n"
         "    ports:\n"
-        "      - \"${PORT:-8000}:8000\"\n"
+        '      - "${PORT:-8000}:8000"\n'
         "    environment:\n"
         "      TODO_ENV: local\n"
     )
@@ -398,7 +395,7 @@ def write_container_deployment_artifacts(root: Path) -> None:
         "WORKDIR /app\n"
         "COPY src ./src\n"
         "EXPOSE 8000\n"
-        "CMD [\"python\", \"-m\", \"src.todo_api.server\", \"--port\", \"8000\"]\n"
+        'CMD ["python", "-m", "src.todo_api.server", "--port", "8000"]\n'
     )
     makefile = root / "Makefile"
     makefile.write_text(

@@ -35,11 +35,11 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
     for relative in expected_files:
         assert (tmp_path / relative).exists(), relative
 
-    assert 'layout_version = 1' in (tmp_path / ".devlab/manifest.toml").read_text()
+    assert "layout_version = 1" in (tmp_path / ".devlab/manifest.toml").read_text()
     assert 'init_template = "neutral"' in (tmp_path / ".devlab/manifest.toml").read_text()
     assert "complete = false" in (tmp_path / ".devlab/workflow.toml").read_text()
     assert 'id = "default"' in (tmp_path / ".devlab/config/profiles/default.toml").read_text()
-    assert '[providers.default]' in (tmp_path / ".devlab/config/agents.toml").read_text()
+    assert "[providers.default]" in (tmp_path / ".devlab/config/agents.toml").read_text()
     assert result.created
     assert not result.overwritten
 
@@ -172,9 +172,7 @@ def test_init_workspace_commits_existing_clean_git_repo(tmp_path: Path) -> None:
     assert _git(tmp_path, "log", "-1", "--pretty=%s").stdout.strip() == (
         "Initialize DevLab workspace"
     )
-    assert _git(tmp_path, "config", "--get", "user.name").stdout.strip() == (
-        "Existing User"
-    )
+    assert _git(tmp_path, "config", "--get", "user.name").stdout.strip() == ("Existing User")
 
 
 def test_init_workspace_rejects_dirty_existing_git_repo(tmp_path: Path) -> None:

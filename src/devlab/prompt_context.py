@@ -72,9 +72,7 @@ def build_prompt_context_report(snapshot: WorkspaceSnapshot) -> PromptContextRep
     roles: list[RolePromptContext] = []
     for role_name in ROLE_NAMES:
         role = ROLES[role_name]
-        base_prompt = build_base_prompt(
-            root, role, snapshot=snapshot, role_name=role_name
-        )
+        base_prompt = build_base_prompt(root, role, snapshot=snapshot, role_name=role_name)
         session_prompt = build_session_prompt(snapshot, role_name)
         role_thresholds = thresholds.get(role_name, thresholds["default"])
         roles.append(
@@ -103,7 +101,6 @@ def build_prompt_context_report(snapshot: WorkspaceSnapshot) -> PromptContextRep
                 )
             )
     return PromptContextReport(tuple(roles))
-
 
 
 def load_prompt_context_thresholds(root: Path) -> dict[str, PromptContextThresholds]:

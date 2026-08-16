@@ -207,11 +207,7 @@ def test_live_adopt_existing_current_state_baseline_and_feature_work(
         "[dependency-groups]\n"
         'dev = ["pytest"]\n'
     )
-    (tmp_path / ".gitignore").write_text(
-        ".venv/\n"
-        "__pycache__/\n"
-        ".pytest_cache/\n"
-    )
+    (tmp_path / ".gitignore").write_text(".venv/\n__pycache__/\n.pytest_cache/\n")
     (tmp_path / "calculator.py").write_text(
         "import sys\n\n"
         "def calculate(command: str, left: int, right: int) -> int:\n"
@@ -243,8 +239,7 @@ def test_live_adopt_existing_current_state_baseline_and_feature_work(
     )
     tooling_path = tmp_path / ".devlab/config/tooling.md"
     tooling_path.write_text(
-        tooling_path.read_text()
-        + "\n\n## Existing-Project Evaluation Validation\n\n"
+        tooling_path.read_text() + "\n\n## Existing-Project Evaluation Validation\n\n"
         "This target owns its Python test environment through `pyproject.toml` and "
         "uv dependency groups. Use `uv run pytest` for task validation. Do not use "
         "bare `pytest`, because that can accidentally resolve to the DevLab harness "
@@ -252,14 +247,14 @@ def test_live_adopt_existing_current_state_baseline_and_feature_work(
     )
     profile_path = tmp_path / ".devlab/config/profiles/default.toml"
     profile_path.write_text(
-        'version = 1\n'
+        "version = 1\n"
         'id = "default"\n'
         'title = "Default evaluation profile"\n'
-        '\n[tooling]\n'
+        "\n[tooling]\n"
         'summary = "Target-owned Python validation through uv and pyproject.toml."\n'
         'default_validation = ["uv run pytest"]\n'
-        '\n[environment]\n'
-        'managed_roles = []\n'
+        "\n[environment]\n"
+        "managed_roles = []\n"
     )
     lock_result = subprocess.run(
         ["uv", "--cache-dir", "/tmp/uv-cache", "lock"],
@@ -281,10 +276,7 @@ def test_live_adopt_existing_current_state_baseline_and_feature_work(
     )
     run_git(tmp_path, "commit", "-m", "Configure target-owned validation")
     _configure_live_agents(tmp_path)
-    failure_context = (
-        f"target_root={tmp_path}\n"
-        f"agent_logs={tmp_path / '.devlab/logs/agents'}"
-    )
+    failure_context = f"target_root={tmp_path}\nagent_logs={tmp_path / '.devlab/logs/agents'}"
 
     planned = _run_live_loop(
         tmp_path,
@@ -299,18 +291,13 @@ def test_live_adopt_existing_current_state_baseline_and_feature_work(
     assert "calculator.py" in design, failure_context
     assert "add" in design, failure_context
     assert "subtract" in design, failure_context
-    assert (
-        "current-state" in design
-        or "current state" in design
-        or "existing" in design
-    ), failure_context
+    assert "current-state" in design or "current state" in design or "existing" in design, (
+        failure_context
+    )
     tasks = FileTaskTracker(tmp_path).list_tasks()
     assert tasks, failure_context
     planned_validation = {
-        command
-        for task in tasks
-        if task.validation is not None
-        for command in task.validation
+        command for task in tasks if task.validation is not None for command in task.validation
     }
     assert "pytest" not in planned_validation, failure_context
     assert any("uv run pytest" in command for command in planned_validation) or any(
@@ -351,10 +338,7 @@ def test_live_spec_reconciliation_archives_and_replans(tmp_path: Path) -> None:
         "the numeric sum. Keep the implementation dependency-free.",
     )
     _configure_live_agents(tmp_path)
-    failure_context = (
-        f"target_root={tmp_path}\n"
-        f"agent_logs={tmp_path / '.devlab/logs/agents'}"
-    )
+    failure_context = f"target_root={tmp_path}\nagent_logs={tmp_path / '.devlab/logs/agents'}"
 
     initial = _run_live_loop(
         tmp_path,
@@ -450,11 +434,11 @@ def test_live_stateful_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             "Do not use third-party runtime dependencies. Implement the server in "
             "src/todo_api/server.py and make it runnable from the repository root with "
             "python -m src.todo_api.server --port <port>. It must expose GET /health "
-            "returning JSON {\"status\": \"ok\"}, POST /todos with JSON "
-            "{\"title\": \"...\"} to create an in-memory item and return a top-level "
+            'returning JSON {"status": "ok"}, POST /todos with JSON '
+            '{"title": "..."} to create an in-memory item and return a top-level '
             "JSON object with integer id and title fields, GET /todos to return "
-            "JSON {\"todos\": [<items>]}, DELETE /todos/{id} to delete an item and return "
-            "JSON {\"deleted\": <id>}. POST /todos must return a 4xx client error "
+            'JSON {"todos": [<items>]}, DELETE /todos/{id} to delete an item and return '
+            'JSON {"deleted": <id>}. POST /todos must return a 4xx client error '
             "for invalid JSON, missing title, empty title, or blank title. Return 404 "
             "for unknown routes. "
             "Also provide a Makefile "
@@ -490,10 +474,10 @@ def test_live_static_frontend_todo_app_happy_path_evaluation(tmp_path: Path) -> 
             "frontend build step. Implement the API in src/todo_api/server.py and make "
             "it runnable from the repository root with python -m src.todo_api.server "
             "--port <port>. It must expose GET /health returning JSON "
-            "{\"status\": \"ok\"}, POST /todos with JSON {\"title\": \"...\"} to "
+            '{"status": "ok"}, POST /todos with JSON {"title": "..."} to '
             "create an in-memory item and return a top-level JSON object with integer "
-            "id and title fields, GET /todos to return JSON {\"todos\": [<items>]}, "
-            "DELETE /todos/{id} to delete an item and return JSON {\"deleted\": <id>}. "
+            'id and title fields, GET /todos to return JSON {"todos": [<items>]}, '
+            'DELETE /todos/{id} to delete an item and return JSON {"deleted": <id>}. '
             "POST /todos must return a 4xx client error for invalid JSON, missing "
             "title, empty title, or blank title. Return 404 for unknown routes. Place "
             "frontend files at exactly static/index.html, static/app.js, and "
@@ -530,10 +514,10 @@ def test_live_react_vite_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
             "React frontend using Vite. Implement the API in src/todo_api/server.py and "
             "make it runnable from the repository root with python -m src.todo_api.server "
             "--port <port>. It must expose GET /health returning JSON "
-            "{\"status\": \"ok\"}, POST /todos with JSON {\"title\": \"...\"} to "
+            '{"status": "ok"}, POST /todos with JSON {"title": "..."} to '
             "create an in-memory item and return a top-level JSON object with integer "
-            "id and title fields, GET /todos to return JSON {\"todos\": [<items>]}, "
-            "DELETE /todos/{id} to delete an item and return JSON {\"deleted\": <id>}. "
+            'id and title fields, GET /todos to return JSON {"todos": [<items>]}, '
+            'DELETE /todos/{id} to delete an item and return JSON {"deleted": <id>}. '
             "POST /todos must return a 4xx client error for invalid JSON, missing "
             "title, empty title, or blank title. Return 404 for unknown routes. Use "
             "Vite with React for the browser UI; include react, react-dom, vite, and "
@@ -581,11 +565,11 @@ def test_live_deployable_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             "Do not use third-party runtime dependencies. Implement the server in "
             "src/todo_api/server.py and make it runnable from the repository root with "
             "python -m src.todo_api.server --port <port>. It must expose GET /health "
-            "returning JSON {\"status\": \"ok\"}, POST /todos with JSON "
-            "{\"title\": \"...\"} to create an in-memory item and return a top-level "
+            'returning JSON {"status": "ok"}, POST /todos with JSON '
+            '{"title": "..."} to create an in-memory item and return a top-level '
             "JSON object with integer id and title fields, GET /todos to return "
-            "JSON {\"todos\": [<items>]}, DELETE /todos/{id} to delete an item and return "
-            "JSON {\"deleted\": <id>}. POST /todos must return a 4xx client error "
+            'JSON {"todos": [<items>]}, DELETE /todos/{id} to delete an item and return '
+            'JSON {"deleted": <id>}. POST /todos must return a 4xx client error '
             "for invalid JSON, missing title, empty title, or blank title. Return 404 "
             "for unknown routes. Also provide a Makefile with run and test targets, "
             "a README documenting usage and endpoints, and a .gitignore covering Python "

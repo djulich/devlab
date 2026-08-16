@@ -7,9 +7,7 @@ from devlab.task_tracker import Task
 from devlab.workspace import DESIGN_PLAN, WorkspaceSnapshot
 
 
-def session_start_context(
-    snapshot: WorkspaceSnapshot, role_name: str, task: Task | None
-) -> str:
+def session_start_context(snapshot: WorkspaceSnapshot, role_name: str, task: Task | None) -> str:
     if role_name in {"developer", "reviewer"}:
         if task is None:
             return "task=none"

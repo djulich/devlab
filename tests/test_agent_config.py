@@ -548,9 +548,9 @@ def test_researcher_configuration_is_resolved_only_when_explicit(tmp_path: Path)
     assert "researcher" in configured.role_providers
 
     (tmp_path / ".devlab/config/agents.toml").write_text(
-        "[defaults]\nprovider = \"default\"\n\n"
-        "[providers.default]\ncommand = \"agent\"\n"
-        "args = [\"{system_prompt}\", \"{session_prompt}\"]\n"
+        '[defaults]\nprovider = "default"\n\n'
+        '[providers.default]\ncommand = "agent"\n'
+        'args = ["{system_prompt}", "{session_prompt}"]\n'
     )
     fallback = load_agent_configuration(tmp_path)
     assert "researcher" not in fallback.resolved

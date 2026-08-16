@@ -293,7 +293,8 @@ def main() -> None:
     )
 
     history_parser = subparsers.add_parser(
-        "history", help="Show session history.",
+        "history",
+        help="Show session history.",
     )
     history_parser.add_argument(
         "--root",
@@ -325,18 +326,14 @@ def main() -> None:
         type=Path,
         default=DEFAULT_PROJECT_ROOT,
         help=(
-            "Workspace root for provider execution and logs "
-            "(default: current working directory)."
+            "Workspace root for provider execution and logs (default: current working directory)."
         ),
     )
     smoke_parser.add_argument(
         "--config",
         type=Path,
         default=None,
-        help=(
-            "Agent config TOML path "
-            "(default: .devlab/config/agents.toml under --root)."
-        ),
+        help=("Agent config TOML path (default: .devlab/config/agents.toml under --root)."),
     )
     smoke_selection = smoke_parser.add_mutually_exclusive_group()
     smoke_selection.add_argument(
@@ -384,18 +381,14 @@ def main() -> None:
     )
     _add_executable_config_authorization_options(smoke_parser)
 
-    trust_parser = subparsers.add_parser(
-        "trust", help="Inspect and manage operator-local trust."
-    )
+    trust_parser = subparsers.add_parser("trust", help="Inspect and manage operator-local trust.")
     trust_parser.add_argument(
         "--root",
         type=Path,
         default=DEFAULT_PROJECT_ROOT,
         help="Workspace root (default: current working directory).",
     )
-    trust_subparsers = trust_parser.add_subparsers(
-        dest="trust_command", required=True
-    )
+    trust_subparsers = trust_parser.add_subparsers(dest="trust_command", required=True)
     trust_exec = trust_subparsers.add_parser(
         "executable-config",
         help="Inspect, approve, or revoke executable configuration.",
@@ -456,9 +449,7 @@ def main() -> None:
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to operate on (default: current working directory).",
     )
-    clarify_subparsers = clarify_parser.add_subparsers(
-        dest="clarify_command", required=True
-    )
+    clarify_subparsers = clarify_parser.add_subparsers(dest="clarify_command", required=True)
     clarify_subparsers.add_parser("list", help="List clarifications.")
     clarify_show = clarify_subparsers.add_parser("show", help="Show a clarification file.")
     clarify_show.add_argument("clarification_id")
@@ -487,8 +478,7 @@ def main() -> None:
         type=int,
         default=IMPLEMENT_MAX_SESSIONS,
         help=(
-            "Maximum sessions to run when --resume is used "
-            f"(default: {IMPLEMENT_MAX_SESSIONS})."
+            f"Maximum sessions to run when --resume is used (default: {IMPLEMENT_MAX_SESSIONS})."
         ),
     )
     _add_executable_config_authorization_options(clarify_answer)
@@ -512,10 +502,7 @@ def main() -> None:
         "--max-sessions",
         type=int,
         default=IMPLEMENT_MAX_SESSIONS,
-        help=(
-            "Maximum number of sessions to run "
-            f"(default: {IMPLEMENT_MAX_SESSIONS})."
-        ),
+        help=(f"Maximum number of sessions to run (default: {IMPLEMENT_MAX_SESSIONS})."),
     )
 
     session_parser = subparsers.add_parser(
@@ -527,15 +514,11 @@ def main() -> None:
         default=DEFAULT_PROJECT_ROOT,
         help="Target workspace root (default: current working directory).",
     )
-    session_subparsers = session_parser.add_subparsers(
-        dest="session_command", required=True
-    )
+    session_subparsers = session_parser.add_subparsers(dest="session_command", required=True)
     handoff_parser = session_subparsers.add_parser(
         "handoff", help="Initialize or submit the active session handoff candidate."
     )
-    handoff_subparsers = handoff_parser.add_subparsers(
-        dest="handoff_command", required=True
-    )
+    handoff_subparsers = handoff_parser.add_subparsers(dest="handoff_command", required=True)
     for command_name in ("init", "submit"):
         command_parser = handoff_subparsers.add_parser(command_name)
         command_parser.add_argument(
@@ -549,17 +532,10 @@ def main() -> None:
     root = args.root.resolve()
     if args.command == "agent-smoke-test":
         if args.use_provider_defaults and args.role is not None:
+            parser.error("agent-smoke-test cannot combine --use-provider-defaults with --role")
+        if args.use_provider_defaults and args.provider is None and not args.all_providers:
             parser.error(
-                "agent-smoke-test cannot combine --use-provider-defaults with --role"
-            )
-        if (
-            args.use_provider_defaults
-            and args.provider is None
-            and not args.all_providers
-        ):
-            parser.error(
-                "agent-smoke-test --use-provider-defaults requires "
-                "--provider or --all-providers"
+                "agent-smoke-test --use-provider-defaults requires --provider or --all-providers"
             )
     if args.command in {"plan", "implement"} and args.unattended:
         args.clarification_mode = "agent"
@@ -687,14 +663,9 @@ def main() -> None:
                 print(f"Executable configuration: invalid ({exc})")
                 raise SystemExit(1) from exc
             trust_status = (
-                "trusted"
-                if executable_config_is_trusted(executable_config)
-                else "not trusted"
+                "trusted" if executable_config_is_trusted(executable_config) else "not trusted"
             )
-            print(
-                "Executable configuration: "
-                f"{trust_status} ({executable_config.digest})"
-            )
+            print(f"Executable configuration: {trust_status} ({executable_config.digest})")
         if problems:
             raise SystemExit(1)
     elif args.command == "agent-smoke-test":
@@ -799,13 +770,8 @@ def main() -> None:
                 path = initialize_handoff_candidate(root, args.session_envelope)
                 print(f"Initialized handoff candidate: {path.relative_to(root)}")
             else:
-                result = submit_session_handoff(
-                    root, envelope_path=args.session_envelope
-                )
-                print(
-                    f"Accepted handoff for {result.role_name} session "
-                    f"{result.session_id}."
-                )
+                result = submit_session_handoff(root, envelope_path=args.session_envelope)
+                print(f"Accepted handoff for {result.role_name} session {result.session_id}.")
         except HandoffSubmissionError as exc:
             print("Handoff rejected:\n")
             for index, issue in enumerate(exc.issues, start=1):

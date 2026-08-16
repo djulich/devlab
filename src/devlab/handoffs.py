@@ -619,18 +619,14 @@ def parse_research_request(section: str) -> ResearchRequest:
     unexpected = sorted(set(data) - expected)
     if missing:
         raise HandoffError(
-            "handoff section ## Research Request is missing required key(s): "
-            + ", ".join(missing)
+            "handoff section ## Research Request is missing required key(s): " + ", ".join(missing)
         )
     if unexpected:
         raise HandoffError(
-            "handoff section ## Research Request has unexpected key(s): "
-            + ", ".join(unexpected)
+            "handoff section ## Research Request has unexpected key(s): " + ", ".join(unexpected)
         )
     if data.get("research_required") is not True:
-        raise HandoffError(
-            "handoff section ## Research Request research_required must be true"
-        )
+        raise HandoffError("handoff section ## Research Request research_required must be true")
     issues: list[str] = []
     title = _candidate_string(data, "title", issues)
     scope = _candidate_string(data, "scope", issues)
@@ -647,9 +643,7 @@ def parse_research_request(section: str) -> ResearchRequest:
         issues,
     )
     if issues:
-        raise HandoffError(
-            "handoff section ## Research Request is invalid: " + "; ".join(issues)
-        )
+        raise HandoffError("handoff section ## Research Request is invalid: " + "; ".join(issues))
     return ResearchRequest(
         title=title,
         scope=scope,
@@ -1078,9 +1072,10 @@ def _validate_research_values(
         issues.append("title must be a single line")
     if len(title) > 160:
         issues.append("title must be at most 160 characters")
-    if scope and re.fullmatch(
-        r"workspace|planning|milestone:M\d{1,5}|task:T\d{3,5}", scope
-    ) is None:
+    if (
+        scope
+        and re.fullmatch(r"workspace|planning|milestone:M\d{1,5}|task:T\d{3,5}", scope) is None
+    ):
         issues.append("scope must be workspace, planning, milestone:<id>, or task:<id>")
     if any("\n" in criterion or "\r" in criterion for criterion in acceptance_criteria):
         issues.append("acceptance_criteria entries must be single lines")

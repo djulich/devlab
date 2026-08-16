@@ -19,11 +19,7 @@ from devlab.workflow_state import (
 def test_format_workflow_state_writes_minimal_toml() -> None:
     state = WorkflowState(version=1, planning=PlanningState(complete=True))
 
-    assert format_workflow_state(state) == (
-        "version = 1\n\n"
-        "[planning]\n"
-        "complete = true\n"
-    )
+    assert format_workflow_state(state) == ("version = 1\n\n[planning]\ncomplete = true\n")
 
 
 def test_set_planning_complete_updates_workflow_toml(tmp_path: Path) -> None:
@@ -67,9 +63,7 @@ def test_set_planning_complete_creates_missing_workflow_toml(tmp_path: Path) -> 
 
     assert updated.planning.complete is False
     assert (tmp_path / ".devlab/workflow.toml").read_text() == (
-        "version = 1\n\n"
-        "[planning]\n"
-        "complete = false\n"
+        "version = 1\n\n[planning]\ncomplete = false\n"
     )
 
 
@@ -164,12 +158,7 @@ def test_update_workflow_state_preserves_unknown_future_state(tmp_path: Path) ->
     path = tmp_path / ".devlab/workflow.toml"
     path.parent.mkdir(parents=True)
     path.write_text(
-        "version = 1\n\n"
-        "[planning]\n"
-        "complete = false\n"
-        "future = \"kept\"\n\n"
-        "[custom]\n"
-        "value = 1\n"
+        'version = 1\n\n[planning]\ncomplete = false\nfuture = "kept"\n\n[custom]\nvalue = 1\n'
     )
 
     updated = update_workflow_state(
@@ -180,7 +169,7 @@ def test_update_workflow_state_preserves_unknown_future_state(tmp_path: Path) ->
 
     assert updated.planning.complete is True
     assert updated.specs.last_planned_spec_commit == "def456"
-    assert "future = \"kept\"" in path.read_text()
+    assert 'future = "kept"' in path.read_text()
     assert "[custom]\nvalue = 1\n" in path.read_text()
     assert '[specs]\nlast_planned_spec_commit = "def456"\n' in path.read_text()
 
@@ -189,12 +178,7 @@ def test_set_resume_state_preserves_unknown_future_state(tmp_path: Path) -> None
     path = tmp_path / ".devlab/workflow.toml"
     path.parent.mkdir(parents=True)
     path.write_text(
-        "version = 1\n\n"
-        "[planning]\n"
-        "complete = true\n"
-        "future = \"kept\"\n\n"
-        "[custom]\n"
-        "value = 1\n"
+        'version = 1\n\n[planning]\ncomplete = true\nfuture = "kept"\n\n[custom]\nvalue = 1\n'
     )
 
     updated = set_resume_state(
@@ -211,7 +195,7 @@ def test_set_resume_state_preserves_unknown_future_state(tmp_path: Path) -> None
     assert updated.resume is not None
     assert updated.resume.blocked_by == "CL0001"
     text = path.read_text()
-    assert "future = \"kept\"" in text
+    assert 'future = "kept"' in text
     assert "[custom]\nvalue = 1\n" in text
     assert '[resume]\nblocked_by = "CL0001"\n' in text
 

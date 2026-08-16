@@ -190,7 +190,6 @@ def _format_finding_file(metadata: dict[str, Any], body: str) -> str:
     return "\n".join(lines) + "\n\n" + body.lstrip("\n")
 
 
-
 def _parse_status(value: Any) -> FindingStatus:
     if value is None:
         return FindingStatus.OPEN
