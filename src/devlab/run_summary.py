@@ -10,7 +10,11 @@ from devlab.executable_config import (
 )
 from devlab.orchestrator import RunResult, RunStopReason
 from devlab.task_tracker import Task
-from devlab.workflow_state_report import build_workflow_state_report
+from devlab.workflow_state_report import (
+    NextCommandAdvice,
+    build_next_command_advice,
+    build_workflow_state_report,
+)
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
 
@@ -113,12 +117,10 @@ def build_run_summary(
     next_commands = _next_commands(
         command=command,
         result=result,
-        next_role=next_role,
         clarification=clarification,
         research=research,
         executable_config=executable_config,
-        dirty_specs=bool(report.specs.dirty_spec_paths),
-        changed_specs=report.specs.specs_changed_since_baseline is True,
+        state_advice=build_next_command_advice(report),
     )
     return RunSummary(
         command=command,
@@ -252,12 +254,10 @@ def _next_commands(
     *,
     command: str,
     result: RunResult,
-    next_role: str | None,
     clarification: RunClarificationSummary | None,
     research: RunResearchSummary | None,
     executable_config: RunExecutableConfigSummary,
-    dirty_specs: bool,
-    changed_specs: bool,
+    state_advice: NextCommandAdvice,
 ) -> tuple[str, ...]:
     if clarification is not None:
         return (
@@ -290,15 +290,9 @@ def _next_commands(
             "devlab trust executable-config",
             continuation,
         )
-    if dirty_specs:
-        return ("Commit or revert dirty specification files, then run devlab plan.",)
-    if changed_specs:
-        return ("devlab plan",)
-    if next_role is None:
-        return ()
-    if command == "implement":
+    if command == "implement" and state_advice.action == "continue_planning":
         return ("devlab implement",)
-    return ("devlab implement" if next_role not in {"architect", "planner"} else "devlab plan",)
+    return (state_advice.command,) if state_advice.command else ()
 
 
 def _stop_reason_text(reason: RunStopReason) -> str:

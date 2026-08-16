@@ -199,7 +199,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab clarify [--root PATH] list|show|answer|supersede ...` — inspect and answer durable operator clarifications.
 - `devlab resume [--root PATH] [--max-sessions N]` — resume the workflow blocked by an answered clarification.
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
-- `devlab workflow-state [--root PATH] [--digest] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state. Use `--digest` for a compact operator summary; add `--json` to serialize the selected view.
+- `devlab workflow-state [--root PATH] [--digest|--next-command] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state. Use `--digest` for a compact operator summary or `--next-command` for one safe continuation/inspection command; add `--json` to serialize the selected view.
 - `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
 - `devlab trust [--root PATH] executable-config [--config PATH] [--show|--revoke]` — inspect, approve, or revoke workspace-scoped executable-configuration trust stored in user-local DevLab state.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.

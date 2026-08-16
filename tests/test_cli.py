@@ -401,6 +401,63 @@ def test_cli_workflow_state_digest_json_reports_structured_digest(
     assert payload["validation"]["state"] == "not_reported"
 
 
+def test_cli_workflow_state_next_command_prints_only_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(monkeypatch, "workflow-state", "--next-command", "--root", str(tmp_path))
+
+    assert capsys.readouterr().out == "devlab plan\n"
+
+
+def test_cli_workflow_state_next_command_json_is_structured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+
+    _run_cli(
+        monkeypatch,
+        "workflow-state",
+        "--next-command",
+        "--json",
+        "--root",
+        str(tmp_path),
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "action": "continue_planning",
+        "argv": ["devlab", "plan"],
+        "command": "devlab plan",
+        "mutates_state": True,
+        "reason": "next_role_architect",
+    }
+
+
+def test_cli_workflow_state_rejects_multiple_views(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(
+            monkeypatch,
+            "workflow-state",
+            "--digest",
+            "--next-command",
+            "--root",
+            str(tmp_path),
+        )
+
+    assert exc.value.code == 2
+
+
 def test_cli_diagnostics_reports_workflow_diagnostics(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

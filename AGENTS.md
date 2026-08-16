@@ -75,7 +75,7 @@ Diagnostics and reporting:
 - `artifact_hygiene.py`: git-based artifact classification.
 - `doctor.py` and `doctor_*.py`: workspace validation facade and domain-specific checks.
 - `status.py`: workspace status reporting.
-- `workflow_state_report.py`: operator-facing lifecycle state reporting.
+- `workflow_state_report.py`: operator-facing lifecycle state, digest, and structured next-command advice.
 - `run_summary.py`: structured workflow-run outcome summaries.
 - `session_logging.py`: session identity, invocation artifact paths, durable metadata, prompt/config logging, and structured start/finish context.
 

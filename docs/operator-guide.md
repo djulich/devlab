@@ -437,7 +437,11 @@ Useful inspection commands:
   counts, spec reconciliation state, and current work counts. Use
   `devlab workflow-state --json` for the full report as JSON,
   `devlab workflow-state --digest` for a compact operator digest, or
-  `devlab workflow-state --digest --json` for the digest as JSON.
+  `devlab workflow-state --digest --json` for the digest as JSON. Use
+  `devlab workflow-state --next-command` to print only one safe command for the
+  next continuation or inspection step; add `--json` for its action, argument
+  vector, reason, and mutation classification. A complete workflow produces no
+  plain command and reports `command: null` in JSON.
 - `devlab diagnostics --verbose`: workflow-history diagnostics and quality
   warnings.
 - `devlab doctor`: workspace configuration and workflow-state validation.

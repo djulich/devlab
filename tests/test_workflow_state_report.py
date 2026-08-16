@@ -14,8 +14,10 @@ from devlab.task_tracker import FileTaskTracker
 from devlab.workflow_events import append_workflow_event
 from devlab.workflow_state import ResumeState, initial_workflow_state_text, set_resume_state
 from devlab.workflow_state_report import (
+    build_next_command_advice,
     build_workflow_state_digest,
     build_workflow_state_report,
+    format_next_command,
     format_workflow_state_digest,
     format_workflow_state_report,
 )
@@ -187,6 +189,55 @@ def test_workflow_state_digest_json_is_compact_projection(tmp_path: Path) -> Non
     assert payload["validation"]["state"] == "not_reported"
     assert payload["clarifications"]["pending_blockers"] == []
     assert payload["research"] is None
+
+
+def test_next_command_advice_continues_planning(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+
+    advice = build_next_command_advice(build_workflow_state_report(tmp_path))
+
+    assert format_next_command(advice) == "devlab plan"
+    assert advice.action == "continue_planning"
+    assert advice.reason == "next_role_architect"
+    assert advice.mutates_state is True
+    assert advice.as_dict()["argv"] == ["devlab", "plan"]
+
+
+def test_next_command_advice_prioritizes_clarification_inspection(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    clarification = _create_pending_clarification(tmp_path)
+
+    advice = build_next_command_advice(build_workflow_state_report(tmp_path))
+
+    assert advice.command == f"devlab clarify show {clarification}"
+    assert advice.action == "inspect_clarification"
+    assert advice.mutates_state is False
+
+
+def test_next_command_advice_resumes_answered_clarification(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    set_resume_state(
+        tmp_path,
+        ResumeState(blocked_by="CL0001", command="plan", role="planner"),
+    )
+
+    advice = build_next_command_advice(build_workflow_state_report(tmp_path))
+
+    assert advice.command == "devlab resume"
+    assert advice.reason == "clarification_answered"
+
+
+def test_next_command_advice_is_empty_for_complete_workflow(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    (tmp_path / ".devlab/plans/design-plan.md").write_text("# Design\n")
+    (tmp_path / ".devlab/plans/project-plan.md").write_text("# Plan\n")
+    (tmp_path / ".devlab/workflow.toml").write_text("version = 1\n\n[planning]\ncomplete = true\n")
+
+    advice = build_next_command_advice(build_workflow_state_report(tmp_path))
+
+    assert format_next_command(advice) == ""
+    assert advice.as_dict()["command"] is None
+    assert advice.reason == "workflow_complete"
 
 
 def test_workflow_state_report_includes_clarification_blockers(

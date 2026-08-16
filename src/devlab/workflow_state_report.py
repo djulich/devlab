@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import shlex
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -163,6 +164,32 @@ class WorkflowStateDigest:
         return json.dumps(self.as_dict(), indent=2, sort_keys=True)
 
 
+@dataclasses.dataclass(frozen=True)
+class NextCommandAdvice:
+    """One safe command that advances or inspects the current workflow state."""
+
+    action: str
+    argv: tuple[str, ...]
+    reason: str
+    mutates_state: bool
+
+    @property
+    def command(self) -> str:
+        return shlex.join(self.argv) if self.argv else ""
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "action": self.action,
+            "argv": list(self.argv),
+            "command": self.command or None,
+            "mutates_state": self.mutates_state,
+            "reason": self.reason,
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.as_dict(), indent=2, sort_keys=True)
+
+
 def build_workflow_state_report(root: Path) -> WorkflowStateReport:
     events = load_workflow_events(root)
     if not (root / ".devlab").exists() or not (root / ".devlab/manifest.toml").exists():
@@ -302,6 +329,71 @@ def build_workflow_state_digest(report: WorkflowStateReport) -> WorkflowStateDig
         validation=ValidationDigest(state="not_reported"),
         notes=_digest_notes(report),
     )
+
+
+def build_next_command_advice(report: WorkflowStateReport) -> NextCommandAdvice:
+    """Select one safe, re-queryable next command from a read-only state report."""
+    if report.lifecycle_phase == "uninitialized":
+        return NextCommandAdvice("initialize", ("devlab", "init"), "uninitialized", True)
+    if report.research is not None:
+        return NextCommandAdvice(
+            "continue_research_route",
+            ("devlab", report.research.command),
+            f"research_{report.research.status}",
+            True,
+        )
+    if report.clarifications.pending_blockers:
+        clarification_id = report.clarifications.pending_blockers[0].id
+        return NextCommandAdvice(
+            "inspect_clarification",
+            ("devlab", "clarify", "show", clarification_id),
+            "clarification_pending",
+            False,
+        )
+    if report.clarifications.resume is not None:
+        return NextCommandAdvice(
+            "resume_workflow",
+            ("devlab", "resume"),
+            "clarification_answered",
+            True,
+        )
+    if report.specs.dirty_spec_paths:
+        return NextCommandAdvice(
+            "inspect_dirty_specs",
+            ("git", "status", "--short", "--", ".devlab/specs"),
+            "dirty_specifications",
+            False,
+        )
+    if report.specs.specs_changed_since_baseline is True:
+        return NextCommandAdvice(
+            "reconcile_specifications",
+            ("devlab", "plan"),
+            "specifications_changed",
+            True,
+        )
+    if report.next_role in {"architect", "planner"}:
+        return NextCommandAdvice(
+            "continue_planning", ("devlab", "plan"), f"next_role_{report.next_role}", True
+        )
+    if report.next_role in {"developer", "reviewer", "integrator"}:
+        return NextCommandAdvice(
+            "continue_implementation",
+            ("devlab", "implement"),
+            f"next_role_{report.next_role}",
+            True,
+        )
+    if report.lifecycle_phase == "complete":
+        return NextCommandAdvice("none", (), "workflow_complete", False)
+    return NextCommandAdvice(
+        "inspect_workflow",
+        ("devlab", "status", "--verbose"),
+        "workflow_blocked_or_inconsistent",
+        False,
+    )
+
+
+def format_next_command(advice: NextCommandAdvice) -> str:
+    return advice.command
 
 
 def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:

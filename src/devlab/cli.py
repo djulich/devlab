@@ -44,8 +44,10 @@ from devlab.run_summary import build_run_summary, format_run_summary
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
 from devlab.workflow_state_report import (
+    build_next_command_advice,
     build_workflow_state_digest,
     build_workflow_state_report,
+    format_next_command,
     format_workflow_state_digest,
     format_workflow_state_report,
 )
@@ -261,10 +263,16 @@ def main() -> None:
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to inspect (default: current working directory).",
     )
-    workflow_state_parser.add_argument(
+    workflow_state_view = workflow_state_parser.add_mutually_exclusive_group()
+    workflow_state_view.add_argument(
         "--digest",
         action="store_true",
         help="Emit a compact operator digest instead of the full workflow report.",
+    )
+    workflow_state_view.add_argument(
+        "--next-command",
+        action="store_true",
+        help="Emit one safe command for the next workflow action.",
     )
     workflow_state_parser.add_argument(
         "--json",
@@ -636,7 +644,15 @@ def main() -> None:
         print(format_status(root, verbose=args.verbose))
     elif args.command == "workflow-state":
         report = build_workflow_state_report(root)
-        if args.digest:
+        if args.next_command:
+            advice = build_next_command_advice(report)
+            if args.json:
+                print(advice.to_json())
+            else:
+                command = format_next_command(advice)
+                if command:
+                    print(command)
+        elif args.digest:
             digest = build_workflow_state_digest(report)
             if args.json:
                 print(digest.to_json())
