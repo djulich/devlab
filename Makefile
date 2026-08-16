@@ -1,4 +1,4 @@
-.PHONY: help sync format check test install install-editable reinstall reinstall-editable uninstall
+.PHONY: help setup sync hooks format check test install install-editable reinstall reinstall-editable uninstall
 
 UV ?= uv
 PACKAGE ?= devlab
@@ -7,8 +7,30 @@ help: ## Show available Makefile targets.
 	@printf 'DevLab source checkout targets:\n\n'
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
+setup: ## Initialize the development environment and install Git hooks.
+	$(MAKE) sync
+	$(MAKE) hooks
+
 sync: ## Install/update local development dependencies with uv.
 	$(UV) sync
+
+hooks: ## Install repository-managed Git hooks in this clone.
+	@set -eu; \
+	hooks_dir="$$(git rev-parse --git-common-dir)/hooks"; \
+	mkdir -p "$$hooks_dir"; \
+	for hook in pre-commit pre-push; do \
+		source="$(CURDIR)/.githooks/$$hook"; \
+		target="$$hooks_dir/$$hook"; \
+		if [ -e "$$target" ] || [ -L "$$target" ]; then \
+			if [ ! -L "$$target" ] || [ "$$(readlink "$$target")" != "$$source" ]; then \
+				echo "Refusing to replace existing Git hook: $$target" >&2; \
+				exit 1; \
+			fi; \
+		else \
+			ln -s "$$source" "$$target"; \
+		fi; \
+	done
+	@echo "Installed pre-commit and pre-push hooks."
 
 format: ## Format Python source and tests with Ruff.
 	$(UV) run ruff format

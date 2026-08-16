@@ -294,6 +294,17 @@ Keep environment-specific live-agent configs under `.local/live-eval/` and out o
 
 ## Development validation
 
+Initialize a development checkout and install its local Git hooks:
+
+```bash
+make setup
+```
+
+The pre-commit hook checks Ruff formatting and types. The pre-push hook runs the
+complete validation suite through `make check`. These hooks provide early local
+feedback and can be bypassed with Git's standard `--no-verify` option; CI remains
+the shared validation authority.
+
 ```bash
 make check
 ```
