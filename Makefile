@@ -1,4 +1,4 @@
-.PHONY: help sync check test install install-editable reinstall reinstall-editable uninstall
+.PHONY: help sync format check test install install-editable reinstall reinstall-editable uninstall
 
 UV ?= uv
 PACKAGE ?= devlab
@@ -10,7 +10,11 @@ help: ## Show available Makefile targets.
 sync: ## Install/update local development dependencies with uv.
 	$(UV) sync
 
-check: ## Run lint, type checks, and the test suite.
+format: ## Format Python source and tests with Ruff.
+	$(UV) run ruff format
+
+check: ## Run formatting, lint, type checks, and the test suite.
+	$(UV) run ruff format --check
 	$(UV) run ruff check
 	$(UV) run ty check
 	$(UV) run pytest -q

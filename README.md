@@ -301,10 +301,16 @@ make check
 Equivalent direct commands:
 
 ```bash
+uv run ruff format --check
 uv run ruff check
 uv run ty check
 uv run pytest -q
 ```
+
+Run `make format` to apply Ruff Formatter. Narrow `# fmt: skip` or
+`# fmt: off`/`# fmt: on` directives are allowed when Python source layout
+deliberately mirrors the structure of an embedded Markdown, TOML, JSON,
+shell-command, or exact-output fixture.
 
 ## More documentation
 
