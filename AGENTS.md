@@ -77,7 +77,7 @@ Diagnostics and reporting:
 - `status.py`: workspace status reporting.
 - `workflow_state_report.py`: operator-facing lifecycle state reporting.
 - `run_summary.py`: structured workflow-run outcome summaries.
-- `session_logging.py`: structured start/finish context for session logs.
+- `session_logging.py`: session identity, invocation artifact paths, durable metadata, prompt/config logging, and structured start/finish context.
 
 CLI and shared infrastructure:
 - `cli.py`: command parsing and thin operator-interface adapters.

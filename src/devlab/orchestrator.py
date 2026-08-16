@@ -5,10 +5,8 @@ import hashlib
 import json
 import re
 import shutil
-import sys
 import tomllib
 from collections.abc import Callable
-from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import cast
@@ -18,7 +16,6 @@ from devlab.agent_config import (
     AGENTS_CONFIG,
     ResolvedAgentConfig,
     find_agent_executable_problems,
-    format_resolved_agent_config,
     load_agent_configuration,
 )
 from devlab.agents import (
@@ -51,11 +48,9 @@ from devlab.findings import Finding
 from devlab.generations import active_generation, archive_active_generation, has_active_plan
 from devlab.git import VersionControlError, run_git
 from devlab.handoffs import (
-    DEVLAB_PYTHON_ENV,
     HANDOFF_CANDIDATE_FILE,
     HANDOFF_FILE,
     MAX_SUBMISSION_ATTEMPTS,
-    SESSION_ENVELOPE_ENV,
     SESSION_ENVELOPE_FILE,
     SESSION_RESULT_FILE,
     Handoff,
@@ -97,7 +92,17 @@ from devlab.prompts import (
 )
 from devlab.research import Research, ResearchStatus, parse_research_result_candidate
 from devlab.roles import ROLES, RoleConfig
-from devlab.session_logging import session_finish_context, session_start_context
+from devlab.session_logging import (
+    SessionContext,
+    SessionMetadata,
+    agent_log_path,
+    build_session_context,
+    session_finish_context,
+    session_start_context,
+)
+from devlab.session_logging import (
+    session_timestamp as _timestamp,
+)
 from devlab.spec_reconciliation import (
     SpecReconciliationStatus,
     inspect_spec_reconciliation,
@@ -207,99 +212,6 @@ def _stop_result(
     return RunResult(sessions_run, completed, 0, errors, reason)
 
 
-# ---------------------------------------------------------------------------
-# Utilities
-# ---------------------------------------------------------------------------
-
-
-def _timestamp() -> str:
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-
-
-def _agent_invocation_id(session_number: int, role_name: str) -> str:
-    return f"{_timestamp()}_{session_number:03d}_{role_name}"
-
-
-def _agent_log_path(root: Path, invocation_id: str, suffix: str) -> Path:
-    return root / AGENT_LOG_DIR / f"{invocation_id}.{suffix}"
-
-
-@dataclasses.dataclass(frozen=True)
-class SessionContext:
-    """Per-session log paths and identity, built once per loop iteration."""
-
-    root: Path
-    session_number: int
-    role_name: str
-    invocation_id: str
-    stdout_log: Path
-    stderr_log: Path
-    base_prompt_log: Path | None
-    session_prompt_log: Path | None
-
-    def build_invocation(self, base_prompt: str, session_prompt: str) -> AgentInvocation:
-        envelope = self.root / ARTIFACTS_DIR / self.role_name / SESSION_ENVELOPE_FILE
-        return AgentInvocation(
-            root=self.root,
-            role_name=self.role_name,
-            system_prompt=base_prompt,
-            session_prompt=session_prompt,
-            invocation_id=self.invocation_id,
-            stdout_log=self.stdout_log,
-            stderr_log=self.stderr_log,
-            environment={
-                SESSION_ENVELOPE_ENV: envelope.as_posix(),
-                # Preserve a virtual-environment symlink: resolving it can bypass
-                # that environment's installed DevLab package.
-                DEVLAB_PYTHON_ENV: str(Path(sys.executable).absolute()),
-            },
-        )
-
-    def log_resolved_config(self, config: ResolvedAgentConfig) -> Path:
-        path = _agent_log_path(self.root, self.invocation_id, "config.toml")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        text = format_resolved_agent_config(config)
-        text += f'stdout_log = "{self.stdout_log.as_posix()}"\n'
-        text += f'stderr_log = "{self.stderr_log.as_posix()}"\n'
-        if self.base_prompt_log is not None:
-            text += f'base_prompt_log = "{self.base_prompt_log.as_posix()}"\n'
-        if self.session_prompt_log is not None:
-            text += f'session_prompt_log = "{self.session_prompt_log.as_posix()}"\n'
-        path.write_text(text)
-        return path
-
-    def write_prompt_logs(self, base_prompt: str, session_prompt: str) -> None:
-        if self.base_prompt_log is None or self.session_prompt_log is None:
-            return
-        self.base_prompt_log.parent.mkdir(parents=True, exist_ok=True)
-        self.base_prompt_log.write_text(base_prompt)
-        self.session_prompt_log.parent.mkdir(parents=True, exist_ok=True)
-        self.session_prompt_log.write_text(session_prompt)
-
-    def write_session_metadata(self, metadata: SessionMetadata) -> Path:
-        path = _agent_log_path(self.root, self.invocation_id, "metadata.json")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(dataclasses.asdict(metadata), indent=2) + "\n")
-        return path
-
-
-@dataclasses.dataclass(frozen=True)
-class SessionMetadata:
-    invocation_id: str
-    session_number: int
-    role_name: str
-    provider: str
-    model: str
-    return_code: int
-    failure_kind: str
-    duration_seconds: float | None
-    task_id: str
-    provider_version: str = ""
-    executable_config_digest: str = ""
-    executable_config_authorization: str = ""
-    progress: str = ""
-
-
 class SessionProgress(StrEnum):
     """Observed repository/workflow effect of one accepted role session."""
 
@@ -328,30 +240,6 @@ class SessionRoute:
     @property
     def task_id(self) -> str | None:
         return self.task.id if self.task is not None else None
-
-
-def _build_session_context(
-    root: Path,
-    session_number: int,
-    role_name: str,
-    *,
-    retain_prompts: bool,
-) -> SessionContext:
-    invocation_id = _agent_invocation_id(session_number, role_name)
-    return SessionContext(
-        root=root,
-        session_number=session_number,
-        role_name=role_name,
-        invocation_id=invocation_id,
-        stdout_log=_agent_log_path(root, invocation_id, "stdout.log"),
-        stderr_log=_agent_log_path(root, invocation_id, "stderr.log"),
-        base_prompt_log=(
-            _agent_log_path(root, invocation_id, "base-prompt.md") if retain_prompts else None
-        ),
-        session_prompt_log=(
-            _agent_log_path(root, invocation_id, "session-prompt.md") if retain_prompts else None
-        ),
-    )
 
 
 def _select_session_route(snapshot: WorkspaceSnapshot, role_name: str) -> SessionRoute:
@@ -674,222 +562,272 @@ def process_handoff(
     logger.info("Handoff archived to %s", archived.name)
 
     if research_request is not None:
-        research = workspace.research().create(
-            title=research_request.title,
-            asking_role=handoff.role_name,
-            asking_session_id=session_id,
+        return _process_research_request(
+            handoff,
+            workspace,
             command=command,
-            scope=research_request.scope,
-            task=task_id or "",
-            milestone=milestone_id or "",
-            question=research_request.question,
-            context=research_request.context,
-            desired_outcome=research_request.desired_outcome,
-            acceptance_criteria=research_request.acceptance_criteria,
+            session_id=session_id,
+            task_id=task_id,
+            milestone_id=milestone_id,
         )
-        set_resume_state(
-            workspace.root,
-            ResumeState(
-                blocked_by=research.id,
-                blocked_kind="research",
-                command=command,
-                role=handoff.role_name,
-                task=task_id or "",
-                milestone=milestone_id or "",
-            ),
-        )
-        workspace.did_mutate()
-        append_workflow_event(
-            workspace.root,
-            "research_requested",
-            research=research.id,
-            role=handoff.role_name,
-            command=command,
-            task=task_id or "",
-            milestone=milestone_id or "",
-        )
-        logger.info("Workflow stopped: research required: %s %s", research.id, research.title)
-        return ProcessResult(research_id=research.id)
 
     clarification_request = handoff.clarification_request
     if clarification_request is not None:
-        clarification = workspace.clarifications().create(
-            title=clarification_request.title,
-            asking_role=handoff.role_name,
-            session_id=session_id,
-            scope=clarification_request.scope,
-            blocks=clarification_request.blocks,
-            answer_shape=clarification_request.answer_shape,
-            recommended_option=clarification_request.recommended_option,
-            body=_clarification_body(clarification_request.title, clarification_request.details),
-        )
-        set_resume_state(
-            workspace.root,
-            ResumeState(
-                blocked_by=clarification.id,
-                command=command,
-                role=handoff.role_name,
-                task=task_id or "",
-                milestone=milestone_id or "",
-            ),
-        )
-        workspace.did_mutate()
-        append_workflow_event(
-            workspace.root,
-            "clarification_requested",
-            clarification=clarification.id,
-            role=handoff.role_name,
+        return _process_clarification_request(
+            handoff,
+            workspace,
             command=command,
-            task=task_id or "",
-            milestone=milestone_id or "",
+            session_id=session_id,
+            task_id=task_id,
+            milestone_id=milestone_id,
         )
-        logger.info(
-            "Workflow stopped: operator clarification required: %s %s",
-            clarification.id,
-            clarification.title,
-        )
-        return ProcessResult(clarification_id=clarification.id)
 
     if handoff.role_name == "architect":
-        milestone = milestone_id or workspace.snapshot.select_architecture_review_milestone()
-        if milestone is not None:
-            if handoff.has_open_issues:
-                workspace.findings().create_from_handoff(
-                    source="architect",
-                    milestone=milestone,
-                    handoff_path=archived,
-                )
-                logger.info("Architecture review reported open issues; finding created")
-            workspace.milestones().get(milestone).mark_architecture_reviewed(archived)
-            verification = workspace.snapshot.milestone_verification(milestone)
-            if verification is not None:
-                milestone_findings = tuple(
-                    finding
-                    for finding in workspace.snapshot.list_findings()
-                    if finding.milestone == milestone
-                )
-                workspace.milestones().get(milestone).write_verification(
-                    dataclasses.replace(
-                        verification,
-                        architecture_session=session_id,
-                        architecture_handoff=archived.name,
-                        design_drift=handoff.design_drift,
-                        finding_ids=tuple(finding.id for finding in milestone_findings),
-                        finding_statuses=tuple(
-                            f"{finding.id}:{finding.status.value}"
-                            for finding in milestone_findings
-                        ),
-                    )
-                )
-            logger.info("Milestone %s marked architecture-reviewed", milestone)
-        return ProcessResult()
-    elif handoff.role_name == "developer":
-        task = (
-            _task_by_id(workspace.snapshot, task_id)
-            if task_id is not None
-            else workspace.snapshot.select_next_development_task()
+        return _process_architect_handoff(
+            handoff, workspace, archived, session_id=session_id, milestone_id=milestone_id
         )
-        if task and task.acceptance_criteria_complete:
-            task_handle = workspace.tasks().get(task.id)
-            task_handle.mark_in_review()
-            logger.info(
-                "Task %s completed by developer; status set to in_review",
-                task_handle.path.name,
-            )
-        return ProcessResult()
-    elif handoff.role_name == "planner":
+    if handoff.role_name == "developer":
+        return _process_developer_handoff(workspace, task_id=task_id)
+    if handoff.role_name == "planner":
         _mark_addressed_findings_planned(workspace, handoff)
         return ProcessResult()
-    elif handoff.role_name == "reviewer":
-        task = workspace.snapshot.select_next_review_task()
-        if task and task.review_approved and not handoff.has_open_issues:
-            task_handle = workspace.tasks().get(task.id)
-            task_handle.close()
-            logger.info(
-                "Task %s closed by %s; status set to closed",
-                task_handle.path.name,
-                handoff.role_name,
-            )
-            task_handle.resolve_addressed_findings()
-        elif task:
-            task_handle = workspace.tasks().get(task.id)
-            task_handle.mark_changes_requested()
-            if not handoff.has_open_issues and not task.review_approved:
-                logger.warning(
-                    "Task %s: reviewer reports no open issues but review approval "
-                    "checkbox is missing; defaulting to changes_requested",
-                    task_handle.path.name,
-                )
-            elif handoff.has_open_issues and task.review_approved:
-                logger.warning(
-                    "Task %s: reviewer approved task but handoff reports open issues; "
-                    "defaulting to changes_requested",
-                    task_handle.path.name,
-                )
-            else:
-                logger.info(
-                    "Task %s rejected by reviewer; status set to changes_requested",
-                    task_handle.path.name,
-                )
-        return ProcessResult()
-    elif handoff.role_name == "integrator":
-        milestone = workspace.snapshot.select_integration_milestone()
-        if milestone is None:
-            return ProcessResult()
-        if milestone_validation is None or milestone_validation_contract is None:
-            raise RuntimeError("integrator processing requires milestone validation facts")
-        validation_failed = milestone_validation.outcome == "failed"
-        if handoff.has_open_issues or validation_failed:
-            finding = _create_integration_finding(
-                workspace,
-                milestone=milestone,
-                handoff=handoff,
-                handoff_path=archived,
-                validation=milestone_validation,
-            )
-            workspace.milestones().get(milestone).mark_integration_failed(finding.id)
-            _write_milestone_verification(
-                workspace,
-                milestone,
-                archived,
-                handoff,
-                milestone_validation_contract,
-                milestone_validation,
-                state="blocked_product_failure",
-            )
-            logger.info("Integration reported open issues; finding created for planner follow-up")
-            return ProcessResult()
-        if milestone_validation.outcome in {"missing_tool", "timeout", "infrastructure_error"}:
-            state = (
-                "blocked_prerequisite"
-                if milestone_validation.outcome == "missing_tool"
-                else "blocked_infrastructure"
-            )
-            _write_milestone_verification(
-                workspace,
-                milestone,
-                archived,
-                handoff,
-                milestone_validation_contract,
-                milestone_validation,
-                state=state,
-            )
-            reason = (
-                RunStopReason.VALIDATION_PREREQUISITE_MISSING
-                if milestone_validation.outcome == "missing_tool"
-                else RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR
-            )
-            message = (
-                f"milestone {milestone} validation {milestone_validation.outcome}; "
-                "integration was not recorded"
-            )
-            return ProcessResult(stop_reason=reason, stop_message=message)
-        state = (
-            "unverified_not_configured"
-            if milestone_validation.outcome == "not_configured"
-            else "verified"
+    if handoff.role_name == "reviewer":
+        return _process_reviewer_handoff(handoff, workspace)
+    if handoff.role_name == "integrator":
+        return _process_integrator_handoff(
+            handoff,
+            workspace,
+            archived,
+            milestone_validation=milestone_validation,
+            milestone_validation_contract=milestone_validation_contract,
         )
-        workspace.milestones().get(milestone).mark_integrated(archived)
+    return ProcessResult()
+
+
+def _process_research_request(
+    handoff: Handoff,
+    workspace: Workspace,
+    *,
+    command: str,
+    session_id: str,
+    task_id: str | None,
+    milestone_id: str | None,
+) -> ProcessResult:
+    request = handoff.research_request
+    if request is None:
+        raise RuntimeError("research request processing requires a request")
+    research = workspace.research().create(
+        title=request.title,
+        asking_role=handoff.role_name,
+        asking_session_id=session_id,
+        command=command,
+        scope=request.scope,
+        task=task_id or "",
+        milestone=milestone_id or "",
+        question=request.question,
+        context=request.context,
+        desired_outcome=request.desired_outcome,
+        acceptance_criteria=request.acceptance_criteria,
+    )
+    set_resume_state(
+        workspace.root,
+        ResumeState(
+            blocked_by=research.id,
+            blocked_kind="research",
+            command=command,
+            role=handoff.role_name,
+            task=task_id or "",
+            milestone=milestone_id or "",
+        ),
+    )
+    workspace.did_mutate()
+    append_workflow_event(
+        workspace.root,
+        "research_requested",
+        research=research.id,
+        role=handoff.role_name,
+        command=command,
+        task=task_id or "",
+        milestone=milestone_id or "",
+    )
+    logger.info("Workflow stopped: research required: %s %s", research.id, research.title)
+    return ProcessResult(research_id=research.id)
+
+
+def _process_clarification_request(
+    handoff: Handoff,
+    workspace: Workspace,
+    *,
+    command: str,
+    session_id: str,
+    task_id: str | None,
+    milestone_id: str | None,
+) -> ProcessResult:
+    request = handoff.clarification_request
+    if request is None:
+        raise RuntimeError("clarification request processing requires a request")
+    clarification = workspace.clarifications().create(
+        title=request.title,
+        asking_role=handoff.role_name,
+        session_id=session_id,
+        scope=request.scope,
+        blocks=request.blocks,
+        answer_shape=request.answer_shape,
+        recommended_option=request.recommended_option,
+        body=_clarification_body(request.title, request.details),
+    )
+    set_resume_state(
+        workspace.root,
+        ResumeState(
+            blocked_by=clarification.id,
+            command=command,
+            role=handoff.role_name,
+            task=task_id or "",
+            milestone=milestone_id or "",
+        ),
+    )
+    workspace.did_mutate()
+    append_workflow_event(
+        workspace.root,
+        "clarification_requested",
+        clarification=clarification.id,
+        role=handoff.role_name,
+        command=command,
+        task=task_id or "",
+        milestone=milestone_id or "",
+    )
+    logger.info(
+        "Workflow stopped: operator clarification required: %s %s",
+        clarification.id,
+        clarification.title,
+    )
+    return ProcessResult(clarification_id=clarification.id)
+
+
+def _process_architect_handoff(
+    handoff: Handoff,
+    workspace: Workspace,
+    archived: Path,
+    *,
+    session_id: str,
+    milestone_id: str | None,
+) -> ProcessResult:
+    milestone = milestone_id or workspace.snapshot.select_architecture_review_milestone()
+    if milestone is None:
+        return ProcessResult()
+    if handoff.has_open_issues:
+        workspace.findings().create_from_handoff(
+            source="architect", milestone=milestone, handoff_path=archived
+        )
+        logger.info("Architecture review reported open issues; finding created")
+    workspace.milestones().get(milestone).mark_architecture_reviewed(archived)
+    verification = workspace.snapshot.milestone_verification(milestone)
+    if verification is not None:
+        milestone_findings = tuple(
+            finding
+            for finding in workspace.snapshot.list_findings()
+            if finding.milestone == milestone
+        )
+        workspace.milestones().get(milestone).write_verification(
+            dataclasses.replace(
+                verification,
+                architecture_session=session_id,
+                architecture_handoff=archived.name,
+                design_drift=handoff.design_drift,
+                finding_ids=tuple(finding.id for finding in milestone_findings),
+                finding_statuses=tuple(
+                    f"{finding.id}:{finding.status.value}" for finding in milestone_findings
+                ),
+            )
+        )
+    logger.info("Milestone %s marked architecture-reviewed", milestone)
+    return ProcessResult()
+
+
+def _process_developer_handoff(workspace: Workspace, *, task_id: str | None) -> ProcessResult:
+    task = (
+        _task_by_id(workspace.snapshot, task_id)
+        if task_id is not None
+        else workspace.snapshot.select_next_development_task()
+    )
+    if task and task.acceptance_criteria_complete:
+        task_handle = workspace.tasks().get(task.id)
+        task_handle.mark_in_review()
+        logger.info(
+            "Task %s completed by developer; status set to in_review", task_handle.path.name
+        )
+    return ProcessResult()
+
+
+def _process_reviewer_handoff(handoff: Handoff, workspace: Workspace) -> ProcessResult:
+    task = workspace.snapshot.select_next_review_task()
+    if task and task.review_approved and not handoff.has_open_issues:
+        task_handle = workspace.tasks().get(task.id)
+        task_handle.close()
+        logger.info("Task %s closed by reviewer; status set to closed", task_handle.path.name)
+        task_handle.resolve_addressed_findings()
+    elif task:
+        task_handle = workspace.tasks().get(task.id)
+        task_handle.mark_changes_requested()
+        if not handoff.has_open_issues and not task.review_approved:
+            logger.warning(
+                "Task %s: reviewer reports no open issues but review approval checkbox "
+                "is missing; defaulting to changes_requested",
+                task_handle.path.name,
+            )
+        elif handoff.has_open_issues and task.review_approved:
+            logger.warning(
+                "Task %s: reviewer approved task but handoff reports open issues; "
+                "defaulting to changes_requested",
+                task_handle.path.name,
+            )
+        else:
+            logger.info(
+                "Task %s rejected by reviewer; status set to changes_requested",
+                task_handle.path.name,
+            )
+    return ProcessResult()
+
+
+def _process_integrator_handoff(
+    handoff: Handoff,
+    workspace: Workspace,
+    archived: Path,
+    *,
+    milestone_validation: ValidationRun | None,
+    milestone_validation_contract: EffectiveMilestoneValidation | None,
+) -> ProcessResult:
+    milestone = workspace.snapshot.select_integration_milestone()
+    if milestone is None:
+        return ProcessResult()
+    if milestone_validation is None or milestone_validation_contract is None:
+        raise RuntimeError("integrator processing requires milestone validation facts")
+    if handoff.has_open_issues or milestone_validation.outcome == "failed":
+        finding = _create_integration_finding(
+            workspace,
+            milestone=milestone,
+            handoff=handoff,
+            handoff_path=archived,
+            validation=milestone_validation,
+        )
+        workspace.milestones().get(milestone).mark_integration_failed(finding.id)
+        _write_milestone_verification(
+            workspace,
+            milestone,
+            archived,
+            handoff,
+            milestone_validation_contract,
+            milestone_validation,
+            state="blocked_product_failure",
+        )
+        logger.info("Integration reported open issues; finding created for planner follow-up")
+        return ProcessResult()
+    if milestone_validation.outcome in {"missing_tool", "timeout", "infrastructure_error"}:
+        state = (
+            "blocked_prerequisite"
+            if milestone_validation.outcome == "missing_tool"
+            else "blocked_infrastructure"
+        )
         _write_milestone_verification(
             workspace,
             milestone,
@@ -899,9 +837,35 @@ def process_handoff(
             milestone_validation,
             state=state,
         )
-        logger.info("Milestone %s marked integrated", milestone)
-        return ProcessResult(integrated_milestone=milestone)
-    return ProcessResult()
+        reason = (
+            RunStopReason.VALIDATION_PREREQUISITE_MISSING
+            if milestone_validation.outcome == "missing_tool"
+            else RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR
+        )
+        return ProcessResult(
+            stop_reason=reason,
+            stop_message=(
+                f"milestone {milestone} validation {milestone_validation.outcome}; "
+                "integration was not recorded"
+            ),
+        )
+    state = (
+        "unverified_not_configured"
+        if milestone_validation.outcome == "not_configured"
+        else "verified"
+    )
+    workspace.milestones().get(milestone).mark_integrated(archived)
+    _write_milestone_verification(
+        workspace,
+        milestone,
+        archived,
+        handoff,
+        milestone_validation_contract,
+        milestone_validation,
+        state=state,
+    )
+    logger.info("Milestone %s marked integrated", milestone)
+    return ProcessResult(integrated_milestone=milestone)
 
 
 def _validate_research_request_route(
@@ -1260,8 +1224,8 @@ def _attempt_handoff_correction(
     correction_ctx = dataclasses.replace(
         ctx,
         invocation_id=correction_id,
-        stdout_log=_agent_log_path(ctx.root, correction_id, "stdout.log"),
-        stderr_log=_agent_log_path(ctx.root, correction_id, "stderr.log"),
+        stdout_log=agent_log_path(ctx.root, correction_id, "stdout.log"),
+        stderr_log=agent_log_path(ctx.root, correction_id, "stderr.log"),
         base_prompt_log=None,
         session_prompt_log=None,
     )
@@ -1747,7 +1711,7 @@ def _invoke_clarification_resolver(
         shutil.rmtree(artifacts_dir)
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    ctx = _build_session_context(
+    ctx = build_session_context(
         root,
         session_number,
         CLARIFICATION_RESOLVER_ROLE,
@@ -1912,7 +1876,7 @@ def _invoke_researcher(
     if artifacts_dir.exists():
         shutil.rmtree(artifacts_dir)
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    ctx = _build_session_context(
+    ctx = build_session_context(
         root, session_number, RESEARCHER_ROLE, retain_prompts=retain_prompts
     )
     base_prompt = read_prompt_resource("role-researcher.md")
@@ -2882,7 +2846,7 @@ def run_loop(
                     reason=RunStopReason.TASK_CONTRACT_INVALID,
                 )
         role = ROLES[role_name]
-        ctx = _build_session_context(
+        ctx = build_session_context(
             root,
             sessions_run + 1,
             role_name,

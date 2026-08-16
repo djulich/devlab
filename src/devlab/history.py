@@ -6,7 +6,7 @@ import dataclasses
 import json
 from pathlib import Path
 
-from devlab.orchestrator import SessionMetadata
+from devlab.session_logging import SessionMetadata
 from devlab.workflow_events import load_workflow_events
 from devlab.workspace import AGENT_LOG_DIR
 

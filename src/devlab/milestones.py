@@ -10,7 +10,7 @@ from typing import Any
 
 from devlab._files import atomic_write_text
 from devlab._toml import format_toml_value
-from devlab.task_tracker import FileTaskTracker, Task
+from devlab.task_tracker import Task
 
 MILESTONES_DIR = ".devlab/milestones"
 MILESTONE_VERIFICATION_DIR = ".devlab/verification/milestones"
@@ -232,17 +232,6 @@ class FileMilestoneTracker:
             path=path,
             metadata=normalized,
         )
-
-
-def sync_milestones_from_tasks(
-    root: Path,
-    *,
-    project_plan_text: str = "",
-) -> list[Milestone]:
-    return FileMilestoneTracker(root).upsert_from_tasks(
-        FileTaskTracker(root).list_tasks(),
-        project_plan_text=project_plan_text,
-    )
 
 
 def _default_milestone_metadata(
