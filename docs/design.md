@@ -75,8 +75,11 @@ target-project/
 │   │   └── deployment/
 │   ├── plans/
 │   ├── tasks/
+│   ├── milestones/
 │   ├── findings/
 │   ├── clarifications/
+│   ├── research/
+│   ├── generations/
 │   ├── history/
 │   ├── logs/
 │   └── session-artifacts/
@@ -118,6 +121,7 @@ Important workflow state is stored in files, for example:
 - `.devlab/findings/` — file-backed integration and workflow findings.
 - `.devlab/clarifications/` — operator decision requests and answers for bounded workflow stops.
 - `.devlab/research/` — discoverable-fact requests and canonical cited results.
+- `.devlab/generations/` — archived planning-generation bundles and manifests.
 - `.devlab/history/` — archived session handoffs and workflow markers.
 - `.devlab/logs/` — committed workflow logs.
 - `.devlab/session-artifacts/<role>/` — output from the current session before it is archived.

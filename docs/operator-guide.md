@@ -10,8 +10,9 @@ For architecture rationale, see `docs/design.md`. For agent command setup, see
 ## Operating Model
 
 DevLab treats the target repository as the workflow record. Specs, plans, tasks,
-milestones, findings, handoffs, logs, and configuration are ordinary files so
-they can be reviewed, committed, diffed, and recovered after interrupted runs.
+milestones, findings, clarifications, research, handoffs, logs, and configuration
+are ordinary files so they can be reviewed, committed, diffed, and recovered
+after interrupted runs.
 
 The usual operator loop is:
 
@@ -137,6 +138,7 @@ DevLab and worker agents normally write:
 - `.devlab/milestones/`
 - `.devlab/findings/`
 - `.devlab/clarifications/`
+- `.devlab/research/`
 - `.devlab/history/`
 - `.devlab/session-artifacts/`
 - `.devlab/logs/`

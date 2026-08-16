@@ -193,7 +193,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 
 ## CLI commands
 
-- `devlab init [--root PATH] [--force]` — create starter `.devlab/` files.
+- `devlab init [--root PATH] [--force] [--template neutral|python|rust|go|c|cpp]` — create starter `.devlab/` files.
 - `devlab plan [--root PATH] [--revise] [--adopt-existing] [--replace-plan] [--mark-specs-planned] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
 - `devlab implement [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab clarify [--root PATH] list|show|answer|supersede ...` — inspect and answer durable operator clarifications.
@@ -201,8 +201,9 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab status [--root PATH] [--verbose]` — report workflow state without mutating it.
 - `devlab workflow-state [--root PATH] [--digest] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state. Use `--digest` for a compact operator summary; add `--json` to serialize the selected view.
 - `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
-- `devlab trust executable-config [--root PATH] [--config PATH] [--show|--revoke]` — inspect, approve, or revoke workspace-scoped executable-configuration trust stored in user-local DevLab state.
+- `devlab trust [--root PATH] executable-config [--config PATH] [--show|--revoke]` — inspect, approve, or revoke workspace-scoped executable-configuration trust stored in user-local DevLab state.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
+- `devlab history [--root PATH] [--json]` — report archived session metadata without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
 - `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.
 
@@ -228,6 +229,7 @@ A DevLab target repository contains workflow state under `.devlab/`:
 
 ```text
 .devlab/
+├── manifest.toml        # target-workspace layout metadata
 ├── workflow.toml        # workflow control state, including planning completeness and resume
 ├── workflow-events.jsonl # append-only lifecycle/provenance events
 ├── config/              # agents, profiles, tooling policy
@@ -237,6 +239,8 @@ A DevLab target repository contains workflow state under `.devlab/`:
 ├── milestones/          # milestone workflow state
 ├── findings/            # corrective integration/architecture findings
 ├── clarifications/      # operator clarification requests and answers
+├── research/            # discoverable-fact requests and cited results
+├── generations/         # archived planning-generation bundles
 ├── history/             # archived handoffs
 ├── logs/                # agent and environment logs
 └── session-artifacts/   # trusted envelope, candidate, result, and rendered handoff

@@ -21,7 +21,7 @@ DevLab is developed and maintained by AI agents. Code and project structure must
 - DevLab operates on a target workspace; do not assume the target is this repo or reintroduce checked-in root `.devlab/` workflow state for DevLab itself.
 - Preserve bounded sessions: one role per session, one task per developer/reviewer session.
 - Keep task storage behind `task_tracker.py`; do not parse task files elsewhere.
-- Use workspace boundaries: `WorkspaceSnapshot` for cached reads; `Workspace` domain handles (`workspace.tasks()`, `workspace.findings()`, `workspace.milestones()`) for mutations. Direct tracker access is lower-level infrastructure for tracker modules/tests and read-only diagnostics when no snapshot helper exists.
+- Use workspace boundaries: `WorkspaceSnapshot` for cached reads; `Workspace` domain handles (`workspace.tasks()`, `workspace.findings()`, `workspace.milestones()`, `workspace.clarifications()`, `workspace.research()`) for mutations. Direct tracker access is lower-level infrastructure for tracker modules/tests and read-only diagnostics when no snapshot helper exists.
 - Reporting/validation paths (`status`, `doctor`, prompt assembly, prompt context) must not mutate state.
 - DevLab may invoke deployment tools via target-owned verification commands, but must not install missing host tools; report them as unverified user/CI prerequisites.
 - Keep provider-specific invocation in `agents.py`, not orchestration.
@@ -44,23 +44,25 @@ Workflow core:
 - `workspace.py`: mutation boundary (`Workspace`/handles) and cached read-only view (`WorkspaceSnapshot`).
 - `workflow_state.py`: orchestrator-owned durable workflow-control state and resume pointers.
 - `workflow_events.py`: append-only durable workflow event records.
-- `handoffs.py`: handoff parsing and validation.
+- `handoffs.py`: trusted session envelopes, structured handoff candidates/results, parsing, rendering, and validation.
 - `agents.py`: provider-specific invocation, not orchestration logic.
 - `agent_config.py`: `agents.toml` loading and role/provider resolution.
 - `executable_config.py`: executable-configuration fingerprinting and authorization.
 - `roles.py`: provider-independent workflow role definitions and prompt/environment needs.
+- `generations.py`: archive and replacement mechanics for planning-generation bundles.
+- `spec_reconciliation.py`: specification-change detection and software-workflow planning reconciliation policy.
 
 Domain state (file-backed trackers):
 - `task_tracker.py`, `milestones.py`, `findings.py`, `profiles.py`: one tracker per domain.
 - `clarifications.py`: clarification record storage; `clarification_ops.py`: validated answer and resume operations.
-- `generations.py`: archived planning-generation storage.
+- `research.py`: research request/result storage, strict staged-result parsing, and validation.
 - `environment.py`: profile lifecycle command execution, not profile loading.
 
 Prompts and knowledge:
 - `prompts.py`: system/session prompt assembly from read-only state.
+- `prompt_resources.py`: packaged prompt-resource loading.
 - `prompt_context.py`: prompt size reporting, not prompt construction.
 - `knowledge.py`: target-workspace context and ADR discovery.
-- `spec_reconciliation.py`: specification-change detection and planning reconciliation policy.
 
 Git:
 - `git.py`: low-level subprocess wrapper and read-only helpers.
@@ -75,11 +77,13 @@ Diagnostics and reporting:
 - `status.py`: workspace status reporting.
 - `workflow_state_report.py`: operator-facing lifecycle state reporting.
 - `run_summary.py`: structured workflow-run outcome summaries.
+- `session_logging.py`: structured start/finish context for session logs.
 
 CLI and shared infrastructure:
 - `cli.py`: command parsing and thin operator-interface adapters.
 - `init.py`: target-workspace initialization.
-- `session_logging.py`: session metadata and agent log paths.
+- `agent_smoke.py`: configured-provider smoke-test selection, execution, and reporting.
+- `cleanup.py`: explicit failed-session artifact cleanup.
 - `_logging.py`: package logging configuration.
 - `_toml.py`: shared TOML parsing helpers.
 - `_files.py`: low-level atomic text replacement for authoritative workflow files.
