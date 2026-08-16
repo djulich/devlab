@@ -177,5 +177,11 @@ Research resolves discoverable facts; clarification obtains operator intent.
 Request only one bounded research question. Reviewer and integrator sessions
 cannot request research in the initial workflow.
 
+The researcher writes only staged `result.json`; DevLab validates and stores
+the canonical result. Sources may be URLs, repository-relative paths, or stable
+documentation identifiers. Low confidence and unresolved questions are valid.
+Treat completed research as evidence, not a requirement or operator decision;
+the resumed role owns any resulting workflow or product change.
+
 Do not include the task ID or role prefix in `commit_message`; the orchestrator
 adds that prefix when creating the commit.

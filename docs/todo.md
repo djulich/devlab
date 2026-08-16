@@ -159,11 +159,9 @@ Design pressure:
 
 ## 9. Durable Research Sessions
 
-Priority: medium-high. Architect, planner, and developer sessions currently
-research within their own bounded session or proceed without a durable research
-route. DevLab should support one on-demand bounded researcher session, persist a
-validated evidence-backed result with provenance, and resume the exact
-requesting route.
+Priority: medium-high. Status: **implemented**. Architect, planner, and developer
+can request one bounded researcher session, persist a validated evidence-backed
+result with provenance, and resume the exact requesting route.
 
 Research resolves discoverable facts; clarification obtains operator intent.
 The researcher must not directly mutate specifications, plans, tasks, ADRs,
@@ -171,6 +169,13 @@ dependencies, product files, or workflow transitions. The resumed software role
 decides how the result affects its work.
 
 Implementation plan: [`plans/durable-research-sessions.md`](plans/durable-research-sessions.md).
+
+Implemented evidence includes strict request/result schemas, requesting-role
+provider fallback, mutation isolation, retryable failures, route validation,
+read-only reporting/doctor/diagnostics/prompt sizing, lifecycle events, and a
+deterministic request-to-ordinary-completion evaluation. Follow-ups require live
+evidence: cancellation/abandonment, reviewer/integrator eligibility, historical
+indexes, or a second workflow justifying shared kernel extraction.
 
 The first implementation must remain a concrete DevLab software-workflow
 capability. It should distinguish potentially reusable subordinate-session

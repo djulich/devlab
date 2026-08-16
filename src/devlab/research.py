@@ -232,7 +232,7 @@ class FileResearchTracker:
 
     def list_research(self) -> list[Research]:
         research = sorted(
-            (self._read_research(path) for path in self.research_path.glob("RS*.md")),
+            (self._read_research(path) for path in self.research_path.glob("*.md")),
             key=lambda item: (_research_sort_key(item.id), item.path.name),
         )
         duplicate_ids = sorted(

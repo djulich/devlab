@@ -27,6 +27,7 @@ Current confidence:
   session identity, aggregate validation feedback, and DevLab-owned publication;
 - durable operator clarifications support explicit answer/resume flows and an
   opt-in bounded unattended resolver.
+- durable research sessions store cited evidence and resume the exact requesting route.
 
 Current limits:
 
@@ -204,6 +205,15 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
 - `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.
+
+Research has no standalone command. Architect, planner, and developer may
+return `needs_research`; rerun the stored `devlab plan` or `devlab implement`
+route to invoke one bounded researcher and then resume the requester. Results
+are strict staged JSON and canonical `.devlab/research/` records with evidence,
+sources, confidence, unresolved questions, and provenance. Configure an
+optional `[roles.researcher]`; otherwise it inherits the requesting role's
+provider. Invalid output or provider failure remains retryable. Research is
+supporting evidence, while operator choices and authority use clarification.
 
 Useful `implement` and `plan` options include `--provider`, `--model`, `--effort`,
 `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`. Both commands also

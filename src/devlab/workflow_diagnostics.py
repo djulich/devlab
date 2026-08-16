@@ -25,6 +25,7 @@ from devlab.clarifications import ClarificationStatus
 from devlab.findings import FindingStatus
 from devlab.generations import active_generation, archived_generation_numbers
 from devlab.profiles import DEFAULT_PROFILE, PROFILES_DIR, load_profile
+from devlab.research import ResearchConfidence, ResearchStatus
 from devlab.task_tracker import TaskStatus
 from devlab.workflow_events import WorkflowEvent, load_workflow_events
 from devlab.workflow_history import (
@@ -133,6 +134,18 @@ class ClarificationMetrics:
 
 
 @dataclasses.dataclass(frozen=True)
+class ResearchMetrics:
+    requests: int
+    researcher_sessions: int
+    requested: int
+    completed: int
+    low_confidence_results: int
+    unresolved_questions: int
+    repeated_routes: list[str]
+    lifecycle_events: dict[str, int]
+
+
+@dataclasses.dataclass(frozen=True)
 class QualitySummary:
     correctness_checked: bool
     correctness_passed: bool | None
@@ -156,6 +169,7 @@ class WorkflowDiagnostics:
     profiles: ProfileMetrics
     generations: GenerationMetrics
     clarifications: ClarificationMetrics
+    research: ResearchMetrics
     artifact_hygiene: ArtifactHygiene
     agent_logs: AgentLogMetrics
     prompt_logs: PromptLogMetrics
@@ -181,6 +195,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
     task_rework = derive_task_rework_summary(task_cycles)
     integrator_rework = derive_integrator_rework_summary(findings)
     clarification_metrics = collect_clarification_metrics(root, snapshot=snapshot, events=events)
+    research_metrics = collect_research_metrics(root, snapshot=snapshot, events=events)
     return WorkflowDiagnostics(
         sessions=sessions,
         roles=[session.role for session in sessions],
@@ -196,6 +211,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
         profiles=collect_profile_metrics(root, snapshot=snapshot),
         generations=collect_generation_metrics(root),
         clarifications=clarification_metrics,
+        research=research_metrics,
         artifact_hygiene=artifact_hygiene,
         agent_logs=collect_agent_log_metrics(root),
         prompt_logs=collect_prompt_log_metrics(root),
@@ -210,6 +226,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
             task_cycles=task_cycles,
             integrator_rework=integrator_rework,
             clarification_metrics=clarification_metrics,
+            research_metrics=research_metrics,
         ),
     )
 
@@ -281,6 +298,54 @@ def collect_clarification_metrics(
         answered_latency_seconds_avg=(sum(latencies) / len(latencies) if latencies else None),
         repeated_roles=sorted(role for role, count in stops_by_role.items() if count > 1),
         repeated_scopes=sorted(scope for scope, count in scope_counts.items() if count > 1),
+    )
+
+
+def collect_research_metrics(
+    root: Path,
+    *,
+    snapshot: WorkspaceSnapshot | None = None,
+    events: list[WorkflowEvent] | None = None,
+) -> ResearchMetrics:
+    snapshot = snapshot or Workspace(root).snapshot
+    events = events if events is not None else load_workflow_events(root)
+    records = snapshot.list_research()
+    route_counts: dict[str, int] = {}
+    for item in records:
+        route = "/".join((item.command, item.asking_role, item.task or "-", item.milestone or "-"))
+        route_counts[route] = route_counts.get(route, 0) + 1
+    lifecycle = {
+        event_type: sum(1 for event in events if event.type == event_type)
+        for event_type in (
+            "research_requested",
+            "research_completed",
+            "research_resume_completed",
+        )
+    }
+    researcher_sessions = 0
+    for path in (root / ".devlab/logs/agents").glob("*.metadata.json"):
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if data.get("role_name") == "researcher":
+            researcher_sessions += 1
+    completed = [item for item in records if item.status == ResearchStatus.COMPLETED]
+    return ResearchMetrics(
+        requests=len(records),
+        researcher_sessions=researcher_sessions,
+        requested=sum(1 for item in records if item.status == ResearchStatus.REQUESTED),
+        completed=len(completed),
+        low_confidence_results=sum(
+            1
+            for item in completed
+            if item.result is not None and item.result.confidence == ResearchConfidence.LOW
+        ),
+        unresolved_questions=sum(
+            len(item.result.unresolved_questions) for item in completed if item.result is not None
+        ),
+        repeated_routes=sorted(route for route, count in route_counts.items() if count > 1),
+        lifecycle_events=lifecycle,
     )
 
 
@@ -408,6 +473,7 @@ def quality_summary(
     task_cycles: TaskCycleMetrics | None = None,
     integrator_rework: IntegratorReworkSummary | None = None,
     clarification_metrics: ClarificationMetrics | None = None,
+    research_metrics: ResearchMetrics | None = None,
 ) -> QualitySummary:
     closed = task_metrics.by_status.get(TaskStatus.CLOSED.value, 0)
     all_tasks_closed = task_metrics.total == closed
@@ -440,6 +506,11 @@ def quality_summary(
         warnings.extend(
             f"repeated clarification requests for scope: {scope}"
             for scope in clarification_metrics.repeated_scopes
+        )
+    if research_metrics is not None:
+        warnings.extend(
+            f"repeated research requests on route: {route}"
+            for route in research_metrics.repeated_routes
         )
     if closed and sessions_run / closed > HIGH_SESSIONS_PER_CLOSED_TASK_WARNING:
         warnings.append(f"high session count per closed task: {sessions_run}/{closed}")
@@ -477,6 +548,7 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
     lines.append(_format_rework_summary(diagnostics.task_rework))
     lines.append(_format_integrator_summary(diagnostics.integrator_rework))
     lines.append(_format_clarification_summary(diagnostics.clarifications))
+    lines.append(_format_research_summary(diagnostics.research))
     lines.append(_format_profile_summary(diagnostics.profiles))
     lines.append(_format_generation_summary(diagnostics.generations))
     lines.append(_format_artifact_hygiene_summary(diagnostics.artifact_hygiene))
@@ -553,6 +625,16 @@ def _format_clarification_summary(clarifications: ClarificationMetrics) -> str:
         f"{clarifications.superseded} superseded, "
         f"avg answer latency {latency}, "
         f"by role: {roles}"
+    )
+
+
+def _format_research_summary(research: ResearchMetrics) -> str:
+    return (
+        "Research: "
+        f"{research.requests} requests, {research.researcher_sessions} researcher sessions, "
+        f"{research.requested} requested, {research.completed} completed, "
+        f"{research.low_confidence_results} low confidence, "
+        f"{research.unresolved_questions} unresolved questions"
     )
 
 

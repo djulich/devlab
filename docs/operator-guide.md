@@ -72,6 +72,24 @@ before another session is prepared.
 The summary is read-only. It does not trust configuration, answer
 clarifications, repair state, or alter role selection and exit behavior.
 
+### Durable research
+
+Research resolves discoverable facts; clarification obtains operator intent.
+When status shows requested research, rerun its stored `devlab plan` or
+`devlab implement` command to invoke the researcher. When it shows completed
+research, run the same command to resume the requesting role. There is no
+standalone research command. Provider failure or invalid output leaves the
+record requested: inspect logs and staged output, run `devlab doctor`, fix the
+provider/configuration issue, and retry the stored command.
+
+An optional `[roles.researcher]` in `agents.toml` selects its provider/model;
+otherwise the requesting role's resolved provider is used. Result JSON schema
+version 1 contains `research_id`, `summary`, cited `evidence`, `sources`,
+`recommendation`, `confidence`, and `unresolved_questions`. Canonical request
+records also retain question, context, desired outcome, acceptance criteria,
+route, and requester provenance. Treat results as untrusted supporting evidence:
+the researcher cannot mutate product or authoritative workflow artifacts.
+
 ## Initialization Templates
 
 `devlab init` generates a neutral tooling policy and an empty-validation default

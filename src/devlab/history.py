@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from devlab.orchestrator import SessionMetadata
+from devlab.workflow_events import load_workflow_events
 from devlab.workspace import AGENT_LOG_DIR
 
 
@@ -24,7 +25,12 @@ def load_session_metadata(root: Path) -> list[SessionMetadata]:
 
 def format_history(root: Path, *, json_output: bool = False) -> str:
     entries = load_session_metadata(root)
-    if not entries:
+    research_events = [
+        event
+        for event in load_workflow_events(root)
+        if event.type in {"research_requested", "research_completed", "research_resume_completed"}
+    ]
+    if not entries and not research_events:
         return "Session history: none"
     if json_output:
         return json.dumps(
@@ -33,6 +39,13 @@ def format_history(root: Path, *, json_output: bool = False) -> str:
     lines = ["Session history:"]
     for entry in entries:
         lines.append(_format_entry(entry))
+    if research_events:
+        lines.append("Research lifecycle:")
+        for event in research_events:
+            research_id = event.data.get("research", "unknown")
+            role = event.data.get("role", "")
+            route = f" role={role}" if role else ""
+            lines.append(f"  {event.at} {event.type} {research_id}{route}")
     return "\n".join(lines)
 
 

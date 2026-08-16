@@ -1,8 +1,8 @@
 # Durable Research Sessions
 
-Status: **in progress**. Phases 1 through 3 are implemented through bounded
-researcher invocation, durable result completion, and exact-route result
-consumption; reporting and operator documentation remain.
+Status: **implemented**. Phases 1 through 4 cover durable requests, bounded
+researcher invocation, exact-route consumption, reporting, diagnostics,
+documentation, and deterministic evaluation.
 
 This plan adds an on-demand, bounded research session that an architect,
 planner, or developer can request when a discoverable fact cannot be resolved

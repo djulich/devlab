@@ -25,7 +25,7 @@ from devlab.workflow_events import (
     load_workflow_events,
 )
 from devlab.workflow_history import derive_session_records
-from devlab.workspace import DESIGN_PLAN, PROJECT_PLAN, Workspace
+from devlab.workspace import DESIGN_PLAN, PROJECT_PLAN, Workspace, WorkspaceSnapshot
 
 
 @dataclasses.dataclass(frozen=True)
@@ -97,6 +97,19 @@ class ClarificationReport:
 
 
 @dataclasses.dataclass(frozen=True)
+class ResearchReport:
+    id: str
+    title: str
+    status: str
+    asking_role: str
+    command: str
+    task: str
+    milestone: str
+    next_step: str
+    resume: ResumePointerReport | None
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkflowStateReport:
     project_mode: str
     lifecycle_phase: str
@@ -107,6 +120,7 @@ class WorkflowStateReport:
     history: PlanningHistoryReport
     current_work: CurrentWorkReport
     clarifications: ClarificationReport
+    research: ResearchReport | None
     lifecycle_events: int
 
     def as_dict(self) -> dict[str, object]:
@@ -136,6 +150,7 @@ class WorkflowStateDigest:
     next_action: str
     current_work: CurrentWorkReport
     clarifications: ClarificationReport
+    research: ResearchReport | None
     specs: SpecReport
     planning_history: PlanningHistoryReport
     validation: ValidationDigest
@@ -161,6 +176,7 @@ def build_workflow_state_report(root: Path) -> WorkflowStateReport:
     milestones = snapshot.list_milestones()
     findings = snapshot.list_findings()
     clarifications = _clarification_report(snapshot.blocking_clarifications(), workflow_state)
+    research = _research_report(snapshot, workflow_state)
     current_work = _current_work_report(tasks, milestones, findings)
     planning = PlanningReport(
         complete=workflow_state.planning.complete,
@@ -188,6 +204,7 @@ def build_workflow_state_report(root: Path) -> WorkflowStateReport:
         history=history,
         current_work=current_work,
         clarifications=clarifications,
+        research=research,
         lifecycle_events=len(events),
     )
 
@@ -223,6 +240,7 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
         )
     else:
         lines.append("Resume pointer: none")
+    lines.extend(_format_research_report(report.research))
     lines.append(f"Active generation: {report.generations.active}")
     lines.append(f"Archived generations: {len(report.generations.archived)}")
     lines.append("")
@@ -281,6 +299,7 @@ def build_workflow_state_digest(report: WorkflowStateReport) -> WorkflowStateDig
         next_action=_next_action(report),
         current_work=report.current_work,
         clarifications=report.clarifications,
+        research=report.research,
         specs=report.specs,
         planning_history=report.history,
         validation=ValidationDigest(state="not_reported"),
@@ -337,6 +356,7 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
         )
     else:
         lines.append("- Resume pointer: none")
+    lines.extend(["", "## Research", "", *_format_research_report(digest.research, bullet=True)])
     lines.append("")
     lines.append("## Specs")
     lines.append("")
@@ -382,6 +402,12 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
 def _next_action(report: WorkflowStateReport) -> str:
     if report.lifecycle_phase == "uninitialized":
         return "Run `devlab init` to initialize DevLab workflow state."
+    if report.research is not None:
+        return f"Run `devlab {report.research.command}` for " + (
+            "the bounded researcher session."
+            if report.research.status == "requested"
+            else "the resumed requesting-role session."
+        )
     if report.clarifications.resume is not None:
         resume = report.clarifications.resume
         return (
@@ -457,6 +483,7 @@ def _uninitialized_report(root: Path, events: list[WorkflowEvent]) -> WorkflowSt
             findings_resolved=0,
         ),
         clarifications=ClarificationReport(pending_blockers=[], resume=None),
+        research=None,
         lifecycle_events=len(events),
     )
 
@@ -485,10 +512,63 @@ def _clarification_report(
                 task=resume_state.task,
                 milestone=resume_state.milestone,
             )
-            if resume_state is not None
+            if resume_state is not None and resume_state.blocked_kind != "research"
             else None
         ),
     )
+
+
+def _research_report(
+    snapshot: WorkspaceSnapshot, workflow_state: object
+) -> ResearchReport | None:
+    resume = getattr(workflow_state, "resume", None)
+    if resume is None or resume.blocked_kind != "research":
+        return None
+    try:
+        research = snapshot.get_research(resume.blocked_by)
+    except KeyError:
+        return ResearchReport(
+            resume.blocked_by,
+            "missing record",
+            "missing",
+            resume.role,
+            resume.command,
+            resume.task,
+            resume.milestone,
+            "doctor",
+            ResumePointerReport(
+                resume.blocked_by, resume.command, resume.role, resume.task, resume.milestone
+            ),
+        )
+    return ResearchReport(
+        research.id,
+        research.title,
+        research.status.value,
+        research.asking_role,
+        research.command,
+        research.task,
+        research.milestone,
+        "researcher_invocation"
+        if research.status.value == "requested"
+        else "resumed_role_execution",
+        ResumePointerReport(
+            resume.blocked_by, resume.command, resume.role, resume.task, resume.milestone
+        ),
+    )
+
+
+def _format_research_report(research: ResearchReport | None, *, bullet: bool = False) -> list[str]:
+    prefix = "- " if bullet else ""
+    if research is None:
+        return [prefix + "Research: none"]
+    return [
+        prefix + f"Research: {research.id}: {research.title}",
+        prefix + f"Research state: {research.status}",
+        prefix
+        + f"Request route: devlab {research.command}; role={research.asking_role}; "
+        + f"task={research.task or 'none'}; milestone={research.milestone or 'none'}",
+        prefix + f"Research next step: {research.next_step.replace('_', ' ')}",
+    ]
 
 
 def _spec_report(

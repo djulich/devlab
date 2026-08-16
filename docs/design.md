@@ -108,7 +108,7 @@ The repository is the system of record. Agents should not depend on conversation
 
 Important workflow state is stored in files, for example:
 
-- `.devlab/workflow.toml` — small orchestrator-owned workflow-control state, including planning completeness and an optional clarification resume pointer.
+- `.devlab/workflow.toml` — small orchestrator-owned workflow-control state, including planning completeness and one typed clarification or research resume pointer.
 - `.devlab/workflow-events.jsonl` — append-only orchestrator-owned lifecycle events used for provenance reporting, not workflow control.
 - `.devlab/specs/` — target-workspace system and deployment specifications.
 - `.devlab/config/` — target-workspace tooling, agent, profile, and environment lifecycle configuration.
@@ -117,6 +117,7 @@ Important workflow state is stored in files, for example:
 - `.devlab/milestones/` — milestone workflow state.
 - `.devlab/findings/` — file-backed integration and workflow findings.
 - `.devlab/clarifications/` — operator decision requests and answers for bounded workflow stops.
+- `.devlab/research/` — discoverable-fact requests and canonical cited results.
 - `.devlab/history/` — archived session handoffs and workflow markers.
 - `.devlab/logs/` — committed workflow logs.
 - `.devlab/session-artifacts/<role>/` — output from the current session before it is archived.
@@ -135,6 +136,14 @@ instead invokes a separate bounded clarification-resolver session, validates
 and records its answer with agent provenance, and continues through that same
 stored route. Both modes preserve the clarification record and resume semantics
 as durable workflow state.
+
+Research is a separate bounded auxiliary lifecycle. Architect, planner, and
+developer may request one discoverable fact. DevLab stores the request and exact
+command/role/task/milestone route before invocation. A researcher may write only
+staged `result.json`; forbidden edits are restored, cited evidence is strictly
+validated, and the completed record is supplied only to the stored resumed
+route. Low confidence and unresolved questions remain valid. The resumed role,
+not the researcher, owns any design, plan, task, dependency, or code decision.
 
 ### Sessions are small and bounded
 

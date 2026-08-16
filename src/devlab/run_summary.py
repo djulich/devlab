@@ -36,6 +36,18 @@ class RunClarificationSummary:
 
 
 @dataclasses.dataclass(frozen=True)
+class RunResearchSummary:
+    id: str
+    title: str
+    status: str
+    asking_role: str
+    command: str
+    task: str
+    milestone: str
+    next_step: str
+
+
+@dataclasses.dataclass(frozen=True)
 class RunExecutableConfigSummary:
     state: str
     digest: str
@@ -52,6 +64,7 @@ class RunSummary:
     task: RunTaskSummary | None
     milestone: RunMilestoneSummary | None
     clarification: RunClarificationSummary | None
+    research: RunResearchSummary | None
     executable_config: RunExecutableConfigSummary
     errors: tuple[str, ...]
     next_commands: tuple[str, ...]
@@ -83,11 +96,26 @@ def build_run_summary(
     )
     executable_config = _executable_config_summary(root, initial_executable_config)
     report = build_workflow_state_report(root)
+    research = (
+        RunResearchSummary(
+            report.research.id,
+            report.research.title,
+            report.research.status,
+            report.research.asking_role,
+            report.research.command,
+            report.research.task,
+            report.research.milestone,
+            report.research.next_step,
+        )
+        if report.research is not None
+        else None
+    )
     next_commands = _next_commands(
         command=command,
         result=result,
         next_role=next_role,
         clarification=clarification,
+        research=research,
         executable_config=executable_config,
         dirty_specs=bool(report.specs.dirty_spec_paths),
         changed_specs=report.specs.specs_changed_since_baseline is True,
@@ -100,6 +128,7 @@ def build_run_summary(
         task=_task_summary(task),
         milestone=milestone,
         clarification=clarification,
+        research=research,
         executable_config=executable_config,
         errors=tuple(error.message for error in result.errors),
         next_commands=next_commands,
@@ -120,6 +149,10 @@ def format_run_summary(summary: RunSummary) -> str:
         "- Operator clarification: "
         + (summary.clarification.id if summary.clarification is not None else "none")
     )
+    lines.append(
+        "- Research: "
+        + (f"{summary.research.id} — {summary.research.title}" if summary.research else "none")
+    )
 
     attention: list[str] = []
     if summary.clarification is not None:
@@ -129,6 +162,18 @@ def format_run_summary(summary: RunSummary) -> str:
                 f"- {clarification.id}: {clarification.title}",
                 f"- Asked by: {clarification.asking_role}",
                 f"- Blocks: {clarification.blocks}",
+            ]
+        )
+    if summary.research is not None:
+        research = summary.research
+        attention.extend(
+            [
+                f"- Research state: {research.status}",
+                f"- Requested by: {research.asking_role} via devlab {research.command}",
+                "- Stored route: "
+                f"task={research.task or 'none'}, "
+                f"milestone={research.milestone or 'none'}",
+                f"- Next step: {research.next_step.replace('_', ' ')}",
             ]
         )
     config = summary.executable_config
@@ -209,6 +254,7 @@ def _next_commands(
     result: RunResult,
     next_role: str | None,
     clarification: RunClarificationSummary | None,
+    research: RunResearchSummary | None,
     executable_config: RunExecutableConfigSummary,
     dirty_specs: bool,
     changed_specs: bool,
@@ -219,6 +265,8 @@ def _next_commands(
             f"devlab clarify answer {clarification.id} ...",
             "devlab resume",
         )
+    if research is not None:
+        return (f"devlab {research.command}",)
     if result.stop_reason in {
         RunStopReason.ERROR,
         RunStopReason.DEVELOPER_NON_ADVANCING,

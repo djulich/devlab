@@ -90,6 +90,13 @@ _Avoid_: project documentation
   route for answer and resume. Pending clarifications with a blocking `blocks`
   value conservatively stop the relevant workflow command; `blocks = "none"`
   remains visible without blocking later progress.
+- A **Handoff** from architect, planner, or developer may request one
+  **Research** investigation of a discoverable fact. Requested research awaits
+  its bounded researcher; completed research stores evidence, sources,
+  recommendation, confidence, unresolved questions, and provenance while the
+  exact route awaits consumption. It is evidence, not workflow authority.
+- **Research versus clarification**: research discovers facts; clarification
+  obtains operator intent, secrets, preferences, risk acceptance, or authority.
 - A **Task** may belong to one **Milestone** and use one **Profile**.
 - A **Finding** may belong to one **Milestone** and is converted into **Addressing tasks** by the planner.
 - A **Workspace** creates **WorkspaceSnapshots** for read-only decisions and exposes handles for workflow mutations.

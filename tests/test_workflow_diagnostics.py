@@ -5,11 +5,13 @@ from pathlib import Path
 
 from devlab.clarifications import FileClarificationTracker
 from devlab.init import init_workspace
+from devlab.research import ResearchConfidence, ResearchEvidence, ResearchResult, ResearchSource
 from devlab.workflow_diagnostics import (
     build_workflow_diagnostics,
     format_workflow_diagnostics,
 )
 from devlab.workflow_events import append_workflow_event
+from devlab.workspace import Workspace
 
 
 def test_diagnostics_count_clarification_stops_by_role(tmp_path: Path) -> None:
@@ -86,6 +88,50 @@ def test_diagnostics_text_reports_clarification_summary(tmp_path: Path) -> None:
 
     assert "Clarifications: 1 stops, 1 pending, 0 answered" in output
     assert "Clarifications:\n- stops: 1" in output
+
+
+def test_diagnostics_report_research_lifecycle_and_repeated_route(tmp_path: Path) -> None:
+    _init_workspace(tmp_path)
+    workspace = Workspace(tmp_path)
+    first = _create_research(workspace, "First")
+    _create_research(workspace, "Second")
+    workspace.research().get(first.id).complete(
+        ResearchResult(
+            summary="Evidence remains incomplete.",
+            evidence=(ResearchEvidence("A source supports the known part.", ("S1",)),),
+            sources=(ResearchSource("S1", "Docs", "docs/source.md", "primary"),),
+            recommendation="Proceed conditionally.",
+            confidence=ResearchConfidence.LOW,
+            unresolved_questions=("Which deployed version?", "Is fallback enabled?"),
+        ),
+        researcher_session_id="r1",
+        researcher_provider="mock",
+    )
+    for event_type in ("research_requested", "research_completed", "research_resume_completed"):
+        append_workflow_event(tmp_path, event_type, research=first.id, role="planner")
+
+    diagnostics = build_workflow_diagnostics(tmp_path)
+
+    assert diagnostics.research.requests == 2
+    assert diagnostics.research.low_confidence_results == 1
+    assert diagnostics.research.unresolved_questions == 2
+    assert diagnostics.research.repeated_routes == ["plan/planner/-/-"]
+    assert diagnostics.research.lifecycle_events["research_resume_completed"] == 1
+    assert "repeated research requests on route" in "\n".join(diagnostics.quality.warnings)
+
+
+def _create_research(workspace: Workspace, title: str):
+    return workspace.research().create(
+        title=title,
+        asking_role="planner",
+        asking_session_id=title,
+        command="plan",
+        scope="planning",
+        question="What is documented?",
+        context="Planning needs evidence.",
+        desired_outcome="Select an approach.",
+        acceptance_criteria=("Use primary documentation.",),
+    )
 
 
 def _create_clarification(

@@ -10,6 +10,7 @@ from devlab.prompt_context import (
     load_prompt_context_thresholds,
     measure_prompt,
 )
+from devlab.workflow_state import ResumeState, set_resume_state
 from devlab.workspace import Workspace
 
 
@@ -74,6 +75,32 @@ def test_prompt_context_report_does_not_sync_missing_milestone_files(tmp_path: P
     build_prompt_context_report(Workspace(tmp_path).snapshot)
 
     assert not (tmp_path / ".devlab/milestones/M1.toml").exists()
+
+
+def test_prompt_context_report_includes_active_researcher_read_only(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    workspace = Workspace(tmp_path)
+    research = workspace.research().create(
+        title="Library behavior",
+        asking_role="planner",
+        asking_session_id="p1",
+        command="plan",
+        scope="planning",
+        question="What is supported?",
+        context="A plan needs evidence.",
+        desired_outcome="Select an approach.",
+        acceptance_criteria=("Use primary docs.",),
+    )
+    set_resume_state(
+        tmp_path, ResumeState(research.id, "plan", "planner", blocked_kind="research")
+    )
+    before = research.path.read_text()
+
+    report = build_prompt_context_report(Workspace(tmp_path).snapshot)
+
+    by_role = {role.role_name: role for role in report.roles}
+    assert by_role["researcher"].session.estimated_tokens > 0
+    assert research.path.read_text() == before
 
 
 def test_thresholds_can_be_configured_globally_and_per_role(tmp_path: Path) -> None:

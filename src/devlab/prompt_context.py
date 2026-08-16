@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES
-from devlab.prompts import build_base_prompt, build_session_prompt
+from devlab.prompt_resources import read_prompt_resource
+from devlab.prompts import build_base_prompt, build_researcher_prompt, build_session_prompt
+from devlab.research import ResearchStatus
 from devlab.roles import ROLES
 from devlab.workspace import WorkspaceSnapshot
 
@@ -84,6 +86,22 @@ def build_prompt_context_report(snapshot: WorkspaceSnapshot) -> PromptContextRep
                 thresholds=role_thresholds,
             )
         )
+    resume = snapshot.workflow_state().resume
+    if resume is not None and resume.blocked_kind == "research":
+        research = snapshot.get_research(resume.blocked_by)
+        if research.status == ResearchStatus.REQUESTED:
+            base_prompt = read_prompt_resource("role-researcher.md")
+            session_prompt = build_researcher_prompt(snapshot, research, resume)
+            role_thresholds = thresholds.get("researcher", thresholds["default"])
+            roles.append(
+                RolePromptContext(
+                    role_name="researcher",
+                    base=measure_prompt(base_prompt),
+                    session=measure_prompt(session_prompt),
+                    total=measure_prompt(base_prompt + "\n\n" + session_prompt),
+                    thresholds=role_thresholds,
+                )
+            )
     return PromptContextReport(tuple(roles))
 
 
@@ -95,7 +113,7 @@ def load_prompt_context_thresholds(root: Path) -> dict[str, PromptContextThresho
     thresholds = {"default": default_thresholds}
     roles = _table(prompt_context.get("roles", {}), "prompt_context.roles")
     for role_name, value in roles.items():
-        if role_name not in ROLE_NAMES:
+        if role_name not in {*ROLE_NAMES, "researcher"}:
             raise ValueError(f"prompt_context.roles.{role_name} is not a known role")
         role_table = _table(value, f"prompt_context.roles.{role_name}")
         thresholds[role_name] = _thresholds_from_table(

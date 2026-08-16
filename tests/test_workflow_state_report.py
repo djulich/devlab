@@ -9,6 +9,7 @@ from devlab.clarifications import FileClarificationTracker
 from devlab.findings import FileFindingTracker
 from devlab.generations import archive_active_generation
 from devlab.init import init_workspace
+from devlab.research import ResearchConfidence, ResearchEvidence, ResearchResult, ResearchSource
 from devlab.task_tracker import FileTaskTracker
 from devlab.workflow_events import append_workflow_event
 from devlab.workflow_state import ResumeState, initial_workflow_state_text, set_resume_state
@@ -18,6 +19,7 @@ from devlab.workflow_state_report import (
     format_workflow_state_digest,
     format_workflow_state_report,
 )
+from devlab.workspace import Workspace
 from tests.helpers import write_task
 
 
@@ -51,6 +53,7 @@ def test_workflow_state_report_json_has_stable_sections(tmp_path: Path) -> None:
         "next_role",
         "planning",
         "project_mode",
+        "research",
         "specs",
     }
     assert payload["planning"]["complete"] is False
@@ -58,6 +61,7 @@ def test_workflow_state_report_json_has_stable_sections(tmp_path: Path) -> None:
     assert payload["current_work"]["tasks_total"] == 0
     assert payload["clarifications"]["pending_blockers"] == []
     assert payload["clarifications"]["resume"] is None
+    assert payload["research"] is None
 
 
 def test_current_work_counts_tasks_milestones_and_findings(tmp_path: Path) -> None:
@@ -172,6 +176,7 @@ def test_workflow_state_digest_json_is_compact_projection(tmp_path: Path) -> Non
         "next_action",
         "notes",
         "planning_history",
+        "research",
         "specs",
         "summary",
         "validation",
@@ -181,6 +186,7 @@ def test_workflow_state_digest_json_is_compact_projection(tmp_path: Path) -> Non
     assert payload["next_action"] == "Run `devlab plan` to continue design or planning."
     assert payload["validation"]["state"] == "not_reported"
     assert payload["clarifications"]["pending_blockers"] == []
+    assert payload["research"] is None
 
 
 def test_workflow_state_report_includes_clarification_blockers(
@@ -258,6 +264,40 @@ def test_workflow_state_digest_prioritizes_resume_pointer(
     assert "## Clarifications" in output
     assert f"- {clarification}: Auth session timeout" in output
     assert f"- Resume pointer: {clarification} -> devlab plan planner" in output
+
+
+def test_workflow_state_reports_requested_and_completed_research_route(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    research = _create_research(tmp_path)
+
+    report = build_workflow_state_report(tmp_path)
+    assert report.research is not None
+    assert report.research.id == research.id
+    assert report.research.status == "requested"
+    assert report.research.next_step == "researcher_invocation"
+    assert build_workflow_state_digest(report).next_action == (
+        "Run `devlab plan` for the bounded researcher session."
+    )
+
+    Workspace(tmp_path).research().get(research.id).complete(
+        ResearchResult(
+            summary="The documented behavior is usable.",
+            evidence=(ResearchEvidence("The primary source documents it.", ("S1",)),),
+            sources=(ResearchSource("S1", "Primary docs", "docs/source.md", "primary"),),
+            recommendation="Use the documented behavior.",
+            confidence=ResearchConfidence.LOW,
+            unresolved_questions=("Confirm the deployment version.",),
+        ),
+        researcher_session_id="researcher-1",
+        researcher_provider="mock",
+    )
+    completed = build_workflow_state_report(tmp_path)
+    assert completed.research is not None
+    assert completed.research.status == "completed"
+    assert completed.research.next_step == "resumed_role_execution"
+    assert build_workflow_state_digest(completed).next_action == (
+        "Run `devlab plan` for the resumed requesting-role session."
+    )
 
 
 def test_malformed_workflow_state_surfaces_error(tmp_path: Path) -> None:
@@ -339,6 +379,34 @@ def _create_pending_clarification(root: Path) -> str:
         ),
     )
     return clarification.id
+
+
+def _create_research(root: Path):
+    research = (
+        Workspace(root)
+        .research()
+        .create(
+            title="Dependency behavior",
+            asking_role="planner",
+            asking_session_id="planner-1",
+            command="plan",
+            scope="planning",
+            question="What behavior is documented?",
+            context="The plan depends on it.",
+            desired_outcome="Choose a supported approach.",
+            acceptance_criteria=("Use a primary source.",),
+        )
+    )
+    set_resume_state(
+        root,
+        ResumeState(
+            blocked_by=research.id,
+            blocked_kind="research",
+            command="plan",
+            role="planner",
+        ),
+    )
+    return research
 
 
 def _devlab_files(root: Path) -> dict[str, str]:

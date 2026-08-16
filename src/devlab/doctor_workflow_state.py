@@ -15,10 +15,15 @@ from devlab.milestones import (
     FileMilestoneTracker,
 )
 from devlab.profiles import profile_path
-from devlab.research import RESEARCH_DIR, FileResearchTracker, ResearchStatus
+from devlab.research import (
+    RESEARCH_DIR,
+    FileResearchTracker,
+    ResearchStatus,
+    parse_research_result_candidate,
+)
 from devlab.task_tracker import DEFAULT_TASK_DOMAIN
 from devlab.workflow_state import WORKFLOW_STATE, load_workflow_state
-from devlab.workspace import WorkspaceSnapshot
+from devlab.workspace import ARTIFACTS_DIR, WorkspaceSnapshot
 
 KNOWN_TASK_DOMAINS = {DEFAULT_TASK_DOMAIN, "deployment"}
 
@@ -46,18 +51,19 @@ def check_workflow_state(root: Path) -> list[DoctorProblem]:
 def check_research_resume_state(root: Path) -> list[DoctorProblem]:
     """Report inconsistent requested-research and resume-pointer pairs read-only."""
     research_dir = root / RESEARCH_DIR
+    artifact_problems = _check_researcher_artifacts(root)
     if not research_dir.exists():
-        return []
+        return artifact_problems
     try:
         research = FileResearchTracker(root).list_research()
     except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
-        return [DoctorProblem(RESEARCH_DIR, str(exc))]
+        return [DoctorProblem(RESEARCH_DIR, str(exc)), *artifact_problems]
     try:
         resume = load_workflow_state(root).resume
     except (OSError, ValueError, tomllib.TOMLDecodeError):
         return []
     requested = [item for item in research if item.status == ResearchStatus.REQUESTED]
-    problems: list[DoctorProblem] = []
+    problems: list[DoctorProblem] = list(artifact_problems)
     if resume is None or resume.blocked_kind != "research":
         for item in requested:
             problems.append(
@@ -117,6 +123,42 @@ def check_research_resume_state(root: Path) -> list[DoctorProblem]:
                     "requested research has no matching research resume pointer",
                 )
             )
+    return problems
+
+
+def _check_researcher_artifacts(root: Path) -> list[DoctorProblem]:
+    directory = root / ARTIFACTS_DIR / "researcher"
+    if not directory.exists():
+        return []
+    problems: list[DoctorProblem] = []
+    entries = sorted(path for path in directory.iterdir() if path.name != ".gitkeep")
+    for path in entries:
+        if path.name != "result.json" or not path.is_file():
+            problems.append(
+                DoctorProblem(
+                    display_path(path, root),
+                    "unexpected staged researcher artifact; only result.json is allowed",
+                )
+            )
+    result_path = directory / "result.json"
+    if not result_path.is_file():
+        return problems
+    try:
+        resume = load_workflow_state(root).resume
+    except (OSError, ValueError, tomllib.TOMLDecodeError):
+        return problems
+    if resume is None or resume.blocked_kind != "research":
+        problems.append(
+            DoctorProblem(
+                display_path(result_path, root),
+                "staged researcher result has no active research resume pointer",
+            )
+        )
+        return problems
+    try:
+        parse_research_result_candidate(result_path, research_id=resume.blocked_by)
+    except (OSError, ValueError) as exc:
+        problems.append(DoctorProblem(display_path(result_path, root), str(exc)))
     return problems
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from devlab.agents import AgentInvocation
@@ -308,6 +309,64 @@ class ClarificationCalculatorScriptedAgent(CalculatorScriptedAgent):
                 "### Options\n"
                 "- A: Use integer arithmetic.\n"
                 "- B: Use decimal arithmetic.\n"
+            )
+        return super().handoff_for(invocation)
+
+
+class ResearchCalculatorScriptedAgent(CalculatorScriptedAgent):
+    """Exercise durable research, exact developer resume, and normal completion."""
+
+    def on_invoke(self, invocation: AgentInvocation) -> None:
+        if invocation.role_name == "developer" and not self.role_counts.get("developer"):
+            self._record(invocation)
+            return
+        if invocation.role_name == "researcher":
+            self._record(invocation)
+            assert "RS0001" in invocation.session_prompt
+            path = invocation.root / ".devlab/session-artifacts/researcher/result.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "research_id": "RS0001",
+                        "summary": "Integer arithmetic is deterministic for this bounded CLI.",
+                        "evidence": [
+                            {
+                                "claim": "Python integers have arbitrary precision.",
+                                "source_ids": ["S1"],
+                            }
+                        ],
+                        "sources": [
+                            {
+                                "id": "S1",
+                                "title": "Python numeric types",
+                                "location": "https://docs.python.org/3/library/stdtypes.html",
+                                "source_type": "primary",
+                            }
+                        ],
+                        "recommendation": "Use integer arithmetic.",
+                        "confidence": "high",
+                        "unresolved_questions": [],
+                    }
+                )
+            )
+            return
+        if invocation.role_name == "developer" and self.role_counts.get("developer") == 1:
+            assert "## Completed Research For This Route" in invocation.session_prompt
+        super().on_invoke(invocation)
+
+    def handoff_for(self, invocation: AgentInvocation) -> str:
+        if invocation.role_name == "developer" and self.role_counts["developer"] == 1:
+            return handoff("developer", open_issues="- Research is required.") + (
+                "## Research Request\n"
+                "research_required = true\n"
+                'title = "Python integer behavior"\n'
+                'scope = "task:T0001"\n'
+                'question = "Are Python integers suitable for deterministic '
+                'calculator arithmetic?"\n'
+                'context = "The implementation must choose a numeric representation."\n'
+                'desired_outcome = "Recommend a documented numeric representation."\n'
+                'acceptance_criteria = ["Use Python primary documentation."]\n'
             )
         return super().handoff_for(invocation)
 

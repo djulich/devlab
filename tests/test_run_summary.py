@@ -13,6 +13,8 @@ from devlab.executable_config import (
 from devlab.init import init_workspace
 from devlab.orchestrator import RunResult, RunStopReason
 from devlab.run_summary import build_run_summary, format_run_summary
+from devlab.workflow_state import ResumeState, set_resume_state
+from devlab.workspace import Workspace
 
 
 def _write_task(root: Path, *, status: str = "changes_requested") -> None:
@@ -215,3 +217,44 @@ def test_guard_stop_reasons_request_operator_inspection(
 
     text = format_run_summary(summary)
     assert "run devlab doctor before retrying" in text
+
+
+def test_summary_explains_pending_research_and_uses_stored_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEVLAB_STATE_HOME_ENV, str(tmp_path / "operator-state"))
+    init_workspace(tmp_path)
+    research = (
+        Workspace(tmp_path)
+        .research()
+        .create(
+            title="Dependency behavior",
+            asking_role="planner",
+            asking_session_id="p1",
+            command="plan",
+            scope="planning",
+            question="What is documented?",
+            context="Planning needs evidence.",
+            desired_outcome="Choose an approach.",
+            acceptance_criteria=("Use primary docs.",),
+        )
+    )
+    set_resume_state(
+        tmp_path,
+        ResumeState(research.id, "plan", "planner", blocked_kind="research"),
+    )
+    initial = build_executable_config_snapshot(tmp_path)
+    trust_executable_config(initial)
+
+    summary = build_run_summary(
+        tmp_path,
+        command="implement",
+        result=_result(RunStopReason.RESEARCH_PENDING, sessions=1),
+        initial_executable_config=initial,
+    )
+    text = format_run_summary(summary)
+
+    assert summary.next_commands == ("devlab plan",)
+    assert f"Research: {research.id} — Dependency behavior" in text
+    assert "Research state: requested" in text
+    assert "Next step: researcher invocation" in text

@@ -25,6 +25,7 @@ from devlab.workflow_diagnostics import (
     format_workflow_diagnostics,
     quality_summary,
 )
+from devlab.workflow_events import load_workflow_events
 from devlab.workflow_history import (
     IntegratorReworkSummary,
     TaskCycleEntry,
@@ -36,6 +37,7 @@ from devlab.workflow_history import (
     derive_task_cycle_metrics,
     derive_task_rework_summary,
 )
+from devlab.workspace import Workspace
 from tests.evaluations.checks import (
     BlackBoxCheck,
     CheckResult,
@@ -72,6 +74,7 @@ from tests.evaluations.scripted_agents import (
     DeploymentWebApiScriptedAgent,
     HttpApiScriptedAgent,
     MixedLanguageScriptedAgent,
+    ResearchCalculatorScriptedAgent,
     SpecReconciliationScriptedAgent,
     StatefulWebApiScriptedAgent,
     StaticFrontendScriptedAgent,
@@ -300,6 +303,32 @@ def test_scripted_cli_calculator_unattended_clarification_evaluation(
     assert clarification.metadata["answered_by"].startswith(
         "agent:clarification-resolver:"
     )
+
+
+def test_scripted_cli_calculator_research_resume_evaluation(tmp_path: Path) -> None:
+    scenario = EvaluationScenario(
+        id="cli-calculator-research-resume",
+        title="CLI calculator durable research resume",
+        system_spec="Build a Python CLI calculator with add and subtract commands.",
+        max_sessions=10,
+        scripted_agent=ResearchCalculatorScriptedAgent(),
+        checks=_calculator_checks(),
+        expected_roles=(
+            "architect", "planner", "developer", "researcher", "developer",
+            "reviewer", "integrator", "architect",
+        ),
+        expected_sessions=8,
+    )
+
+    diagnostics = run_scripted_evaluation(tmp_path, scenario)
+
+    _assert_diagnostics(tmp_path, diagnostics, scenario, expected_artifact="calculator.py")
+    research = Workspace(tmp_path).snapshot.get_research("RS0001")
+    assert research.status.value == "completed"
+    events = [event.type for event in load_workflow_events(tmp_path)]
+    assert "research_requested" in events
+    assert "research_completed" in events
+    assert "research_resume_completed" in events
 
 
 def test_scripted_cli_calculator_reviewer_rework_evaluation(tmp_path: Path) -> None:

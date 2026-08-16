@@ -31,6 +31,7 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
         lines.append(f"Pending clarification blockers: {len(blockers)}")
         for clarification in blockers[:3]:
             lines.append(f"- {clarification.id}: {clarification.title}")
+    lines.extend(_format_active_research(snapshot))
 
     if verbose:
         lines.extend(["", *_format_agent_configuration(root)])
@@ -185,6 +186,28 @@ def _format_clarification(clarification: Clarification) -> list[str]:
         f"  blocks: {clarification.blocks}",
         f"  scope: {clarification.scope}",
         f"  asking_role: {clarification.asking_role}",
+    ]
+
+
+def _format_active_research(snapshot: WorkspaceSnapshot) -> list[str]:
+    resume = snapshot.workflow_state().resume
+    if resume is None or resume.blocked_kind != "research":
+        return []
+    try:
+        research = snapshot.get_research(resume.blocked_by)
+    except KeyError:
+        return [f"Research resume: missing {resume.blocked_by} (run devlab doctor)"]
+    action = (
+        "researcher invocation"
+        if research.status.value == "requested"
+        else "resumed-role execution"
+    )
+    return [
+        f"Research: {research.id}: {research.title}",
+        f"- state: {research.status.value}",
+        f"- route: devlab {resume.command}; role={resume.role}; "
+        f"task={resume.task or 'none'}; milestone={resume.milestone or 'none'}",
+        f"- next: {action} via devlab {resume.command}",
     ]
 
 

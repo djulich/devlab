@@ -255,6 +255,34 @@ def test_doctor_reports_research_resume_route_mismatch(tmp_path: Path) -> None:
     assert any("research resume task 'T0002' does not match" in m for m in _messages(tmp_path))
 
 
+def test_doctor_reports_malformed_research_filename_and_staged_artifacts(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    research = (
+        Workspace(tmp_path)
+        .research()
+        .create(
+            title="Library behavior",
+            asking_role="planner",
+            asking_session_id="p1",
+            command="plan",
+            scope="planning",
+            question="What is supported?",
+            context="Planning needs evidence.",
+            desired_outcome="Choose an approach.",
+            acceptance_criteria=("Use primary docs.",),
+        )
+    )
+    research.path.rename(research.path.with_name("bad-name.md"))
+    artifacts = tmp_path / ".devlab/session-artifacts/researcher"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    (artifacts / "notes.md").write_text("not allowed")
+
+    messages = _messages(tmp_path)
+
+    assert any("bad-name.md" in message for message in messages)
+    assert any("unexpected staged researcher artifact" in message for message in messages)
+
+
 def test_doctor_reports_dirty_git_worktree(tmp_path: Path) -> None:
     init_workspace(
         tmp_path,
