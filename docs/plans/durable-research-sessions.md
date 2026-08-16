@@ -1,8 +1,8 @@
 # Durable Research Sessions
 
-Status: **in progress**. Phases 1 and 2 are implemented through bounded
-researcher invocation and durable result completion; exact-route resume
-consumption and reporting remain.
+Status: **in progress**. Phases 1 through 3 are implemented through bounded
+researcher invocation, durable result completion, and exact-route result
+consumption; reporting and operator documentation remain.
 
 This plan adds an on-demand, bounded research session that an architect,
 planner, or developer can request when a discoverable fact cannot be resolved
@@ -458,13 +458,10 @@ retryable requested state on failure.
 
 ### Phase 3: Exact-route resume
 
-1. Route requested research before ordinary role selection on restart.
-2. Include completed results only in the matching resumed-role prompt.
-3. Validate command/role/task/milestone identity before continuation.
-4. Clear or replace the resume pointer only at the defined accepted-session
-   boundary.
-5. Cover follow-up research, clarification after research, session limits, and
-   process-restart behavior.
+Implemented with completed-research routing before ordinary role selection,
+scoped result prompt context, fail-closed command/role/task/milestone identity
+checks, accepted-session pointer clearing, same-route blocker replacement, and
+one outer session budget across requester, researcher, and resumed role.
 
 ### Phase 4: Reporting and documentation
 

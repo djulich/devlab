@@ -34,6 +34,12 @@ from devlab.orchestrator import (
     validate_handoff,
 )
 from devlab.prompts import build_base_prompt, build_session_prompt
+from devlab.research import (
+    ResearchConfidence,
+    ResearchEvidence,
+    ResearchResult,
+    ResearchSource,
+)
 from devlab.roles import ROLES
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workflow_events import load_workflow_events
@@ -477,6 +483,326 @@ def _write_researcher_result(call: AgentCall, research_id: str) -> None:
             }
         )
     )
+
+
+def _create_completed_research(
+    root: Path,
+    *,
+    role: str,
+    command: str,
+    scope: str,
+    task: str = "",
+    milestone: str = "",
+) -> str:
+    research = Workspace(root).research().create(
+        title="Lock behavior",
+        asking_role=role,
+        asking_session_id="requester-session",
+        command=command,
+        scope=scope,
+        task=task,
+        milestone=milestone,
+        question="How do locks behave?",
+        context="The route needs evidence.",
+        desired_outcome="Recommend an approach.",
+        acceptance_criteria=("Use primary documentation.",),
+    )
+    Workspace(root).research().get(research.id).complete(
+        ResearchResult(
+            summary="Locks are connection scoped.",
+            evidence=(ResearchEvidence("Locks survive transactions.", ("S1",)),),
+            sources=(
+                ResearchSource("S1", "Primary docs", "docs/locks.md", "primary"),
+            ),
+            recommendation="Use a dedicated connection.",
+            confidence=ResearchConfidence.MEDIUM,
+            unresolved_questions=(),
+        ),
+        researcher_session_id="researcher-session",
+        researcher_provider="mock",
+    )
+    set_resume_state(
+        root,
+        ResumeState(
+            blocked_by=research.id,
+            blocked_kind="research",
+            command=command,
+            role=role,
+            task=task,
+            milestone=milestone,
+        ),
+    )
+    return research.id
+
+
+@pytest.mark.parametrize("role", ["architect", "planner"])
+def test_completed_research_resumes_matching_planning_role(
+    tmp_path: Path, role: str
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / ".devlab/workflow.toml").write_text(
+        "version = 1\n\n[planning]\ncomplete = false\n"
+    )
+    research_id = _create_completed_research(
+        tmp_path, role=role, command="plan", scope="planning"
+    )
+
+    def on_invoke(call: AgentCall) -> None:
+        assert call.role_name == role
+        assert "## Completed Research For This Route" in call.session_prompt
+        assert research_id in call.session_prompt
+        assert "supporting evidence" in call.session_prompt
+
+    provider = MockProvider(on_invoke=on_invoke)
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        planning_only=True,
+        agent_providers={"mock": provider},
+        role_agent_providers={role: "mock"},
+    )
+
+    assert result.exit_code == 0
+    assert [call.role_name for call in provider.calls] == [role]
+    assert load_workflow_state(tmp_path).resume is None
+    assert any(
+        event.type == "research_resume_completed"
+        and event.data.get("research") == research_id
+        for event in load_workflow_events(tmp_path)
+    )
+
+
+def test_completed_research_resumes_exact_developer_task(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "Ordinary next task")
+    _write_task(tmp_path, "T0002", "Interrupted task")
+    research_id = _create_completed_research(
+        tmp_path,
+        role="developer",
+        command="implement",
+        scope="task:T0002",
+        task="T0002",
+    )
+
+    def on_invoke(call: AgentCall) -> None:
+        assert call.role_name == "developer"
+        assert "Assigned Task (T0002" in call.session_prompt
+        assert research_id in call.session_prompt
+        complete_acceptance(call.root, "T0002")
+
+    provider = MockProvider(on_invoke=on_invoke)
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": provider},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 0
+    assert load_workflow_state(tmp_path).resume is None
+    assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.OPEN
+    assert FileTaskTracker(tmp_path).get("T0002").status == TaskStatus.IN_REVIEW
+
+
+def test_completed_research_rejects_stale_developer_route(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    _write_task(tmp_path, "T0001", status="closed")
+    _create_completed_research(
+        tmp_path,
+        role="developer",
+        command="implement",
+        scope="task:T0001",
+        task="T0001",
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": MockProvider()},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 1
+    assert result.errors[0].phase == "research_resume"
+    assert "not developable" in result.errors[0].message
+    assert load_workflow_state(tmp_path).resume is not None
+
+
+def test_resumed_role_provider_failure_preserves_completed_research_pointer(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001")
+    research_id = _create_completed_research(
+        tmp_path,
+        role="developer",
+        command="implement",
+        scope="task:T0001",
+        task="T0001",
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": MockProvider(return_code=2)},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.exit_code == 2
+    resume = load_workflow_state(tmp_path).resume
+    assert resume is not None
+    assert resume.blocked_by == research_id
+    assert Workspace(tmp_path).snapshot.get_research(research_id).status.value == "completed"
+
+
+def test_resumed_role_follow_up_research_replaces_blocker_on_same_route(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001")
+    first_id = _create_completed_research(
+        tmp_path,
+        role="developer",
+        command="implement",
+        scope="task:T0001",
+        task="T0001",
+    )
+    provider = MockProvider(
+        handoff_text=(
+            "# Handoff: developer\n"
+            "## Done\n- Reviewed the first result.\n"
+            "## Changed Artifacts\n- None\n"
+            "## Open Issues\n- Follow-up research is required.\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nResearch pool behavior.\n"
+            "## Research Request\n"
+            "research_required = true\n"
+            'title = "Pool behavior"\n'
+            'scope = "task:T0001"\n'
+            'question = "Does the pool preserve connection affinity?"\n'
+            'context = "The first result depends on connection affinity."\n'
+            'desired_outcome = "Determine whether affinity is guaranteed."\n'
+            'acceptance_criteria = ["Use pool documentation."]\n'
+        )
+    )
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": provider},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.stop_reason == RunStopReason.RESEARCH_PENDING
+    resume = load_workflow_state(tmp_path).resume
+    assert resume is not None
+    assert resume.blocked_by != first_id
+    assert resume.blocked_kind == "research"
+    assert resume.role == "developer"
+    assert resume.task == "T0001"
+    assert Workspace(tmp_path).snapshot.get_research(resume.blocked_by).status.value == "requested"
+
+
+def test_resumed_role_clarification_replaces_research_blocker_on_same_route(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001")
+    _create_completed_research(
+        tmp_path,
+        role="developer",
+        command="implement",
+        scope="task:T0001",
+        task="T0001",
+    )
+    provider = MockProvider(handoff_text=_clarification_handoff("developer"))
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"mock": provider},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.stop_reason == RunStopReason.CLARIFICATION_BLOCKED
+    resume = load_workflow_state(tmp_path).resume
+    assert resume is not None
+    assert resume.blocked_by == "CL0001"
+    assert resume.blocked_kind == "clarification"
+    assert resume.role == "developer"
+    assert resume.task == "T0001"
+
+
+def test_request_research_and_exact_resume_share_outer_session_budget(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    _write_workflow_state(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001")
+    developer_calls = 0
+
+    def handoff_for(call: AgentCall) -> str:
+        nonlocal developer_calls
+        if call.role_name == "developer":
+            developer_calls += 1
+        if call.role_name == "developer" and developer_calls == 1:
+            return (
+                "# Handoff: developer\n"
+                "## Done\n- Identified a research question.\n"
+                "## Changed Artifacts\n- None\n"
+                "## Open Issues\n- Research required.\n"
+                "## Addressed Findings\n- None\n"
+                "## Next Session Hint\nResearch locks.\n"
+                "## Research Request\n"
+                "research_required = true\n"
+                'title = "Lock behavior"\n'
+                'scope = "task:T0001"\n'
+                'question = "How do locks behave?"\n'
+                'context = "The implementation needs evidence."\n'
+                'desired_outcome = "Recommend an approach."\n'
+                'acceptance_criteria = ["Use primary documentation."]\n'
+            )
+        return (
+            f"# Handoff: {call.role_name}\n"
+            "## Done\n- Completed work.\n"
+            "## Changed Artifacts\n- None\n"
+            "## Open Issues\n- None\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nContinue.\n"
+        )
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "researcher":
+            _write_researcher_result(call, "RS0001")
+        elif call.role_name == "developer" and developer_calls == 1:
+            complete_acceptance(call.root, "T0001")
+
+    provider = MockProvider(handoff_text=handoff_for, on_invoke=on_invoke)
+    result = run_loop(
+        tmp_path,
+        max_sessions=3,
+        agent_providers={"mock": provider},
+        role_agent_providers={"developer": "mock"},
+    )
+
+    assert result.sessions_run == 3
+    assert [call.role_name for call in provider.calls] == [
+        "developer",
+        "researcher",
+        "developer",
+    ]
+    assert load_workflow_state(tmp_path).resume is None
+    assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.IN_REVIEW
 
 
 def test_researcher_forbidden_edit_is_restored_and_request_remains_pending(

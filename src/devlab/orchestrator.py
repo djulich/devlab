@@ -95,7 +95,7 @@ from devlab.prompts import (
     build_researcher_prompt,
     build_session_prompt,
 )
-from devlab.research import ResearchStatus, parse_research_result_candidate
+from devlab.research import Research, ResearchStatus, parse_research_result_candidate
 from devlab.roles import ROLES, RoleConfig
 from devlab.session_logging import session_finish_context, session_start_context
 from devlab.spec_reconciliation import (
@@ -366,6 +366,14 @@ def _select_session_route(snapshot: WorkspaceSnapshot, role_name: str) -> Sessio
         role_name=role_name,
         task=_task_for_role(snapshot, role_name),
         milestone_id=milestone_id,
+    )
+
+
+def _select_resume_route(snapshot: WorkspaceSnapshot, resume: ResumeState) -> SessionRoute:
+    return SessionRoute(
+        role_name=resume.role,
+        task=_task_by_id(snapshot, resume.task) if resume.task else None,
+        milestone_id=resume.milestone or None,
     )
 
 
@@ -743,7 +751,7 @@ def process_handoff(
         return ProcessResult(clarification_id=clarification.id)
 
     if handoff.role_name == "architect":
-        milestone = workspace.snapshot.select_architecture_review_milestone()
+        milestone = milestone_id or workspace.snapshot.select_architecture_review_milestone()
         if milestone is not None:
             if handoff.has_open_issues:
                 workspace.findings().create_from_handoff(
@@ -776,7 +784,11 @@ def process_handoff(
             logger.info("Milestone %s marked architecture-reviewed", milestone)
         return ProcessResult()
     elif handoff.role_name == "developer":
-        task = workspace.snapshot.select_next_development_task()
+        task = (
+            _task_by_id(workspace.snapshot, task_id)
+            if task_id is not None
+            else workspace.snapshot.select_next_development_task()
+        )
         if task and task.acceptance_criteria_complete:
             task_handle = workspace.tasks().get(task.id)
             task_handle.mark_in_review()
@@ -1071,8 +1083,9 @@ def _environment_for_session(
     snapshot: WorkspaceSnapshot,
     role_name: str,
     profiles: dict[str, Profile] | None = None,
+    assigned_task: Task | None = None,
 ) -> EnvironmentManager:
-    task = _task_for_role(snapshot, role_name)
+    task = assigned_task or _task_for_role(snapshot, role_name)
     profile_id = task.profile if task is not None else None
     profile = (
         profile_from_snapshot(profiles, profile_id, root=root)
@@ -2109,13 +2122,14 @@ def _resume_validation_error(
         return None
 
     def error(reason: str) -> SessionError:
-        repair = (
-            f"{reason} Run `devlab plan --revise` to reconcile workflow state, "
-            f"or supersede the clarification with `devlab clarify supersede "
-            f"{resume.blocked_by} --reason ...` if the interrupted work is obsolete."
-        )
+        repair = f"{reason} Run `devlab plan --revise` to reconcile workflow state."
+        if resume.blocked_kind == "clarification":
+            repair += (
+                " Or supersede the clarification with `devlab clarify supersede "
+                f"{resume.blocked_by} --reason ...` if the interrupted work is obsolete."
+            )
         return SessionError(
-            "clarification_resume",
+            f"{resume.blocked_kind}_resume",
             _resume_guidance(resume, repair),
             1,
         )
@@ -2172,6 +2186,17 @@ def _resume_validation_error(
             return error(f"Next review task is {selected}, not interrupted task {resume.task}.")
 
     elif resume.role in {"integrator", "architect"} and resume.milestone:
+        current_milestone = (
+            snapshot.select_integration_milestone()
+            if resume.role == "integrator"
+            else snapshot.select_architecture_review_milestone()
+        )
+        if current_milestone != resume.milestone:
+            selected = current_milestone or "none"
+            return error(
+                f"Current eligible milestone is {selected}, not interrupted "
+                f"milestone {resume.milestone}."
+            )
         if role_name != resume.role:
             selected = role_name or "no role"
             return error(
@@ -2191,6 +2216,42 @@ def _resume_validation_error(
             "a different route."
         )
 
+    return None
+
+
+def _research_record_resume_error(
+    research: Research, resume: ResumeState
+) -> SessionError | None:
+    pairs = (
+        ("command", research.command, resume.command),
+        ("role", research.asking_role, resume.role),
+        ("task", research.task, resume.task),
+        ("milestone", research.milestone, resume.milestone),
+    )
+    for field, record_value, pointer_value in pairs:
+        if record_value != pointer_value:
+            return SessionError(
+                "research_resume",
+                f"research {research.id} {field} {record_value!r} does not match "
+                f"resume pointer value {pointer_value!r}",
+                1,
+            )
+    expected_scope = (
+        f"task:{resume.task}"
+        if resume.task
+        else f"milestone:{resume.milestone}"
+        if resume.milestone
+        else "planning"
+        if resume.command == "plan"
+        else "workspace"
+    )
+    if research.scope != expected_scope:
+        return SessionError(
+            "research_resume",
+            f"research {research.id} scope {research.scope!r} does not match "
+            f"resume route scope {expected_scope!r}",
+            1,
+        )
     return None
 
 
@@ -2510,38 +2571,48 @@ def run_loop(
     if executable_config is not None:
         frozen_profiles = executable_config.profiles
         frozen_profile_texts = executable_config.profile_texts
+    completed_resume_research: Research | None = None
     if active_resume is not None and active_resume.blocked_kind == "research":
         try:
             research = workspace.snapshot.get_research(active_resume.blocked_by)
         except KeyError:
             message = f"research resume pointer references missing {active_resume.blocked_by}"
             return _error_result(0, SessionError("research_resume", message, 1))
+        record_resume_error = _research_record_resume_error(research, active_resume)
+        if record_resume_error is not None:
+            return _error_result(0, record_resume_error)
         if research.status == ResearchStatus.COMPLETED:
-            return _stop_result(0, RunStopReason.RESEARCH_COMPLETED)
-        if automatic_version_control:
+            completed_resume_research = research
+        elif automatic_version_control:
             try:
                 commit_all(root, f"Record DevLab research request {research.id}")
             except VersionControlError as exc:
                 return _error_result(0, SessionError("version_control", str(exc), 1))
-        researcher_error = _invoke_researcher(
-            root,
-            research_id=research.id,
-            session_number=1,
-            agent_providers=agent_providers,
-            role_agent_providers=role_agent_providers,
-            resolved_agent_configs=resolved_agent_configs,
-            retain_prompts=retain_prompts,
-            session_progress=session_progress,
-            executable_config=executable_config,
-        )
-        if researcher_error is not None:
-            return _error_result(1, researcher_error)
-        if automatic_version_control:
-            try:
-                commit_all(root, f"Complete DevLab research {research.id}")
-            except VersionControlError as exc:
-                return _error_result(1, SessionError("version_control", str(exc), 1))
-        return _stop_result(1, RunStopReason.RESEARCH_COMPLETED)
+        if completed_resume_research is None:
+            researcher_error = _invoke_researcher(
+                root,
+                research_id=research.id,
+                session_number=1,
+                agent_providers=agent_providers,
+                role_agent_providers=role_agent_providers,
+                resolved_agent_configs=resolved_agent_configs,
+                retain_prompts=retain_prompts,
+                session_progress=session_progress,
+                executable_config=executable_config,
+            )
+            if researcher_error is not None:
+                return _error_result(1, researcher_error)
+            if automatic_version_control:
+                try:
+                    commit_all(root, f"Complete DevLab research {research.id}")
+                except VersionControlError as exc:
+                    return _error_result(1, SessionError("version_control", str(exc), 1))
+            sessions_run = 1
+            workspace = Workspace(root)
+            active_resume = load_workflow_state(root).resume
+            completed_resume_research = workspace.snapshot.get_research(research.id)
+            if sessions_run >= max_sessions:
+                return _stop_result(sessions_run, RunStopReason.RESEARCH_COMPLETED)
 
     reconcile_plan = bool(spec_status and spec_status.changed)
     planning_event_mode = _planning_event_mode(
@@ -2654,7 +2725,19 @@ def run_loop(
                 RunStopReason.CLARIFICATION_BLOCKED,
                 (clarification_error,),
             )
-        if planning_only and not revise_plan and not fresh_generation_plan and not adopt_existing:
+        research_resume_active = (
+            completed_resume_research is not None
+            and active_resume is not None
+            and active_resume.blocked_kind == "research"
+        )
+        if research_resume_active:
+            role_name = active_resume.role
+        elif (
+            planning_only
+            and not revise_plan
+            and not fresh_generation_plan
+            and not adopt_existing
+        ):
             role_name = workspace.snapshot.assess_state()
         else:
             workspace.sync()
@@ -2663,9 +2746,18 @@ def run_loop(
                 if sessions_run < len(forced_planning_roles)
                 else workspace.snapshot.assess_state()
             )
-        selected_task = _task_for_role(workspace.snapshot, role_name) if role_name else None
+        selected_task = (
+            _task_by_id(workspace.snapshot, active_resume.task)
+            if research_resume_active and active_resume.task
+            else _task_for_role(workspace.snapshot, role_name)
+            if role_name
+            else None
+        )
         selected_task_id = selected_task.id if selected_task is not None else None
         selected_milestone_id = (
+            active_resume.milestone or None
+            if research_resume_active
+            else
             workspace.snapshot.select_integration_milestone()
             if role_name == "integrator"
             else workspace.snapshot.select_architecture_review_milestone()
@@ -2772,7 +2864,11 @@ def run_loop(
             and (planning_only or (spec_status is not None and not spec_status.baseline_exists))
             else None
         )
-        route = _select_session_route(start_snapshot, role_name)
+        route = (
+            _select_resume_route(start_snapshot, active_resume)
+            if research_resume_active
+            else _select_session_route(start_snapshot, role_name)
+        )
         progress_baseline = _session_progress_baseline(start_snapshot)
         non_advancing_recovery = role_name == "developer" and _is_non_advancing_recovery(
             root, route
@@ -2815,6 +2911,11 @@ def run_loop(
             session_prompt = build_session_prompt(
                 snapshot,
                 role_name,
+                completed_research=(
+                    completed_resume_research if research_resume_active else None
+                ),
+                assigned_task=route.task,
+                assigned_milestone=route.milestone_id,
                 profiles=frozen_profiles,
                 profile_texts=frozen_profile_texts,
                 planning_revision=planning_only
@@ -2834,6 +2935,7 @@ def run_loop(
                 snapshot,
                 role_name,
                 frozen_profiles,
+                route.task,
             )
         except ProfileNotFoundError as exc:
             logger.error("%s. Stopping.", exc)
@@ -3106,6 +3208,16 @@ def run_loop(
             and process_result.clarification_id is None
             and process_result.research_id is None
         ):
+            if active_resume.blocked_kind == "research":
+                append_workflow_event(
+                    root,
+                    "research_resume_completed",
+                    research=active_resume.blocked_by,
+                    role=active_resume.role,
+                    command=active_resume.command,
+                    task=active_resume.task,
+                    milestone=active_resume.milestone,
+                )
             clear_resume_state(root)
             workspace.did_mutate()
             active_resume = None
@@ -3255,7 +3367,14 @@ def run_loop(
                     return _error_result(
                         sessions_run, SessionError("version_control", str(exc), 1)
                     )
-            return _stop_result(sessions_run, RunStopReason.RESEARCH_COMPLETED)
+            workspace = Workspace(root)
+            active_resume = load_workflow_state(root).resume
+            completed_resume_research = workspace.snapshot.get_research(
+                process_result.research_id
+            )
+            if sessions_run >= max_sessions:
+                return _stop_result(sessions_run, RunStopReason.RESEARCH_COMPLETED)
+            continue
         if process_result.clarification_id is not None:
             if clarification_mode == "operator":
                 logger.info(

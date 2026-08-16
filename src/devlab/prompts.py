@@ -56,6 +56,9 @@ def build_session_prompt(
     snapshot: WorkspaceSnapshot,
     role_name: str,
     *,
+    completed_research: Research | None = None,
+    assigned_task: Task | None = None,
+    assigned_milestone: str | None = None,
     profiles: dict[str, Profile] | None = None,
     profile_texts: dict[str, str] | None = None,
     planning_revision: bool = False,
@@ -73,9 +76,15 @@ def build_session_prompt(
     if role_name == "planner":
         prompt = _build_planner_prompt(snapshot, profile_texts=profile_texts)
     elif role_name == "developer":
-        prompt = _build_developer_prompt(snapshot, profiles=profiles)
+        prompt = _build_developer_prompt(
+            snapshot, profiles=profiles, assigned_task=assigned_task
+        )
     elif role_name == "reviewer":
         prompt = _build_reviewer_prompt(snapshot, profiles=profiles)
+    elif role_name == "architect":
+        prompt = _build_architect_prompt(
+            snapshot, assigned_milestone=assigned_milestone
+        )
     else:
         prompt = builders[role_name](snapshot)
     knowledge = _format_project_knowledge(discover_project_knowledge(snapshot.root))
@@ -88,7 +97,25 @@ def build_session_prompt(
             fresh_generation=fresh_generation,
             spec_reconciliation=spec_reconciliation,
         )
+    if completed_research is not None:
+        prompt += _completed_research_section(completed_research)
     return prompt + _handoff_reminder(role_name)
+
+
+def _completed_research_section(research: Research) -> str:
+    if research.result is None:
+        raise ValueError(f"research {research.id} has no completed result")
+    return (
+        "\n\n## Completed Research For This Route\n\n"
+        "Treat this research as supporting evidence, not as an automatic "
+        "requirement or operator decision. Judge how it affects your current "
+        "work. If remaining uncertainty requires operator intent rather than a "
+        "discoverable fact, request clarification.\n\n"
+        "<completed-research-data>\n"
+        f"Path: .devlab/research/{research.path.name}\n\n"
+        f"{research.path.read_text().strip()}\n"
+        "</completed-research-data>"
+    )
 
 
 def build_clarification_resolver_prompt(
@@ -382,10 +409,12 @@ def _session_profile(
     return load_profile(root, task.profile if task is not None else None)
 
 
-def _build_architect_prompt(snapshot: WorkspaceSnapshot) -> str:
+def _build_architect_prompt(
+    snapshot: WorkspaceSnapshot, *, assigned_milestone: str | None = None
+) -> str:
     root = snapshot.root
     parts: list[str] = []
-    review_milestone = snapshot.select_architecture_review_milestone()
+    review_milestone = assigned_milestone or snapshot.select_architecture_review_milestone()
     if review_milestone is not None:
         parts.extend(_architecture_review_prompt_sections(snapshot, review_milestone))
     plan = read_file(root / DESIGN_PLAN)
@@ -583,11 +612,14 @@ def _build_planner_prompt(
 
 
 def _build_developer_prompt(
-    snapshot: WorkspaceSnapshot, *, profiles: dict[str, Profile] | None = None
+    snapshot: WorkspaceSnapshot,
+    *,
+    profiles: dict[str, Profile] | None = None,
+    assigned_task: Task | None = None,
 ) -> str:
     root = snapshot.root
     parts: list[str] = []
-    task = snapshot.select_next_development_task()
+    task = assigned_task or snapshot.select_next_development_task()
     if task:
         content = read_file(task.path)
         parts.append(f"## Assigned Task ({task.path.name})\n\n{content}")
