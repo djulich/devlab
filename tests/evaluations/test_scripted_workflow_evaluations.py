@@ -1027,6 +1027,7 @@ def test_react_vite_container_build_check_runs_podman_copy_in_build(
 
     assert result.passed is True
     assert captured_args[:4] == ["podman", "run", "--rm", "--pull=missing"]
+    assert captured_args[4:6] == ["--security-opt", "label=disable"]
     assert f"{tmp_path.resolve()}:/workspace:ro" in captured_args
     script = captured_args[-1]
     assert isinstance(script, str)
@@ -1089,6 +1090,7 @@ def test_react_vite_browser_integration_check_runs_read_only_container_flow(
 
     assert result.passed is True
     assert captured_args[:4] == ["podman", "run", "--rm", "--pull=missing"]
+    assert captured_args[4:6] == ["--security-opt", "label=disable"]
     assert f"{tmp_path.resolve()}:/workspace:ro" in captured_args
     assert "mcr.microsoft.com/playwright:v1.53.1-jammy" in captured_args
     script = captured_args[-1]
