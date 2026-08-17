@@ -298,7 +298,10 @@ def react_vite_frontend_check(root: Path) -> CheckResult:
         root,
         ("src/App.jsx", "src/App.tsx", "src/App.js", "src/App.ts"),
     )
-    css_path = _first_existing(root, ("src/App.css", "src/index.css", "src/style.css"))
+    css_path = next(
+        (path for path in sorted((root / "src").rglob("*.css")) if path.is_file()),
+        None,
+    )
 
     missing_snippets: list[str] = []
     if main_path is None:

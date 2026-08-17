@@ -987,7 +987,7 @@ def test_react_vite_frontend_check_accepts_react_vite_contract(tmp_path: Path) -
         "}\n"
         "fetch('/todos');\n"
     )
-    (src_dir / "App.css").write_text(".app { display: grid; }\n")
+    (src_dir / "styles.css").write_text(".app { display: grid; }\n")
     (tmp_path / "README.md").write_text("Run `npm run dev`; verify with `npm run build`.\n")
 
     result = react_vite_frontend_check(tmp_path)
