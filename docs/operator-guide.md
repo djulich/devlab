@@ -7,6 +7,10 @@ edit by hand, and which files DevLab expects to own during normal workflow runs.
 For architecture rationale, see `docs/design.md`. For agent command setup, see
 `docs/agent-configuration.md`.
 
+For task-oriented procedures, see the [how-to guides](how-to/README.md),
+including existing-project adoption, bug fixes, specification revisions, and
+interrupted-workflow recovery.
+
 ## Operating Model
 
 DevLab treats the target repository as the workflow record. Specs, plans, tasks,

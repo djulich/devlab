@@ -331,6 +331,7 @@ shell-command, or exact-output fixture.
 
 - [`docs/design.md`](docs/design.md) — architecture and workflow overview.
 - [`docs/operator-guide.md`](docs/operator-guide.md) — operating DevLab in a target workspace.
+- [`docs/how-to/`](docs/how-to/README.md) — step-by-step procedures for common DevLab use cases.
 - [`docs/agent-configuration.md`](docs/agent-configuration.md) — target-owned agent command configuration.
 - [`docs/evaluations.md`](docs/evaluations.md) — scripted and live workflow evaluations.
 - [`docs/release-policy.md`](docs/release-policy.md) — versioning, compatibility, and release expectations.
