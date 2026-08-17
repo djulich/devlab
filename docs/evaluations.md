@@ -4,6 +4,21 @@ DevLab has deterministic workflow evaluations under `tests/evaluations/`.
 
 They differ from lower-level orchestrator tests: evaluations create temporary target repositories, run the normal DevLab workflow, then grade the generated target system with black-box checks. Workflow evaluations require Git on `PATH`; evaluation targets are initialized with `devlab init` as Git repositories, DevLab commits after every valid session, and artifact hygiene uses Git's ignore rules rather than reimplementing `.gitignore` parsing.
 
+## Independent grading boundary
+
+Evaluation checks are independent graders, not inputs to DevLab's regular
+self-correction loop. They run after the evaluated workflow stops and must not
+create findings or corrective tasks, reopen milestones, resume the workflow, or
+invoke additional role sessions. A failed check leaves the evaluated run failed.
+
+This boundary does not disable normal workflow correction. Task acceptance
+criteria, target-owned validation commands, reviewer outcomes, and integrator or
+architecture-review findings remain visible to the workflow and may cause
+bounded rework before completion. Evaluation checks may independently repeat or
+strengthen that verification afterward, but their results are recorded only as
+grading evidence. See
+[ADR 0011](adr/0011-keep-workflow-evaluation-grading-outside-the-workflow.md).
+
 ## Deterministic scripted evaluations
 
 Run with the normal test suite:
