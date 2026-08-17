@@ -24,6 +24,13 @@ class CheckResult:
 
 BlackBoxCheck = Callable[[Path], CheckResult]
 
+TODO_API_ENDPOINTS = (
+    "GET /health",
+    "POST /todos",
+    "GET /todos",
+    "DELETE /todos/{id}",
+)
+
 
 def toolchain_command_check(
     name: str,
@@ -108,6 +115,30 @@ def file_contains_check(name: str, relative_path: str, expected_text: str) -> Bl
         text = path.read_text()
         passed = expected_text in text
         return CheckResult(name, passed, "" if passed else f"{expected_text!r} not found")
+
+    return check
+
+
+def endpoint_documentation_check(
+    endpoints: Sequence[str],
+    *,
+    relative_path: str = "README.md",
+) -> BlackBoxCheck:
+    """Require explicit method/path documentation for every defined endpoint."""
+
+    def check(root: Path) -> CheckResult:
+        path = root / relative_path
+        if not path.exists():
+            return CheckResult("endpoint documentation", False, f"missing {relative_path}")
+        text = path.read_text()
+        missing = [endpoint for endpoint in endpoints if endpoint not in text]
+        return CheckResult(
+            "endpoint documentation",
+            not missing,
+            ""
+            if not missing
+            else f"{relative_path} lacks defined endpoints: {', '.join(missing)}",
+        )
 
     return check
 

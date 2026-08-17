@@ -39,12 +39,14 @@ from devlab.workflow_history import (
 )
 from devlab.workspace import Workspace
 from tests.evaluations.checks import (
+    TODO_API_ENDPOINTS,
     BlackBoxCheck,
     CheckResult,
     command_check,
     command_fails_check,
     compose_deployment_artifacts_check,
     deployment_artifacts_check,
+    endpoint_documentation_check,
     file_contains_check,
     optional_docker_compose_config_check,
     optional_make_target_check,
@@ -452,9 +454,11 @@ def test_scripted_stateful_web_api_evaluation(tmp_path: Path) -> None:
         id="stateful-web-api-happy-path",
         title="Stateful web API happy path",
         system_spec=(
-            "Build a small Python JSON HTTP API for todo items. It must expose /health, "
-            "create todos, list todos, delete todos by id, keep data in memory, and "
-            "provide project-owned run/test commands."
+            "Build a small Python JSON HTTP API for todo items. Keep data in memory and "
+            "provide project-owned run/test commands. The defined API endpoints are "
+            f"{', '.join(f'`{endpoint}`' for endpoint in TODO_API_ENDPOINTS)}. The README "
+            "must contain an endpoint reference listing every defined method/path pair "
+            "using the exact notation above."
         ),
         max_sessions=10,
         scripted_agent=StatefulWebApiScriptedAgent(),
@@ -462,7 +466,7 @@ def test_scripted_stateful_web_api_evaluation(tmp_path: Path) -> None:
             stateful_todo_api_check,
             file_contains_check("project run command", "Makefile", "run:"),
             file_contains_check("project test command", "Makefile", "test:"),
-            file_contains_check("usage docs", "README.md", "GET /todos"),
+            endpoint_documentation_check(TODO_API_ENDPOINTS),
             file_contains_check("python cache gitignore", ".gitignore", "__pycache__/"),
         ),
         expected_roles=(
@@ -859,6 +863,27 @@ def test_stateful_todo_api_check_accepts_any_successful_create_status(
     result = stateful_todo_api_check(tmp_path)
 
     assert result.passed is True
+
+
+def test_endpoint_documentation_check_accepts_every_defined_endpoint(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "# Endpoints\n\n" + "\n".join(f"- `{endpoint}`" for endpoint in TODO_API_ENDPOINTS)
+    )
+
+    result = endpoint_documentation_check(TODO_API_ENDPOINTS)(tmp_path)
+
+    assert result.passed is True
+
+
+def test_endpoint_documentation_check_reports_all_missing_endpoints(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("# Endpoints\n\n- `GET /health`\n")
+
+    result = endpoint_documentation_check(TODO_API_ENDPOINTS)(tmp_path)
+
+    assert result.passed is False
+    assert result.message == (
+        "README.md lacks defined endpoints: POST /todos, GET /todos, DELETE /todos/{id}"
+    )
 
 
 def test_compose_deployment_check_accepts_docs_deployment_markdown(tmp_path: Path) -> None:

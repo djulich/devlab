@@ -12,11 +12,13 @@ from devlab.git import run_git
 from devlab.orchestrator import run_loop
 from devlab.task_tracker import FileTaskTracker
 from tests.evaluations.checks import (
+    TODO_API_ENDPOINTS,
     BlackBoxCheck,
     CheckResult,
     command_check,
     command_fails_check,
     deployment_artifacts_check,
+    endpoint_documentation_check,
     file_contains_check,
     react_vite_browser_integration_check,
     react_vite_container_build_check,
@@ -442,15 +444,18 @@ def test_live_stateful_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             "for invalid JSON, missing title, empty title, or blank title. Return 404 "
             "for unknown routes. "
             "Also provide a Makefile "
-            "with run and test targets, a README documenting usage and endpoints, and a "
-            ".gitignore covering Python caches and local runtime artifacts."
+            "with run and test targets and a .gitignore covering Python caches and local "
+            "runtime artifacts. The defined API endpoints are "
+            f"{', '.join(f'`{endpoint}`' for endpoint in TODO_API_ENDPOINTS)}. The README "
+            "must contain an endpoint reference listing every defined method/path pair "
+            "using the exact notation above."
         ),
         max_sessions=int(os.environ.get("DEVLAB_LIVE_STATEFUL_MAX_SESSIONS", "18")),
         checks=(
             stateful_todo_api_check,
             file_contains_check("project run command", "Makefile", "run:"),
             file_contains_check("project test command", "Makefile", "test:"),
-            file_contains_check("usage docs", "README.md", "GET /todos"),
+            endpoint_documentation_check(TODO_API_ENDPOINTS),
             file_contains_check("python cache gitignore", ".gitignore", "__pycache__/"),
         ),
     )
@@ -571,9 +576,12 @@ def test_live_deployable_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             'JSON {"todos": [<items>]}, DELETE /todos/{id} to delete an item and return '
             'JSON {"deleted": <id>}. POST /todos must return a 4xx client error '
             "for invalid JSON, missing title, empty title, or blank title. Return 404 "
-            "for unknown routes. Also provide a Makefile with run and test targets, "
-            "a README documenting usage and endpoints, and a .gitignore covering Python "
-            "caches and local runtime artifacts. Deployment support is explicitly in "
+            "for unknown routes. Also provide a Makefile with run and test targets and a "
+            ".gitignore covering Python caches and local runtime artifacts. The defined "
+            "API endpoints are "
+            f"{', '.join(f'`{endpoint}`' for endpoint in TODO_API_ENDPOINTS)}. The README "
+            "must contain an endpoint reference listing every defined method/path pair "
+            "using the exact notation above. Deployment support is explicitly in "
             "scope: provide project-owned local container deployment artifacts and "
             "verification instructions, but do not deploy to production. The Makefile "
             "must include an image target named exactly `image` and a deployment "
@@ -595,7 +603,7 @@ def test_live_deployable_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             deployment_artifacts_check,
             file_contains_check("project run command", "Makefile", "run:"),
             file_contains_check("project test command", "Makefile", "test:"),
-            file_contains_check("usage docs", "README.md", "GET /todos"),
+            endpoint_documentation_check(TODO_API_ENDPOINTS),
         ),
     )
 
