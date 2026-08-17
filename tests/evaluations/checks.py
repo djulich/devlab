@@ -284,9 +284,10 @@ def static_frontend_check(root: Path) -> CheckResult:
         missing_snippets.append("index.html lacks a todo title input")
     if "<ul" not in lower_index and "<ol" not in lower_index:
         missing_snippets.append("index.html lacks a todo list container")
-    for snippet in ("/todos", "POST", "DELETE"):
-        if snippet not in script:
-            missing_snippets.append(f"app.js lacks {snippet!r}")
+    lower_script = script.lower()
+    for snippet in ("/todos", "post", "delete"):
+        if snippet not in lower_script:
+            missing_snippets.append(f"app.js lacks case-insensitive {snippet!r}")
     if "error" not in index.lower() and "error" not in script.lower():
         missing_snippets.append("frontend lacks error display/handling")
     if not styles.strip():
@@ -377,9 +378,6 @@ def react_vite_frontend_check(root: Path) -> CheckResult:
     source_text = _frontend_source_text(root, (main_path, app_path, css_path))
     if "createRoot" not in source_text:
         missing_snippets.append("React entrypoint lacks createRoot")
-    for snippet in ("/todos", "POST", "DELETE"):
-        if snippet not in source_text:
-            missing_snippets.append(f"React source lacks {snippet!r}")
     if "error" not in source_text.lower():
         missing_snippets.append("React source lacks error display/handling")
     if "form" not in source_text.lower() or "input" not in source_text.lower():
@@ -393,8 +391,8 @@ def react_vite_frontend_check(root: Path) -> CheckResult:
         message += (
             "; expected React/Vite frontend contract: package.json with Vite scripts "
             "and React/Vite dependencies, index.html root mount, src/main entrypoint, "
-            "src/App component, CSS, direct GET/POST/DELETE /todos calls, error "
-            "handling, and README usage instructions"
+            "src/App component, CSS, error handling, and README usage instructions; "
+            "endpoint behavior is verified by the browser integration check"
         )
     return CheckResult("react vite frontend", not missing_snippets, message)
 
@@ -805,7 +803,12 @@ def stateful_todo_api_check(root: Path) -> CheckResult:
         if health_status != 200 or health != {"status": "ok"}:
             return CheckResult("stateful todo api", False, f"bad health: {health_status} {health}")
 
-        invalid_status, invalid = _http_json(port, "POST", "/todos", {"title": ""})
+        invalid_statuses = {
+            "invalid-json": _http_request_status(port, "POST", "/todos", b"{"),
+            "missing-title": _http_request_status(port, "POST", "/todos", b"{}"),
+            "empty-title": _http_request_status(port, "POST", "/todos", b'{"title": ""}'),
+            "blank-title": _http_request_status(port, "POST", "/todos", b'{"title": "   "}'),
+        }
         create_status, created = _http_json(port, "POST", "/todos", {"title": "write eval"})
         created_item = cast(dict[str, object], created) if isinstance(created, dict) else {}
         todo_id = created_item.get("id")
@@ -827,7 +830,7 @@ def stateful_todo_api_check(root: Path) -> CheckResult:
         missing_status, _ = _http_json(port, "GET", "/missing")
 
         passed = (
-            400 <= invalid_status < 500
+            all(400 <= status < 500 for status in invalid_statuses.values())
             and list_status == 200
             and _todo_collection(listed) == [created_item]
             and delete_status == 200
@@ -837,7 +840,7 @@ def stateful_todo_api_check(root: Path) -> CheckResult:
             and missing_status == 404
         )
         details = (
-            f"empty-title={invalid_status}:{invalid!r} create={create_status}:{created!r} "
+            f"invalid-create={invalid_statuses!r} create={create_status}:{created!r} "
             f"list={list_status}:{listed!r} delete={delete_status}:{deleted!r} "
             f"final={final_status}:{final!r} missing={missing_status}"
         )
@@ -906,6 +909,22 @@ def _http_json(
         response = connection.getresponse()
         response_body = response.read().decode()
         return response.status, json.loads(response_body)
+    finally:
+        connection.close()
+
+
+def _http_request_status(port: int, method: str, path: str, body: bytes) -> int:
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
+    try:
+        connection.request(
+            method,
+            path,
+            body=body,
+            headers={"Content-Type": "application/json"},
+        )
+        response = connection.getresponse()
+        response.read()
+        return response.status
     finally:
         connection.close()
 

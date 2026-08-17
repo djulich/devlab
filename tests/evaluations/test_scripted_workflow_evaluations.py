@@ -427,8 +427,8 @@ def test_scripted_tiny_http_api_evaluation(tmp_path: Path) -> None:
         id="tiny-http-api-happy-path",
         title="Tiny HTTP API happy path",
         system_spec=(
-            "Build a tiny Python standard-library HTTP API with /health returning ok and "
-            "/echo?value=TEXT returning TEXT."
+            "Build a tiny Python standard-library HTTP API with GET /health returning "
+            "HTTP 200 and ok, and GET /echo?value=TEXT returning HTTP 200 and TEXT."
         ),
         max_sessions=10,
         scripted_agent=HttpApiScriptedAgent(),
@@ -458,7 +458,10 @@ def test_scripted_stateful_web_api_evaluation(tmp_path: Path) -> None:
             "provide project-owned run/test commands. The defined API endpoints are "
             f"{', '.join(f'`{endpoint}`' for endpoint in TODO_API_ENDPOINTS)}. The README "
             "must contain an endpoint reference listing every defined method/path pair "
-            "using the exact notation above."
+            "using the exact notation above. GET /health, GET /todos, and DELETE "
+            "/todos/{id} return HTTP 200 with their defined JSON bodies; POST /todos "
+            "returns its created item with any successful 2xx status and rejects invalid "
+            "JSON and missing, empty, or blank titles with a 4xx status."
         ),
         max_sessions=10,
         scripted_agent=StatefulWebApiScriptedAgent(),
@@ -946,8 +949,8 @@ def test_static_frontend_check_accepts_served_static_frontend_docs(tmp_path: Pat
     )
     (static_dir / "app.js").write_text(
         "async function load(){ await fetch('/todos'); }\n"
-        "async function add(){ await fetch('/todos', {method: 'POST'}); }\n"
-        "async function remove(id){ await fetch(`/todos/${id}`, {method: 'DELETE'}); }\n"
+        "async function add(){ await fetch('/todos', {method: 'post'}); }\n"
+        "async function remove(id){ await fetch(`/todos/${id}`, {method: 'delete'}); }\n"
         "function showError(error){ console.log(error); }\n"
     )
     (static_dir / "styles.css").write_text("body { font-family: sans-serif; }\n")
@@ -1004,13 +1007,12 @@ def test_react_vite_frontend_check_accepts_react_vite_contract(tmp_path: Path) -
     )
     (src_dir / "App.jsx").write_text(
         "export default function App(){\n"
-        "  return <form onSubmit={async () => fetch('/todos', {method: 'POST'})}>\n"
+        "  return <form>\n"
         '    <input aria-label="todo" />\n'
-        "    <button onClick={() => fetch('/todos/1', {method: 'DELETE'})}>Delete</button>\n"
+        "    <button>Add</button>\n"
         '    <p role="alert">error</p>\n'
         "  </form>;\n"
         "}\n"
-        "fetch('/todos');\n"
     )
     (src_dir / "styles.css").write_text(".app { display: grid; }\n")
     (tmp_path / "README.md").write_text("Run `npm run dev`; verify with `npm run build`.\n")

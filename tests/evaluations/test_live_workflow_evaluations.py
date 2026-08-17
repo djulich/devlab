@@ -436,11 +436,12 @@ def test_live_stateful_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             "Do not use third-party runtime dependencies. Implement the server in "
             "src/todo_api/server.py and make it runnable from the repository root with "
             "python -m src.todo_api.server --port <port>. It must expose GET /health "
-            'returning JSON {"status": "ok"}, POST /todos with JSON '
+            'returning HTTP 200 with JSON {"status": "ok"}, POST /todos with JSON '
             '{"title": "..."} to create an in-memory item and return a top-level '
-            "JSON object with integer id and title fields, GET /todos to return "
-            'JSON {"todos": [<items>]}, DELETE /todos/{id} to delete an item and return '
-            'JSON {"deleted": <id>}. POST /todos must return a 4xx client error '
+            "JSON object with integer id and title fields using any successful 2xx status, "
+            'GET /todos to return HTTP 200 with JSON {"todos": [<items>]}, DELETE '
+            '/todos/{id} to return HTTP 200 with JSON {"deleted": <id>}. POST /todos '
+            "must return a 4xx client error "
             "for invalid JSON, missing title, empty title, or blank title. Return 404 "
             "for unknown routes. "
             "Also provide a Makefile "
@@ -478,16 +479,18 @@ def test_live_static_frontend_todo_app_happy_path_evaluation(tmp_path: Path) -> 
             "static vanilla HTML/CSS/JS frontend. Do not use React, Vite, npm, or a "
             "frontend build step. Implement the API in src/todo_api/server.py and make "
             "it runnable from the repository root with python -m src.todo_api.server "
-            "--port <port>. It must expose GET /health returning JSON "
+            "--port <port>. It must expose GET /health returning HTTP 200 with JSON "
             '{"status": "ok"}, POST /todos with JSON {"title": "..."} to '
-            "create an in-memory item and return a top-level JSON object with integer "
-            'id and title fields, GET /todos to return JSON {"todos": [<items>]}, '
-            'DELETE /todos/{id} to delete an item and return JSON {"deleted": <id>}. '
+            "create an in-memory item and return a top-level JSON object with integer id "
+            "and title fields using any successful 2xx status, GET /todos to return HTTP "
+            '200 with JSON {"todos": [<items>]}, DELETE /todos/{id} to return HTTP 200 '
+            'with JSON {"deleted": <id>}. '
             "POST /todos must return a 4xx client error for invalid JSON, missing "
             "title, empty title, or blank title. Return 404 for unknown routes. Place "
             "frontend files at exactly static/index.html, static/app.js, and "
             "static/styles.css. The UI must list todos, add todos, delete todos, display "
-            "validation errors, and call the API routes directly. Provide a Makefile "
+            "validation errors, and make direct GET, POST, and DELETE calls to the "
+            "/todos routes from static/app.js. Provide a Makefile "
             "with run and test targets and README instructions for running the API and "
             "using the static frontend."
         ),
@@ -518,11 +521,12 @@ def test_live_react_vite_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
             "Build a small Python standard-library JSON HTTP API for todo items plus a "
             "React frontend using Vite. Implement the API in src/todo_api/server.py and "
             "make it runnable from the repository root with python -m src.todo_api.server "
-            "--port <port>. It must expose GET /health returning JSON "
+            "--port <port>. It must expose GET /health returning HTTP 200 with JSON "
             '{"status": "ok"}, POST /todos with JSON {"title": "..."} to '
-            "create an in-memory item and return a top-level JSON object with integer "
-            'id and title fields, GET /todos to return JSON {"todos": [<items>]}, '
-            'DELETE /todos/{id} to delete an item and return JSON {"deleted": <id>}. '
+            "create an in-memory item and return a top-level JSON object with integer id "
+            "and title fields using any successful 2xx status, GET /todos to return HTTP "
+            '200 with JSON {"todos": [<items>]}, DELETE /todos/{id} to return HTTP 200 '
+            'with JSON {"deleted": <id>}. '
             "POST /todos must return a 4xx client error for invalid JSON, missing "
             "title, empty title, or blank title. Return 404 for unknown routes. Use "
             "Vite with React for the browser UI; include react, react-dom, vite, and "
@@ -570,11 +574,12 @@ def test_live_deployable_web_api_happy_path_evaluation(tmp_path: Path) -> None:
             "Do not use third-party runtime dependencies. Implement the server in "
             "src/todo_api/server.py and make it runnable from the repository root with "
             "python -m src.todo_api.server --port <port>. It must expose GET /health "
-            'returning JSON {"status": "ok"}, POST /todos with JSON '
+            'returning HTTP 200 with JSON {"status": "ok"}, POST /todos with JSON '
             '{"title": "..."} to create an in-memory item and return a top-level '
-            "JSON object with integer id and title fields, GET /todos to return "
-            'JSON {"todos": [<items>]}, DELETE /todos/{id} to delete an item and return '
-            'JSON {"deleted": <id>}. POST /todos must return a 4xx client error '
+            "JSON object with integer id and title fields using any successful 2xx status, "
+            'GET /todos to return HTTP 200 with JSON {"todos": [<items>]}, DELETE '
+            '/todos/{id} to return HTTP 200 with JSON {"deleted": <id>}. POST /todos '
+            "must return a 4xx client error "
             "for invalid JSON, missing title, empty title, or blank title. Return 404 "
             "for unknown routes. Also provide a Makefile with run and test targets and a "
             ".gitignore covering Python caches and local runtime artifacts. The defined "
