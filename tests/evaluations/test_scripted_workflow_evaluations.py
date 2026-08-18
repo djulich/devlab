@@ -1125,8 +1125,10 @@ def test_react_vite_browser_integration_check_runs_read_only_container_flow(
     assert "cp -R /workspace/. /tmp/work" in script
     assert "if [ -f package-lock.json ]; then npm ci; else npm install; fi" in script
     assert "npm run build" in script
+    assert "npm install --prefix /tmp/devlab-browser-tools --no-save playwright@1.53.1" in script
     assert "src.todo_api.server --port" in script
     assert "npm run dev -- --host 127.0.0.1 --port" in script
+    assert "NODE_PATH=/tmp/devlab-browser-tools/node_modules node" in script
     assert "require('playwright')" in script
     assert "write browser eval" in script
     assert captured_kwargs == {

@@ -528,6 +528,9 @@ dump_diagnostics() {
 trap dump_diagnostics ERR
 if [ -f package-lock.json ]; then npm ci; else npm install; fi
 npm run build
+# The Playwright image provides matching browser binaries and system libraries,
+# but deliberately does not include the Playwright Node package.
+npm install --prefix /tmp/devlab-browser-tools --no-save playwright@1.53.1
 PYTHON_BIN="$(command -v python3 || command -v python)"
 API_PORT=8765
 VITE_PORT=5173
@@ -597,7 +600,7 @@ waitFor('http://127.0.0.1:5173/', 'Vite').catch((error) => {
   process.exit(1);
 });
 NODE
-node <<'NODE'
+NODE_PATH=/tmp/devlab-browser-tools/node_modules node <<'NODE'
 const { chromium } = require('playwright');
 
 const diagnostics = {
