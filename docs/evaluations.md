@@ -109,6 +109,26 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
 ```
 
+The compiled-language live evaluations exercise real agent planning, dedicated
+task profiles, implementation, review, integration, and architecture review in
+non-Python targets. The Rust scenario requires an operator-installed stable Rust
+toolchain and grades formatting, tests, and CLI behavior. The C++ scenario
+requires operator-installed CMake, CTest, Make, and a C++ compiler and grades the
+configure/build/test presets plus CLI behavior. Each test skips before invoking
+agents if any required host tool is absent; DevLab does not install or bootstrap
+the toolchains:
+
+```bash
+DEVLAB_LIVE_EVALS=1 \
+DEVLAB_LIVE_RUST=1 \
+DEVLAB_LIVE_CPP=1 \
+DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
+uv run pytest \
+  tests/evaluations/test_live_workflow_evaluations.py::test_live_rust_cli_happy_path_evaluation \
+  tests/evaluations/test_live_workflow_evaluations.py::test_live_cpp_cmake_cli_happy_path_evaluation \
+  -s
+```
+
 The static frontend live evaluation extends the stateful API scenario with a browser-facing vanilla HTML/CSS/JS UI. It requires exact static artifact paths (`static/index.html`, `static/app.js`, `static/styles.css`), direct calls to the todo API routes, an error display, README usage instructions, and absence of frontend build artifacts such as `package.json` or Vite config. It is skipped unless explicitly enabled:
 
 ```bash
@@ -174,6 +194,10 @@ Useful environment variables:
 - `DEVLAB_LIVE_MAX_SESSIONS`: optional session cap for the live calculator run.
 - `DEVLAB_LIVE_STATEFUL_WEB_API=1`: enable the additional stateful JSON web API live evaluation.
 - `DEVLAB_LIVE_STATEFUL_MAX_SESSIONS`: optional session cap for the stateful JSON web API live run; defaults to `18`.
+- `DEVLAB_LIVE_RUST=1`: enable the Rust CLI live evaluation.
+- `DEVLAB_LIVE_RUST_MAX_SESSIONS`: optional session cap for the Rust live run; defaults to `12`.
+- `DEVLAB_LIVE_CPP=1`: enable the C++/CMake CLI live evaluation.
+- `DEVLAB_LIVE_CPP_MAX_SESSIONS`: optional session cap for the C++ live run; defaults to `12`.
 - `DEVLAB_LIVE_STATIC_FRONTEND=1`: enable the static frontend todo app live evaluation.
 - `DEVLAB_LIVE_STATIC_FRONTEND_MAX_SESSIONS`: optional session cap for the static frontend live run; defaults to `20`.
 - `DEVLAB_LIVE_REACT_VITE_FRONTEND=1`: enable the React/Vite frontend todo app live evaluation.

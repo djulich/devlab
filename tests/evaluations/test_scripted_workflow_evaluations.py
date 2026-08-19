@@ -42,6 +42,7 @@ from tests.evaluations.checks import (
     TODO_API_ENDPOINTS,
     BlackBoxCheck,
     CheckResult,
+    built_executable_output_check,
     command_check,
     command_fails_check,
     compose_deployment_artifacts_check,
@@ -81,6 +82,85 @@ from tests.evaluations.scripted_agents import (
     StatefulWebApiScriptedAgent,
     StaticFrontendScriptedAgent,
 )
+
+
+def _make_executable(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("evaluation executable placeholder\n")
+    path.chmod(0o755)
+
+
+def test_built_executable_output_check_reports_missing_executable(tmp_path: Path) -> None:
+    check = built_executable_output_check(
+        "CLI output", "build", "example-cli", [], expected_stdout="ok"
+    )
+
+    result = check(tmp_path)
+
+    assert result.passed is False
+    assert "expected exactly one executable" in result.message
+    assert "found []" in result.message
+
+
+def test_built_executable_output_check_reports_ambiguous_executables(
+    tmp_path: Path,
+) -> None:
+    _make_executable(tmp_path / "build/debug/example-cli")
+    _make_executable(tmp_path / "build/release/example-cli")
+    check = built_executable_output_check(
+        "CLI output", "build", "example-cli", [], expected_stdout="ok"
+    )
+
+    result = check(tmp_path)
+
+    assert result.passed is False
+    assert "build/debug/example-cli" in result.message
+    assert "build/release/example-cli" in result.message
+
+
+def test_built_executable_output_check_runs_discovered_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "build/dev/example-cli"
+    _make_executable(executable)
+    captured_command: list[str] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_command[:] = command
+        return subprocess.CompletedProcess(command, 0, "ok\n", "")
+
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+    check = built_executable_output_check(
+        "CLI output", "build", "example-cli", ["arg"], expected_stdout="ok"
+    )
+
+    result = check(tmp_path)
+
+    assert result.passed is True
+    assert captured_command == [str(executable), "arg"]
+
+
+def test_built_executable_output_check_reports_command_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "build/dev/example-cli"
+    _make_executable(executable)
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 2, "wrong\n", "invalid input\n")
+
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+    check = built_executable_output_check(
+        "CLI output", "build", "example-cli", [], expected_stdout="ok"
+    )
+
+    result = check(tmp_path)
+
+    assert result.passed is False
+    assert "exit=2" in result.message
+    assert "invalid input" in result.message
 
 
 def _compiled_language_scenario(

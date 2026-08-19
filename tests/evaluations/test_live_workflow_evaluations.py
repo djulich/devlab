@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from tests.evaluations.checks import (
     TODO_API_ENDPOINTS,
     BlackBoxCheck,
     CheckResult,
+    built_executable_output_check,
     command_check,
     command_fails_check,
     deployment_artifacts_check,
@@ -25,6 +27,7 @@ from tests.evaluations.checks import (
     react_vite_frontend_check,
     stateful_todo_api_check,
     static_frontend_check,
+    toolchain_command_check,
 )
 from tests.evaluations.harness import (
     EvaluationDiagnostics,
@@ -191,6 +194,29 @@ def _target_command_check(
         )
 
     return check
+
+
+def _require_live_tools(tools: tuple[str, ...]) -> None:
+    missing = [tool for tool in tools if shutil.which(tool) is None]
+    if missing:
+        pytest.skip(f"requires operator-installed tools on PATH: {', '.join(missing)}")
+
+
+def _assert_live_task_profile(
+    diagnostics: EvaluationDiagnostics,
+    profile_id: str,
+    *,
+    minimum_validation_commands: int,
+) -> None:
+    profile = next(
+        (item for item in diagnostics.profiles.items if item.id == profile_id),
+        None,
+    )
+    assert profile is not None
+    assert profile.valid is True
+    assert profile.default_validation_count >= minimum_validation_commands
+    assigned_tasks = diagnostics.profiles.tasks_by_profile.get(profile_id, [])
+    assert assigned_tasks
 
 
 @pytest.mark.skipif(
@@ -464,6 +490,93 @@ def test_live_stateful_web_api_happy_path_evaluation(tmp_path: Path) -> None:
     diagnostics = _run_live_scenario(tmp_path, scenario)
 
     _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+
+
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_RUST") != "1",
+    reason="Rust live evaluation requires DEVLAB_LIVE_RUST=1",
+)
+def test_live_rust_cli_happy_path_evaluation(tmp_path: Path) -> None:
+    _require_live_tools(("cargo", "rustc", "rustfmt"))
+    scenario = EvaluationScenario(
+        id="live-rust-cli-happy-path",
+        title="Live Rust CLI happy path",
+        system_spec=(
+            "Build a dependency-free Rust CLI named devlab-live-rust-cli. The command "
+            "must accept exactly `add <left> <right>`, parse signed 64-bit integers, "
+            "print only their sum followed by a newline on success, and exit nonzero "
+            "with a useful stderr message for invalid commands, arity, or integers. "
+            "Use the stable Rust toolchain and edition 2021 or newer. Include focused "
+            "automated tests, Cargo.lock, README usage instructions, and a .gitignore "
+            "covering /target/. Project-owned validation is `cargo fmt --check` and "
+            "`cargo test`; do not install or bootstrap Rust tools. Create a dedicated "
+            "DevLab task profile with id `rust`, put both commands in its "
+            "default_validation list, and assign product implementation tasks to it."
+        ),
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_RUST_MAX_SESSIONS", "12")),
+        checks=(
+            file_contains_check("Rust package", "Cargo.toml", "devlab-live-rust-cli"),
+            toolchain_command_check("Rust format", ["cargo", "fmt", "--check"]),
+            toolchain_command_check("Rust tests", ["cargo", "test"]),
+            toolchain_command_check(
+                "Rust CLI output",
+                ["cargo", "run", "--quiet", "--", "add", "-7", "12"],
+                expected_stdout="5",
+            ),
+            file_contains_check("Rust usage docs", "README.md", "cargo run"),
+        ),
+    )
+
+    diagnostics = _run_live_scenario(tmp_path, scenario)
+
+    _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+    _assert_live_task_profile(diagnostics, "rust", minimum_validation_commands=2)
+
+
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_CPP") != "1",
+    reason="C++ live evaluation requires DEVLAB_LIVE_CPP=1",
+)
+def test_live_cpp_cmake_cli_happy_path_evaluation(tmp_path: Path) -> None:
+    _require_live_tools(("cmake", "ctest", "make", "c++"))
+    scenario = EvaluationScenario(
+        id="live-cpp-cmake-cli-happy-path",
+        title="Live C++/CMake CLI happy path",
+        system_spec=(
+            "Build a dependency-free C++20 CLI named devlab-live-cpp. The command must "
+            "accept exactly `multiply <left> <right>`, parse signed integers, print only "
+            "their product followed by a newline on success, and exit nonzero with a "
+            "useful stderr message for invalid commands, arity, or integers. Use CMake "
+            "3.20 or newer and CTest. Provide CMakePresets.json with configure, build, "
+            "and test presets all named `dev`; the configure preset must use Unix "
+            "Makefiles and build under the ignored /build/ directory. Include focused "
+            "automated tests and README usage instructions. Project-owned validation is "
+            "`cmake --preset dev`, `cmake --build --preset dev`, and `ctest --preset "
+            "dev`; do not install or bootstrap C++, CMake, CTest, or Make. Create a "
+            "dedicated DevLab task profile with id `cpp`, put all three commands in its "
+            "default_validation list, and assign product implementation tasks to it."
+        ),
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_CPP_MAX_SESSIONS", "12")),
+        checks=(
+            file_contains_check("C++ project", "CMakeLists.txt", "devlab-live-cpp"),
+            toolchain_command_check("C++ configure", ["cmake", "--preset", "dev"]),
+            toolchain_command_check("C++ build", ["cmake", "--build", "--preset", "dev"]),
+            toolchain_command_check("C++ tests", ["ctest", "--preset", "dev"]),
+            built_executable_output_check(
+                "C++ CLI output",
+                "build",
+                "devlab-live-cpp",
+                ["multiply", "-6", "7"],
+                expected_stdout="-42",
+            ),
+            file_contains_check("C++ usage docs", "README.md", "cmake --preset dev"),
+        ),
+    )
+
+    diagnostics = _run_live_scenario(tmp_path, scenario)
+
+    _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+    _assert_live_task_profile(diagnostics, "cpp", minimum_validation_commands=3)
 
 
 @pytest.mark.skipif(

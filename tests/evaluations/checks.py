@@ -63,6 +63,56 @@ def toolchain_command_check(
     return check
 
 
+def built_executable_output_check(
+    name: str,
+    build_directory: str,
+    executable_name: str,
+    args: Sequence[str],
+    *,
+    expected_stdout: str,
+    timeout: int = 60,
+) -> BlackBoxCheck:
+    """Run one unambiguously named executable beneath a generated build tree."""
+
+    def check(root: Path) -> CheckResult:
+        build_root = root / build_directory
+        candidates = sorted(
+            path
+            for path in build_root.rglob(executable_name)
+            if path.is_file() and os.access(path, os.X_OK)
+        )
+        relative_candidates = [str(path.relative_to(root)) for path in candidates]
+        if len(candidates) != 1:
+            return CheckResult(
+                name,
+                False,
+                f"expected exactly one executable named {executable_name!r} beneath "
+                f"{build_directory}; found {relative_candidates!r}",
+            )
+        command = [str(candidates[0]), *args]
+        try:
+            result = subprocess.run(
+                command,
+                cwd=root,
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+        except OSError as error:
+            return CheckResult(name, False, f"could not run {relative_candidates[0]}: {error}")
+        passed = result.returncode == 0 and result.stdout.strip() == expected_stdout
+        return CheckResult(
+            name,
+            passed,
+            ""
+            if passed
+            else f"exit={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+
+    return check
+
+
 def command_check(name: str, args: Sequence[str], expected_stdout: str) -> BlackBoxCheck:
     def check(root: Path) -> CheckResult:
         result = subprocess.run(

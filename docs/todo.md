@@ -26,12 +26,14 @@ Recommended evaluation roadmap:
 4. **Web API plus deployment artifacts** — local-container scripted/live scenarios and a scripted Compose scenario are implemented; add kind/RPM/systemd-style scenarios only when those deployment families become active priorities.
 5. **Static frontend** — scripted and opt-in live scenarios are implemented for vanilla HTML/CSS/JS without Node/React dependency or browser-tooling volatility; next collect live baselines.
 6. **React/Vite frontend** — opt-in live scenario is implemented for a framework-based frontend with Podman-isolated npm install/build and browser/API/Vite integration checks; collect live baselines before expanding into visual quality or production deployment checks.
+7. **Compiled-language profiles** — opt-in Rust and C++/CMake live scenarios exercise operator-provided toolchains, dedicated task profiles, and target-owned black-box validation; collect initial baselines before deciding whether Go or C adds distinct workflow evidence.
 
 Open work:
 
 - Run the opt-in `live-stateful-web-api-happy-path` evaluation across any remaining local provider environments. Passing Claude and Codex baselines: `docs/plans/stateful-web-api-live-baseline-2026-06-24.md`.
 - Run opt-in live-agent evaluations with the expanded quality metrics from `docs/plans/devlab-live-evaluation-quality-metrics.md` and collect additional baseline outcomes, especially `live-static-frontend-todo-app-happy-path` and additional `live-deployable-web-api-happy-path` runs across provider environments. Initial deployment baseline: `docs/plans/deployment-live-baseline-2026-06-06.md`.
 - Collect initial outcomes for `live-react-vite-todo-app-happy-path` once at least one local provider environment is ready for a Node-project generation run.
+- Collect initial outcomes for `live-rust-cli-happy-path` and `live-cpp-cmake-cli-happy-path` on hosts with the complete operator-installed toolchains.
 - Calibrate remaining quality-warning thresholds after more live baselines, especially high sessions per closed task, same-task rework warnings, and integrator finding warnings. Ignored-artifact warnings now exclude conventional dependency environments and tool caches while retaining their totals as information.
 
 ## 3. Trust and Safety Model for Executable Configuration
