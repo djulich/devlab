@@ -86,6 +86,34 @@ def test_diagnostics_text_reports_clarification_summary(tmp_path: Path) -> None:
     assert "Clarifications:\n- stops: 1" in output
 
 
+def test_diagnostics_warn_when_task_suppresses_profile_validation(tmp_path: Path) -> None:
+    _init_workspace(tmp_path)
+    (tmp_path / ".devlab/config/profiles/rust.toml").write_text(
+        'version = 1\nid = "rust"\ntitle = "Rust"\n\n'
+        '[tooling]\ndefault_validation = ["cargo fmt --check", "cargo test"]\n'
+    )
+    (tmp_path / ".devlab/tasks/T0001_rust.md").write_text(
+        "+++\n"
+        'id = "T0001"\n'
+        'title = "Rust task"\n'
+        'status = "open"\n'
+        'milestone = "M1"\n'
+        'profile = "rust"\n'
+        'domain = "general"\n'
+        "depends_on = []\n"
+        "addresses_findings = []\n"
+        "validation = []\n"
+        "+++\n\n"
+        "# T0001: Rust task\n\n## Acceptance Criteria\n- [ ] Done\n"
+    )
+
+    diagnostics = build_workflow_diagnostics(tmp_path)
+
+    warning = "explicit validation = [] suppresses 2 default validation commands"
+    assert warning in diagnostics.tasks.items[0].contract_warnings[0]
+    assert warning in diagnostics.quality.warnings[0]
+
+
 def test_diagnostics_report_research_lifecycle_and_repeated_route(tmp_path: Path) -> None:
     _init_workspace(tmp_path)
     workspace = Workspace(tmp_path)

@@ -26,7 +26,7 @@ from devlab.findings import FindingStatus
 from devlab.generations import active_generation, archived_generation_numbers
 from devlab.profiles import DEFAULT_PROFILE, PROFILES_DIR, load_profile
 from devlab.research import ResearchConfidence, ResearchStatus
-from devlab.task_tracker import TaskStatus
+from devlab.task_tracker import Task, TaskStatus
 from devlab.workflow_events import WorkflowEvent, load_workflow_events
 from devlab.workflow_history import (
     IntegratorReworkSummary,
@@ -364,11 +364,31 @@ def collect_task_metrics(root: Path, *, snapshot: WorkspaceSnapshot | None = Non
                 status=task.status.value,
                 milestone=task.milestone or "",
                 domain=task.domain,
-                contract_warnings=list(task.contract_warnings),
+                contract_warnings=[
+                    *task.contract_warnings,
+                    *_profile_validation_suppression_warnings(root, task),
+                ],
             )
             for task in tasks
         ],
     )
+
+
+def _profile_validation_suppression_warnings(root: Path, task: Task) -> list[str]:
+    if task.validation != ():
+        return []
+    profile_id = task.profile or DEFAULT_PROFILE
+    try:
+        profile = load_profile(root, profile_id)
+    except (OSError, ValueError):
+        return []
+    count = len(profile.tooling.default_validation)
+    if not count:
+        return []
+    return [
+        f"explicit validation = [] suppresses {count} default validation "
+        f"command{'s' if count != 1 else ''} from profile {profile_id!r}"
+    ]
 
 
 def collect_profile_metrics(

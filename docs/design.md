@@ -278,7 +278,6 @@ status = "open"
 milestone = "M1"
 profile = "default"
 depends_on = []
-validation = []
 +++
 
 # T0001: Example task
@@ -335,7 +334,7 @@ Dependency blocking is computed rather than stored as a separate persistent stat
 
 Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root after the orchestrator-managed environment lifecycle has established the development environment.
 
-If `validation` is omitted, agents use default validation commands from the task's resolved profile. If `validation = []`, no mechanical validation commands are required. DevLab resolves the same contract for prompt assembly and orchestrator-owned verification after completed developer sessions. Explicit task validation failures return the task to development for one bounded correction attempt; repeated failure stops the workflow. Profile-default failures are recorded as soft task-level warnings because a profile command may intentionally cover a repository increment that is incomplete until later tasks. Missing host tools are recorded as unverified prerequisites and are never installed by DevLab. Agents report only relevant manual or deliberately skipped checks that DevLab cannot infer. Broader tooling policy remains documented in `.devlab/config/tooling.md`.
+If `validation` is omitted, agents use default validation commands from the task's resolved profile. This is the normal and safest choice. A non-empty task `validation` list deliberately replaces the profile defaults with task-specific commands. Explicit `validation = []` suppresses mechanical validation and produces a diagnostic warning when the resolved profile defines defaults. DevLab resolves the same contract for prompt assembly and orchestrator-owned verification after completed developer sessions. Explicit task validation failures return the task to development for one bounded correction attempt; repeated failure stops the workflow. Profile-default failures are recorded as soft task-level warnings because a profile command may intentionally cover a repository increment that is incomplete until later tasks. Missing host tools are recorded as unverified prerequisites and are never installed by DevLab. Agents may run useful additional checks, but only configured validation is recorded as the durable workflow gate. Broader tooling policy remains documented in `.devlab/config/tooling.md`.
 
 Deployment work uses the same task/profile validation model as other domains. DevLab does not currently define separate structured deployment validation metadata; target projects own deployment verification commands and document host prerequisites. See `docs/adr/0009-defer-structured-deployment-validation-metadata.md`.
 

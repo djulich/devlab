@@ -10,6 +10,7 @@ import pytest
 
 from devlab.generations import active_generation, archived_generation_numbers
 from devlab.git import run_git
+from devlab.milestones import FileMilestoneTracker
 from devlab.orchestrator import run_loop
 from devlab.task_tracker import FileTaskTracker
 from tests.evaluations.checks import (
@@ -203,6 +204,7 @@ def _require_live_tools(tools: tuple[str, ...]) -> None:
 
 
 def _assert_live_task_profile(
+    root: Path,
     diagnostics: EvaluationDiagnostics,
     profile_id: str,
     *,
@@ -217,6 +219,16 @@ def _assert_live_task_profile(
     assert profile.default_validation_count >= minimum_validation_commands
     assigned_tasks = diagnostics.profiles.tasks_by_profile.get(profile_id, [])
     assert assigned_tasks
+    verification = FileMilestoneTracker(root).read_verification("M1")
+    assert verification is not None
+    assert verification.state == "verified"
+    profile_commands = [
+        command
+        for command in verification.commands
+        if "profile" in command.sources and set(command.task_ids).intersection(assigned_tasks)
+    ]
+    assert len(profile_commands) >= minimum_validation_commands
+    assert all(command.outcome == "passed" for command in profile_commands)
 
 
 @pytest.mark.skipif(
@@ -530,7 +542,7 @@ def test_live_rust_cli_happy_path_evaluation(tmp_path: Path) -> None:
     diagnostics = _run_live_scenario(tmp_path, scenario)
 
     _assert_live_diagnostics(tmp_path, scenario, diagnostics)
-    _assert_live_task_profile(diagnostics, "rust", minimum_validation_commands=2)
+    _assert_live_task_profile(tmp_path, diagnostics, "rust", minimum_validation_commands=2)
 
 
 @pytest.mark.skipif(
@@ -576,7 +588,7 @@ def test_live_cpp_cmake_cli_happy_path_evaluation(tmp_path: Path) -> None:
     diagnostics = _run_live_scenario(tmp_path, scenario)
 
     _assert_live_diagnostics(tmp_path, scenario, diagnostics)
-    _assert_live_task_profile(diagnostics, "cpp", minimum_validation_commands=3)
+    _assert_live_task_profile(tmp_path, diagnostics, "cpp", minimum_validation_commands=3)
 
 
 @pytest.mark.skipif(

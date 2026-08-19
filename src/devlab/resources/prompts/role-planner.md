@@ -74,6 +74,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 - Prefer stable lifecycle commands over one-off troubleshooting steps.
 - If future work requires executable lifecycle changes, create a normal task to add or update a profile; do not edit executable environment setup directly during planning.
 - Do not put task-specific validation commands in profile environment commands; task-specific validation belongs in task metadata.
+- Omit task `validation` by default so the task inherits its resolved profile's default validation. Use a non-empty list only to deliberately replace profile defaults with task-specific commands. Use `validation = []` only when the task intentionally requires no mechanical validation; do not copy it as task boilerplate.
 
 ## Project Plan Format
 

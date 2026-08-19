@@ -116,7 +116,9 @@ toolchain and grades formatting, tests, and CLI behavior. The C++ scenario
 requires operator-installed CMake, CTest, Make, and a C++ compiler and grades the
 configure/build/test presets plus CLI behavior. Each test skips before invoking
 agents if any required host tool is absent; DevLab does not install or bootstrap
-the toolchains:
+the toolchains. Both scenarios require the product task to use the dedicated
+profile and require milestone verification to contain the expected passing
+profile-sourced commands:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \
