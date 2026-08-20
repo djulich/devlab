@@ -111,22 +111,29 @@ uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
 
 The compiled-language live evaluations exercise real agent planning, dedicated
 task profiles, implementation, review, integration, and architecture review in
-non-Python targets. The Rust scenario requires an operator-installed stable Rust
-toolchain and grades formatting, tests, and CLI behavior. The C++ scenario
-requires operator-installed CMake, CTest, Make, and a C++ compiler and grades the
-configure/build/test presets plus CLI behavior. Each test skips before invoking
-agents if any required host tool is absent; DevLab does not install or bootstrap
-the toolchains. Both scenarios require the product task to use the dedicated
-profile and require milestone verification to contain the expected passing
-profile-sourced commands:
+non-Python targets. Rust requires an operator-installed stable Rust toolchain;
+Go requires Go and gofmt; C and C++ require CMake, CTest, Make, and the respective
+compiler. The scenarios grade formatting or configure/build/test commands plus
+CLI behavior. Each test skips before invoking agents if any required host tool
+is absent; DevLab does not install or bootstrap the toolchains. Every scenario
+requires the product task to use its dedicated profile and requires milestone
+verification to contain the expected passing profile-sourced commands. The
+Rust/C++ baseline is recorded in
+`docs/plans/compiled-language-live-baseline-2026-08-20.md`.
+
+Run all four scenarios with:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \
 DEVLAB_LIVE_RUST=1 \
+DEVLAB_LIVE_GO=1 \
+DEVLAB_LIVE_C=1 \
 DEVLAB_LIVE_CPP=1 \
 DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest \
   tests/evaluations/test_live_workflow_evaluations.py::test_live_rust_cli_happy_path_evaluation \
+  tests/evaluations/test_live_workflow_evaluations.py::test_live_go_cli_happy_path_evaluation \
+  tests/evaluations/test_live_workflow_evaluations.py::test_live_c_cmake_cli_happy_path_evaluation \
   tests/evaluations/test_live_workflow_evaluations.py::test_live_cpp_cmake_cli_happy_path_evaluation \
   -s
 ```
@@ -198,6 +205,10 @@ Useful environment variables:
 - `DEVLAB_LIVE_STATEFUL_MAX_SESSIONS`: optional session cap for the stateful JSON web API live run; defaults to `18`.
 - `DEVLAB_LIVE_RUST=1`: enable the Rust CLI live evaluation.
 - `DEVLAB_LIVE_RUST_MAX_SESSIONS`: optional session cap for the Rust live run; defaults to `12`.
+- `DEVLAB_LIVE_GO=1`: enable the Go CLI live evaluation.
+- `DEVLAB_LIVE_GO_MAX_SESSIONS`: optional session cap for the Go live run; defaults to `12`.
+- `DEVLAB_LIVE_C=1`: enable the C/CMake CLI live evaluation.
+- `DEVLAB_LIVE_C_MAX_SESSIONS`: optional session cap for the C live run; defaults to `12`.
 - `DEVLAB_LIVE_CPP=1`: enable the C++/CMake CLI live evaluation.
 - `DEVLAB_LIVE_CPP_MAX_SESSIONS`: optional session cap for the C++ live run; defaults to `12`.
 - `DEVLAB_LIVE_STATIC_FRONTEND=1`: enable the static frontend todo app live evaluation.

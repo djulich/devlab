@@ -546,6 +546,95 @@ def test_live_rust_cli_happy_path_evaluation(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_GO") != "1",
+    reason="Go live evaluation requires DEVLAB_LIVE_GO=1",
+)
+def test_live_go_cli_happy_path_evaluation(tmp_path: Path) -> None:
+    _require_live_tools(("go", "gofmt"))
+    scenario = EvaluationScenario(
+        id="live-go-cli-happy-path",
+        title="Live Go CLI happy path",
+        system_spec=(
+            "Build a dependency-free Go CLI module named devlab-live-go-cli. The "
+            "command must accept exactly `subtract <left> <right>`, parse signed 64-bit "
+            "integers, print only their difference followed by a newline on success, "
+            "and exit nonzero with a useful stderr message for invalid commands, arity, "
+            "or integers. Use the operator-installed stable Go toolchain and standard "
+            "library only. Include focused automated tests, go.mod, README usage "
+            "instructions, and a .gitignore covering generated binaries. Project-owned "
+            'validation is `test -z "$(gofmt -l .)"` and `go test ./...`; do not '
+            "install or bootstrap Go tools. Create a dedicated DevLab task profile with "
+            "id `go`, put both commands in its default_validation list, and assign "
+            "product implementation tasks to it."
+        ),
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_GO_MAX_SESSIONS", "12")),
+        checks=(
+            file_contains_check("Go module", "go.mod", "devlab-live-go-cli"),
+            toolchain_command_check("Go format", ["gofmt", "-l", "."], expected_stdout=""),
+            toolchain_command_check("Go tests", ["go", "test", "./..."]),
+            toolchain_command_check(
+                "Go CLI output",
+                ["go", "run", ".", "subtract", "-7", "12"],
+                expected_stdout="-19",
+            ),
+            file_contains_check("Go usage docs", "README.md", "go run"),
+        ),
+    )
+
+    diagnostics = _run_live_scenario(tmp_path, scenario)
+
+    _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+    _assert_live_task_profile(tmp_path, diagnostics, "go", minimum_validation_commands=2)
+
+
+@pytest.mark.skipif(
+    os.environ.get("DEVLAB_LIVE_C") != "1",
+    reason="C live evaluation requires DEVLAB_LIVE_C=1",
+)
+def test_live_c_cmake_cli_happy_path_evaluation(tmp_path: Path) -> None:
+    _require_live_tools(("cmake", "ctest", "make", "cc"))
+    scenario = EvaluationScenario(
+        id="live-c-cmake-cli-happy-path",
+        title="Live C/CMake CLI happy path",
+        system_spec=(
+            "Build a dependency-free C17 CLI named devlab-live-c. The command must "
+            "accept exactly `subtract <left> <right>`, parse signed integers, print only "
+            "their difference followed by a newline on success, and exit nonzero with a "
+            "useful stderr message for invalid commands, arity, integers, or arithmetic "
+            "overflow. Use CMake 3.20 or newer and CTest. Provide CMakePresets.json with "
+            "configure, build, and test presets all named `dev`; the configure preset "
+            "must use Unix Makefiles and build under the ignored /build/ directory. "
+            "Include focused automated tests and README usage instructions. "
+            "Project-owned validation is `cmake --preset dev`, `cmake --build --preset "
+            "dev`, and `ctest --preset dev`; do not install or bootstrap C, CMake, CTest, "
+            "or Make. Create a dedicated DevLab task profile with id `c`, put all three "
+            "commands in its default_validation list, and assign product implementation "
+            "tasks to it."
+        ),
+        max_sessions=int(os.environ.get("DEVLAB_LIVE_C_MAX_SESSIONS", "12")),
+        checks=(
+            file_contains_check("C project", "CMakeLists.txt", "devlab-live-c"),
+            toolchain_command_check("C configure", ["cmake", "--preset", "dev"]),
+            toolchain_command_check("C build", ["cmake", "--build", "--preset", "dev"]),
+            toolchain_command_check("C tests", ["ctest", "--preset", "dev"]),
+            built_executable_output_check(
+                "C CLI output",
+                "build",
+                "devlab-live-c",
+                ["subtract", "-6", "7"],
+                expected_stdout="-13",
+            ),
+            file_contains_check("C usage docs", "README.md", "cmake --preset dev"),
+        ),
+    )
+
+    diagnostics = _run_live_scenario(tmp_path, scenario)
+
+    _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+    _assert_live_task_profile(tmp_path, diagnostics, "c", minimum_validation_commands=3)
+
+
+@pytest.mark.skipif(
     os.environ.get("DEVLAB_LIVE_CPP") != "1",
     reason="C++ live evaluation requires DEVLAB_LIVE_CPP=1",
 )
