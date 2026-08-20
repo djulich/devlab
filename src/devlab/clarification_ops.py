@@ -208,7 +208,6 @@ def resume_workflow(
     result = run_loop(
         root,
         max_sessions=max_sessions,
-        automatic_version_control=True,
         planning_only=state.resume.command == "plan",
         executable_config=executable_config,
     )

@@ -8,6 +8,7 @@ from devlab.init import init_workspace
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
 from devlab.orchestrator import RunResult, run_loop
 from devlab.task_tracker import FileTaskTracker, TaskStatus
+from devlab.version_control import commit_all
 from tests.helpers import (
     approve_review_task,
     complete_acceptance,
@@ -277,7 +278,7 @@ def test_run_loop_handles_reviewer_rejection_and_rework(tmp_path: Path) -> None:
 
 
 def _init_target_workspace(root: Path) -> None:
-    init_workspace(root)
+    init_workspace(root, automatic_git=True)
     (root / ".devlab/specs/system/README.md").write_text(
         "# System Specification\n\nBuild a tiny CLI.\n"
     )
@@ -291,6 +292,7 @@ def _init_target_workspace(root: Path) -> None:
         "\n[environment]\n"
         "managed_roles = []\n"
     )
+    commit_all(root, "Configure test workflow")
 
 
 def _assert_successful_result(result: RunResult, *, sessions: int) -> None:

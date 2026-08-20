@@ -2371,7 +2371,6 @@ def run_loop(
     retain_prompts: bool = False,
     agent_providers: dict[str, AgentProvider] | None = None,
     role_agent_providers: dict[str, str] | None = None,
-    automatic_version_control: bool = False,
     planning_only: bool = False,
     revise_plan: bool = False,
     replace_plan: bool = False,
@@ -2382,7 +2381,7 @@ def run_loop(
     session_progress: SessionProgressCallback | None = None,
     executable_config: ExecutableConfigSnapshot | None = None,
 ) -> RunResult:
-    """Run the orchestrator loop, returning a structured result."""
+    """Run the Git-backed orchestrator loop, returning a structured result."""
     if clarification_mode not in CLARIFICATION_MODES:
         raise ValueError(
             "clarification_mode must be one of: " + ", ".join(sorted(CLARIFICATION_MODES))
@@ -2416,8 +2415,8 @@ def run_loop(
         )
     sessions_run = 0
     last_completed_task_id: str | None = None
-    spec_status: SpecReconciliationStatus | None = None
-    workflow_state: WorkflowState | None = None
+    spec_status: SpecReconciliationStatus
+    workflow_state: WorkflowState
     active_plan_exists = has_active_plan(root)
     if planning_only and adopt_existing and active_plan_exists:
         return _error_result(
@@ -2437,42 +2436,26 @@ def run_loop(
                 2,
             ),
         )
-    if automatic_version_control:
-        try:
-            ensure_git_repository(root)
-            workflow_state, spec_status = _load_workflow_and_spec_status(root)
-            if planning_only and spec_status.dirty_spec_paths:
-                error = _dirty_spec_error(spec_status.dirty_spec_paths)
-                logger.error("%s. Stopping.", error.message)
-                return _error_result(0, error)
-            assert_clean_worktree(root)
-        except VersionControlError as exc:
-            logger.error("%s. Stopping.", exc)
-            return _error_result(0, SessionError("version_control", str(exc), 1))
-        except (OSError, ValueError) as exc:
-            logger.error("%s. Stopping.", exc)
-            return _error_result(0, SessionError("workflow_state", str(exc), 1))
-        if not planning_only and spec_status is not None and spec_status.changed:
-            error = _stale_specs_error(spec_status)
+    try:
+        ensure_git_repository(root)
+        workflow_state, spec_status = _load_workflow_and_spec_status(root)
+        if planning_only and spec_status.dirty_spec_paths:
+            error = _dirty_spec_error(spec_status.dirty_spec_paths)
             logger.error("%s. Stopping.", error.message)
             return _error_result(0, error)
-    else:
-        try:
-            workflow_state = load_workflow_state(root)
-        except (OSError, ValueError) as exc:
-            logger.error("%s. Stopping.", exc)
-            return _error_result(0, SessionError("workflow_state", str(exc), 1))
+        assert_clean_worktree(root)
+    except VersionControlError as exc:
+        logger.error("%s. Stopping.", exc)
+        return _error_result(0, SessionError("version_control", str(exc), 1))
+    except (OSError, ValueError) as exc:
+        logger.error("%s. Stopping.", exc)
+        return _error_result(0, SessionError("workflow_state", str(exc), 1))
+    if not planning_only and spec_status.changed:
+        error = _stale_specs_error(spec_status)
+        logger.error("%s. Stopping.", error.message)
+        return _error_result(0, error)
 
     if mark_specs_planned:
-        if spec_status is None:
-            return _error_result(
-                0,
-                SessionError(
-                    "spec_reconciliation",
-                    "--mark-specs-planned requires automatic version control",
-                    1,
-                ),
-            )
         logger.warning(
             "Marking current committed specs as planned without architect/planner "
             "reconciliation. This bypasses the spec reconciliation guardrail."
@@ -2489,10 +2472,9 @@ def run_loop(
                 spec_baseline=spec_status.latest_spec_commit,
                 previous_spec_baseline=spec_status.baseline_spec_commit,
             )
-            if automatic_version_control:
-                committed = commit_all(root, "Mark DevLab specs planned")
-                if committed:
-                    logger.info("Committed DevLab spec planning baseline")
+            committed = commit_all(root, "Mark DevLab specs planned")
+            if committed:
+                logger.info("Committed DevLab spec planning baseline")
         except VersionControlError as exc:
             logger.error("%s. Stopping.", exc)
             return _error_result(0, SessionError("version_control", str(exc), 1))
@@ -2503,8 +2485,6 @@ def run_loop(
         return _stop_result(0, RunStopReason.COMMAND_COMPLETE)
 
     workspace = Workspace(root)
-    if workflow_state is None:
-        workflow_state = load_workflow_state(root)
     requested_command = _command_family(planning_only=planning_only)
     resume_command_error = _wrong_resume_command_error(
         workflow_state,
@@ -2552,7 +2532,7 @@ def run_loop(
             return _error_result(0, record_resume_error)
         if research.status == ResearchStatus.COMPLETED:
             completed_resume_research = research
-        elif automatic_version_control:
+        else:
             try:
                 commit_all(root, f"Record DevLab research request {research.id}")
             except VersionControlError as exc:
@@ -2571,11 +2551,10 @@ def run_loop(
             )
             if researcher_error is not None:
                 return _error_result(1, researcher_error)
-            if automatic_version_control:
-                try:
-                    commit_all(root, f"Complete DevLab research {research.id}")
-                except VersionControlError as exc:
-                    return _error_result(1, SessionError("version_control", str(exc), 1))
+            try:
+                commit_all(root, f"Complete DevLab research {research.id}")
+            except VersionControlError as exc:
+                return _error_result(1, SessionError("version_control", str(exc), 1))
             sessions_run = 1
             workspace = Workspace(root)
             active_resume = load_workflow_state(root).resume
@@ -2583,7 +2562,7 @@ def run_loop(
             if sessions_run >= max_sessions:
                 return _stop_result(sessions_run, RunStopReason.RESEARCH_COMPLETED)
 
-    reconcile_plan = bool(spec_status and spec_status.changed)
+    reconcile_plan = spec_status.changed
     planning_event_mode = _planning_event_mode(
         revise_plan=revise_plan,
         replace_plan=replace_plan,
@@ -2597,9 +2576,7 @@ def run_loop(
             manifest = archive_active_generation(
                 root,
                 reason="spec_reconciliation" if reconcile_plan else "replace_plan",
-                spec_baseline=(
-                    spec_status.baseline_spec_commit if spec_status is not None else ""
-                ),
+                spec_baseline=spec_status.baseline_spec_commit,
             )
             append_workflow_event(
                 root,
@@ -2610,10 +2587,9 @@ def run_loop(
             )
             workspace = Workspace(root)
             logger.info("Archived active DevLab generation %s", manifest.generation)
-            if automatic_version_control:
-                committed = commit_all(root, f"Archive DevLab generation {manifest.generation}")
-                if committed:
-                    logger.info("Committed DevLab generation archive")
+            committed = commit_all(root, f"Archive DevLab generation {manifest.generation}")
+            if committed:
+                logger.info("Committed DevLab generation archive")
         except OSError as exc:
             logger.error("%s. Stopping.", exc)
             return _error_result(0, SessionError("generation_archive", str(exc), 1))
@@ -2623,7 +2599,7 @@ def run_loop(
     planning_update = PlanningStateUpdate(
         last_planned_spec_commit=(
             spec_status.latest_spec_commit
-            if spec_status is not None and (planning_only or not spec_status.baseline_exists)
+            if planning_only or not spec_status.baseline_exists
             else None
         ),
     )
@@ -2665,12 +2641,11 @@ def run_loop(
                     sessions_run,
                     RunStopReason.EXECUTABLE_CONFIG_CHANGED,
                 )
-        if automatic_version_control:
-            try:
-                assert_clean_worktree(root)
-            except VersionControlError as exc:
-                logger.error("%s. Stopping.", exc)
-                return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
+        try:
+            assert_clean_worktree(root)
+        except VersionControlError as exc:
+            logger.error("%s. Stopping.", exc)
+            return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
         if not planning_only:
             retry_profiles = (
                 frozen_profiles if frozen_profiles is not None else load_profiles(root)
@@ -2753,7 +2728,6 @@ def run_loop(
 
         if (
             not planning_only
-            and spec_status is not None
             and (
                 spec_status.dirty_spec_paths
                 or not spec_status.baseline_exists
@@ -2777,20 +2751,19 @@ def run_loop(
                     "Planning state already exists; no planning session needed. "
                     "Use devlab plan --revise to review and update plans."
                 )
-                if spec_status is not None and not spec_status.baseline_exists:
+                if not spec_status.baseline_exists:
                     try:
                         update_workflow_state(
                             root,
                             last_planned_spec_commit=spec_status.latest_spec_commit,
                         )
                         workspace.did_mutate()
-                        if automatic_version_control:
-                            committed = commit_all(
-                                root,
-                                "Record DevLab spec planning baseline",
-                            )
-                            if committed:
-                                logger.info("Committed DevLab spec planning baseline")
+                        committed = commit_all(
+                            root,
+                            "Record DevLab spec planning baseline",
+                        )
+                        if committed:
+                            logger.info("Committed DevLab spec planning baseline")
                     except VersionControlError as exc:
                         logger.error("%s. Stopping.", exc)
                         return _error_result(
@@ -2808,7 +2781,7 @@ def run_loop(
             logger.info("Planning revision complete; stopping before implementation roles.")
             return _stop_result(sessions_run, RunStopReason.COMMAND_COMPLETE)
 
-        if automatic_version_control and resolved_agent_configs is not None:
+        if resolved_agent_configs is not None:
             agent_config_error = _preflight_agent_executable(
                 role_name, resolved_agent_configs[role_name]
             )
@@ -2824,8 +2797,7 @@ def run_loop(
         start_snapshot = workspace.snapshot
         planner_generation_update = (
             planning_update
-            if role_name == "planner"
-            and (planning_only or (spec_status is not None and not spec_status.baseline_exists))
+            if role_name == "planner" and (planning_only or not spec_status.baseline_exists)
             else None
         )
         route = (
@@ -3032,7 +3004,7 @@ def run_loop(
                     handoff,
                     planning_update=planner_generation_update,
                 )
-                if role_name == "planner" and spec_status is not None:
+                if role_name == "planner":
                     _workflow_state, spec_status = _load_workflow_and_spec_status(root)
         except HandoffError as exc:
             message = _handoff_error_message(ctx, str(exc), config_log)
@@ -3228,15 +3200,14 @@ def run_loop(
         if task_validation_stop is not None:
             reason, message = task_validation_stop
             logger.error("%s. Stopping.", message)
-            if automatic_version_control:
-                try:
-                    workspace.sync()
-                    commit_all(root, "Record blocked task validation")
-                except VersionControlError as exc:
-                    return _error_result(
-                        sessions_run + 1,
-                        SessionError("version_control", str(exc), 1),
-                    )
+            try:
+                workspace.sync()
+                commit_all(root, "Record blocked task validation")
+            except VersionControlError as exc:
+                return _error_result(
+                    sessions_run + 1,
+                    SessionError("version_control", str(exc), 1),
+                )
             return _error_result(
                 sessions_run + 1,
                 SessionError("task_validation", message, 1),
@@ -3244,41 +3215,39 @@ def run_loop(
             )
         if process_result.stop_reason is not None:
             logger.error("%s. Stopping.", process_result.stop_message)
-            if automatic_version_control:
-                try:
-                    workspace.sync()
-                    commit_all(root, "Record blocked milestone validation")
-                except VersionControlError as exc:
-                    return _error_result(
-                        sessions_run + 1,
-                        SessionError("version_control", str(exc), 1),
-                    )
+            try:
+                workspace.sync()
+                commit_all(root, "Record blocked milestone validation")
+            except VersionControlError as exc:
+                return _error_result(
+                    sessions_run + 1,
+                    SessionError("version_control", str(exc), 1),
+                )
             return _error_result(
                 sessions_run + 1,
                 SessionError("milestone_validation", process_result.stop_message, 1),
                 reason=process_result.stop_reason,
             )
-        if automatic_version_control:
-            try:
-                workspace.sync()
-                committed = commit_all(root, commit_message)
-                if committed:
-                    logger.info("Committed session changes: %s", commit_message)
-                if process_result.integrated_milestone is not None:
-                    tag_name = _milestone_tag_name(process_result.integrated_milestone)
-                    create_git_tag(
-                        root,
-                        tag_name,
-                        f"DevLab milestone {process_result.integrated_milestone} integrated",
-                    )
-                    logger.info(
-                        "Tagged integrated milestone %s as %s",
-                        process_result.integrated_milestone,
-                        tag_name,
-                    )
-            except VersionControlError as exc:
-                logger.error("%s. Stopping.", exc)
-                return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
+        try:
+            workspace.sync()
+            committed = commit_all(root, commit_message)
+            if committed:
+                logger.info("Committed session changes: %s", commit_message)
+            if process_result.integrated_milestone is not None:
+                tag_name = _milestone_tag_name(process_result.integrated_milestone)
+                create_git_tag(
+                    root,
+                    tag_name,
+                    f"DevLab milestone {process_result.integrated_milestone} integrated",
+                )
+                logger.info(
+                    "Tagged integrated milestone %s as %s",
+                    process_result.integrated_milestone,
+                    tag_name,
+                )
+        except VersionControlError as exc:
+            logger.error("%s. Stopping.", exc)
+            return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
         finish_context = session_finish_context(
             workspace.snapshot,
             role_name,
@@ -3314,21 +3283,18 @@ def run_loop(
             sessions_run += 1
             if researcher_error is not None:
                 return _error_result(sessions_run, researcher_error)
-            if automatic_version_control:
-                try:
-                    committed = commit_all(
-                        root,
-                        f"Complete DevLab research {process_result.research_id}",
+            try:
+                committed = commit_all(
+                    root,
+                    f"Complete DevLab research {process_result.research_id}",
+                )
+                if committed:
+                    logger.info(
+                        "Committed completed research: %s",
+                        process_result.research_id,
                     )
-                    if committed:
-                        logger.info(
-                            "Committed completed research: %s",
-                            process_result.research_id,
-                        )
-                except VersionControlError as exc:
-                    return _error_result(
-                        sessions_run, SessionError("version_control", str(exc), 1)
-                    )
+            except VersionControlError as exc:
+                return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
             workspace = Workspace(root)
             active_resume = load_workflow_state(root).resume
             completed_resume_research = workspace.snapshot.get_research(process_result.research_id)
@@ -3370,22 +3336,19 @@ def run_loop(
             if resolver_error is not None:
                 logger.error("%s. Stopping.", resolver_error.message)
                 return _error_result(sessions_run, resolver_error)
-            if automatic_version_control:
-                try:
-                    committed = commit_all(
-                        root,
-                        f"Answer DevLab clarification {process_result.clarification_id}",
+            try:
+                committed = commit_all(
+                    root,
+                    f"Answer DevLab clarification {process_result.clarification_id}",
+                )
+                if committed:
+                    logger.info(
+                        "Committed clarification answer: %s",
+                        process_result.clarification_id,
                     )
-                    if committed:
-                        logger.info(
-                            "Committed clarification answer: %s",
-                            process_result.clarification_id,
-                        )
-                except VersionControlError as exc:
-                    logger.error("%s. Stopping.", exc)
-                    return _error_result(
-                        sessions_run, SessionError("version_control", str(exc), 1)
-                    )
+            except VersionControlError as exc:
+                logger.error("%s. Stopping.", exc)
+                return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
             workspace = Workspace(root)
             active_resume = load_workflow_state(root).resume
             continue

@@ -787,7 +787,6 @@ def test_scripted_spec_reconciliation_archives_and_replans(tmp_path: Path) -> No
         tmp_path,
         max_sessions=8,
         agent_providers={"default": provider},
-        automatic_version_control=True,
     )
 
     assert initial.completed is True
@@ -818,7 +817,6 @@ def test_scripted_spec_reconciliation_archives_and_replans(tmp_path: Path) -> No
         tmp_path,
         max_sessions=1,
         agent_providers={"default": provider},
-        automatic_version_control=True,
     )
 
     assert blocked.completed is False
@@ -829,7 +827,6 @@ def test_scripted_spec_reconciliation_archives_and_replans(tmp_path: Path) -> No
         tmp_path,
         max_sessions=2,
         agent_providers={"default": provider},
-        automatic_version_control=True,
         planning_only=True,
     )
 
@@ -849,7 +846,6 @@ def test_scripted_spec_reconciliation_archives_and_replans(tmp_path: Path) -> No
         tmp_path,
         max_sessions=8,
         agent_providers={"default": provider},
-        automatic_version_control=True,
     )
 
     assert final.completed is True
@@ -917,7 +913,6 @@ def test_scripted_adopt_existing_creates_current_state_design_baseline(
         max_sessions=2,
         planning_only=True,
         adopt_existing=True,
-        automatic_version_control=True,
         agent_providers={"default": provider},
     )
 

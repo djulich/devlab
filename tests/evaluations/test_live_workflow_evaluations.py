@@ -98,7 +98,6 @@ def _run_live_loop(
         model=os.environ.get("DEVLAB_LIVE_MODEL"),
         effort=os.environ.get("DEVLAB_LIVE_EFFORT"),
         retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
-        automatic_version_control=True,
         planning_only=planning_only,
         adopt_existing=adopt_existing,
     )

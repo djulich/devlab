@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
-from devlab.git import VersionControlError, git_ls_files
+from devlab.git import git_ls_files
 
 
 @dataclasses.dataclass(frozen=True)
@@ -36,17 +36,6 @@ DependencySnapshot = dict[tuple[str, str, str, str], DirectDependency]
 _PEP508_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _GO_REQUIRE = re.compile(r"^\s*([^\s/]+(?:/[^\s]+)*)\s+([^\s]+)")
 _MANIFEST_NAMES = {"Cargo.toml", "go.mod", "package.json", "pyproject.toml"}
-_EXCLUDED_PARTS = {
-    ".devlab",
-    ".git",
-    ".nox",
-    ".tox",
-    ".venv",
-    "build",
-    "node_modules",
-    "target",
-    "venv",
-}
 
 
 def snapshot_direct_dependencies(root: Path) -> DependencySnapshot:
@@ -75,30 +64,15 @@ def snapshot_direct_dependencies(root: Path) -> DependencySnapshot:
 
 
 def _manifest_paths(root: Path) -> list[str]:
-    if not (root / ".git").exists():
-        return _filesystem_manifest_paths(root)
-    try:
-        paths = git_ls_files(
-            root,
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-        )
-    except VersionControlError:
-        paths = _filesystem_manifest_paths(root)
+    paths = git_ls_files(
+        root,
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    )
     return sorted(path for path in paths if Path(path).name in _MANIFEST_NAMES)
-
-
-def _filesystem_manifest_paths(root: Path) -> list[str]:
-    return [
-        path.relative_to(root).as_posix()
-        for path in root.rglob("*")
-        if path.is_file()
-        and path.name in _MANIFEST_NAMES
-        and not any(part in _EXCLUDED_PARTS for part in path.relative_to(root).parts)
-    ]
 
 
 def introduced_dependencies(

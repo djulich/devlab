@@ -342,7 +342,6 @@ def _run_evaluation_loop(
         effort=effort,
         retain_prompts=retain_prompts,
         agent_providers=agent_providers,
-        automatic_version_control=True,
         clarification_mode=clarification_mode,
     )
     return result, time.monotonic() - started

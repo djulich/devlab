@@ -29,9 +29,11 @@ from devlab.orchestrator import (
     _timestamp,
     close_task,
     process_handoff,
-    run_loop,
     submit_session_handoff,
     validate_handoff,
+)
+from devlab.orchestrator import (
+    run_loop as _production_run_loop,
 )
 from devlab.prompts import build_base_prompt, build_session_prompt
 from devlab.research import (
@@ -41,9 +43,15 @@ from devlab.research import (
     ResearchSource,
 )
 from devlab.roles import ROLES
+from devlab.spec_reconciliation import latest_spec_commit
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workflow_events import load_workflow_events
-from devlab.workflow_state import ResumeState, load_workflow_state, set_resume_state
+from devlab.workflow_state import (
+    ResumeState,
+    load_workflow_state,
+    set_resume_state,
+    update_workflow_state,
+)
 from devlab.workspace import (
     AGENT_LOG_DIR,
     ARTIFACTS_DIR,
@@ -53,6 +61,26 @@ from devlab.workspace import (
     Workspace,
 )
 from tests.helpers import complete_acceptance
+
+
+def run_loop(root: Path, **kwargs: Any) -> Any:
+    """Run the production Git workflow after committing test fixture setup."""
+    _prepare_workflow_repo(root)
+    return _production_run_loop(root, **kwargs)
+
+
+def _prepare_workflow_repo(root: Path) -> None:
+    if not (root / ".git").exists():
+        workflow_state_exists = (root / ".devlab/workflow.toml").exists()
+        has_tasks = any((root / TASKS_DIR).glob("*.md"))
+        _init_git_repo(root)
+        _commit_all(root, "test fixture setup")
+        update_workflow_state(
+            root,
+            planning_complete=None if workflow_state_exists else has_tasks,
+            last_planned_spec_commit=latest_spec_commit(root),
+        )
+        _commit_all(root, "record test planning baseline")
 
 
 def _setup_tree(root: Path) -> None:
@@ -1916,9 +1944,22 @@ class RaisingProvider:
 
 
 class TestRunLoop:
+    def test_requires_git_repository(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+
+        result = _production_run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": MockProvider()},
+        )
+
+        assert result.exit_code == 1
+        assert result.errors[0].phase == "version_control"
+        assert "not a git repository" in result.errors[0].message
+
     def test_revise_plan_requires_planning_only(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="revise_plan requires planning_only"):
-            run_loop(tmp_path, max_sessions=1, revise_plan=True)
+            _production_run_loop(tmp_path, max_sessions=1, revise_plan=True)
 
     def test_planning_only_runs_architect_and_planner_then_stops(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -1986,7 +2027,6 @@ class TestRunLoop:
         result = run_loop(
             tmp_path,
             max_sessions=5,
-            automatic_version_control=True,
             agent_providers={"default": provider},
             executable_config=executable_config,
         )
@@ -2029,7 +2069,6 @@ class TestRunLoop:
         result = run_loop(
             tmp_path,
             max_sessions=1,
-            automatic_version_control=True,
             agent_providers={"default": provider},
             executable_config=executable_config,
         )
@@ -2075,9 +2114,7 @@ class TestRunLoop:
             ("plan_completed", "greenfield"),
         ]
 
-    def test_planning_only_with_version_control_commits_synced_milestones(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_only_commits_synced_milestones(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         subprocess.run(["git", "-C", tmp_path.as_posix(), "init"], check=True)
         subprocess.run(
@@ -2111,7 +2148,6 @@ class TestRunLoop:
             tmp_path,
             max_sessions=5,
             planning_only=True,
-            automatic_version_control=True,
             agent_providers={"default": provider},
         )
 
@@ -2163,7 +2199,6 @@ class TestRunLoop:
             tmp_path,
             max_sessions=5,
             planning_only=True,
-            automatic_version_control=True,
             agent_providers={"default": provider},
         )
 
@@ -2194,11 +2229,10 @@ class TestRunLoop:
         latest = _commit_all(tmp_path, "change spec")
         provider = MockProvider()
 
-        result = run_loop(
+        result = _production_run_loop(
             tmp_path,
             max_sessions=2,
             planning_only=True,
-            automatic_version_control=True,
             agent_providers={"default": provider},
         )
 
@@ -2346,12 +2380,11 @@ class TestRunLoop:
 
         monkeypatch.setattr(logger, "warning", record_warning)
 
-        result = run_loop(
+        result = _production_run_loop(
             tmp_path,
             max_sessions=2,
             planning_only=True,
             mark_specs_planned=True,
-            automatic_version_control=True,
             agent_providers={"default": provider},
         )
 
@@ -2384,12 +2417,11 @@ class TestRunLoop:
         _write_system_spec(tmp_path, "# Dirty spec\n")
         provider = MockProvider()
 
-        result = run_loop(
+        result = _production_run_loop(
             tmp_path,
             max_sessions=2,
             planning_only=True,
             mark_specs_planned=True,
-            automatic_version_control=True,
             agent_providers={"default": provider},
         )
 
@@ -2411,11 +2443,10 @@ class TestRunLoop:
         _write_system_spec(tmp_path, "# Dirty spec\n")
         provider = MockProvider()
 
-        result = run_loop(
+        result = _production_run_loop(
             tmp_path,
             max_sessions=2,
             planning_only=True,
-            automatic_version_control=True,
             agent_providers={"default": provider},
         )
 
@@ -2440,7 +2471,6 @@ class TestRunLoop:
         result = run_loop(
             tmp_path,
             max_sessions=1,
-            automatic_version_control=True,
             agent_providers={"default": provider},
         )
 
@@ -3463,7 +3493,7 @@ class TestRunLoop:
             check=True,
         )
 
-        result = run_loop(tmp_path, max_sessions=1, automatic_version_control=True)
+        result = run_loop(tmp_path, max_sessions=1)
 
         status = subprocess.run(
             ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
@@ -3494,8 +3524,12 @@ class TestRunLoop:
             '"--system-prompt", "{system_prompt}", "{session_prompt}"]\n'
             'version_command = "mock-agent version"\n'
         )
+        _prepare_workflow_repo(tmp_path)
+        real_run = subprocess.run
 
         def fake_run(*args: Any, **kwargs: Any) -> object:
+            if args[0][0] == "git":
+                return real_run(*args, **kwargs)
             if args[0] == ["mock-agent", "version"]:
 
                 class VersionResult:
@@ -3521,6 +3555,7 @@ class TestRunLoop:
             return Result()
 
         monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("devlab.agent_config.shutil.which", lambda _command: "/mock-agent")
 
         run_loop(tmp_path, max_sessions=1, retain_prompts=True)
 
