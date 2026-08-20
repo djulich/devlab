@@ -118,7 +118,7 @@ CLI behavior. Each test skips before invoking agents if any required host tool
 is absent; DevLab does not install or bootstrap the toolchains. Every scenario
 requires the product task to use its dedicated profile and requires milestone
 verification to contain the expected passing profile-sourced commands. The
-Rust/C++ baseline is recorded in
+four-language baseline is recorded in
 `docs/plans/compiled-language-live-baseline-2026-08-20.md`.
 
 Run all four scenarios with:

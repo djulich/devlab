@@ -25,7 +25,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 - [codebase-maintainability-for-agent-work.md](codebase-maintainability-for-agent-work.md) — doctor domain split and evaluation check extraction while keeping orchestrator/prompt policy cohesive
 - [deployment-live-baseline-2026-06-06.md](deployment-live-baseline-2026-06-06.md) — initial live deployment evaluation baseline
 - [stateful-web-api-live-baseline-2026-06-24.md](stateful-web-api-live-baseline-2026-06-24.md) — initial live stateful web API evaluation baseline
-- [compiled-language-live-baseline-2026-08-20.md](compiled-language-live-baseline-2026-08-20.md) — exact-HEAD Rust and C++ profile-verification baseline
+- [compiled-language-live-baseline-2026-08-20.md](compiled-language-live-baseline-2026-08-20.md) — Rust, Go, C, and C++ profile-verification baseline
 - [devlab-cli-library-logging-facility.md](devlab-cli-library-logging-facility.md) — `_logging.py`, `configure_logging()`, `--log-file` flag
 - [devlab-live-evaluation-quality-metrics.md](devlab-live-evaluation-quality-metrics.md) — role sequence, task cycles, artifact hygiene, quality summary diagnostics
 - [devlab-workflow-evaluations.md](devlab-workflow-evaluations.md) — scripted and live evaluation infrastructure
