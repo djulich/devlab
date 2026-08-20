@@ -153,6 +153,13 @@ Manual edits to generated workflow state are sometimes useful for repair, but
 prefer `devlab doctor` before and after doing so. Reporting commands such as
 `status`, `diagnostics`, and `doctor` are read-only; they do not repair state.
 
+Dependency introductions are advisory operator-attention signals. For supported
+`pyproject.toml`, `package.json`, `Cargo.toml`, and `go.mod` manifests, DevLab
+records direct dependency identities that first appear during a role session.
+Review the named package and its registry/source before relying on it. DevLab
+does not install, query, approve, or block these dependencies, and lockfile-only
+transitive changes are intentionally excluded.
+
 ## Clarifications
 
 When a role session cannot safely continue without operator intent, DevLab may

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -112,6 +113,47 @@ def test_diagnostics_warn_when_task_suppresses_profile_validation(tmp_path: Path
     warning = "explicit validation = [] suppresses 2 default validation commands"
     assert warning in diagnostics.tasks.items[0].contract_warnings[0]
     assert warning in diagnostics.quality.warnings[0]
+
+
+def test_diagnostics_report_unverified_dependency_introductions(tmp_path: Path) -> None:
+    _init_workspace(tmp_path)
+    metadata = tmp_path / ".devlab/logs/agents/20260820T120000_001_developer.metadata.json"
+    metadata.parent.mkdir(parents=True, exist_ok=True)
+    metadata.write_text(
+        json.dumps(
+            {
+                "invocation_id": "20260820T120000_001_developer",
+                "session_number": 1,
+                "role_name": "developer",
+                "provider": "codex",
+                "model": "test",
+                "return_code": 0,
+                "failure_kind": "none",
+                "duration_seconds": 1.0,
+                "task_id": "T0001",
+                "dependency_introductions": [
+                    {
+                        "ecosystem": "python",
+                        "manifest": "pyproject.toml",
+                        "scope": "project",
+                        "name": "httpx",
+                        "constraint": "httpx>=0.28",
+                    }
+                ],
+            }
+        )
+    )
+
+    diagnostics = build_workflow_diagnostics(tmp_path)
+    output = format_workflow_diagnostics(tmp_path, verbose=True)
+
+    assert diagnostics.dependency_introductions.total == 1
+    assert diagnostics.dependency_introductions.items[0].task_id == "T0001"
+    assert "unverified direct dependency introduced: httpx" in "\n".join(
+        diagnostics.quality.warnings
+    )
+    assert "Dependency introductions: 1 unverified" in output
+    assert "python:httpx" in output
 
 
 def test_diagnostics_report_research_lifecycle_and_repeated_route(tmp_path: Path) -> None:

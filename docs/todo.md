@@ -49,9 +49,17 @@ state, require an independently approved digest in CI, or explicitly accept the
 current snapshot for one externally contained invocation. Session and smoke-test
 metadata record the digest and authorization source.
 
+DevLab also records direct dependencies introduced by normal role sessions for
+supported Python, Node, Rust, and Go manifests. Diagnostics and structured run
+summaries report these as advisory operator-review warnings with session/task
+provenance; they do not query registries, install tools, or block workflow
+progress. See `plans/dependency-introduction-diagnostics.md`.
+
 Open work:
 
-- Consider dependency-introduction warnings for tasks or plans that add new package-manager dependencies, especially when the package name comes from agent output rather than an existing target convention. This should be lighter than GSD's full package-legitimacy gate at first: report unverified dependency additions and point operators at registry/source review rather than trying to install new host security tooling. Reference: GSD [Security model](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/security-model.md).
+- Calibrate dependency-introduction warning precision from live use before adding
+  more manifests, constraint-change reporting, registry verification, or any
+  blocking policy. Reference: GSD [Security model](https://github.com/open-gsd/gsd-core/blob/next/docs/explanation/security-model.md).
 - Consider administrator-managed organization policy or optional OS sandboxing only when concrete deployment requirements justify their cross-platform complexity.
 
 ## 4. Prompt Context Size Monitoring and Reduction

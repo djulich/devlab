@@ -24,6 +24,7 @@ from devlab.artifact_hygiene import (
 from devlab.clarifications import ClarificationStatus
 from devlab.findings import FindingStatus
 from devlab.generations import active_generation, archived_generation_numbers
+from devlab.history import load_session_metadata
 from devlab.profiles import DEFAULT_PROFILE, PROFILES_DIR, load_profile
 from devlab.research import ResearchConfidence, ResearchStatus
 from devlab.task_tracker import Task, TaskStatus
@@ -146,6 +147,25 @@ class ResearchMetrics:
 
 
 @dataclasses.dataclass(frozen=True)
+class DependencyIntroductionItem:
+    invocation_id: str
+    session_number: int
+    role: str
+    task_id: str
+    ecosystem: str
+    manifest: str
+    scope: str
+    name: str
+    constraint: str
+
+
+@dataclasses.dataclass(frozen=True)
+class DependencyIntroductionMetrics:
+    total: int
+    items: list[DependencyIntroductionItem]
+
+
+@dataclasses.dataclass(frozen=True)
 class QualitySummary:
     correctness_checked: bool
     correctness_passed: bool | None
@@ -170,6 +190,7 @@ class WorkflowDiagnostics:
     generations: GenerationMetrics
     clarifications: ClarificationMetrics
     research: ResearchMetrics
+    dependency_introductions: DependencyIntroductionMetrics
     artifact_hygiene: ArtifactHygiene
     agent_logs: AgentLogMetrics
     prompt_logs: PromptLogMetrics
@@ -196,6 +217,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
     integrator_rework = derive_integrator_rework_summary(findings)
     clarification_metrics = collect_clarification_metrics(root, snapshot=snapshot, events=events)
     research_metrics = collect_research_metrics(root, snapshot=snapshot, events=events)
+    dependency_introductions = collect_dependency_introductions(root)
     return WorkflowDiagnostics(
         sessions=sessions,
         roles=[session.role for session in sessions],
@@ -212,6 +234,7 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
         generations=collect_generation_metrics(root),
         clarifications=clarification_metrics,
         research=research_metrics,
+        dependency_introductions=dependency_introductions,
         artifact_hygiene=artifact_hygiene,
         agent_logs=collect_agent_log_metrics(root),
         prompt_logs=collect_prompt_log_metrics(root),
@@ -227,8 +250,44 @@ def build_workflow_diagnostics(root: Path) -> WorkflowDiagnostics:
             integrator_rework=integrator_rework,
             clarification_metrics=clarification_metrics,
             research_metrics=research_metrics,
+            dependency_introductions=dependency_introductions,
         ),
     )
+
+
+def collect_dependency_introductions(
+    root: Path, *, latest_sessions: int | None = None
+) -> DependencyIntroductionMetrics:
+    """Collect advisory direct-dependency additions from session metadata."""
+    items: list[DependencyIntroductionItem] = []
+    sessions = load_session_metadata(root)
+    if latest_sessions is not None:
+        sessions = (
+            sorted(sessions, key=lambda item: item.invocation_id)[-latest_sessions:]
+            if latest_sessions > 0
+            else []
+        )
+    for session in sessions:
+        for raw in session.dependency_introductions:
+            if not isinstance(raw, dict):
+                continue
+            required = ("ecosystem", "manifest", "scope", "name", "constraint")
+            if not all(isinstance(raw.get(key), str) for key in required):
+                continue
+            items.append(
+                DependencyIntroductionItem(
+                    invocation_id=session.invocation_id,
+                    session_number=session.session_number,
+                    role=session.role_name,
+                    task_id=session.task_id,
+                    ecosystem=raw["ecosystem"],
+                    manifest=raw["manifest"],
+                    scope=raw["scope"],
+                    name=raw["name"],
+                    constraint=raw["constraint"],
+                )
+            )
+    return DependencyIntroductionMetrics(total=len(items), items=items)
 
 
 def collect_milestone_verification_metrics(
@@ -494,6 +553,7 @@ def quality_summary(
     integrator_rework: IntegratorReworkSummary | None = None,
     clarification_metrics: ClarificationMetrics | None = None,
     research_metrics: ResearchMetrics | None = None,
+    dependency_introductions: DependencyIntroductionMetrics | None = None,
 ) -> QualitySummary:
     closed = task_metrics.by_status.get(TaskStatus.CLOSED.value, 0)
     all_tasks_closed = task_metrics.total == closed
@@ -532,6 +592,13 @@ def quality_summary(
             f"repeated research requests on route: {route}"
             for route in research_metrics.repeated_routes
         )
+    if dependency_introductions is not None:
+        warnings.extend(
+            "unverified direct dependency introduced: "
+            f"{item.name} ({item.ecosystem}, {item.manifest}, session {item.session_number}"
+            f"{f', task {item.task_id}' if item.task_id else ''})"
+            for item in dependency_introductions.items
+        )
     if closed and sessions_run / closed > HIGH_SESSIONS_PER_CLOSED_TASK_WARNING:
         warnings.append(f"high session count per closed task: {sessions_run}/{closed}")
     if artifact_hygiene.other_ignored_total_bytes > LARGE_IGNORED_BYTES_WARNING:
@@ -568,6 +635,9 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
     lines.append(_format_integrator_summary(diagnostics.integrator_rework))
     lines.append(_format_clarification_summary(diagnostics.clarifications))
     lines.append(_format_research_summary(diagnostics.research))
+    lines.append(
+        f"Dependency introductions: {diagnostics.dependency_introductions.total} unverified"
+    )
     lines.append(_format_profile_summary(diagnostics.profiles))
     lines.append(_format_generation_summary(diagnostics.generations))
     lines.append(_format_artifact_hygiene_summary(diagnostics.artifact_hygiene))
@@ -763,6 +833,19 @@ def _format_verbose_sections(diagnostics: WorkflowDiagnostics) -> list[str]:
     repeated_scopes = ", ".join(diagnostics.clarifications.repeated_scopes) or "none"
     lines.append(f"- repeated_roles: {repeated_roles}")
     lines.append(f"- repeated_scopes: {repeated_scopes}")
+
+    lines.append("")
+    lines.append("Dependency introductions:")
+    if diagnostics.dependency_introductions.items:
+        for item in diagnostics.dependency_introductions.items:
+            task = f" task={item.task_id}" if item.task_id else ""
+            lines.append(
+                f"- session={item.session_number} role={item.role}{task} "
+                f"{item.ecosystem}:{item.name} constraint={item.constraint!r} "
+                f"manifest={item.manifest} scope={item.scope}"
+            )
+    else:
+        lines.append("- none")
 
     lines.append("")
     lines.append("Artifact contributors:")

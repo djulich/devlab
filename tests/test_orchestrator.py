@@ -3996,6 +3996,40 @@ def _find_metadata(root: Path) -> dict[str, Any]:
 
 
 class TestSessionMetadata:
+    def test_metadata_records_direct_dependency_introduced_by_session(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path,
+            "T0001",
+            "First",
+            body=_checked_task_body("T0001", "First"),
+        )
+
+        def add_dependency(call: AgentCall) -> None:
+            (call.root / "package.json").write_text(
+                '{"dependencies":{"example-package":"^1.0.0"}}\n'
+            )
+
+        run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": MockProvider(on_invoke=add_dependency)},
+        )
+
+        meta = _find_metadata(tmp_path)
+        assert meta["dependency_introductions"] == [
+            {
+                "ecosystem": "node",
+                "manifest": "package.json",
+                "scope": "dependencies",
+                "name": "example-package",
+                "constraint": "^1.0.0",
+            }
+        ]
+
     def test_metadata_written_for_successful_session(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")

@@ -33,6 +33,7 @@ class SessionMetadata:
     executable_config_digest: str = ""
     executable_config_authorization: str = ""
     progress: str = ""
+    dependency_introductions: tuple[dict[str, str], ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)

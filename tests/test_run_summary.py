@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,56 @@ def test_summary_reports_requested_changes_and_new_untrusted_configuration(
     assert "Executable configuration changed during this run and is not trusted" in text
     assert "devlab trust executable-config --show" in text
     assert text.rstrip().endswith("devlab implement")
+
+
+def test_summary_calls_out_dependency_introduced_in_latest_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEVLAB_STATE_HOME_ENV, str(tmp_path / "operator-state"))
+    init_workspace(tmp_path)
+    initial = build_executable_config_snapshot(tmp_path)
+    trust_executable_config(initial)
+    log_dir = tmp_path / ".devlab/logs/agents"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    base = {
+        "session_number": 1,
+        "role_name": "developer",
+        "provider": "codex",
+        "model": "test",
+        "return_code": 0,
+        "failure_kind": "none",
+        "duration_seconds": 1.0,
+        "task_id": "T0001",
+    }
+    for invocation_id, package in (
+        ("20260820T110000_001_developer", "old-package"),
+        ("20260820T120000_001_developer", "new-package"),
+    ):
+        data = {
+            **base,
+            "invocation_id": invocation_id,
+            "dependency_introductions": [
+                {
+                    "ecosystem": "node",
+                    "manifest": "package.json",
+                    "scope": "dependencies",
+                    "name": package,
+                    "constraint": "^1",
+                }
+            ],
+        }
+        (log_dir / f"{invocation_id}.metadata.json").write_text(json.dumps(data))
+
+    summary = build_run_summary(
+        tmp_path,
+        command="implement",
+        result=_result(RunStopReason.SESSION_LIMIT, sessions=1),
+        initial_executable_config=initial,
+    )
+    text = format_run_summary(summary)
+
+    assert "Review unverified direct dependency: new-package" in text
+    assert "old-package" not in text
 
 
 def test_summary_reports_executable_configuration_boundary(

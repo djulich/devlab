@@ -10,6 +10,7 @@ from devlab.executable_config import (
 )
 from devlab.orchestrator import RunResult, RunStopReason
 from devlab.task_tracker import Task
+from devlab.workflow_diagnostics import collect_dependency_introductions
 from devlab.workflow_state_report import (
     NextCommandAdvice,
     build_next_command_advice,
@@ -71,6 +72,7 @@ class RunSummary:
     research: RunResearchSummary | None
     executable_config: RunExecutableConfigSummary
     errors: tuple[str, ...]
+    dependency_introductions: tuple[str, ...]
     next_commands: tuple[str, ...]
 
 
@@ -122,6 +124,9 @@ def build_run_summary(
         executable_config=executable_config,
         state_advice=build_next_command_advice(report),
     )
+    dependency_introductions = collect_dependency_introductions(
+        root, latest_sessions=result.sessions_run
+    )
     return RunSummary(
         command=command,
         stop_reason=result.stop_reason,
@@ -133,6 +138,11 @@ def build_run_summary(
         research=research,
         executable_config=executable_config,
         errors=tuple(error.message for error in result.errors),
+        dependency_introductions=tuple(
+            f"{item.name} ({item.ecosystem}, {item.manifest}, session {item.session_number}"
+            f"{f', task {item.task_id}' if item.task_id else ''})"
+            for item in dependency_introductions.items
+        ),
         next_commands=next_commands,
     )
 
@@ -188,6 +198,10 @@ def format_run_summary(summary: RunSummary) -> str:
         )
     if summary.errors:
         attention.extend(f"- Error: {message}" for message in summary.errors)
+    attention.extend(
+        f"- Review unverified direct dependency: {item}"
+        for item in summary.dependency_introductions
+    )
     if attention:
         lines.extend(["", "Operator attention:", *attention])
 

@@ -34,6 +34,11 @@ from devlab.clarifications import (
     expected_file_edit_paths,
     option_text,
 )
+from devlab.dependency_diagnostics import (
+    DependencySnapshot,
+    introduced_dependencies,
+    snapshot_direct_dependencies,
+)
 from devlab.environment import (
     EnvironmentCommandError,
     EnvironmentManager,
@@ -1326,6 +1331,7 @@ def _build_session_metadata(
     task_id: str | None,
     executable_config: ExecutableConfigSnapshot | None = None,
     progress: SessionProgress | None = None,
+    dependency_baseline: DependencySnapshot | None = None,
 ) -> SessionMetadata:
     provider = ""
     model = ""
@@ -1355,6 +1361,15 @@ def _build_session_metadata(
             else ""
         ),
         progress=progress.value if progress is not None else "",
+        dependency_introductions=tuple(
+            dataclasses.asdict(item)
+            for item in introduced_dependencies(
+                dependency_baseline,
+                snapshot_direct_dependencies(ctx.root),
+            )
+        )
+        if dependency_baseline is not None
+        else (),
     )
 
 
@@ -2920,6 +2935,7 @@ def run_loop(
             ),
         )
         ctx.write_prompt_logs(base_prompt, session_prompt)
+        dependency_baseline = snapshot_direct_dependencies(root)
 
         lifecycle = _invoke_role_agent(
             ctx,
@@ -2941,6 +2957,7 @@ def run_loop(
                 resolved_agent_configs,
                 route.task_id,
                 executable_config,
+                dependency_baseline=dependency_baseline,
             )
             ctx.write_session_metadata(metadata)
             return _error_result(sessions_run, primary_error, *lifecycle.errors[1:])
@@ -2982,6 +2999,7 @@ def run_loop(
                         resolved_agent_configs,
                         route.task_id,
                         executable_config,
+                        dependency_baseline=dependency_baseline,
                     )
                     ctx.write_session_metadata(metadata)
                     return _error_result(sessions_run, correction_error)
@@ -3026,6 +3044,7 @@ def run_loop(
                 resolved_agent_configs,
                 route.task_id,
                 executable_config,
+                dependency_baseline=dependency_baseline,
             )
             ctx.write_session_metadata(metadata)
             return _error_result(sessions_run, SessionError("handoff_validation", message, 1))
@@ -3181,6 +3200,7 @@ def run_loop(
             route.task_id,
             executable_config,
             progress,
+            dependency_baseline,
         )
         ctx.write_session_metadata(metadata)
         if non_advancing_recovery and progress == SessionProgress.NON_ADVANCING:
