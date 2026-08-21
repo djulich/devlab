@@ -58,10 +58,38 @@ Generation 2 additionally receives a fixture artifact created by the generation
   --generation-1-fixture /path/to/evidence/g1-devlab-fixture.json
 ```
 
-The exact module name and CLI should be decided during implementation. Reuse
-small evaluation utilities where their contracts fit, but keep this grader
-independent of the generated target's project commands and DevLab workflow
-state.
+The exact module name may be chosen during implementation. Reuse small
+evaluation utilities where their contracts fit, but keep this grader independent
+of the generated target's project commands and DevLab workflow state.
+
+## First-version decisions
+
+These choices are fixed before the first graded run so results cannot influence
+the evaluation method:
+
+- **Container runtime:** require Docker Engine with Compose v2. Do not add Podman
+  compatibility to the first grader. A missing Docker/Compose prerequisite makes
+  deployment checks unverified and the run unsuitable for the full comparison.
+- **Browser and accessibility:** use evaluator-owned Playwright for browser
+  behavior and basic accessible-name, selected-state, alert/live-region, and
+  keyboard checks. Do not add axe-core in the first version.
+- **Concurrent writers:** run eight independent synchronized same-version races.
+  Every repetition must produce exactly one success and one `409` conflict.
+- **Image inspection:** use resolved Compose configuration plus lightweight
+  `docker image inspect`, `docker history`, and running-container inspection. Do
+  not export or unpack image layers with `docker image save` in the first
+  version.
+- **Scoring:** publish named hard gates, individual checks, and dimensional pass/
+  fail/unverified counts. Do not compute a weighted aggregate or declare a winner
+  from one scalar score.
+- **Target-owned deployment checks:** run them first under a separate grader-
+  allocated Compose project and volume namespace, then remove only that
+  disposable validation stack and volume. Run independent evolution grading
+  under the preserved arm-specific Compose project so target-owned cleanup or
+  fixture data cannot affect the evolution evidence.
+- **Cost reporting:** retain raw provider-reported tokens and cost per model/role
+  plus totals. Do not invent cross-provider normalized tokens or prices. Report
+  model mappings alongside comparisons.
 
 ## Grader lifecycle
 
@@ -177,8 +205,8 @@ Run all still-applicable generation 1 checks plus:
 - Conflict response includes the stable error and current representation.
 - Two genuinely concurrent requests use the same version and a synchronization
   barrier; assert exactly one success and one conflict.
-- Repeat the concurrent case enough times to make a read-then-write race likely,
-  while keeping runtime bounded and results deterministic enough for CI.
+- Run eight synchronized concurrent cases. Each must produce exactly one success
+  and one conflict; any double success or ambiguous outcome fails the check.
 
 ### Browser conflict behavior
 
@@ -234,9 +262,9 @@ Each check should have a stable ID tied to specification requirement IDs,
 status (`passed`, `failed`, or `unverified`), duration, concise evidence, and
 diagnostic artifact references.
 
-Keep dimensional results visible. If a numeric summary is useful, report both
-unweighted pass rate and a predeclared weighted score; never publish only the
-weighted score.
+Keep dimensional results visible. Report an unweighted pass rate only as a
+convenience alongside the underlying counts; do not compute a weighted aggregate
+in the first grader.
 
 ## Hard gates and scoring
 
@@ -275,21 +303,10 @@ After automated grading, a reviewer blind to experiment arm may assess:
 Use a predeclared rubric and two reviewers where feasible. Reveal the arm only
 after scores are recorded. Keep these results separate from automatic checks.
 
-## Questions to decide before implementation
+## Deferred grading extensions
 
-1. Should the grader invoke Docker only, or support Podman/Compose compatibility
-   from the start?
-2. Should target-owned `make deployment-check` run before or after independent
-   startup, given that both need exclusive Compose project/port ownership?
-3. How many concurrent-writer repetitions balance race detection and runtime?
-4. Which accessibility checks should be automated with Playwright alone, and
-   should axe-core be an evaluator-owned dependency?
-5. Should generated image contents be inspected through `docker image save`, or
-   should the first grader limit hygiene checks to build context and container
-   runtime inspection?
-6. What scoring weights, if any, should be fixed before the first run?
-7. How should provider token/cost data be normalized when DevLab roles use
-   heterogeneous models?
-
-These choices should be settled and committed before observing either arm's
-first graded result.
+Reconsider Podman compatibility, axe-core, exported image-layer inspection,
+weighted scoring, or cross-provider cost normalization only after the first
+version has produced evidence that the added complexity would answer a concrete
+unresolved comparison question. Any such change creates a new grader version and
+must not be applied retroactively to only one arm or selected prior runs.
