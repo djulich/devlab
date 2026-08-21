@@ -2,6 +2,22 @@
 
 Status: implemented.
 
+## Live calibration — 2026-08-20
+
+The first React/Vite live run failed its independent browser correctness check,
+but provided valid dependency-diagnostic evidence. The T0002 developer session
+introduced `react`, `react-dom`, `vite`, and `@vitejs/plugin-react` in the direct
+`package.json` dependency table. All four were attributed once to that session
+and task. The planner, profile developer/reviewer, product reviewer, integrator,
+and architecture-review sessions recorded no repeated introductions. The
+generated `package-lock.json` and its transitive packages produced no entries.
+
+This is positive evidence for Node attribution, direct-only scope, and
+cross-session deduplication. A successful rerun is still required to compare
+JSON diagnostics, verbose text diagnostics, and the final run summary while also
+confirming that warnings remain advisory through ordinary successful workflow
+and evaluation completion.
+
 ## Goal
 
 Make direct dependencies introduced by an agent session visible to operators so

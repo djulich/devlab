@@ -620,7 +620,6 @@ waitFor('http://127.0.0.1:8765/health', 'API').catch((error) => {
 });
 NODE
 API_BASE_URL="http://127.0.0.1:$API_PORT" \
-  VITE_API_BASE_URL="http://127.0.0.1:$API_PORT" \
   npm run dev -- --host 127.0.0.1 --port "$VITE_PORT" \
   > /tmp/devlab-vite.out 2> /tmp/devlab-vite.err &
 VITE_PID=$!

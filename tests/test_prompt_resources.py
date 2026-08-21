@@ -21,5 +21,17 @@ def test_planner_prompt_reserves_empty_validation_for_deliberate_suppression() -
     assert "do not copy it as task boilerplate" in planner
 
 
+def test_role_prompts_require_validation_to_cross_claimed_boundaries() -> None:
+    conventions = read_prompt_resource("conventions.md")
+    planner = read_prompt_resource("role-planner.md")
+    reviewer = read_prompt_resource("role-reviewer.md")
+    integrator = read_prompt_resource("role-integrator.md")
+
+    assert "cross the same boundary" in conventions
+    assert "Match validation to the boundary" in planner
+    assert "Validation crosses every boundary" in reviewer
+    assert "crosses the same" in integrator
+
+
 def test_reads_packaged_role_prompt() -> None:
     assert "# Role: Developer" in read_prompt_resource("role-developer.md")

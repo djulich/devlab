@@ -18,7 +18,7 @@ The goal is to confirm that the completed milestone's changes work correctly wit
 
 1. Read the assigned completed milestone and its task files.
 2. Inspect the relevant current code paths across components and prior milestones.
-3. Run default validation from the resolved/default profile and relevant integration/end-to-end checks. The orchestrator has already run the profile environment lifecycle before the session.
+3. Run default validation from the resolved/default profile and relevant integration/end-to-end checks. Ensure validation crosses the same component, process, schema, packaging, or runtime boundaries as the milestone's behavior claims; component tests and builds alone do not prove those interactions. The orchestrator has already run the profile environment lifecycle before the session.
 4. Record semantic concerns and behavior claims not covered by mechanical validation
    in the candidate's dedicated fields. Do not repeat commands, task IDs, exit
    statuses, or findings that DevLab can infer.

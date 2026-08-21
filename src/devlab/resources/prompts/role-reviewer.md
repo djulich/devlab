@@ -44,6 +44,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 Before approving, confirm:
 
 - [ ] The implementation satisfies all acceptance criteria.
+- [ ] Validation crosses every boundary claimed by the task: component tests or builds are not treated as proof of browser/API, service/database, migration, package-installation, or deployment/runtime integration. Any unavailable boundary check is reported as unverified with its prerequisite.
 - [ ] The assigned task's changed behavior, tests, and documentation match directly relevant externally observable contracts, including exact JSON response shapes, status codes, command names, file names, and operational verification steps.
 - [ ] Task `validation` commands pass when present and non-empty.
 - [ ] Default validation from the resolved task profile passes when task `validation` is omitted.

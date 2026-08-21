@@ -56,6 +56,7 @@ The planner breaks the design plan into milestones and actionable tasks.
 - Remember each task incurs a developer and reviewer session, so oversplitting increases workflow cost.
 - Each task must be completable in one developer session.
 - Each task must have concrete, verifiable acceptance criteria.
+- Match validation to the boundary of each acceptance criterion. Cross-component, browser/API, service/database, migration, packaging/install, and deployment/runtime claims need project-owned commands that exercise the claimed boundary, supplied by the resolved profile or task validation. If such a command cannot run in the expected environment, make the prerequisite and unverified claim explicit instead of treating narrower component checks as proof.
 - Avoid compound criteria that hide independently falsifiable behavior. For stateful or persistence work, make relevant scope isolation, replay equivalence, historical correctness, rollback/retry, schema-upgrade, and unsupported-version cases explicit rather than relying on one broad claim.
 - Tasks should be independent from each other where possible.
 - If a task depends on another, add the dependency task IDs to the task metadata's `depends_on` array.

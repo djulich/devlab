@@ -63,6 +63,8 @@ Each task may specify one profile with `profile = "<profile-id>"`; if omitted, `
 
 Task-specific validation commands may be listed in `validation`. Commands are run from the workspace root after the orchestrator-managed environment lifecycle has established the development environment. Omit `validation` by default so the task inherits default validation from its resolved profile. Use a non-empty `validation` list only to deliberately replace those defaults with task-specific commands. Use `validation = []` only to deliberately suppress mechanical validation for a task; report relevant manual or deliberately skipped checks that DevLab cannot infer.
 
+Validation should cross the same boundary as the behavior it claims to verify. A criterion about interactions between a browser and API, service and database, old and new schema, built package and clean installation, or deployment artifact and running service needs a project-owned integration command that exercises that boundary. Component tests and successful builds do not by themselves verify cross-boundary behavior. When the required environment or tool is unavailable, report the claim as unverified and name the prerequisite; do not imply that narrower validation proved it.
+
 ## Finding Template
 
 File: `FXXXX_<short-slug>.md` in `.devlab/findings/` (XXXX = zero-padded).

@@ -1202,6 +1202,8 @@ def test_react_vite_browser_integration_check_runs_read_only_container_flow(
     assert "npm run build" in script
     assert "npm install --prefix /tmp/devlab-browser-tools --no-save playwright@1.53.1" in script
     assert "src.todo_api.server --port" in script
+    assert 'API_BASE_URL="http://127.0.0.1:$API_PORT"' in script
+    assert "VITE_API_BASE_URL" not in script
     assert "npm run dev -- --host 127.0.0.1 --port" in script
     assert "NODE_PATH=/tmp/devlab-browser-tools/node_modules node" in script
     assert "require('playwright')" in script

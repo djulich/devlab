@@ -746,16 +746,25 @@ def test_live_react_vite_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
             "@vitejs/plugin-react in package.json. Provide index.html, a src/main "
             "React entrypoint, a src/App component, and CSS under src/. The React UI "
             "must list todos, add todos, delete todos, display validation errors, and "
-            "work in a browser when the API runs on a separate localhost port during "
-            "development. The UI must expose a todo title input with an accessible name "
+            "work in a browser when the API runs on a separate arbitrary localhost port "
+            "during development. Browser code must call same-origin relative /health "
+            "and /todos routes. Vite must proxy those routes to the API target supplied "
+            "through the API_BASE_URL environment variable, defaulting to "
+            "http://127.0.0.1:8000 when it is absent. The UI must expose a todo title "
+            "input with an accessible name "
             "containing todo or title, an add/submit button, delete/remove buttons for "
             "rendered todos, and a visible validation error for empty submissions. It "
-            "may call same-origin /todos routes through a Vite dev-server proxy, or use "
-            "a Vite-exposed API base URL such as VITE_API_BASE_URL. The Vite app must "
-            "run with npm run dev -- --host 127.0.0.1 --port <port>. Provide a "
-            "Makefile with run and test targets and README instructions for running the "
-            "API and the React app with npm run dev and npm run build. Do not require "
-            "the evaluation harness to install npm dependencies on the host."
+            "must run with npm run dev -- --host 127.0.0.1 --port <port>. "
+            "Provide a Makefile with run, test, and browser-test targets. browser-test "
+            "must use Podman to install target and browser dependencies in a disposable "
+            "container, choose non-default API and Vite ports, exercise empty-title "
+            "validation plus add/list/delete through a real browser, fail on browser "
+            "console or page errors, and reliably stop child processes. Create a "
+            "dedicated DevLab task profile with id `todo-app`, put `make test` and "
+            "`make browser-test` in its default_validation list, and assign "
+            "the product implementation task to it. README instructions must cover "
+            "running the API and React app with API_BASE_URL, npm run dev, npm run build, "
+            "and make browser-test. Do not install npm or browser dependencies on the host."
         ),
         max_sessions=int(os.environ.get("DEVLAB_LIVE_REACT_VITE_FRONTEND_MAX_SESSIONS", "24")),
         checks=(
@@ -765,6 +774,17 @@ def test_live_react_vite_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
             react_vite_browser_integration_check,
             file_contains_check("project run command", "Makefile", "run:"),
             file_contains_check("project test command", "Makefile", "test:"),
+            file_contains_check("project browser test command", "Makefile", "browser-test:"),
+            file_contains_check(
+                "profile browser validation command",
+                ".devlab/config/profiles/todo-app.toml",
+                "make browser-test",
+            ),
+            file_contains_check(
+                "profile backend validation command",
+                ".devlab/config/profiles/todo-app.toml",
+                "make test",
+            ),
             file_contains_check("usage docs", "README.md", "npm run dev"),
         ),
     )
@@ -772,6 +792,7 @@ def test_live_react_vite_todo_app_happy_path_evaluation(tmp_path: Path) -> None:
     diagnostics = _run_live_scenario(tmp_path, scenario)
 
     _assert_live_diagnostics(tmp_path, scenario, diagnostics)
+    _assert_live_task_profile(tmp_path, diagnostics, "todo-app", minimum_validation_commands=2)
 
 
 @pytest.mark.skipif(
