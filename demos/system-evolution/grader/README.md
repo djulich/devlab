@@ -14,10 +14,12 @@ uv run python demos/system-evolution/grader/system_evolution_grader.py \
   --json-out /path/to/evidence/generation-1.json
 ```
 
-Generation 1 also writes
-`/path/to/evidence/generation-1-fixture.json` by default. Override that location
-with `--generation-1-fixture-out`. The grader refuses to replace an existing
-fixture artifact or write it inside the target checkout.
+Generation 1 also writes `/path/to/evidence/generation-1-fixture.json` and
+`/path/to/evidence/generation-1-resume.json` by default. Override those locations
+with `--generation-1-fixture-out` and `--generation-1-resume-out`. The fixture is
+shareable grading evidence. The resume file contains randomized evaluator
+database credentials, is created with mode `0600`, and must remain private. The
+grader refuses to replace either artifact or write it inside the target checkout.
 
 The target must be a clean Git checkout. Docker Engine with Compose v2 is an
 external prerequisite. The grader allocates a host port and randomized test
@@ -35,11 +37,29 @@ canonical SHA-256 digest. Every Compose mutation is scoped to the validated
 project name. Cleanup stops only that project and never deletes its database
 volume.
 
+Run the implemented Generation 2 migration/preservation checks against the same
+Compose project and preserved volume:
+
+```bash
+uv run python demos/system-evolution/grader/system_evolution_grader.py \
+  --generation 2 \
+  --target /path/to/updated-clean-target \
+  --compose-project idea-greenhouse-run01 \
+  --generation-1-fixture /path/to/evidence/generation-1-fixture.json \
+  --generation-1-resume /path/to/evidence/generation-1-resume.json \
+  --json-out /path/to/evidence/generation-2.json
+```
+
+The grader verifies both artifact digests and the Compose-project identity before
+touching Docker. It refuses a missing replacement volume, restores the evaluator
+database configuration, starts Generation 2 in place, checks every preserved
+field and new default, verifies Alembic is at head, restarts the API, and repeats
+the preservation checks. Archive, concurrency, and Generation 2 browser-conflict
+grading remain later slices.
+
 The grader never invokes agents, repairs targets, creates DevLab findings, or
 feeds results back into a workflow. Product failures, unavailable prerequisites,
-and grader failures remain distinct results. Generation 2 is accepted by the
-CLI only to reserve its interface and is explicitly unverified until migration
-and concurrency grading is implemented.
+and grader failures remain distinct results.
 
 Run its fast safety and result-model tests directly with:
 

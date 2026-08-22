@@ -100,7 +100,8 @@ Do not commit real credentials or provider configuration.
     commits, tags, logs, and resource usage.
 11. Do not edit the target before grading.
 12. Run the generation 1 independent grader and retain its machine-readable and
-    human-readable reports plus the generated evolution-fixture JSON.
+    human-readable reports plus the generated evolution-fixture JSON and private
+    evaluator resume state. Keep the resume state outside Git with mode `0600`.
 
 If the workflow requests clarification, answer only from the specification or
 the experiment's predeclared policy. Record the question and answer. Do not use
@@ -122,7 +123,7 @@ part of the specification.
    elapsed time, tokens, cost, and commands run.
 6. Do not edit the target before grading.
 7. Run the same generation 1 independent grader and retain its reports and
-   evolution-fixture JSON.
+   evolution-fixture JSON and private evaluator resume state.
 
 If the agent asks a blocking question, answer under the same rule used for
 DevLab clarifications and record the exchange. The answer becomes repository
@@ -146,6 +147,10 @@ Compose project, and a canonical content digest in evaluator-owned JSON. Stop th
 stacks without deleting their database volumes. The grader refuses to overwrite
 an existing fixture artifact.
 
+The separate resume artifact retains the randomized local PostgreSQL
+configuration required to reconnect to the preserved Compose volume. Keep it
+outside both target repositories and do not expose it to either agent arm.
+
 The seeding program must be part of the independent grader, not an agent-authored
 target script. Do not seed one arm from a database dump produced by the other.
 
@@ -164,7 +169,8 @@ target script. Do not seed one arm from a database dump produced by the other.
 7. Record workflow state, diagnostics, summaries, sessions, commits, tags, logs,
    resource usage, and the archived/current planning evidence.
 8. Do not manually repair code, migrations, data, plans, or Compose resources.
-9. Run the generation 2 grader against the preserved generation 1 volume.
+9. Run the generation 2 grader against the preserved generation 1 volume using
+   that arm's fixture and private resume artifacts.
 
 Starting with an empty replacement database invalidates the evolution portion
 of the run. Record such a result as invalid, not as a passing clean installation.
@@ -184,7 +190,8 @@ of the run. Record such a result as invalid, not as a passing clean installation
 6. Record revision, working-tree status, transcript/log location, elapsed time,
    tokens, cost, commands, and any questions.
 7. Do not manually repair code, migration history, or the database.
-8. Run the same generation 2 grader against the preserved generation 1 volume.
+8. Run the same generation 2 grader against the preserved generation 1 volume
+   using that arm's fixture and private resume artifacts.
 
 ## 10. Evidence integrity
 

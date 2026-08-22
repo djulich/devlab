@@ -76,5 +76,7 @@ The grader implements the versioned result model, scoped Compose lifecycle,
 structural/topology checks, core generation 1 API checks, evaluator-owned
 Playwright browser/accessibility checks, restart persistence checks, and
 Generation 1 evolution-fixture seeding with immutable digested evidence.
-Generation 2 migration/concurrency grading remains a subsequent slice. See
-`grader/README.md` for the current interface and boundaries.
+Generation 2 preserved-volume, data/default migration, Alembic-current, and
+restart-idempotence grading is also implemented. Archive, concurrency, and stale
+browser-conflict grading remain subsequent slices. See `grader/README.md` for the
+current interface and boundaries.

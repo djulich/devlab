@@ -61,6 +61,8 @@
 - Sprout idea ID/title:
 - Bloom idea ID/title:
 - Fixture response artifact:
+- Private evaluator resume-state path (do not commit):
+- Fixture/resume digests verified before generation 2: yes/no
 - Stack stopped without deleting volume: yes/no
 
 ## Generation 2 execution

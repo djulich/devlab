@@ -161,6 +161,8 @@ class SystemEvolutionGrader:
         host_port: int | None = None,
         generation_1_fixture: Path | None = None,
         generation_1_fixture_out: Path | None = None,
+        generation_1_resume: Path | None = None,
+        generation_1_resume_out: Path | None = None,
     ) -> None:
         self.target = target.resolve()
         self.generation = generation
@@ -169,7 +171,18 @@ class SystemEvolutionGrader:
         discovered = shutil.which("docker") if docker_path is None else str(docker_path)
         self.docker = Path(discovered).resolve() if discovered else None
         self.host_port = host_port or available_port()
-        self.generation_1_fixture = generation_1_fixture
+        self.generation_1_fixture = (
+            generation_1_fixture.resolve() if generation_1_fixture is not None else None
+        )
+        self.generation_1_resume = (
+            generation_1_resume.resolve() if generation_1_resume is not None else None
+        )
+        for name, artifact in (
+            ("generation 1 fixture", self.generation_1_fixture),
+            ("generation 1 resume state", self.generation_1_resume),
+        ):
+            if artifact is not None and artifact.is_relative_to(self.target):
+                raise ValueError(f"{name} must be outside the target checkout")
         self.generation_1_fixture_out = (
             generation_1_fixture_out.resolve() if generation_1_fixture_out is not None else None
         )
@@ -178,28 +191,27 @@ class SystemEvolutionGrader:
             and self.generation_1_fixture_out.is_relative_to(self.target)
         ):
             raise ValueError("generation 1 fixture output must be outside the target checkout")
+        self.generation_1_resume_out = (
+            generation_1_resume_out.resolve() if generation_1_resume_out is not None else None
+        )
+        if (
+            self.generation_1_resume_out is not None
+            and self.generation_1_resume_out.is_relative_to(self.target)
+        ):
+            raise ValueError("generation 1 resume output must be outside the target checkout")
         suffix = secrets.token_hex(6)
         self.prefix = f"grader-{suffix}"
         self.environment = self._environment(suffix)
         self.result = GradeResult(generation)
         self.started = False
         self.lifecycle_attempted = False
+        self.database_volume = ""
+        self.expected_database_volume = ""
+        self.generation_1_fixture_data: dict[str, Any] | None = None
 
     def grade(self) -> GradeResult:
         try:
             if not self._validate_inputs():
-                return self._finish()
-            if self.generation == 2:
-                self.result.add(
-                    Check(
-                        "G2-GRADING-NOT-IMPLEMENTED",
-                        "migration",
-                        "unverified",
-                        0,
-                        "generation 2 migration and concurrency grading is a later bounded slice",
-                        hard_gate=True,
-                    )
-                )
                 return self._finish()
             self._structural_checks()
             if self.docker is None:
@@ -208,6 +220,8 @@ class SystemEvolutionGrader:
             if not self._compose_prerequisite_check():
                 return self._finish()
             if not self._compose_config_checks():
+                return self._finish()
+            if self.generation == 2 and not self._preserved_volume_check():
                 return self._finish()
             build = self._compose("build", timeout=1200)
             self._command_check(
@@ -233,10 +247,13 @@ class SystemEvolutionGrader:
                 self._capture_failure_diagnostics()
                 return self._finish()
             self._runtime_topology_check()
-            self._api_checks()
-            self._browser_checks()
-            self._persistence_checks()
-            self._create_generation_1_fixture()
+            if self.generation == 1:
+                self._api_checks()
+                self._browser_checks()
+                self._persistence_checks()
+                self._create_generation_1_fixture()
+            else:
+                self._generation_2_migration_checks()
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             self.result.add(
                 Check(
@@ -259,7 +276,10 @@ class SystemEvolutionGrader:
         if self.generation not in (1, 2):
             raise ValueError("generation must be 1 or 2")
         if self.generation == 2 and (
-            self.generation_1_fixture is None or not self.generation_1_fixture.is_file()
+            self.generation_1_fixture is None
+            or not self.generation_1_fixture.is_file()
+            or self.generation_1_resume is None
+            or not self.generation_1_resume.is_file()
         ):
             self.result.add(
                 Check(
@@ -267,10 +287,43 @@ class SystemEvolutionGrader:
                     "migration",
                     "grader_error",
                     0,
-                    "generation 2 requires an existing --generation-1-fixture",
+                    "generation 2 requires existing --generation-1-fixture and "
+                    "--generation-1-resume artifacts",
                 )
             )
             return False
+        if self.generation == 2:
+            try:
+                resume_path = self.generation_1_resume
+                if resume_path is None:
+                    raise ValueError("generation 1 resume state path is missing")
+                if resume_path.stat().st_mode & 0o077:
+                    raise ValueError(
+                        "generation 1 resume state must not be group/world accessible"
+                    )
+                fixture = load_digested_json(self.generation_1_fixture)
+                resume = load_digested_json(resume_path)
+                validate_generation_1_artifacts(fixture, resume, self.project)
+            except (OSError, ValueError, json.JSONDecodeError) as error:
+                self.result.add(
+                    Check(
+                        "INPUT-GENERATION-1-ARTIFACTS",
+                        "migration",
+                        "grader_error",
+                        0,
+                        f"invalid generation 1 artifact: {error}",
+                    )
+                )
+                return False
+            self.generation_1_fixture_data = fixture
+            self.environment.update(
+                {
+                    "POSTGRES_DB": str(resume["postgres"]["database"]),
+                    "POSTGRES_USER": str(resume["postgres"]["user"]),
+                    "POSTGRES_PASSWORD": str(resume["postgres"]["password"]),
+                }
+            )
+            self.expected_database_volume = str(resume["database_volume"])
         if not self.target.is_dir():
             self.result.add(
                 Check("INPUT-TARGET", "hygiene", "grader_error", 0, "target is not a directory")
@@ -372,6 +425,17 @@ class SystemEvolutionGrader:
         named_volume = any(
             isinstance(mount, dict) and mount.get("type") == "volume" for mount in db_mounts
         )
+        volume_mount = next(
+            (
+                mount
+                for mount in db_mounts
+                if isinstance(mount, dict) and mount.get("type") == "volume"
+            ),
+            {},
+        )
+        volume_source = str(volume_mount.get("source", ""))
+        volume_config = config.get("volumes", {}).get(volume_source, {})
+        self.database_volume = str(volume_config.get("name", volume_source))
         health_dependencies = (
             bool(db.get("healthcheck"))
             and bool(api.get("healthcheck"))
@@ -393,13 +457,50 @@ class SystemEvolutionGrader:
             Check(
                 "G1-DEP-NAMED-VOLUME",
                 "deployment",
-                "passed" if named_volume else "failed",
+                "passed" if named_volume and volume_source == "postgres-data" else "failed",
                 0,
-                f"db_mounts={db_mounts!r}",
+                f"db_mounts={db_mounts!r}; resolved_volume={self.database_volume!r}",
                 ("G1-DEP-03",),
             )
         )
         return exact and ports_ok
+
+    def _preserved_volume_check(self) -> bool:
+        if self.docker is None or not self.database_volume:
+            return False
+        if self.database_volume != self.expected_database_volume:
+            self.result.add(
+                Check(
+                    "G2-DEP-PRESERVED-VOLUME",
+                    "migration",
+                    "failed",
+                    0,
+                    f"generation 2 resolved volume={self.database_volume!r}; "
+                    f"generation 1 volume={self.expected_database_volume!r}",
+                    ("G2-DATA-02", "G2-DEP-02"),
+                    hard_gate=True,
+                )
+            )
+            return False
+        command = self.runner(
+            (str(self.docker), "volume", "inspect", self.database_volume),
+            self.target,
+            self.environment,
+            30,
+        )
+        passed = command.returncode == 0
+        self.result.add(
+            Check(
+                "G2-DEP-PRESERVED-VOLUME",
+                "migration",
+                "passed" if passed else "failed",
+                command.duration_seconds,
+                f"expected volume={self.database_volume}; {command_evidence(command)}",
+                ("G2-DATA-02", "G2-DEP-02"),
+                hard_gate=True,
+            )
+        )
+        return passed
 
     def _compose_prerequisite_check(self) -> bool:
         command = self._compose("version", "--short", timeout=15)
@@ -627,14 +728,15 @@ class SystemEvolutionGrader:
 
     def _create_generation_1_fixture(self) -> None:
         output = self.generation_1_fixture_out
-        if output is None:
+        resume_output = self.generation_1_resume_out
+        if output is None or resume_output is None:
             self.result.add(
                 Check(
                     "G1-EVOLUTION-FIXTURE",
                     "migration",
                     "unverified",
                     0,
-                    "no generation 1 fixture output path was configured",
+                    "generation 1 fixture and resume output paths must be configured",
                     hard_gate=True,
                 )
             )
@@ -647,6 +749,28 @@ class SystemEvolutionGrader:
                     "grader_error",
                     0,
                     f"refusing to replace existing fixture artifact: {output}",
+                )
+            )
+            return
+        if resume_output.exists():
+            self.result.add(
+                Check(
+                    "G1-EVOLUTION-FIXTURE",
+                    "migration",
+                    "grader_error",
+                    0,
+                    f"refusing to replace existing resume artifact: {resume_output}",
+                )
+            )
+            return
+        if not self.database_volume:
+            self.result.add(
+                Check(
+                    "G1-EVOLUTION-FIXTURE",
+                    "migration",
+                    "grader_error",
+                    0,
+                    "resolved generation 1 database volume is unavailable",
                 )
             )
             return
@@ -725,9 +849,32 @@ class SystemEvolutionGrader:
         }
         canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         content["content_digest"] = f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
+        resume: dict[str, Any] = {
+            "schema_version": 1,
+            "demo": "system-evolution",
+            "generation": 1,
+            "compose_project": self.project,
+            "database_volume": self.database_volume,
+            "postgres": {
+                "database": self.environment["POSTGRES_DB"],
+                "user": self.environment["POSTGRES_USER"],
+                "password": self.environment["POSTGRES_PASSWORD"],
+            },
+        }
+        resume_canonical = json.dumps(
+            resume, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        resume["content_digest"] = (
+            f"sha256:{hashlib.sha256(resume_canonical.encode()).hexdigest()}"
+        )
+        resume_written = False
         try:
+            write_new_json(resume_output, resume, mode=0o600)
+            resume_written = True
             write_new_json(output, content)
         except OSError as error:
+            if resume_written:
+                resume_output.unlink(missing_ok=True)
             self._remove_partial_fixture(base, created_ids)
             self.result.add(
                 Check(
@@ -748,7 +895,7 @@ class SystemEvolutionGrader:
                 f"seeded idea IDs {[idea['id'] for idea in ideas]}; "
                 f"digest={content['content_digest']}",
                 ("G1-DATA-01", "G1-API-02"),
-                (str(output),),
+                (str(output), str(resume_output)),
             )
         )
 
@@ -768,6 +915,128 @@ class SystemEvolutionGrader:
                     "could not remove partial fixture records; " + "; ".join(failures)[:3800],
                 )
             )
+
+    def _generation_2_migration_checks(self) -> None:
+        fixture = self.generation_1_fixture_data
+        if fixture is None:
+            self.result.add(
+                Check(
+                    "G2-MIGRATION-FIXTURE",
+                    "migration",
+                    "grader_error",
+                    0,
+                    "validated generation 1 fixture is unavailable",
+                )
+            )
+            return
+        expected_ideas = fixture["ideas"]
+        responses = self._fetch_fixture_ideas(expected_ideas)
+        preserved_errors: list[str] = []
+        default_errors: list[str] = []
+        preserved_fields = ("id", "title", "notes", "stage", "created_at", "updated_at")
+        expected_fields = {
+            *preserved_fields,
+            "next_action",
+            "archived_at",
+            "version",
+        }
+        for expected, response in zip(expected_ideas, responses, strict=True):
+            status, current, _, error = response
+            idea_id = expected["id"]
+            if status != 200:
+                preserved_errors.append(f"id={idea_id}: status={status}; {error}")
+                continue
+            changed = [
+                field for field in preserved_fields if current.get(field) != expected.get(field)
+            ]
+            if changed:
+                preserved_errors.append(f"id={idea_id}: changed fields={changed}")
+            if set(current) != expected_fields:
+                default_errors.append(
+                    f"id={idea_id}: fields={sorted(current)}; expected={sorted(expected_fields)}"
+                )
+            elif (
+                current["next_action"] is not None
+                or current["archived_at"] is not None
+                or current["version"] != 1
+            ):
+                default_errors.append(
+                    f"id={idea_id}: next_action={current['next_action']!r}, "
+                    f"archived_at={current['archived_at']!r}, version={current['version']!r}"
+                )
+        self.result.add(
+            Check(
+                "G2-MIGRATION-PRESERVATION",
+                "migration",
+                "failed" if preserved_errors else "passed",
+                sum(response[2] for response in responses),
+                "; ".join(preserved_errors)
+                if preserved_errors
+                else "all generation 1 fields preserved",
+                ("G2-DATA-02", "G2-DEP-09"),
+                hard_gate=True,
+            )
+        )
+        self.result.add(
+            Check(
+                "G2-MIGRATION-DEFAULTS",
+                "migration",
+                "failed" if default_errors else "passed",
+                0,
+                "; ".join(default_errors)
+                if default_errors
+                else "new fields are null/null/version 1 on all fixture records",
+                ("G2-DATA-01", "G2-DATA-02"),
+                hard_gate=True,
+            )
+        )
+        alembic = self._compose("exec", "-T", "api", "alembic", "current", timeout=30)
+        current = alembic.returncode == 0 and "(head)" in alembic.stdout
+        self.result.add(
+            Check(
+                "G2-MIGRATION-ALEMBIC-CURRENT",
+                "migration",
+                "passed" if current else "failed",
+                alembic.duration_seconds,
+                command_evidence(alembic),
+                ("G2-DATA-02", "G2-DEP-04"),
+            )
+        )
+        restart = self._compose("restart", "api", timeout=120)
+        if restart.returncode == 0:
+            self._wait_for_health(f"http://127.0.0.1:{self.host_port}/api")
+        repeated = self._fetch_fixture_ideas(expected_ideas) if restart.returncode == 0 else []
+        repeat_ok = (
+            restart.returncode == 0
+            and len(repeated) == len(expected_ideas)
+            and all(
+                response[0] == 200
+                and all(
+                    response[1].get(field) == expected.get(field) for field in preserved_fields
+                )
+                and response[1].get("next_action") is None
+                and response[1].get("archived_at") is None
+                and response[1].get("version") == 1
+                for expected, response in zip(expected_ideas, repeated, strict=True)
+            )
+        )
+        self.result.add(
+            Check(
+                "G2-MIGRATION-RESTART-IDEMPOTENCE",
+                "migration",
+                "passed" if repeat_ok else "failed",
+                restart.duration_seconds + sum(response[2] for response in repeated),
+                f"restart_exit={restart.returncode}; fixture records rechecked={len(repeated)}",
+                ("G2-DATA-02", "G2-DEP-04"),
+                hard_gate=True,
+            )
+        )
+
+    def _fetch_fixture_ideas(
+        self, ideas: Sequence[Mapping[str, Any]]
+    ) -> list[tuple[int, dict[str, Any], float, str]]:
+        base = f"http://127.0.0.1:{self.host_port}/api/ideas"
+        return [self._request("GET", f"{base}/{idea['id']}") for idea in ideas]
 
     def _browser_checks(self) -> None:
         if self.docker is None:
@@ -1070,16 +1339,71 @@ def validate_generation_1_fixture_idea(idea: dict[str, Any], request: Mapping[st
     return ""
 
 
-def write_new_json(path: Path, content: Mapping[str, Any]) -> None:
+def write_new_json(path: Path, content: Mapping[str, Any], *, mode: int = 0o644) -> None:
     """Atomically create evaluator evidence without replacing an existing artifact."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
     temporary.write_text(json.dumps(content, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    temporary.chmod(mode)
     try:
         os.link(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def load_digested_json(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        raise ValueError("artifact path is missing")
+    content = json.loads(path.read_text())
+    if not isinstance(content, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    digest = content.pop("content_digest", None)
+    canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    expected = f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
+    if not secrets.compare_digest(str(digest), expected):
+        raise ValueError(f"{path} content digest does not match")
+    content["content_digest"] = digest
+    return content
+
+
+def validate_generation_1_artifacts(
+    fixture: Mapping[str, Any], resume: Mapping[str, Any], compose_project: str
+) -> None:
+    for name, content in (("fixture", fixture), ("resume", resume)):
+        if content.get("schema_version") != 1 or content.get("demo") != "system-evolution":
+            raise ValueError(f"{name} has an unsupported schema or demo")
+        if content.get("generation") != 1:
+            raise ValueError(f"{name} is not a generation 1 artifact")
+        if content.get("compose_project") != compose_project:
+            raise ValueError(f"{name} Compose project does not match {compose_project!r}")
+    ideas = fixture.get("ideas")
+    if not isinstance(fixture.get("target_revision"), str) or not fixture["target_revision"]:
+        raise ValueError("fixture target revision is missing")
+    if not isinstance(fixture.get("created_at"), str) or not fixture["created_at"]:
+        raise ValueError("fixture creation timestamp is missing")
+    if not isinstance(ideas, list) or len(ideas) != 3:
+        raise ValueError("fixture must contain exactly three ideas")
+    stages = []
+    ids = []
+    for idea in ideas:
+        if not isinstance(idea, dict):
+            raise ValueError("fixture ideas must be objects")
+        problem = validate_generation_1_fixture_idea(idea, idea)
+        if problem:
+            raise ValueError(f"invalid fixture idea: {problem}")
+        stages.append(idea["stage"])
+        ids.append(idea["id"])
+    if sorted(stages) != ["bloom", "seed", "sprout"] or len(set(ids)) != 3:
+        raise ValueError("fixture must contain unique seed, sprout, and bloom ideas")
+    postgres = resume.get("postgres")
+    if not isinstance(resume.get("database_volume"), str) or not resume["database_volume"]:
+        raise ValueError("resume artifact has no resolved database volume")
+    if not isinstance(postgres, dict) or not all(
+        isinstance(postgres.get(key), str) and postgres[key]
+        for key in ("database", "user", "password")
+    ):
+        raise ValueError("resume artifact has invalid PostgreSQL configuration")
 
 
 def command_evidence(result: CommandResult) -> str:
@@ -1293,6 +1617,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--json-out", type=Path, required=True)
     parser.add_argument("--generation-1-fixture", type=Path)
     parser.add_argument("--generation-1-fixture-out", type=Path)
+    parser.add_argument("--generation-1-resume", type=Path)
+    parser.add_argument("--generation-1-resume-out", type=Path)
     return parser.parse_args(argv)
 
 
@@ -1301,6 +1627,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     fixture_out = args.generation_1_fixture_out
     if args.generation == 1 and fixture_out is None:
         fixture_out = args.json_out.with_name(f"{args.json_out.stem}-fixture.json")
+    resume_out = args.generation_1_resume_out
+    if args.generation == 1 and resume_out is None:
+        resume_out = args.json_out.with_name(f"{args.json_out.stem}-resume.json")
     try:
         grader = SystemEvolutionGrader(
             args.target,
@@ -1308,6 +1637,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.compose_project,
             generation_1_fixture=args.generation_1_fixture,
             generation_1_fixture_out=fixture_out,
+            generation_1_resume=args.generation_1_resume,
+            generation_1_resume_out=resume_out,
         )
         result = grader.grade()
     except ValueError as error:

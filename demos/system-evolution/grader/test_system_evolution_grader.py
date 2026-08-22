@@ -154,12 +154,14 @@ def test_resolved_compose_topology_checks_public_boundary(tmp_path: Path) -> Non
     assert boundary.hard_gate is True
 
 
-def test_generation_two_is_explicitly_deferred_without_touching_compose(
+def test_generation_two_rejects_invalid_resume_artifacts_without_touching_compose(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    target = _target(tmp_path)
+    target = _target(tmp_path / "target")
     fixture = tmp_path / "fixture.json"
     fixture.write_text("{}\n")
+    resume = tmp_path / "resume.json"
+    resume.write_text("{}\n")
     calls: list[tuple[str, ...]] = []
 
     def runner(
@@ -183,12 +185,13 @@ def test_generation_two_is_explicitly_deferred_without_touching_compose(
         runner=runner,
         docker_path=Path("/usr/bin/docker"),
         generation_1_fixture=fixture,
+        generation_1_resume=resume,
     )
 
     result = grader.grade()
 
-    deferred = next(check for check in result.checks if check.id == "G2-GRADING-NOT-IMPLEMENTED")
-    assert deferred.status == "unverified"
+    invalid = next(check for check in result.checks if check.id == "INPUT-GENERATION-1-ARTIFACTS")
+    assert invalid.status == "grader_error"
     assert not any("compose" in call for call in calls)
 
 
@@ -281,6 +284,7 @@ def test_generation_one_fixture_is_seeded_through_public_api_and_digested(
 ) -> None:
     target = _target(tmp_path / "target")
     fixture = tmp_path / "evidence" / "generation-1-fixture.json"
+    resume = tmp_path / "evidence" / "generation-1-resume.json"
     grader = SystemEvolutionGrader(
         target,
         1,
@@ -288,8 +292,10 @@ def test_generation_one_fixture_is_seeded_through_public_api_and_digested(
         docker_path=Path("/usr/bin/docker"),
         host_port=49123,
         generation_1_fixture_out=fixture,
+        generation_1_resume_out=resume,
     )
     grader.result.target_revision = "abc123"
+    grader.database_volume = "idea-greenhouse-run07_postgres-data"
     requests: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def request(
@@ -323,7 +329,12 @@ def test_generation_one_fixture_is_seeded_through_public_api_and_digested(
     assert [idea["stage"] for idea in content["ideas"]] == ["seed", "sprout", "bloom"]
     check = grader.result.checks[0]
     assert check.status == "passed"
-    assert check.artifacts == (str(fixture),)
+    assert check.artifacts == (str(fixture), str(resume))
+    assert resume.stat().st_mode & 0o777 == 0o600
+    resume_content = json.loads(resume.read_text())
+    assert resume_content["compose_project"] == "idea-greenhouse-run07"
+    assert resume_content["database_volume"] == "idea-greenhouse-run07_postgres-data"
+    assert resume_content["postgres"]["password"]
 
 
 def test_generation_one_fixture_refuses_to_replace_evidence(
@@ -331,6 +342,7 @@ def test_generation_one_fixture_refuses_to_replace_evidence(
 ) -> None:
     target = _target(tmp_path / "target")
     fixture = tmp_path / "fixture.json"
+    resume = tmp_path / "resume.json"
     fixture.write_text("original\n")
     grader = SystemEvolutionGrader(
         target,
@@ -338,6 +350,7 @@ def test_generation_one_fixture_refuses_to_replace_evidence(
         "idea-greenhouse-run08",
         docker_path=Path("/usr/bin/docker"),
         generation_1_fixture_out=fixture,
+        generation_1_resume_out=resume,
     )
     monkeypatch.setattr(grader, "_request", lambda *args, **kwargs: pytest.fail())
 
@@ -352,13 +365,16 @@ def test_failed_fixture_seeding_removes_partial_records(
 ) -> None:
     target = _target(tmp_path / "target")
     fixture = tmp_path / "fixture.json"
+    resume = tmp_path / "resume.json"
     grader = SystemEvolutionGrader(
         target,
         1,
         "idea-greenhouse-run09",
         docker_path=Path("/usr/bin/docker"),
         generation_1_fixture_out=fixture,
+        generation_1_resume_out=resume,
     )
+    grader.database_volume = "idea-greenhouse-run09_postgres-data"
     deleted: list[int] = []
     posts = 0
 
@@ -401,6 +417,117 @@ def test_fixture_output_must_be_outside_target(tmp_path: Path) -> None:
             docker_path=Path("/usr/bin/docker"),
             generation_1_fixture_out=target / "fixture.json",
         )
+
+
+def test_generation_two_loads_validated_resume_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = _target(tmp_path / "target")
+    fixture = tmp_path / "fixture.json"
+    resume = tmp_path / "resume.json"
+    _write_digested(fixture, _fixture_content("idea-greenhouse-run11"))
+    _write_digested(
+        resume,
+        {
+            "schema_version": 1,
+            "demo": "system-evolution",
+            "generation": 1,
+            "compose_project": "idea-greenhouse-run11",
+            "database_volume": "idea-greenhouse-run11_postgres-data",
+            "postgres": {"database": "db", "user": "user", "password": "secret"},
+        },
+    )
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, environment, timeout
+        command = tuple(args)
+        return _result(command, stdout="abc123\n" if "rev-parse" in command else "")
+
+    monkeypatch.setattr("system_evolution_grader.shutil.which", lambda name: f"/usr/bin/{name}")
+    grader = SystemEvolutionGrader(
+        target,
+        2,
+        "idea-greenhouse-run11",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+        generation_1_fixture=fixture,
+        generation_1_resume=resume,
+    )
+
+    assert grader._validate_inputs() is True
+    assert grader.environment["POSTGRES_DB"] == "db"
+    assert grader.environment["POSTGRES_USER"] == "user"
+    assert grader.environment["POSTGRES_PASSWORD"] == "secret"
+    assert grader.expected_database_volume == "idea-greenhouse-run11_postgres-data"
+
+
+def test_generation_two_migration_preserves_fixture_and_is_restart_safe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = _target(tmp_path / "target")
+    grader = SystemEvolutionGrader(
+        target,
+        2,
+        "idea-greenhouse-run12",
+        docker_path=Path("/usr/bin/docker"),
+    )
+    fixture = _fixture_content("idea-greenhouse-run12")
+    grader.generation_1_fixture_data = fixture
+
+    def request(
+        method: str, url: str, payload: dict[str, Any] | None = None
+    ) -> tuple[int, dict[str, Any], float, str]:
+        del method, payload
+        idea_id = int(url.rsplit("/", 1)[1])
+        expected = next(idea for idea in fixture["ideas"] if idea["id"] == idea_id)
+        return 200, {**expected, "next_action": None, "archived_at": None, "version": 1}, 0.01, ""
+
+    def compose(*args: str, timeout: int) -> CommandResult:
+        del timeout
+        if args[:3] == ("exec", "-T", "api"):
+            return _result(tuple(args), stdout="abc123 (head)\n")
+        return _result(tuple(args))
+
+    monkeypatch.setattr(grader, "_request", request)
+    monkeypatch.setattr(grader, "_compose", compose)
+    monkeypatch.setattr(grader, "_wait_for_health", lambda *args, **kwargs: None)
+
+    grader._generation_2_migration_checks()
+
+    assert [(check.id, check.status) for check in grader.result.checks] == [
+        ("G2-MIGRATION-PRESERVATION", "passed"),
+        ("G2-MIGRATION-DEFAULTS", "passed"),
+        ("G2-MIGRATION-ALEMBIC-CURRENT", "passed"),
+        ("G2-MIGRATION-RESTART-IDEMPOTENCE", "passed"),
+    ]
+
+
+def test_generation_two_missing_preserved_volume_is_a_hard_gate(tmp_path: Path) -> None:
+    target = _target(tmp_path / "target")
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, environment, timeout
+        return _result(tuple(args), returncode=1, stderr="no such volume")
+
+    grader = SystemEvolutionGrader(
+        target,
+        2,
+        "idea-greenhouse-run13",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+    )
+    grader.database_volume = "idea-greenhouse-run13_postgres-data"
+    grader.expected_database_volume = "idea-greenhouse-run13_postgres-data"
+
+    assert grader._preserved_volume_check() is False
+    check = grader.result.checks[0]
+    assert check.id == "G2-DEP-PRESERVED-VOLUME"
+    assert check.status == "failed"
+    assert check.hard_gate is True
 
 
 def _target(tmp_path: Path) -> Path:
@@ -446,3 +573,38 @@ def _compose_config() -> dict[str, Any]:
             },
         }
     }
+
+
+def _fixture_content(project: str) -> dict[str, Any]:
+    ideas = []
+    for idea_id, stage in enumerate(("seed", "sprout", "bloom"), 1):
+        ideas.append(
+            {
+                "id": idea_id,
+                "title": f"fixture {stage}",
+                "notes": None,
+                "stage": stage,
+                "created_at": f"2026-08-22T12:00:0{idea_id}Z",
+                "updated_at": f"2026-08-22T12:00:0{idea_id}Z",
+            }
+        )
+    return {
+        "schema_version": 1,
+        "demo": "system-evolution",
+        "generation": 1,
+        "created_at": "2026-08-22T12:00:00Z",
+        "target_revision": "generation-one-revision",
+        "compose_project": project,
+        "ideas": ideas,
+    }
+
+
+def _write_digested(path: Path, content: dict[str, Any]) -> None:
+    canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    content = {
+        **content,
+        "content_digest": f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}",
+    }
+    path.write_text(json.dumps(content))
+    if "postgres" in content:
+        path.chmod(0o600)

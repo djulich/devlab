@@ -60,11 +60,16 @@ uv run python demos/system-evolution/grader/system_evolution_grader.py \
 ```
 
 Generation 2 additionally receives a fixture artifact created by the generation
-1 seeding step:
+1 seeding step and its private evaluator resume state:
 
 ```text
   --generation-1-fixture /path/to/evidence/g1-devlab-fixture.json
+  --generation-1-resume /path/to/evidence/g1-devlab-resume.json
 ```
+
+The fixture contains shareable digested evidence. The mode-`0600` resume state
+contains the randomized local database configuration needed to reconnect to the
+preserved volume and must not be committed or exposed to target agents.
 
 The exact module name may be chosen during implementation. Reuse small
 evaluation utilities where their contracts fit, but keep this grader independent
