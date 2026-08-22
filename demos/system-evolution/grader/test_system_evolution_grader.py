@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -273,6 +274,133 @@ def test_browser_setup_failure_is_a_grader_error(tmp_path: Path) -> None:
     assert len(grader.result.checks) == 1
     assert grader.result.checks[0].id == "G1-UI-GRADER"
     assert grader.result.checks[0].status == "grader_error"
+
+
+def test_generation_one_fixture_is_seeded_through_public_api_and_digested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = _target(tmp_path / "target")
+    fixture = tmp_path / "evidence" / "generation-1-fixture.json"
+    grader = SystemEvolutionGrader(
+        target,
+        1,
+        "idea-greenhouse-run07",
+        docker_path=Path("/usr/bin/docker"),
+        host_port=49123,
+        generation_1_fixture_out=fixture,
+    )
+    grader.result.target_revision = "abc123"
+    requests: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def request(
+        method: str, url: str, payload: dict[str, Any] | None = None
+    ) -> tuple[int, dict[str, Any], float, str]:
+        requests.append((method, url, payload))
+        assert payload is not None
+        idea_id = len(requests)
+        body = {
+            "id": idea_id,
+            "title": payload["title"],
+            "notes": payload.get("notes"),
+            "stage": payload.get("stage", "seed"),
+            "created_at": f"2026-08-22T12:00:0{idea_id}Z",
+            "updated_at": f"2026-08-22T12:00:0{idea_id}Z",
+        }
+        return 201, body, 0.01, ""
+
+    monkeypatch.setattr(grader, "_request", request)
+
+    grader._create_generation_1_fixture()
+
+    assert [request[0] for request in requests] == ["POST", "POST", "POST"]
+    assert all(request[1] == "http://127.0.0.1:49123/api/ideas" for request in requests)
+    content = json.loads(fixture.read_text())
+    digest = content.pop("content_digest")
+    canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    assert digest == f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
+    assert content["target_revision"] == "abc123"
+    assert content["compose_project"] == "idea-greenhouse-run07"
+    assert [idea["stage"] for idea in content["ideas"]] == ["seed", "sprout", "bloom"]
+    check = grader.result.checks[0]
+    assert check.status == "passed"
+    assert check.artifacts == (str(fixture),)
+
+
+def test_generation_one_fixture_refuses_to_replace_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = _target(tmp_path / "target")
+    fixture = tmp_path / "fixture.json"
+    fixture.write_text("original\n")
+    grader = SystemEvolutionGrader(
+        target,
+        1,
+        "idea-greenhouse-run08",
+        docker_path=Path("/usr/bin/docker"),
+        generation_1_fixture_out=fixture,
+    )
+    monkeypatch.setattr(grader, "_request", lambda *args, **kwargs: pytest.fail())
+
+    grader._create_generation_1_fixture()
+
+    assert fixture.read_text() == "original\n"
+    assert grader.result.checks[0].status == "grader_error"
+
+
+def test_failed_fixture_seeding_removes_partial_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = _target(tmp_path / "target")
+    fixture = tmp_path / "fixture.json"
+    grader = SystemEvolutionGrader(
+        target,
+        1,
+        "idea-greenhouse-run09",
+        docker_path=Path("/usr/bin/docker"),
+        generation_1_fixture_out=fixture,
+    )
+    deleted: list[int] = []
+    posts = 0
+
+    def request(
+        method: str, url: str, payload: dict[str, Any] | None = None
+    ) -> tuple[int, dict[str, Any], float, str]:
+        nonlocal posts
+        if method == "DELETE":
+            deleted.append(int(url.rsplit("/", 1)[1]))
+            return 204, {}, 0.01, ""
+        posts += 1
+        assert payload is not None
+        body = {
+            "id": posts,
+            "title": payload["title"],
+            "notes": payload.get("notes"),
+            "stage": "seed" if posts == 2 else payload.get("stage", "seed"),
+            "created_at": "2026-08-22T12:00:00Z",
+            "updated_at": "2026-08-22T12:00:00Z",
+        }
+        return 201, body, 0.01, ""
+
+    monkeypatch.setattr(grader, "_request", request)
+
+    grader._create_generation_1_fixture()
+
+    assert deleted == [1, 2, 3]
+    assert not fixture.exists()
+    assert grader.result.checks[-1].status == "failed"
+
+
+def test_fixture_output_must_be_outside_target(tmp_path: Path) -> None:
+    target = _target(tmp_path / "target")
+
+    with pytest.raises(ValueError, match="outside the target checkout"):
+        SystemEvolutionGrader(
+            target,
+            1,
+            "idea-greenhouse-run10",
+            docker_path=Path("/usr/bin/docker"),
+            generation_1_fixture_out=target / "fixture.json",
+        )
 
 
 def _target(tmp_path: Path) -> Path:

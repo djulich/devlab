@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
+import os
 import re
 import secrets
 import shutil
@@ -158,6 +160,7 @@ class SystemEvolutionGrader:
         docker_path: Path | None = None,
         host_port: int | None = None,
         generation_1_fixture: Path | None = None,
+        generation_1_fixture_out: Path | None = None,
     ) -> None:
         self.target = target.resolve()
         self.generation = generation
@@ -167,6 +170,14 @@ class SystemEvolutionGrader:
         self.docker = Path(discovered).resolve() if discovered else None
         self.host_port = host_port or available_port()
         self.generation_1_fixture = generation_1_fixture
+        self.generation_1_fixture_out = (
+            generation_1_fixture_out.resolve() if generation_1_fixture_out is not None else None
+        )
+        if (
+            self.generation_1_fixture_out is not None
+            and self.generation_1_fixture_out.is_relative_to(self.target)
+        ):
+            raise ValueError("generation 1 fixture output must be outside the target checkout")
         suffix = secrets.token_hex(6)
         self.prefix = f"grader-{suffix}"
         self.environment = self._environment(suffix)
@@ -225,6 +236,7 @@ class SystemEvolutionGrader:
             self._api_checks()
             self._browser_checks()
             self._persistence_checks()
+            self._create_generation_1_fixture()
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             self.result.add(
                 Check(
@@ -599,6 +611,163 @@ class SystemEvolutionGrader:
                 ("G1-DATA-02", "G1-DEP-08"),
             )
         )
+        if isinstance(idea_id, int):
+            deleted = self._request("DELETE", f"{base}/ideas/{idea_id}")
+            if deleted[0] != 204:
+                self.result.add(
+                    Check(
+                        "G1-FIXTURE-PROBE-CLEANUP",
+                        "migration",
+                        "grader_error",
+                        deleted[2],
+                        "could not remove persistence probe before fixture seeding; "
+                        f"{summarize_http(deleted)}",
+                    )
+                )
+
+    def _create_generation_1_fixture(self) -> None:
+        output = self.generation_1_fixture_out
+        if output is None:
+            self.result.add(
+                Check(
+                    "G1-EVOLUTION-FIXTURE",
+                    "migration",
+                    "unverified",
+                    0,
+                    "no generation 1 fixture output path was configured",
+                    hard_gate=True,
+                )
+            )
+            return
+        if output.exists():
+            self.result.add(
+                Check(
+                    "G1-EVOLUTION-FIXTURE",
+                    "migration",
+                    "grader_error",
+                    0,
+                    f"refusing to replace existing fixture artifact: {output}",
+                )
+            )
+            return
+        started = time.monotonic()
+        base = f"http://127.0.0.1:{self.host_port}/api/ideas"
+        requests = (
+            {
+                "title": f"{self.prefix} fixture seed",
+                "notes": "Capture the first café idea 🌱",
+            },
+            {
+                "title": f"{self.prefix} fixture sprout",
+                "notes": "Explore the preserved migration path",
+                "stage": "sprout",
+            },
+            {
+                "title": f"{self.prefix} fixture bloom",
+                "notes": None,
+                "stage": "bloom",
+            },
+        )
+        ideas: list[dict[str, Any]] = []
+        created_ids: list[int] = []
+        failures: list[str] = []
+        for payload in requests:
+            response = self._request("POST", base, payload)
+            response_id = response[1].get("id")
+            if (
+                response[0] == 201
+                and isinstance(response_id, int)
+                and not isinstance(response_id, bool)
+            ):
+                created_ids.append(response_id)
+            problem = validate_generation_1_fixture_idea(response[1], payload)
+            if response[0] != 201 or problem:
+                failures.append(f"{payload['title']}: {problem or summarize_http(response)}")
+            else:
+                ideas.append(response[1])
+        if failures:
+            self._remove_partial_fixture(base, created_ids)
+            self.result.add(
+                Check(
+                    "G1-EVOLUTION-FIXTURE",
+                    "migration",
+                    "failed",
+                    time.monotonic() - started,
+                    "; ".join(failures)[:4000],
+                    ("G1-DATA-01", "G1-API-02"),
+                    hard_gate=True,
+                )
+            )
+            return
+        ids = [idea["id"] for idea in ideas]
+        if len(set(ids)) != 3:
+            self._remove_partial_fixture(base, created_ids)
+            self.result.add(
+                Check(
+                    "G1-EVOLUTION-FIXTURE",
+                    "migration",
+                    "failed",
+                    time.monotonic() - started,
+                    f"fixture IDs are not unique: {ids}",
+                    ("G1-DATA-01",),
+                    hard_gate=True,
+                )
+            )
+            return
+        content: dict[str, Any] = {
+            "schema_version": 1,
+            "demo": "system-evolution",
+            "generation": 1,
+            "created_at": datetime.now(UTC).isoformat(),
+            "target_revision": self.result.target_revision,
+            "compose_project": self.project,
+            "ideas": ideas,
+        }
+        canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        content["content_digest"] = f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
+        try:
+            write_new_json(output, content)
+        except OSError as error:
+            self._remove_partial_fixture(base, created_ids)
+            self.result.add(
+                Check(
+                    "G1-EVOLUTION-FIXTURE",
+                    "migration",
+                    "grader_error",
+                    time.monotonic() - started,
+                    f"could not write fixture: {error}",
+                )
+            )
+            return
+        self.result.add(
+            Check(
+                "G1-EVOLUTION-FIXTURE",
+                "migration",
+                "passed",
+                time.monotonic() - started,
+                f"seeded idea IDs {[idea['id'] for idea in ideas]}; "
+                f"digest={content['content_digest']}",
+                ("G1-DATA-01", "G1-API-02"),
+                (str(output),),
+            )
+        )
+
+    def _remove_partial_fixture(self, base: str, idea_ids: Sequence[int]) -> None:
+        failures = []
+        for idea_id in dict.fromkeys(idea_ids):
+            response = self._request("DELETE", f"{base}/{idea_id}")
+            if response[0] != 204:
+                failures.append(f"id={idea_id}: {summarize_http(response)}")
+        if failures:
+            self.result.add(
+                Check(
+                    "G1-EVOLUTION-FIXTURE-CLEANUP",
+                    "migration",
+                    "grader_error",
+                    0,
+                    "could not remove partial fixture records; " + "; ".join(failures)[:3800],
+                )
+            )
 
     def _browser_checks(self) -> None:
         if self.docker is None:
@@ -880,6 +1049,39 @@ def available_port() -> int:
         return int(listener.getsockname()[1])
 
 
+def validate_generation_1_fixture_idea(idea: dict[str, Any], request: Mapping[str, Any]) -> str:
+    required = {"id", "title", "notes", "stage", "created_at", "updated_at"}
+    if set(idea) != required:
+        return f"response fields={sorted(idea)}; expected={sorted(required)}"
+    if not isinstance(idea["id"], int) or isinstance(idea["id"], bool) or idea["id"] <= 0:
+        return f"invalid positive integer ID: {idea['id']!r}"
+    expected_stage = request.get("stage", "seed")
+    for field, expected in (
+        ("title", request["title"]),
+        ("notes", request.get("notes")),
+        ("stage", expected_stage),
+    ):
+        if idea[field] != expected:
+            return f"{field}={idea[field]!r}; expected={expected!r}"
+    if not all(
+        isinstance(idea[field], str) and idea[field] for field in ("created_at", "updated_at")
+    ):
+        return "created_at and updated_at must be non-empty timestamp strings"
+    return ""
+
+
+def write_new_json(path: Path, content: Mapping[str, Any]) -> None:
+    """Atomically create evaluator evidence without replacing an existing artifact."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
+    temporary.write_text(json.dumps(content, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    try:
+        os.link(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def command_evidence(result: CommandResult) -> str:
     detail = result.stderr.strip() or result.stdout.strip()
     return f"exit={result.returncode}" + (f"; {detail[-4000:]}" if detail else "")
@@ -1090,17 +1292,22 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--compose-project", required=True)
     parser.add_argument("--json-out", type=Path, required=True)
     parser.add_argument("--generation-1-fixture", type=Path)
+    parser.add_argument("--generation-1-fixture-out", type=Path)
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    fixture_out = args.generation_1_fixture_out
+    if args.generation == 1 and fixture_out is None:
+        fixture_out = args.json_out.with_name(f"{args.json_out.stem}-fixture.json")
     try:
         grader = SystemEvolutionGrader(
             args.target,
             args.generation,
             args.compose_project,
             generation_1_fixture=args.generation_1_fixture,
+            generation_1_fixture_out=fixture_out,
         )
         result = grader.grade()
     except ValueError as error:

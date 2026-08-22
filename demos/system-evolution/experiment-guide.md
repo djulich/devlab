@@ -100,7 +100,7 @@ Do not commit real credentials or provider configuration.
     commits, tags, logs, and resource usage.
 11. Do not edit the target before grading.
 12. Run the generation 1 independent grader and retain its machine-readable and
-    human-readable reports.
+    human-readable reports plus the generated evolution-fixture JSON.
 
 If the workflow requests clarification, answer only from the specification or
 the experiment's predeclared policy. Record the question and answer. Do not use
@@ -121,7 +121,8 @@ part of the specification.
 5. Record the final revision, working-tree status, transcript/log location,
    elapsed time, tokens, cost, and commands run.
 6. Do not edit the target before grading.
-7. Run the same generation 1 independent grader and retain its reports.
+7. Run the same generation 1 independent grader and retain its reports and
+   evolution-fixture JSON.
 
 If the agent asks a blocking question, answer under the same rule used for
 DevLab clarifications and record the exchange. The answer becomes repository
@@ -132,15 +133,18 @@ evidence only if the agent chooses to write it there.
 Generation 2 must test migration of real generation 1 state rather than only an
 empty schema.
 
-After generation 1 grading, use the generation 1 public API through the frontend
-origin to create a grader-owned fixture set in each target:
+As the final generation 1 grading step, the independent grader uses the public
+API through the frontend origin to create a grader-owned fixture set in each
+target:
 
 - one seed idea;
 - one sprout idea; and
 - one bloom idea.
 
-Use distinct titles with a recorded run ID. Retain the returned IDs, timestamps,
-and response bodies. Stop the stacks without deleting their database volumes.
+It uses randomized titles and retains complete response bodies, target revision,
+Compose project, and a canonical content digest in evaluator-owned JSON. Stop the
+stacks without deleting their database volumes. The grader refuses to overwrite
+an existing fixture artifact.
 
 The seeding program must be part of the independent grader, not an agent-authored
 target script. Do not seed one arm from a database dump produced by the other.
