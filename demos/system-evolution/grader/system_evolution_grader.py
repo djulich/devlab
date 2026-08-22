@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Independent black-box grader for the system-evolution demo.
 
 This module deliberately does not use DevLab workflow state.  It invokes an
@@ -15,6 +16,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -47,6 +49,10 @@ REQUIRED_ARTIFACTS = (
     "Makefile",
     "README.md",
 )
+PLAYWRIGHT_IMAGE = "mcr.microsoft.com/playwright:v1.53.1-jammy"
+PLAYWRIGHT_VERSION = "1.53.1"
+BROWSER_RESULT_MARKER = "DEVLAB_BROWSER_RESULT:"
+BROWSER_GRADER_ERROR_MARKER = "DEVLAB_GRADER_ERROR:"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -217,6 +223,7 @@ class SystemEvolutionGrader:
                 return self._finish()
             self._runtime_topology_check()
             self._api_checks()
+            self._browser_checks()
             self._persistence_checks()
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             self.result.add(
@@ -593,6 +600,83 @@ class SystemEvolutionGrader:
             )
         )
 
+    def _browser_checks(self) -> None:
+        if self.docker is None:
+            return
+        with tempfile.TemporaryDirectory(prefix="devlab-system-evolution-browser-") as directory:
+            script = Path(directory) / "browser-check.js"
+            script.write_text(BROWSER_CHECK_SCRIPT)
+            command = (
+                str(self.docker),
+                "run",
+                "--rm",
+                "--pull=missing",
+                "--network=host",
+                "--mount",
+                f"type=bind,src={script},dst=/grader/browser-check.js,readonly",
+                PLAYWRIGHT_IMAGE,
+                "bash",
+                "-lc",
+                "npm install --prefix /tmp/evaluator-tools --no-save "
+                f"playwright@{PLAYWRIGHT_VERSION} >/tmp/playwright-install.log 2>&1 || "
+                "{ cat /tmp/playwright-install.log >&2; exit 1; }; "
+                'node /grader/browser-check.js "$0"',
+                f"http://127.0.0.1:{self.host_port}",
+            )
+            try:
+                completed = self.runner(command, self.target, self.environment, 360)
+            except (OSError, subprocess.SubprocessError) as error:
+                self.result.add(
+                    Check(
+                        "G1-UI-GRADER",
+                        "browser",
+                        "grader_error",
+                        0,
+                        f"browser evaluator could not run: {error}",
+                    )
+                )
+                return
+        output = f"{completed.stdout}\n{completed.stderr}"
+        marker_line = next(
+            (line for line in output.splitlines() if line.startswith(BROWSER_RESULT_MARKER)),
+            None,
+        )
+        if marker_line is None or completed.returncode != 0:
+            status: Status = "grader_error"
+            evidence = command_evidence(completed)
+            if BROWSER_GRADER_ERROR_MARKER in output:
+                evidence = output[-4000:]
+            self.result.add(
+                Check("G1-UI-GRADER", "browser", status, completed.duration_seconds, evidence)
+            )
+            return
+        try:
+            payload = json.loads(marker_line.removeprefix(BROWSER_RESULT_MARKER))
+            checks = payload["checks"]
+            if not isinstance(checks, list):
+                raise ValueError("browser result checks must be a list")
+            for item in checks:
+                self.result.add(
+                    Check(
+                        str(item["id"]),
+                        "browser",
+                        "passed" if item["passed"] else "failed",
+                        completed.duration_seconds / max(len(checks), 1),
+                        str(item.get("evidence", ""))[:4000],
+                        tuple(str(value) for value in item.get("requirement_ids", [])),
+                    )
+                )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            self.result.add(
+                Check(
+                    "G1-UI-GRADER",
+                    "browser",
+                    "grader_error",
+                    completed.duration_seconds,
+                    f"invalid browser result: {error}; output={output[-4000:]}",
+                )
+            )
+
     def _wait_for_health(self, base: str, deadline_seconds: float = 60) -> None:
         deadline = time.monotonic() + deadline_seconds
         while time.monotonic() < deadline:
@@ -805,6 +889,181 @@ def summarize_http(response: tuple[int, dict[str, Any], float, str]) -> str:
     status, body, _, error = response
     rendered = json.dumps(body, ensure_ascii=False, sort_keys=True)
     return f"status={status}; body={rendered[:2000]}" + (f"; error={error}" if error else "")
+
+
+BROWSER_CHECK_SCRIPT = r"""
+const { chromium } = require('/tmp/evaluator-tools/node_modules/playwright');
+
+const baseUrl = process.argv[2];
+const checks = [];
+const diagnostics = { consoleErrors: [], pageErrors: [] };
+const title = `grader-browser-${Date.now()}`;
+const editedTitle = `${title}-edited`;
+
+function record(id, passed, evidence, requirementIds) {
+  checks.push({ id, passed, evidence, requirement_ids: requirementIds });
+}
+
+async function check(id, requirementIds, action) {
+  try {
+    const evidence = await action();
+    record(id, true, evidence || 'verified', requirementIds);
+  } catch (error) {
+    record(id, false, error.message, requirementIds);
+  }
+}
+
+async function visible(locator) {
+  return (await locator.count()) > 0 && await locator.first().isVisible();
+}
+
+async function main() {
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    page.on('pageerror', error => diagnostics.pageErrors.push(error.message));
+    page.on('console', message => {
+      if (message.type() === 'error' && !/favicon/i.test(message.text())) {
+        diagnostics.consoleErrors.push(message.text());
+      }
+    });
+
+    await check('G1-UI-LOAD', ['G1-UI-01', 'G1-UI-05', 'G1-INT-01'], async () => {
+      const response = await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 20000 });
+      if (!response || !response.ok()) throw new Error(`navigation status=${response?.status()}`);
+      await page.getByText('Idea Greenhouse', { exact: false }).first().waitFor();
+      return `loaded ${baseUrl} through the frontend origin`;
+    });
+
+    await check('G1-UI-EMPTY', ['G1-UI-01', 'G1-UI-05'], async () => {
+      const body = await page.locator('body').innerText();
+      if (!/no ideas|empty|first idea|capture an idea|create an idea/i.test(body)) {
+        throw new Error(`no explicit empty state; body=${body.slice(0, 1000)}`);
+      }
+      return 'explicit empty state is visible';
+    });
+
+    const titleField = page.getByLabel(/title/i).first();
+    const notesField = page.getByLabel(/notes/i).first();
+    const stageField = page.getByLabel(/stage/i).first();
+    const createButton = page.getByRole('button', { name: /create|add|capture|save idea/i }).first();
+
+    await check('G1-UI-ACCESSIBILITY', ['G1-UI-06'], async () => {
+      for (const [name, locator] of [
+        ['title', titleField], ['notes', notesField], ['stage', stageField], ['create', createButton]
+      ]) {
+        if (!await visible(locator)) throw new Error(`${name} control lacks a visible accessible name`);
+      }
+      for (const name of [/^all$/i, /seeds?/i, /sprouts?/i, /blooms?/i]) {
+        if (!await visible(page.getByRole('button', { name }).or(page.getByRole('link', { name })))) {
+          throw new Error(`missing accessible filter ${name}`);
+        }
+      }
+      await titleField.focus();
+      await page.keyboard.press('Tab');
+      const focused = await page.evaluate(() => document.activeElement?.tagName || '');
+      if (!focused) throw new Error('principal controls are not keyboard reachable');
+      const selected = page.locator('[aria-pressed="true"], [aria-current="true"], [aria-selected="true"]');
+      if (!await visible(selected)) throw new Error('selected filter state is not exposed');
+      return 'labeled controls, keyboard focus, and selected filter state verified';
+    });
+
+    await check('G1-UI-BLANK-VALIDATION', ['G1-UI-02', 'G1-UI-06'], async () => {
+      let createRequests = 0;
+      const observe = request => {
+        if (request.method() === 'POST' && /\/api\/ideas/.test(request.url())) createRequests += 1;
+      };
+      page.on('request', observe);
+      await titleField.fill('   ');
+      await createButton.click();
+      await page.waitForTimeout(300);
+      page.off('request', observe);
+      const message = page.locator('[role="alert"]:visible, [aria-live]:visible');
+      const body = await page.locator('body').innerText();
+      if (!await visible(message) && !/title.{0,40}(required|blank|empty|enter)/i.test(body)) {
+        throw new Error('blank title did not produce a visible validation message');
+      }
+      if (createRequests !== 0) throw new Error(`blank title sent ${createRequests} POST request(s)`);
+      return 'blank title rejected visibly without an API request';
+    });
+
+    await check('G1-UI-CREATE', ['G1-UI-01', 'G1-UI-02'], async () => {
+      await titleField.fill(title);
+      await notesField.fill('browser-created notes');
+      await createButton.click();
+      await page.getByText(title, { exact: true }).waitFor({ timeout: 8000 });
+      const body = await page.locator('body').innerText();
+      if (!body.includes('browser-created notes')) throw new Error('created notes are not visible');
+      if (!/total\s*[:]?\s*1|1\s*total/i.test(body)) throw new Error('total count did not update to one');
+      return 'idea and updated count became visible without reload';
+    });
+
+    await check('G1-UI-STAGE-FILTER', ['G1-UI-03'], async () => {
+      const card = page.getByText(title, { exact: true }).locator('xpath=ancestor::*[.//button][1]');
+      const select = card.getByRole('combobox').first();
+      if (await visible(select)) await select.selectOption('sprout');
+      else {
+        const change = card.getByRole('button', { name: /sprout|change stage|stage/i }).first();
+        if (!await visible(change)) throw new Error('no accessible stage-change control');
+        await change.click();
+        const sprout = page.getByRole('button', { name: /sprout/i }).last();
+        if (await visible(sprout)) await sprout.click();
+      }
+      await page.getByText(/sprout/i).first().waitFor({ timeout: 8000 });
+      const filter = page.getByRole('button', { name: /sprouts?/i }).or(page.getByRole('link', { name: /sprouts?/i })).first();
+      await filter.click();
+      await page.getByText(title, { exact: true }).waitFor();
+      return 'stage changed to sprout and remained visible through the Sprouts filter';
+    });
+
+    await check('G1-UI-EDIT', ['G1-UI-02'], async () => {
+      const card = page.getByText(title, { exact: true }).locator('xpath=ancestor::*[.//button][1]');
+      await card.getByRole('button', { name: /edit/i }).click();
+      const editTitle = page.getByLabel(/title/i).last();
+      await editTitle.fill(editedTitle);
+      await page.getByRole('button', { name: /save|update/i }).last().click();
+      await page.getByText(editedTitle, { exact: true }).waitFor({ timeout: 8000 });
+      return 'edited title became visible without reload';
+    });
+
+    await check('G1-UI-DELETE-CONFIRM', ['G1-UI-04'], async () => {
+      const card = page.getByText(editedTitle, { exact: true }).locator('xpath=ancestor::*[.//button][1]');
+      let nativeConfirmation = '';
+      page.once('dialog', async dialog => {
+        nativeConfirmation = dialog.message();
+        await dialog.accept();
+      });
+      await card.getByRole('button', { name: /delete|remove/i }).click();
+      const dialog = page.getByRole('dialog');
+      if (await visible(dialog)) {
+        const text = await dialog.innerText();
+        if (!text.includes(editedTitle)) throw new Error('confirmation does not identify the idea');
+        await dialog.getByRole('button', { name: /confirm|delete|remove/i }).click();
+      } else if (!nativeConfirmation.includes(editedTitle)) {
+        throw new Error('deletion did not require confirmation identifying the idea');
+      }
+      await page.getByText(editedTitle, { exact: true }).waitFor({ state: 'hidden', timeout: 8000 });
+      return 'identified confirmation was required and the idea was deleted';
+    });
+
+    await check('G1-UI-RUNTIME-ERRORS', ['G1-UI-05'], async () => {
+      if (diagnostics.pageErrors.length) throw new Error(`page errors: ${diagnostics.pageErrors.join(' | ')}`);
+      if (diagnostics.consoleErrors.length) throw new Error(`console errors: ${diagnostics.consoleErrors.join(' | ')}`);
+      return 'no page or severe console errors';
+    });
+
+    console.log('DEVLAB_BROWSER_RESULT:' + JSON.stringify({ checks, diagnostics }));
+  } catch (error) {
+    console.error('DEVLAB_GRADER_ERROR:' + JSON.stringify({ error: error.message, diagnostics }));
+    process.exitCode = 2;
+  } finally {
+    if (browser) await browser.close();
+  }
+}
+
+main();
+"""
 
 
 def render_report(result: GradeResult) -> str:

@@ -17,10 +17,15 @@ uv run python demos/system-evolution/grader/system_evolution_grader.py \
 The target must be a clean Git checkout. Docker Engine with Compose v2 is an
 external prerequisite. The grader allocates a host port and randomized test
 data, builds and starts exactly the target's `db`, `api`, and `frontend`
-services, exercises generation 1 behavior through the frontend origin, verifies
-persistence, and writes versioned dimensional JSON. Every Compose mutation is
-scoped to the validated project name. Cleanup stops only that project and never
-deletes its database volume.
+services, exercises generation 1 API and browser behavior through the frontend
+origin, verifies persistence, and writes versioned dimensional JSON. Browser
+checks use a pinned evaluator-owned Playwright container and an absolute package
+path, never target dependencies. They cover loading/runtime errors, the empty
+state, blank-title validation without an API request, creation/counts, stage and
+filter behavior, editing, identified deletion confirmation, accessible names,
+keyboard focus, and exposed filter selection. Every Compose mutation is scoped
+to the validated project name. Cleanup stops only that project and never deletes
+its database volume.
 
 The grader never invokes agents, repairs targets, creates DevLab findings, or
 feeds results back into a workflow. Product failures, unavailable prerequisites,

@@ -72,8 +72,9 @@ Playwright without axe-core, eight synchronized concurrency repetitions,
 lightweight image/runtime inspection, dimensional results without a weighted
 score, and isolated target-owned deployment checks.
 
-The grader foundation implements the versioned result model, scoped Compose
-lifecycle, structural/topology checks, core generation 1 API checks, and restart
-persistence checks. Browser grading, generation 1 fixture seeding, and generation
-2 migration/concurrency grading remain subsequent slices. See `grader/README.md`
-for its current interface and boundaries.
+The grader implements the versioned result model, scoped Compose lifecycle,
+structural/topology checks, core generation 1 API checks, evaluator-owned
+Playwright browser/accessibility checks, and restart persistence checks.
+Generation 1 fixture seeding and generation 2 migration/concurrency grading
+remain subsequent slices. See `grader/README.md` for its current interface and
+boundaries.

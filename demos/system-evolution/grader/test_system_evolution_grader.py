@@ -191,6 +191,90 @@ def test_generation_two_is_explicitly_deferred_without_touching_compose(
     assert not any("compose" in call for call in calls)
 
 
+def test_browser_checks_use_isolated_pinned_playwright_and_expand_results(tmp_path: Path) -> None:
+    target = _target(tmp_path)
+    captured: list[tuple[str, ...]] = []
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, environment
+        command = tuple(args)
+        captured.append(command)
+        assert timeout == 360
+        mount = command[command.index("--mount") + 1]
+        script_path = Path(mount.split(",")[1].removeprefix("src="))
+        script = script_path.read_text()
+        assert "require('/tmp/evaluator-tools/node_modules/playwright')" in script
+        payload = {
+            "checks": [
+                {
+                    "id": "G1-UI-LOAD",
+                    "passed": True,
+                    "evidence": "loaded",
+                    "requirement_ids": ["G1-UI-01"],
+                },
+                {
+                    "id": "G1-UI-EMPTY",
+                    "passed": False,
+                    "evidence": "missing empty state",
+                    "requirement_ids": ["G1-UI-05"],
+                },
+            ]
+        }
+        return _result(command, stdout=f"DEVLAB_BROWSER_RESULT:{json.dumps(payload)}\n")
+
+    grader = SystemEvolutionGrader(
+        target,
+        1,
+        "idea-greenhouse-run05",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+        host_port=49123,
+    )
+
+    grader._browser_checks()
+
+    command = captured[0]
+    assert command[:2] == ("/usr/bin/docker", "run")
+    assert "--network=host" in command
+    assert "mcr.microsoft.com/playwright:v1.53.1-jammy" in command
+    assert "playwright@1.53.1" in command[-2]
+    assert all(str(target) not in argument for argument in command)
+    assert [(check.id, check.status) for check in grader.result.checks] == [
+        ("G1-UI-LOAD", "passed"),
+        ("G1-UI-EMPTY", "failed"),
+    ]
+
+
+def test_browser_setup_failure_is_a_grader_error(tmp_path: Path) -> None:
+    target = _target(tmp_path)
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, environment, timeout
+        return _result(
+            tuple(args),
+            returncode=1,
+            stderr='DEVLAB_GRADER_ERROR:{"error":"chromium launch failed"}',
+        )
+
+    grader = SystemEvolutionGrader(
+        target,
+        1,
+        "idea-greenhouse-run06",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+    )
+
+    grader._browser_checks()
+
+    assert len(grader.result.checks) == 1
+    assert grader.result.checks[0].id == "G1-UI-GRADER"
+    assert grader.result.checks[0].status == "grader_error"
+
+
 def _target(tmp_path: Path) -> Path:
     for relative in (
         "compose.yaml",
