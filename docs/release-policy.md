@@ -123,7 +123,10 @@ the tag for package version `0.2.0` is `v0.2.0`.
    ```
 
 8. Verify that the source distribution and wheel contain the expected package
-   metadata, license, resources, and documentation.
+   metadata, license, resources, and documentation. The wheel contains only the
+   installed product. The source distribution additionally contains `Makefile`,
+   `uv.lock`, and the product tests so `make check` can validate the unpacked
+   release source. Repository-only `demos/` content appears in neither artifact.
 9. Install the built wheel into a clean environment and smoke-test the installed
    command:
 

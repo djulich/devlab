@@ -58,11 +58,16 @@ A DevLab repository contains the reusable tool and default worker instructions:
 devlab-repo/
 ├── src/devlab/
 ├── tests/
+├── demos/
 ├── docs/
 ├── src/devlab/resources/init/
 ├── src/devlab/resources/prompts/
-└── examples/
+└── Makefile
 ```
+
+`tests/` validates the installable product and is included in the source
+distribution, but not the wheel. `demos/` contains repository-only demonstration
+packages and external graders; it is excluded from both distribution formats.
 
 A target workspace contains product-specific DevLab workflow artifacts under `.devlab/`:
 

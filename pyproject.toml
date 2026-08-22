@@ -29,6 +29,10 @@ dev = ["pytest", "ruff", "ty"]
 requires = ["uv_build>=0.11.6,<0.12.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+source-include = ["Makefile", "tests/**", "uv.lock"]
+source-exclude = ["/demos"]
+
 [tool.ruff]
 src = ["src"]
 line-length = 99

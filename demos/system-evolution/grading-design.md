@@ -52,7 +52,7 @@ Implement a Python grading CLI in DevLab's evaluation code, with a thin demo
 runner selecting generation 1 or 2. A possible operator interface is:
 
 ```text
-uv run python -m tests.evaluations.system_evolution_grader \
+uv run python demos/system-evolution/grader/system_evolution_grader.py \
   --generation 1 \
   --target /path/to/target \
   --compose-project idea-greenhouse-run01-devlab \

@@ -21,7 +21,7 @@ Install these outside the target repositories:
 - Docker Engine with Compose v2, or a deliberately selected compatible Compose
   implementation;
 - a coding-agent CLI for the single-agent arm;
-- host tools required by the future independent grader; and
+- host tools required by the independent grader; and
 - a timing and usage-recording method appropriate to the chosen providers.
 
 Do not let DevLab, the generated product, or the grader install missing host

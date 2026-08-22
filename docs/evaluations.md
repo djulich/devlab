@@ -27,6 +27,10 @@ read-only target mount provides mutation isolation but not dependency-resolution
 isolation. Checks that copy a target into disposable storage must preserve both
 boundaries explicitly.
 
+Specification-specific demonstration graders are repository-only packages under
+[`demos/`](../demos/). Generic DevLab workflow-evaluation infrastructure remains
+in this test suite.
+
 Black-box check diagnostics use four statuses:
 
 - `passed` — product behavior was exercised and satisfied the check;

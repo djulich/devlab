@@ -334,5 +334,6 @@ shell-command, or exact-output fixture.
 - [`docs/how-to/`](docs/how-to/README.md) — step-by-step procedures for common DevLab use cases.
 - [`docs/agent-configuration.md`](docs/agent-configuration.md) — target-owned agent command configuration.
 - [`docs/evaluations.md`](docs/evaluations.md) — scripted and live workflow evaluations.
+- [`demos/`](demos/README.md) — repository-only demonstrations and external graders.
 - [`docs/release-policy.md`](docs/release-policy.md) — versioning, compatibility, and release expectations.
 - [`docs/todo.md`](docs/todo.md) — current roadmap and known gaps.

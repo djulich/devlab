@@ -35,6 +35,10 @@ prompts/
 experiment-guide.md
 evidence-template.md
 grading-design.md
+grader/
+  README.md
+  system_evolution_grader.py
+  test_system_evolution_grader.py
 ```
 
 Both generation 2 specifications are complete authoritative desired-state
@@ -66,5 +70,10 @@ The documentary protocol and specifications are ready. The first-version grader
 choices are fixed in `grading-design.md`: Docker Compose v2, evaluator-owned
 Playwright without axe-core, eight synchronized concurrency repetitions,
 lightweight image/runtime inspection, dimensional results without a weighted
-score, and isolated target-owned deployment checks. The grader is the proposed
-next implementation slice; it is not yet implemented.
+score, and isolated target-owned deployment checks.
+
+The grader foundation implements the versioned result model, scoped Compose
+lifecycle, structural/topology checks, core generation 1 API checks, and restart
+persistence checks. Browser grading, generation 1 fixture seeding, and generation
+2 migration/concurrency grading remain subsequent slices. See `grader/README.md`
+for its current interface and boundaries.
