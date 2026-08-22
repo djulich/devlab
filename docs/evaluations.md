@@ -19,6 +19,30 @@ strengthen that verification afterward, but their results are recorded only as
 grading evidence. See
 [ADR 0011](adr/0011-keep-workflow-evaluation-grading-outside-the-workflow.md).
 
+Independence includes runtime resolution, not only workflow policy. Evaluator
+executables and libraries must resolve from evaluator-owned absolute locations;
+the target's working directory, `PATH`, `PYTHONPATH`, `NODE_PATH`, classpath, or
+similar search mechanisms must not silently replace grader dependencies. A
+read-only target mount provides mutation isolation but not dependency-resolution
+isolation. Checks that copy a target into disposable storage must preserve both
+boundaries explicitly.
+
+Black-box check diagnostics use four statuses:
+
+- `passed` — product behavior was exercised and satisfied the check;
+- `failed` — product behavior was exercised and violated the check;
+- `unverified` — the check did not run because an external prerequisite was
+  unavailable or deliberately disabled; and
+- `grader_error` — evaluator setup, execution, or cleanup failed before the
+  product claim could be decided.
+
+The retained Boolean `passed` field remains for compatibility and for deciding
+whether an evaluation test itself succeeds. Quality correctness is indeterminate
+when grading is incomplete and no actual product check failed; grader errors are
+not recorded as product failures. Diagnostic handling should wrap dependency
+loading, fixture setup, tool/browser launch, product actions, and cleanup rather
+than only the central assertion steps.
+
 ## Deterministic scripted evaluations
 
 Run with the normal test suite:

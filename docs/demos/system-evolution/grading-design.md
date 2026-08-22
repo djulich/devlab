@@ -38,6 +38,14 @@ product and not to the evaluated workflow. It follows ADR 0011:
 - it writes results outside the committed target, or into an explicitly
   evaluator-owned untracked artifact location after grading.
 
+Evaluator dependencies and executables must also resolve from evaluator-owned
+absolute locations. A read-only target mount prevents mutation but does not stop
+target-local modules, binaries, or environment configuration from shadowing
+grader tooling. Do not rely on search-path precedence such as `PATH`,
+`PYTHONPATH`, or `NODE_PATH` for this boundary. Wrap evaluator dependency
+loading, setup, launch, action, and cleanup in structured diagnostics so a
+`grader_error` cannot be mislabeled as a product failure.
+
 ## Proposed program
 
 Implement a Python grading CLI in DevLab's evaluation code, with a thin demo

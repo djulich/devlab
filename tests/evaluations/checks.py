@@ -11,7 +11,7 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 from urllib.parse import quote
 
 
@@ -20,6 +20,11 @@ class CheckResult:
     name: str
     passed: bool
     message: str = ""
+    status: Literal["passed", "failed", "unverified", "grader_error"] | None = None
+
+    def __post_init__(self) -> None:
+        if self.status is None:
+            object.__setattr__(self, "status", "passed" if self.passed else "failed")
 
 
 BlackBoxCheck = Callable[[Path], CheckResult]
@@ -205,9 +210,15 @@ def optional_docker_compose_config_check(
                 name,
                 True,
                 f"skipped: set {enable_env}=1 to run docker compose config",
+                "unverified",
             )
         if shutil.which("docker") is None:
-            return CheckResult(name, True, "skipped: 'docker' is not on PATH; unverified")
+            return CheckResult(
+                name,
+                True,
+                "skipped: 'docker' is not on PATH; unverified",
+                "unverified",
+            )
         if not (root / "compose.yaml").exists():
             return CheckResult(name, False, "missing compose.yaml")
         result = subprocess.run(
@@ -246,9 +257,19 @@ def optional_make_target_check(
 
     def check(root: Path) -> CheckResult:
         if os.environ.get(enable_env) != "1":
-            return CheckResult(name, True, f"skipped: set {enable_env}=1 to run make {target}")
+            return CheckResult(
+                name,
+                True,
+                f"skipped: set {enable_env}=1 to run make {target}",
+                "unverified",
+            )
         if shutil.which("make") is None:
-            return CheckResult(name, True, "skipped: 'make' is not on PATH; unverified")
+            return CheckResult(
+                name,
+                True,
+                "skipped: 'make' is not on PATH; unverified",
+                "unverified",
+            )
         if not (root / "Makefile").exists():
             return CheckResult(name, False, "missing Makefile")
         result = subprocess.run(
@@ -459,6 +480,7 @@ def react_vite_container_build_check(
             "react vite container build",
             False,
             f"{runtime!r} is not on PATH; install/configure {runtime} to run this live check",
+            "unverified",
         )
     if not (root / "package.json").exists():
         return CheckResult("react vite container build", False, "missing package.json")
@@ -518,6 +540,7 @@ def react_vite_browser_integration_check(
             "react vite browser integration",
             False,
             f"{runtime!r} is not on PATH; install/configure {runtime} to run this live check",
+            "unverified",
         )
     if not (root / "package.json").exists():
         return CheckResult("react vite browser integration", False, "missing package.json")
@@ -537,14 +560,27 @@ def react_vite_browser_integration_check(
         "-lc",
         script,
     ]
-    result = subprocess.run(
-        command,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return CheckResult(
+            "react vite browser integration",
+            False,
+            f"{runtime} browser integration grader could not complete: {error}",
+            "grader_error",
+        )
     passed = result.returncode == 0
+    status = (
+        "passed"
+        if passed
+        else ("grader_error" if "DEVLAB_GRADER_ERROR:" in result.stderr else "failed")
+    )
     return CheckResult(
         "react vite browser integration",
         passed,
@@ -556,6 +592,7 @@ def react_vite_browser_integration_check(
             "install, API startup, Vite startup, and browser flow; "
             f"stdout={result.stdout[-2000:]!r} stderr={result.stderr[-2000:]!r}"
         ),
+        status,
     )
 
 
@@ -649,8 +686,8 @@ waitFor('http://127.0.0.1:5173/', 'Vite').catch((error) => {
   process.exit(1);
 });
 NODE
-NODE_PATH=/tmp/devlab-browser-tools/node_modules node <<'NODE'
-const { chromium } = require('playwright');
+node <<'NODE'
+const { chromium } = require('/tmp/devlab-browser-tools/node_modules/playwright');
 
 const diagnostics = {
   console: [],
@@ -675,15 +712,19 @@ async function submitButton(page) {
 }
 
 async function main() {
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
-  page.on('console', (message) => {
-    if (message.type() === 'error') {
-      diagnostics.console.push(`${message.type()}: ${message.text()}`);
-    }
-  });
-  page.on('pageerror', (error) => diagnostics.pageErrors.push(error.message));
+  let browser;
   try {
+    diagnostics.step = 'launch browser';
+    browser = await chromium.launch({ headless: true });
+    diagnostics.step = 'create browser page';
+    const page = await browser.newPage();
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        diagnostics.console.push(`${message.type()}: ${message.text()}`);
+      }
+    });
+    page.on('pageerror', (error) => diagnostics.pageErrors.push(error.message));
+
     diagnostics.step = 'open app';
     await page.goto('http://127.0.0.1:5173/', { waitUntil: 'networkidle' });
     await page.locator('body').waitFor({ state: 'visible', timeout: 5000 });
@@ -734,14 +775,22 @@ async function main() {
       throw new Error(`browser console errors: ${severeConsole.join(' | ')}`);
     }
   } catch (error) {
-    console.error(JSON.stringify({ ...diagnostics, error: error.message }, null, 2));
+    const payload = JSON.stringify({ ...diagnostics, error: error.message });
+    if (diagnostics.step === 'launch browser' || diagnostics.step === 'create browser page') {
+      console.error(`DEVLAB_GRADER_ERROR:${payload}`);
+    } else {
+      console.error(JSON.stringify({ ...diagnostics, error: error.message }, null, 2));
+    }
     throw error;
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
   }
 }
 
-main().catch(() => process.exit(1));
+main().catch((error) => {
+  console.error(`browser integration check exited: ${error.message}`);
+  process.exitCode = 1;
+});
 NODE
 """
 

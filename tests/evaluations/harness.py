@@ -409,7 +409,7 @@ def diagnostics_for(
         artifact_hygiene=artifact_hygiene,
         agent_logs=agent_logs,
         prompt_logs=prompt_logs,
-        quality=quality_summary(
+        quality=_evaluation_quality_summary(
             checks=checks,
             task_metrics=task_metrics,
             artifact_hygiene=artifact_hygiene,
@@ -422,6 +422,38 @@ def diagnostics_for(
         task_rework=task_rework,
         integrator_rework=integrator_rework,
         profiles=profile_metrics,
+    )
+
+
+def _evaluation_quality_summary(
+    *,
+    checks: list[CheckResult],
+    task_metrics: TaskMetrics,
+    artifact_hygiene: ArtifactHygiene,
+    sessions_run: int,
+    task_rework: TaskReworkSummary,
+    integrator_rework: IntegratorReworkSummary,
+) -> QualitySummary:
+    summary = quality_summary(
+        checks=checks,
+        task_metrics=task_metrics,
+        artifact_hygiene=artifact_hygiene,
+        sessions_run=sessions_run,
+        task_rework=task_rework,
+        integrator_rework=integrator_rework,
+    )
+    statuses = {check.status for check in checks}
+    product_checked = bool(statuses.intersection({"passed", "failed"}))
+    if "failed" in statuses:
+        correctness_passed: bool | None = False
+    elif statuses.intersection({"unverified", "grader_error"}):
+        correctness_passed = None
+    else:
+        correctness_passed = True if product_checked else None
+    return dataclasses.replace(
+        summary,
+        correctness_checked=product_checked,
+        correctness_passed=correctness_passed,
     )
 
 

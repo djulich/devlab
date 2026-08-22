@@ -31,6 +31,37 @@ The dependency diagnostic behaved as intended in the failed target: the four
 direct Node dependencies were attributed once to the T0002 developer session,
 with no lockfile/transitive entries and no repetition by later roles.
 
+## Second live outcome and grader correction — 2026-08-22
+
+The revised target completed in ten sessions. Its reviewer rejected T0002 once
+for a missing required `src/App` component, the developer corrected it, and
+target-owned browser validation passed during both developer attempts and
+milestone integration. The independent check nevertheless exited before browser
+launch because the target legitimately declared `@playwright/test` 1.62.1 while
+the grader used a Playwright 1.53.1 image/client. Node resolved the target-local
+1.62.1 `playwright` package before the grader's `NODE_PATH`, so it requested
+browser binaries absent from the pinned 1.53.1 image.
+
+This was a grader error, not an observed product failure. The check now imports
+the evaluator-owned Playwright package by absolute path, wraps browser launch in
+its diagnostic boundary, preserves unexpected top-level errors, and classifies
+marked setup failures as `grader_error`. Evaluation checks now expose additive
+`passed`, `failed`, `unverified`, and `grader_error` statuses while retaining the
+Boolean `passed` field. Incomplete grading makes correctness indeterminate unless
+a separate product check actually failed.
+
+The general implication is that read-only mounts protect targets from mutation
+but do not isolate evaluator dependency resolution. Evaluator runtimes must not
+resolve libraries or executables through target-controlled working directories
+or search paths.
+
+After applying the evaluator correction, the independent browser check passed
+against the unchanged retained target. This confirms that the revised generated
+product satisfies the browser flow and that the recorded second-run failure was
+entirely grader infrastructure. The original evaluation JSON remains immutable
+failure evidence; the diagnostic rerun is correction evidence, not a rewritten
+workflow result.
+
 ## Cross-scenario audit — 2026-08-22
 
 The failure supports a general planning and review rule: validation should cross

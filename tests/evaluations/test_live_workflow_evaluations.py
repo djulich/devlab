@@ -151,7 +151,7 @@ def _live_failure_context(
     if failed_checks:
         lines.append("failed_checks:")
         for check in failed_checks:
-            lines.append(f"- {check.name}: {_shorten(check.message, 500)}")
+            lines.append(f"- {check.name} [{check.status}]: {_shorten(check.message, 500)}")
     if diagnostics.git.missing_milestone_tags:
         lines.append(f"missing_milestone_tags={diagnostics.git.missing_milestone_tags!r}")
     return "\n".join(lines)

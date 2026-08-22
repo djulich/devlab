@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -64,6 +65,7 @@ from tests.evaluations.harness import (
     EvaluationDiagnostics,
     EvaluationError,
     EvaluationScenario,
+    _evaluation_quality_summary,
     copy_live_agent_config,
     init_target_workspace,
     run_scripted_evaluation,
@@ -138,6 +140,7 @@ def test_built_executable_output_check_runs_discovered_executable(
     result = check(tmp_path)
 
     assert result.passed is True
+    assert result.status == "passed"
     assert captured_command == [str(executable), "arg"]
 
 
@@ -672,6 +675,7 @@ def test_optional_make_target_check_is_skipped_unless_enabled(tmp_path: Path) ->
     result = check(tmp_path)
 
     assert result.passed is True
+    assert result.status == "unverified"
     assert "skipped" in result.message
     assert "DEVLAB_EVAL_DEPLOYMENT_TOOLS=1" in result.message
 
@@ -686,6 +690,7 @@ def test_optional_make_target_check_reports_missing_make_as_unverified(
     result = check(tmp_path)
 
     assert result.passed is True
+    assert result.status == "unverified"
     assert "unverified" in result.message
     assert "make" in result.message
 
@@ -705,6 +710,7 @@ def test_optional_make_target_check_runs_enabled_target(
     result = check(tmp_path)
 
     assert result.passed is True
+    assert result.status == "passed"
     assert result.message == ""
 
 
@@ -996,6 +1002,7 @@ def test_optional_docker_compose_config_check_is_skipped_unless_enabled(tmp_path
     result = check(tmp_path)
 
     assert result.passed is True
+    assert result.status == "unverified"
     assert "skipped" in result.message
     assert "DEVLAB_EVAL_DEPLOYMENT_TOOLS=1" in result.message
 
@@ -1010,6 +1017,7 @@ def test_optional_docker_compose_config_reports_missing_docker_as_unverified(
     result = check(tmp_path)
 
     assert result.passed is True
+    assert result.status == "unverified"
     assert "unverified" in result.message
     assert "docker" in result.message
 
@@ -1205,8 +1213,10 @@ def test_react_vite_browser_integration_check_runs_read_only_container_flow(
     assert 'API_BASE_URL="http://127.0.0.1:$API_PORT"' in script
     assert "VITE_API_BASE_URL" not in script
     assert "npm run dev -- --host 127.0.0.1 --port" in script
-    assert "NODE_PATH=/tmp/devlab-browser-tools/node_modules node" in script
-    assert "require('playwright')" in script
+    assert "NODE_PATH=" not in script
+    assert "require('/tmp/devlab-browser-tools/node_modules/playwright')" in script
+    assert "DEVLAB_GRADER_ERROR:" in script
+    assert "launch browser" in script
     assert "write browser eval" in script
     assert captured_kwargs == {
         "text": True,
@@ -1214,6 +1224,30 @@ def test_react_vite_browser_integration_check_runs_read_only_container_flow(
         "timeout": 360,
         "check": False,
     }
+
+
+def test_react_vite_browser_check_ignores_target_local_playwright(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "package.json").write_text(
+        '{"devDependencies": {"playwright": "999.0.0"}, "scripts": {"build": "vite build"}}\n'
+    )
+    captured_script = ""
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal captured_script
+        captured_script = args[-1]
+        return subprocess.CompletedProcess(args, 0, "ok", "")
+
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+
+    result = react_vite_browser_integration_check(tmp_path)
+
+    assert result.passed is True
+    assert "require('/tmp/devlab-browser-tools/node_modules/playwright')" in captured_script
+    assert "require('playwright')" not in captured_script
 
 
 def test_react_vite_browser_integration_check_reports_container_failure(
@@ -1237,6 +1271,50 @@ def test_react_vite_browser_integration_check_reports_container_failure(
     assert "API startup, Vite startup, and browser flow" in result.message
     assert "browser flow failed" in result.message
     assert "console error" in result.message
+    assert result.status == "failed"
+
+
+def test_react_vite_browser_integration_check_classifies_grader_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "vite build"}}\n')
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args,
+            1,
+            "servers started",
+            'DEVLAB_GRADER_ERROR:{"step":"launch browser","error":"missing binary"}',
+        )
+
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+
+    result = react_vite_browser_integration_check(tmp_path)
+
+    assert result.passed is False
+    assert result.status == "grader_error"
+    assert "missing binary" in result.message
+
+
+def test_react_vite_browser_integration_check_classifies_timeout_as_grader_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "vite build"}}\n')
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(args, 360)
+
+    monkeypatch.setattr("tests.evaluations.checks.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("tests.evaluations.checks.subprocess.run", fake_run)
+
+    result = react_vite_browser_integration_check(tmp_path)
+
+    assert result.passed is False
+    assert result.status == "grader_error"
+    assert "could not complete" in result.message
 
 
 def test_integrator_rework_summary_counts_integrator_findings(tmp_path: Path) -> None:
@@ -1550,6 +1628,91 @@ def test_quality_summary_warns_for_rework_and_large_ignored_artifacts() -> None:
     assert "large other ignored artifact file count: 5001" in summary.warnings
 
 
+@pytest.mark.parametrize("incomplete_status", ["unverified", "grader_error"])
+def test_evaluation_quality_is_indeterminate_when_grading_is_incomplete(
+    incomplete_status: Literal["unverified", "grader_error"],
+) -> None:
+    summary = _evaluation_quality_summary(
+        checks=[
+            CheckResult("api", True),
+            CheckResult(
+                "browser", incomplete_status == "unverified", "incomplete", incomplete_status
+            ),
+        ],
+        task_metrics=TaskMetrics(total=1, by_status={"closed": 1}, items=[]),
+        artifact_hygiene=ArtifactHygiene(
+            file_count=0,
+            total_bytes=0,
+            product_file_count=0,
+            product_total_bytes=0,
+            ignored_file_count=0,
+            ignored_total_bytes=0,
+            devlab_file_count=0,
+            devlab_total_bytes=0,
+            flagged_paths=[],
+        ),
+        sessions_run=1,
+        task_rework=TaskReworkSummary(
+            tasks_with_rework=[],
+            has_task_rework=False,
+            max_developer_sessions_per_task=1,
+            max_reviewer_sessions_per_task=1,
+            unattributed_developer_reviewer_sessions=0,
+        ),
+        integrator_rework=IntegratorReworkSummary(
+            findings_created=0,
+            findings_resolved=0,
+            findings_open=0,
+            findings_planned=0,
+            finding_ids=[],
+            has_integrator_rework=False,
+        ),
+    )
+
+    assert summary.correctness_checked is True
+    assert summary.correctness_passed is None
+
+
+def test_evaluation_quality_preserves_product_failure_with_grader_error() -> None:
+    summary = _evaluation_quality_summary(
+        checks=[
+            CheckResult("api", False, "wrong response"),
+            CheckResult("browser", False, "launch failed", "grader_error"),
+        ],
+        task_metrics=TaskMetrics(total=1, by_status={"closed": 1}, items=[]),
+        artifact_hygiene=ArtifactHygiene(
+            file_count=0,
+            total_bytes=0,
+            product_file_count=0,
+            product_total_bytes=0,
+            ignored_file_count=0,
+            ignored_total_bytes=0,
+            devlab_file_count=0,
+            devlab_total_bytes=0,
+            flagged_paths=[],
+        ),
+        sessions_run=1,
+        task_rework=TaskReworkSummary(
+            tasks_with_rework=[],
+            has_task_rework=False,
+            max_developer_sessions_per_task=1,
+            max_reviewer_sessions_per_task=1,
+            unattributed_developer_reviewer_sessions=0,
+        ),
+        integrator_rework=IntegratorReworkSummary(
+            findings_created=0,
+            findings_resolved=0,
+            findings_open=0,
+            findings_planned=0,
+            finding_ids=[],
+            has_integrator_rework=False,
+        ),
+    )
+
+    assert summary.correctness_checked is True
+    assert summary.correctness_passed is False
+
+
 def test_artifact_hygiene_splits_git_product_ignored_and_devlab_files(
     tmp_path: Path,
 ) -> None:
@@ -1781,7 +1944,7 @@ def test_live_failure_context_summarizes_errors_without_full_json(tmp_path: Path
     assert f"stderr_log: cat {tmp_path / '.devlab/logs/agents/reviewer.stderr.log'}" in context
     assert "agent_invocation exit=1" in context
     assert "failed_checks:" in context
-    assert "api: missing server" in context
+    assert "api [failed]: missing server" in context
     assert "diagnostics_json={" not in context
 
 
@@ -1887,7 +2050,10 @@ def _assert_diagnostics(
     assert expected_artifact in diagnostics.artifacts
     assert diagnostics.agent_log_dir.endswith(".devlab/logs/agents")
     assert diagnostics.tasks.total >= 1
-    assert diagnostics.quality.correctness_passed is True
+    if any(check.status in {"unverified", "grader_error"} for check in diagnostics.checks):
+        assert diagnostics.quality.correctness_passed is None
+    else:
+        assert diagnostics.quality.correctness_passed is True
     assert diagnostics.quality.all_tasks_closed is True
     assert diagnostics.artifact_hygiene.file_count >= 0
     assert diagnostics.agent_logs.stdout_count >= 0
