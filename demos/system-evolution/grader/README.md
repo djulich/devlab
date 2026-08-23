@@ -58,8 +58,11 @@ the preservation checks. It then uses uniquely prefixed temporary records to
 check next-action normalization and validation, archive/restore transitions,
 global counts and archive/stage filters, and versioned deletion of active and
 archived ideas. Temporary records are removed with their current versions;
-cleanup failures are reported as grader errors. Concurrency and Generation 2
-browser-conflict grading remain later slices.
+cleanup failures are reported as grader errors. The grader also checks the full
+expected-version syntax/status matrix, mutation-error precedence, sequential
+stale update/archive/restore/delete safety, and eight synchronized two-writer
+races that must each produce one success and one conflict. Generation 2
+browser-conflict grading remains a later slice.
 
 The grader never invokes agents, repairs targets, creates DevLab findings, or
 feeds results back into a workflow. Product failures, unavailable prerequisites,

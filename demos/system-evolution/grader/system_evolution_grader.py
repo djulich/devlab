@@ -23,8 +23,10 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Barrier, BrokenBarrierError
 from typing import Any, Literal
 
 Status = Literal["passed", "failed", "unverified", "grader_error"]
@@ -255,6 +257,7 @@ class SystemEvolutionGrader:
             else:
                 self._generation_2_migration_checks()
                 self._generation_2_archive_checks()
+                self._generation_2_concurrency_checks()
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             self.result.add(
                 Check(
@@ -1319,6 +1322,263 @@ class SystemEvolutionGrader:
                     )
                 )
 
+    def _generation_2_concurrency_checks(self) -> None:
+        """Verify expected versions, stale safety, and atomic writer exclusion."""
+        base = f"http://127.0.0.1:{self.host_port}/api/ideas"
+        temporary_ids: list[int] = []
+
+        def create(label: str) -> tuple[int, dict[str, Any], float, str]:
+            response = self._request("POST", base, {"title": f"{self.prefix} {label}"})
+            idea_id = response[1].get("id")
+            if isinstance(idea_id, int) and not isinstance(idea_id, bool):
+                temporary_ids.append(idea_id)
+            return response
+
+        def mutate(
+            method: str,
+            url: str,
+            version: int,
+            payload: dict[str, Any] | None = None,
+        ) -> tuple[int, dict[str, Any], float, str]:
+            return self._request(method, url, payload, headers={"If-Match": f'"{version}"'})
+
+        try:
+            probe = create("precondition probe")
+            probe_id = probe[1].get("id")
+            if probe[0] != 201 or not isinstance(probe_id, int):
+                self.result.add(
+                    Check(
+                        "G2-CONCURRENCY-SETUP",
+                        "concurrency",
+                        "failed",
+                        probe[2],
+                        summarize_http(probe),
+                        ("G2-API-02",),
+                    )
+                )
+                return
+
+            syntax_cases: tuple[tuple[str, str | None, int], ...] = (
+                ("missing", None, 428),
+                ("unquoted", "1", 400),
+                ("weak", 'W/"1"', 400),
+                ("zero", '"0"', 400),
+                ("negative", '"-1"', 400),
+                ("empty", '""', 400),
+                ("multiple", '"1", "2"', 400),
+            )
+            syntax_results = []
+            for name, value, expected in syntax_cases:
+                response = self._request(
+                    "PATCH",
+                    f"{base}/{probe_id}",
+                    {"notes": name},
+                    headers={"If-Match": value} if value is not None else None,
+                )
+                syntax_results.append((name, expected, response))
+            syntax_ok = all(
+                response[0] == expected
+                and stable_error(
+                    response[1],
+                    "precondition_required" if name == "missing" else "invalid_if_match",
+                )
+                for name, expected, response in syntax_results
+            )
+            self.result.add(
+                Check(
+                    "G2-CONCURRENCY-IF-MATCH-SYNTAX",
+                    "concurrency",
+                    "passed" if syntax_ok else "failed",
+                    sum(response[2] for _, _, response in syntax_results),
+                    "; ".join(
+                        f"{name}={summarize_http(response)}"
+                        for name, _, response in syntax_results
+                    )[:4000],
+                    ("G2-API-05", "G2-API-10"),
+                )
+            )
+            missing = self._request(
+                "PATCH",
+                f"{base}/2147483647",
+                {"notes": "missing"},
+                headers={"If-Match": '"1"'},
+            )
+            self.result.add(
+                Check(
+                    "G2-CONCURRENCY-MISSING-PRECEDENCE",
+                    "concurrency",
+                    "passed"
+                    if missing[0] == 404 and stable_error(missing[1], "idea_not_found")
+                    else "failed",
+                    missing[2],
+                    summarize_http(missing),
+                    ("G2-API-05", "G2-API-10"),
+                )
+            )
+
+            initial = probe[1]
+            updated = mutate(
+                "PATCH", f"{base}/{probe_id}", initial["version"], {"notes": "current"}
+            )
+            update_ok = (
+                updated[0] == 200
+                and updated[1].get("version") == initial["version"] + 1
+                and updated[1].get("notes") == "current"
+            )
+            self.result.add(
+                Check(
+                    "G2-CONCURRENCY-VERSION-INCREMENT",
+                    "concurrency",
+                    "passed" if update_ok else "failed",
+                    updated[2],
+                    summarize_http(updated),
+                    ("G2-API-06", "G2-API-09"),
+                )
+            )
+            current = updated[1] if updated[0] == 200 else initial
+            stale: list[tuple[str, tuple[int, dict[str, Any], float, str], dict[str, Any]]] = []
+            stale.append(
+                (
+                    "update",
+                    mutate("PATCH", f"{base}/{probe_id}", 1, {"notes": "stale"}),
+                    dict(current),
+                )
+            )
+            archived = mutate("POST", f"{base}/{probe_id}/archive", current["version"], {})
+            current = archived[1] if archived[0] == 200 else current
+            stale.append(
+                (
+                    "archive",
+                    mutate("POST", f"{base}/{probe_id}/archive", 2, {}),
+                    dict(current),
+                )
+            )
+            restored = mutate("POST", f"{base}/{probe_id}/restore", current["version"], {})
+            current = restored[1] if restored[0] == 200 else current
+            stale.append(
+                (
+                    "restore",
+                    mutate("POST", f"{base}/{probe_id}/restore", 3, {}),
+                    dict(current),
+                )
+            )
+            stale.append(("delete", mutate("DELETE", f"{base}/{probe_id}", 3), dict(current)))
+            final = self._request("GET", f"{base}/{probe_id}")
+            stale_ok = (
+                archived[0] == 200
+                and archived[1].get("version") == 3
+                and restored[0] == 200
+                and restored[1].get("version") == 4
+                and all(
+                    response[0] == 409 and stable_conflict(response[1], expected)
+                    for _, response, expected in stale
+                )
+                and final[0] == 200
+                and final[1] == current
+            )
+            self.result.add(
+                Check(
+                    "G2-CONCURRENCY-SEQUENTIAL-STALE",
+                    "concurrency",
+                    "passed" if stale_ok else "failed",
+                    archived[2]
+                    + restored[2]
+                    + final[2]
+                    + sum(response[2] for _, response, _ in stale),
+                    "; ".join(f"{name}={summarize_http(response)}" for name, response, _ in stale)[
+                        :4000
+                    ],
+                    ("G2-API-05", "G2-API-07", "G2-API-08", "G2-API-09"),
+                )
+            )
+
+            race_failures: list[str] = []
+            race_grader_errors: list[str] = []
+            race_duration = 0.0
+            for repetition in range(1, 9):
+                race = create(f"race {repetition}")
+                race_id = race[1].get("id")
+                version = race[1].get("version")
+                if race[0] != 201 or not isinstance(race_id, int) or version != 1:
+                    race_failures.append(f"race {repetition} setup: {summarize_http(race)}")
+                    continue
+                barrier = Barrier(2)
+
+                def writer(
+                    label: str,
+                    barrier_: Barrier = barrier,
+                    race_id_: int = race_id,
+                    version_: int = version,
+                ) -> tuple[int, dict[str, Any], float, str]:
+                    barrier_.wait(timeout=10)
+                    return mutate(
+                        "PATCH",
+                        f"{base}/{race_id_}",
+                        version_,
+                        {"notes": f"writer {label}"},
+                    )
+
+                try:
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        outcomes = list(executor.map(writer, ("a", "b"), timeout=20))
+                except (BrokenBarrierError, TimeoutError) as error:
+                    race_grader_errors.append(
+                        f"race {repetition}: synchronization failed: {type(error).__name__}: {error}"
+                    )
+                    continue
+                final_race = self._request("GET", f"{base}/{race_id}")
+                race_duration += sum(item[2] for item in outcomes) + final_race[2]
+                successes = [item for item in outcomes if item[0] == 200]
+                conflicts = [item for item in outcomes if item[0] == 409]
+                if not (
+                    len(successes) == 1
+                    and len(conflicts) == 1
+                    and final_race[0] == 200
+                    and successes[0][1] == final_race[1]
+                    and final_race[1].get("version") == 2
+                    and stable_conflict(conflicts[0][1], final_race[1])
+                ):
+                    race_failures.append(
+                        f"race {repetition}: statuses={[item[0] for item in outcomes]}; "
+                        f"final={summarize_http(final_race)}"
+                    )
+            self.result.add(
+                Check(
+                    "G2-CONCURRENCY-SYNCHRONIZED-RACES",
+                    "concurrency",
+                    "grader_error"
+                    if race_grader_errors
+                    else ("failed" if race_failures else "passed"),
+                    race_duration,
+                    "; ".join((*race_grader_errors, *race_failures))[:4000]
+                    if race_grader_errors or race_failures
+                    else "8/8 races produced one success and one version conflict",
+                    ("G2-API-09",),
+                )
+            )
+        finally:
+            failures: list[str] = []
+            for idea_id in dict.fromkeys(temporary_ids):
+                current = self._request("GET", f"{base}/{idea_id}")
+                version = current[1].get("version")
+                deleted = (
+                    mutate("DELETE", f"{base}/{idea_id}", version)
+                    if current[0] == 200 and isinstance(version, int)
+                    else current
+                )
+                if deleted[0] not in (204, 404):
+                    failures.append(f"id={idea_id}: {summarize_http(deleted)}")
+            if failures:
+                self.result.add(
+                    Check(
+                        "G2-CONCURRENCY-TEMPORARY-CLEANUP",
+                        "concurrency",
+                        "grader_error",
+                        0,
+                        "could not remove concurrency probes; " + "; ".join(failures)[:3800],
+                    )
+                )
+
     def _browser_checks(self) -> None:
         if self.docker is None:
             return
@@ -1700,6 +1960,22 @@ def summarize_http(response: tuple[int, dict[str, Any], float, str]) -> str:
     status, body, _, error = response
     rendered = json.dumps(body, ensure_ascii=False, sort_keys=True)
     return f"status={status}; body={rendered[:2000]}" + (f"; error={error}" if error else "")
+
+
+def stable_error(body: Mapping[str, Any], code: str) -> bool:
+    error = body.get("error")
+    return (
+        isinstance(error, dict)
+        and set(error) == {"code", "message", "fields"}
+        and error.get("code") == code
+        and isinstance(error.get("message"), str)
+        and bool(error["message"])
+        and error.get("fields") is None
+    )
+
+
+def stable_conflict(body: Mapping[str, Any], current: Mapping[str, Any]) -> bool:
+    return stable_error(body, "version_conflict") and body.get("current") == current
 
 
 BROWSER_CHECK_SCRIPT = r"""

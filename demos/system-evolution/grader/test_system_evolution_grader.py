@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import pytest
@@ -627,6 +628,101 @@ def test_generation_two_fields_archive_filters_and_versioned_cleanup(
     ]
     assert set(records) == {1, 2, 3}
     assert mutation_headers
+
+
+def test_generation_two_concurrency_matrix_stale_safety_and_eight_races(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    grader = SystemEvolutionGrader(
+        _target(tmp_path),
+        2,
+        "idea-greenhouse-run15",
+        docker_path=Path("/usr/bin/docker"),
+        host_port=49123,
+    )
+    records: dict[int, dict[str, Any]] = {}
+    next_id = 1
+    lock = Lock()
+
+    def error(code: str, status: int) -> tuple[int, dict[str, Any], float, str]:
+        return _http(
+            status,
+            {"error": {"code": code, "message": f"stable {code}", "fields": None}},
+        )
+
+    def request(
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> tuple[int, dict[str, Any], float, str]:
+        nonlocal next_id
+        path = url.removeprefix("http://127.0.0.1:49123/api/ideas").strip("/")
+        if method == "POST" and not path:
+            assert payload is not None
+            with lock:
+                idea = {
+                    "id": next_id,
+                    "title": payload["title"],
+                    "notes": None,
+                    "stage": "seed",
+                    "next_action": None,
+                    "archived_at": None,
+                    "version": 1,
+                    "created_at": "2026-08-23T12:00:00Z",
+                    "updated_at": "2026-08-23T12:00:00Z",
+                }
+                records[next_id] = idea
+                next_id += 1
+                return _http(201, idea)
+        parts = path.split("/")
+        idea_id = int(parts[0])
+        if method == "GET":
+            with lock:
+                idea = records.get(idea_id)
+                return _http(200, idea) if idea else error("idea_not_found", 404)
+        if headers is None or "If-Match" not in headers:
+            return error("precondition_required", 428)
+        match = headers["If-Match"]
+        if not (len(match) >= 3 and match[0] == match[-1] == '"' and match[1:-1].isdigit()):
+            return error("invalid_if_match", 400)
+        expected = int(match[1:-1])
+        if expected <= 0:
+            return error("invalid_if_match", 400)
+        with lock:
+            idea = records.get(idea_id)
+            if idea is None:
+                return error("idea_not_found", 404)
+            if idea["version"] != expected:
+                response = error("version_conflict", 409)
+                response[1]["current"] = dict(idea)
+                return response
+            if method == "DELETE":
+                del records[idea_id]
+                return _http(204, {})
+            if method == "PATCH":
+                assert payload is not None
+                idea["notes"] = payload["notes"]
+            elif parts[1] == "archive":
+                idea["archived_at"] = "2026-08-23T13:00:00Z"
+            else:
+                idea["archived_at"] = None
+            _advance(idea)
+            return _http(200, idea)
+
+    monkeypatch.setattr(grader, "_request", request)
+
+    grader._generation_2_concurrency_checks()
+
+    assert [(check.id, check.status) for check in grader.result.checks] == [
+        ("G2-CONCURRENCY-IF-MATCH-SYNTAX", "passed"),
+        ("G2-CONCURRENCY-MISSING-PRECEDENCE", "passed"),
+        ("G2-CONCURRENCY-VERSION-INCREMENT", "passed"),
+        ("G2-CONCURRENCY-SEQUENTIAL-STALE", "passed"),
+        ("G2-CONCURRENCY-SYNCHRONIZED-RACES", "passed"),
+    ]
+    assert records == {}
 
 
 def _advance(idea: dict[str, Any]) -> None:
