@@ -223,8 +223,10 @@ class SystemEvolutionGrader:
                 return self._finish()
             if not self._compose_config_checks():
                 return self._finish()
-            if self.generation == 2 and not self._preserved_volume_check():
-                return self._finish()
+            if self.generation == 2:
+                self._target_validation_checks()
+                if not self._preserved_volume_check():
+                    return self._finish()
             build = self._compose("build", timeout=1200)
             self._command_check(
                 "G1-DEP-BUILD",
@@ -249,6 +251,8 @@ class SystemEvolutionGrader:
                 self._capture_failure_diagnostics()
                 return self._finish()
             self._runtime_topology_check()
+            if self.generation == 2:
+                self._image_runtime_inspection()
             if self.generation == 1:
                 self._api_checks()
                 self._browser_checks()
@@ -259,6 +263,7 @@ class SystemEvolutionGrader:
                 self._generation_2_archive_checks()
                 self._generation_2_concurrency_checks()
                 self._generation_2_browser_conflict_checks()
+                self._generation_2_clean_install_check()
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             self.result.add(
                 Check(
@@ -507,6 +512,121 @@ class SystemEvolutionGrader:
         )
         return passed
 
+    def _target_validation_checks(self) -> None:
+        """Run target-owned commands under a disposable Compose namespace."""
+        make_path = shutil.which("make")
+        if make_path is None:
+            self.result.add(
+                Check(
+                    "PREREQ-TARGET-MAKE",
+                    "target_validation",
+                    "unverified",
+                    0,
+                    "make executable is unavailable; target commands were not run",
+                )
+            )
+            return
+        project = validate_project_name(f"{self.project[:38]}-validation-{secrets.token_hex(4)}")
+        environment = self._disposable_environment(project)
+        preflight = self._compose_for(
+            project, environment, "config", "--format", "json", timeout=30
+        )
+        try:
+            config = json.loads(preflight.stdout) if preflight.returncode == 0 else {}
+            db_mounts = config.get("services", {}).get("db", {}).get("volumes", [])
+            source = next(
+                (
+                    str(mount.get("source", ""))
+                    for mount in db_mounts
+                    if isinstance(mount, dict) and mount.get("type") == "volume"
+                ),
+                "",
+            )
+            validation_volume = str(config.get("volumes", {}).get(source, {}).get("name", source))
+        except (AttributeError, json.JSONDecodeError):
+            validation_volume = ""
+        if (
+            preflight.returncode != 0
+            or not validation_volume
+            or validation_volume == self.expected_database_volume
+        ):
+            self.result.add(
+                Check(
+                    "G2-TARGET-VALIDATION-NAMESPACE",
+                    "target_validation",
+                    "grader_error",
+                    preflight.duration_seconds,
+                    f"project={project}; volume={validation_volume!r}; "
+                    f"preserved={self.expected_database_volume!r}; {command_evidence(preflight)}",
+                )
+            )
+            return
+        commands = (
+            ("G2-TARGET-BACKEND", "test-backend", ("G2-TEST-01",)),
+            ("G2-TARGET-FRONTEND", "test-frontend", ("G2-TEST-02",)),
+            ("G2-TARGET-COMPOSE-CONFIG", "compose-config", ("G2-DEP-08",)),
+            ("G2-TARGET-COMPOSE-BUILD", "compose-build", ("G2-DEP-08",)),
+            ("G2-TARGET-DEPLOYMENT", "deployment-check", ("G2-DEP-08", "G2-TEST-03")),
+            ("G2-TARGET-CHECK", "check", ("G2-CMD-01", "G2-TEST-01")),
+        )
+        try:
+            for check_id, target, requirements in commands:
+                try:
+                    command = self.runner(
+                        (str(Path(make_path).resolve()), target),
+                        self.target,
+                        environment,
+                        1800,
+                    )
+                except (OSError, subprocess.SubprocessError) as error:
+                    self.result.add(
+                        Check(
+                            check_id,
+                            "target_validation",
+                            "grader_error",
+                            0,
+                            f"target command could not run: {type(error).__name__}: {error}",
+                            requirements,
+                        )
+                    )
+                    continue
+                rendered_command = " ".join(command.args)
+                self.result.add(
+                    Check(
+                        check_id,
+                        "target_validation",
+                        "passed" if command.returncode == 0 else "failed",
+                        command.duration_seconds,
+                        f"command={rendered_command}; {command_evidence(command)}"[:4000],
+                        requirements,
+                    )
+                )
+        finally:
+            try:
+                cleanup = self._compose_for(
+                    project,
+                    environment,
+                    "down",
+                    "--remove-orphans",
+                    "--volumes",
+                    timeout=180,
+                )
+                cleanup_error = command_evidence(cleanup) if cleanup.returncode != 0 else ""
+                cleanup_duration = cleanup.duration_seconds
+            except (OSError, subprocess.SubprocessError) as error:
+                cleanup_error = f"{type(error).__name__}: {error}"
+                cleanup_duration = 0
+            if cleanup_error:
+                self.result.add(
+                    Check(
+                        "G2-TARGET-VALIDATION-CLEANUP",
+                        "target_validation",
+                        "grader_error",
+                        cleanup_duration,
+                        f"project={project}; {cleanup_error}",
+                    )
+                )
+
     def _compose_prerequisite_check(self) -> bool:
         command = self._compose("version", "--short", timeout=15)
         passed = command.returncode == 0 and bool(command.stdout.strip())
@@ -542,6 +662,151 @@ class SystemEvolutionGrader:
                 f"running={sorted(str(item) for item in services)}; healthy={healthy}",
                 ("G1-DEP-02",),
                 hard_gate=True,
+            )
+        )
+
+    def _image_runtime_inspection(self) -> None:
+        """Inspect running containers and image metadata without exporting layers."""
+        if self.docker is None:
+            return
+        started = time.monotonic()
+        inspections: dict[str, dict[str, Any]] = {}
+        grader_errors: list[str] = []
+        for service in ("db", "api", "frontend"):
+            container = self._compose("ps", "-q", service, timeout=30)
+            container_id = container.stdout.strip()
+            if container.returncode != 0 or not container_id:
+                grader_errors.append(
+                    f"{service}: container lookup failed: {command_evidence(container)}"
+                )
+                continue
+            inspected = self.runner(
+                (str(self.docker), "inspect", container_id),
+                self.target,
+                self.environment,
+                30,
+            )
+            try:
+                rows = json.loads(inspected.stdout) if inspected.returncode == 0 else []
+                if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+                    raise ValueError("expected one container inspection row")
+                inspections[service] = rows[0]
+            except (ValueError, json.JSONDecodeError) as error:
+                grader_errors.append(
+                    f"{service}: invalid container inspection: {error}; {command_evidence(inspected)}"
+                )
+        runtime_ok = False
+        if not grader_errors and set(inspections) == {"db", "api", "frontend"}:
+            project_labels = {
+                str(row.get("Config", {}).get("Labels", {}).get("com.docker.compose.project", ""))
+                for row in inspections.values()
+            }
+            users = {
+                service: str(row.get("Config", {}).get("User", ""))
+                for service, row in inspections.items()
+            }
+            ports = {
+                service: bool(row.get("HostConfig", {}).get("PortBindings"))
+                for service, row in inspections.items()
+            }
+            db_mounts = inspections["db"].get("Mounts", [])
+            volume_names = {
+                str(mount.get("Name", ""))
+                for mount in db_mounts
+                if isinstance(mount, dict) and mount.get("Type") == "volume"
+            }
+            runtime_ok = (
+                project_labels == {self.project}
+                and users["api"] not in ("", "0", "root")
+                and users["frontend"] not in ("", "0", "root")
+                and ports == {"db": False, "api": False, "frontend": True}
+                and self.database_volume in volume_names
+            )
+            evidence = (
+                f"project_labels={sorted(project_labels)}; users={users}; ports={ports}; "
+                f"db_volumes={sorted(volume_names)}"
+            )
+        else:
+            evidence = "; ".join(grader_errors)
+        self.result.add(
+            Check(
+                "G2-DEP-RUNTIME-INSPECTION",
+                "deployment",
+                "grader_error" if grader_errors else ("passed" if runtime_ok else "failed"),
+                time.monotonic() - started,
+                evidence[:4000],
+                ("G2-DEP-02", "G2-DEP-03", "G2-DEP-04", "G2-DEP-05"),
+            )
+        )
+
+        image_errors: list[str] = []
+        image_grader_errors: list[str] = []
+        image_evidence: list[str] = []
+        for service in ("api", "frontend"):
+            row = inspections.get(service, {})
+            image_id = str(row.get("Image", ""))
+            if not image_id:
+                image_grader_errors.append(f"{service}: running image ID unavailable")
+                continue
+            inspect = self.runner(
+                (str(self.docker), "image", "inspect", image_id),
+                self.target,
+                self.environment,
+                30,
+            )
+            history = self.runner(
+                (str(self.docker), "history", "--no-trunc", image_id),
+                self.target,
+                self.environment,
+                30,
+            )
+            combined = f"{inspect.stdout}\n{inspect.stderr}\n{history.stdout}\n{history.stderr}"
+            leaked = [
+                marker
+                for marker in (
+                    self.environment["POSTGRES_PASSWORD"],
+                    ".devlab",
+                    "agents.toml",
+                )
+                if marker and marker in combined
+            ]
+            try:
+                image_rows = json.loads(inspect.stdout) if inspect.returncode == 0 else []
+                config = image_rows[0].get("Config", {})
+                user = str(config.get("User", ""))
+                image_environment = config.get("Env", []) or []
+            except (IndexError, AttributeError, json.JSONDecodeError):
+                user = ""
+                image_environment = []
+                image_grader_errors.append(f"{service}: invalid image inspection")
+            if inspect.returncode != 0 or history.returncode != 0:
+                image_grader_errors.append(f"{service}: image inspect/history command failed")
+            if user in ("", "0", "root"):
+                leaked.append("root runtime user")
+            if service == "frontend" and any(
+                str(value).startswith(("DATABASE_URL=", "POSTGRES_PASSWORD="))
+                for value in image_environment
+            ):
+                leaked.append("database configuration in frontend image")
+            if leaked:
+                image_errors.append(f"{service}: {', '.join(leaked)}")
+            image_evidence.append(
+                f"{service}: user={user!r}; history_lines={len(history.stdout.splitlines())}"
+            )
+        self.result.add(
+            Check(
+                "G2-DEP-IMAGE-INSPECTION",
+                "hygiene",
+                "grader_error"
+                if image_grader_errors
+                else ("failed" if image_errors else "passed"),
+                time.monotonic() - started,
+                (
+                    "; ".join((*image_grader_errors, *image_errors))
+                    if image_grader_errors or image_errors
+                    else "; ".join(image_evidence)
+                )[:4000],
+                ("G2-DEP-04", "G2-DEP-05", "G2-DEP-06"),
             )
         )
 
@@ -1586,6 +1851,124 @@ class SystemEvolutionGrader:
     def _generation_2_browser_conflict_checks(self) -> None:
         self._run_browser_checks(GENERATION_2_BROWSER_CHECK_SCRIPT, "G2-UI-GRADER")
 
+    def _generation_2_clean_install_check(self) -> None:
+        """Apply the full migration chain to a separately namespaced empty database."""
+        project = validate_project_name(f"{self.project[:40]}-clean-{secrets.token_hex(4)}")
+        environment = self._disposable_environment(project)
+        port = environment["APP_PORT"]
+        started = time.monotonic()
+        evidence: list[str] = []
+        passed = False
+        execution_error = ""
+        cleanup_error = ""
+        try:
+            config_result = self._compose_for(
+                project, environment, "config", "--format", "json", timeout=30
+            )
+            if config_result.returncode != 0:
+                evidence.append(f"config: {command_evidence(config_result)}")
+                return
+            config = json.loads(config_result.stdout)
+            db = config.get("services", {}).get("db", {})
+            volume_source = next(
+                (
+                    str(mount.get("source", ""))
+                    for mount in db.get("volumes", [])
+                    if isinstance(mount, dict) and mount.get("type") == "volume"
+                ),
+                "",
+            )
+            volume_config = config.get("volumes", {}).get(volume_source, {})
+            clean_volume = str(volume_config.get("name", volume_source))
+            if not clean_volume or clean_volume == self.expected_database_volume:
+                evidence.append(
+                    f"unsafe clean-install volume={clean_volume!r}; "
+                    f"preserved={self.expected_database_volume!r}"
+                )
+                return
+            up = self._compose_for(
+                project,
+                environment,
+                "up",
+                "-d",
+                "--wait",
+                "--wait-timeout",
+                "120",
+                timeout=180,
+            )
+            evidence.append(f"up_exit={up.returncode}; volume={clean_volume}")
+            if up.returncode != 0:
+                evidence.append(command_evidence(up))
+                return
+            base = f"http://127.0.0.1:{port}/api"
+            self._wait_for_health(base)
+            health = self._request("GET", f"{base}/health")
+            ideas = self._request("GET", f"{base}/ideas")
+            alembic = self._compose_for(
+                project,
+                environment,
+                "exec",
+                "-T",
+                "api",
+                "alembic",
+                "current",
+                timeout=30,
+            )
+            expected_counts = {
+                "seed": 0,
+                "sprout": 0,
+                "bloom": 0,
+                "active": 0,
+                "archived": 0,
+                "total": 0,
+            }
+            passed = (
+                health[0] == 200
+                and health[1] == {"status": "ok", "database": "ok"}
+                and ideas[0] == 200
+                and ideas[1] == {"ideas": [], "counts": expected_counts}
+                and alembic.returncode == 0
+                and "(head)" in alembic.stdout
+            )
+            evidence.append(
+                f"health={summarize_http(health)}; ideas={summarize_http(ideas)}; "
+                f"alembic={command_evidence(alembic)}"
+            )
+        except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
+            execution_error = f"{type(error).__name__}: {error}"
+        finally:
+            try:
+                cleanup = self._compose_for(
+                    project,
+                    environment,
+                    "down",
+                    "--remove-orphans",
+                    "--volumes",
+                    timeout=180,
+                )
+                if cleanup.returncode != 0:
+                    cleanup_error = command_evidence(cleanup)
+            except (OSError, subprocess.SubprocessError) as error:
+                cleanup_error = f"{type(error).__name__}: {error}"
+            diagnostics = "; ".join(evidence)
+            if execution_error:
+                diagnostics += f"; execution={execution_error}"
+            if cleanup_error:
+                diagnostics += f"; cleanup={cleanup_error}"
+            self.result.add(
+                Check(
+                    "G2-MIGRATION-CLEAN-INSTALL",
+                    "migration",
+                    "grader_error"
+                    if execution_error or cleanup_error
+                    else ("passed" if passed else "failed"),
+                    time.monotonic() - started,
+                    diagnostics[:4000],
+                    ("G2-DATA-02", "G2-DEP-04", "G2-DEP-14"),
+                    hard_gate=True,
+                )
+            )
+
     def _run_browser_checks(self, script_content: str, grader_check_id: str) -> None:
         if self.docker is None:
             return
@@ -1736,6 +2119,19 @@ class SystemEvolutionGrader:
         command = (str(self.docker), "compose", "--project-name", self.project, *args)
         return self.runner(command, self.target, self.environment, timeout)
 
+    def _compose_for(
+        self,
+        project: str,
+        environment: Mapping[str, str],
+        *args: str,
+        timeout: int,
+    ) -> CommandResult:
+        if self.docker is None:
+            raise RuntimeError("Docker is unavailable")
+        validated = validate_project_name(project)
+        command = (str(self.docker), "compose", "--project-name", validated, *args)
+        return self.runner(command, self.target, environment, timeout)
+
     def _command_check(
         self,
         check_id: str,
@@ -1854,6 +2250,20 @@ class SystemEvolutionGrader:
             "POSTGRES_USER": f"grader_{suffix}",
             "POSTGRES_PASSWORD": secrets.token_urlsafe(24),
         }
+
+    def _disposable_environment(self, project: str) -> dict[str, str]:
+        suffix = secrets.token_hex(6)
+        environment = dict(self.environment)
+        environment.update(
+            {
+                "COMPOSE_PROJECT_NAME": validate_project_name(project),
+                "APP_PORT": str(available_port()),
+                "POSTGRES_DB": f"grader_{suffix}",
+                "POSTGRES_USER": f"grader_{suffix}",
+                "POSTGRES_PASSWORD": secrets.token_urlsafe(24),
+            }
+        )
+        return environment
 
 
 def validate_project_name(value: str) -> str:

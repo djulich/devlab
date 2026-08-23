@@ -69,6 +69,18 @@ explicit reload, the stale quoted `If-Match`, and absence of a silent retry. It
 removes the probe with the latest server version even when the browser check
 fails.
 
+Before touching the preserved evolution stack, Generation 2 runs the documented
+target-owned backend, frontend, Compose, deployment, and aggregate validation
+targets under a separately allocated Compose project, port, credentials, and
+database volume, then removes only that disposable stack and its volumes. It
+also starts a third isolated stack against an empty database, verifies the full
+migration chain reaches Alembic head with the Generation 2 empty response, and
+deletes that clean-install volume. The preserved stack is inspected through
+running-container metadata plus `docker image inspect` and `docker history` to
+check project/volume identity, published ports, non-root API/frontend users,
+frontend environment hygiene, and obvious evaluator credential or DevLab
+artifact leakage. The grader does not export image layers.
+
 The grader never invokes agents, repairs targets, creates DevLab findings, or
 feeds results back into a workflow. Product failures, unavailable prerequisites,
 and grader failures remain distinct results.

@@ -815,6 +815,190 @@ def test_generation_two_missing_preserved_volume_is_a_hard_gate(tmp_path: Path) 
     assert check.hard_gate is True
 
 
+def test_target_validation_uses_disposable_project_and_removes_only_its_volumes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[tuple[str, ...], Mapping[str, str]]] = []
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, timeout
+        calls.append((tuple(args), dict(environment)))
+        if "compose" in args and args[-3:] == ("config", "--format", "json"):
+            config = _compose_config()
+            project = environment["COMPOSE_PROJECT_NAME"]
+            config["volumes"] = {"postgres-data": {"name": f"{project}_postgres-data"}}
+            return _result(tuple(args), stdout=json.dumps(config))
+        return _result(tuple(args))
+
+    monkeypatch.setattr("system_evolution_grader.shutil.which", lambda name: f"/usr/bin/{name}")
+    grader = SystemEvolutionGrader(
+        _target(tmp_path),
+        2,
+        "idea-greenhouse-run17",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+        host_port=49123,
+    )
+
+    grader._target_validation_checks()
+
+    make_calls = [call for call in calls if call[0][0] == "/usr/bin/make"]
+    assert [call[0][1] for call in make_calls] == [
+        "test-backend",
+        "test-frontend",
+        "compose-config",
+        "compose-build",
+        "deployment-check",
+        "check",
+    ]
+    projects = {call[1]["COMPOSE_PROJECT_NAME"] for call in make_calls}
+    assert len(projects) == 1
+    disposable = projects.pop()
+    assert disposable != grader.project
+    cleanup = calls[-1][0]
+    assert cleanup[:4] == ("/usr/bin/docker", "compose", "--project-name", disposable)
+    assert cleanup[-3:] == ("down", "--remove-orphans", "--volumes")
+    assert all(check.status == "passed" for check in grader.result.checks)
+
+
+def test_generation_two_clean_install_uses_separate_volume_and_removes_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    grader = SystemEvolutionGrader(
+        _target(tmp_path),
+        2,
+        "idea-greenhouse-run18",
+        docker_path=Path("/usr/bin/docker"),
+        host_port=49123,
+    )
+    grader.expected_database_volume = "idea-greenhouse-run18_postgres-data"
+    compose_calls: list[tuple[str, tuple[str, ...], Mapping[str, str]]] = []
+
+    def compose_for(
+        project: str,
+        environment: Mapping[str, str],
+        *args: str,
+        timeout: int,
+    ) -> CommandResult:
+        del timeout
+        compose_calls.append((project, args, dict(environment)))
+        if args[:3] == ("config", "--format", "json"):
+            config = _compose_config()
+            config["volumes"] = {"postgres-data": {"name": f"{project}_postgres-data"}}
+            return _result(args, stdout=json.dumps(config))
+        if args[:3] == ("exec", "-T", "api"):
+            return _result(args, stdout="abc123 (head)\n")
+        return _result(args)
+
+    def request(
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> tuple[int, dict[str, Any], float, str]:
+        del method, payload, headers
+        if url.endswith("/health"):
+            return _http(200, {"status": "ok", "database": "ok"})
+        return _http(
+            200,
+            {
+                "ideas": [],
+                "counts": {
+                    "seed": 0,
+                    "sprout": 0,
+                    "bloom": 0,
+                    "active": 0,
+                    "archived": 0,
+                    "total": 0,
+                },
+            },
+        )
+
+    monkeypatch.setattr(grader, "_compose_for", compose_for)
+    monkeypatch.setattr(grader, "_request", request)
+    monkeypatch.setattr(grader, "_wait_for_health", lambda *args, **kwargs: None)
+
+    grader._generation_2_clean_install_check()
+
+    assert grader.result.checks[0].status == "passed"
+    projects = {call[0] for call in compose_calls}
+    assert len(projects) == 1
+    assert grader.project not in projects
+    assert compose_calls[-1][1] == ("down", "--remove-orphans", "--volumes")
+    assert compose_calls[-1][2]["APP_PORT"] != str(grader.host_port)
+
+
+def test_image_runtime_inspection_checks_users_ports_volume_and_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    container_rows = {
+        "db-id": {
+            "Image": "db-image",
+            "Config": {
+                "User": "postgres",
+                "Labels": {"com.docker.compose.project": "idea-greenhouse-run19"},
+            },
+            "HostConfig": {"PortBindings": {}},
+            "Mounts": [{"Type": "volume", "Name": "idea-greenhouse-run19_postgres-data"}],
+        },
+        "api-id": {
+            "Image": "api-image",
+            "Config": {
+                "User": "1000",
+                "Labels": {"com.docker.compose.project": "idea-greenhouse-run19"},
+            },
+            "HostConfig": {"PortBindings": {}},
+            "Mounts": [],
+        },
+        "frontend-id": {
+            "Image": "frontend-image",
+            "Config": {
+                "User": "101",
+                "Labels": {"com.docker.compose.project": "idea-greenhouse-run19"},
+            },
+            "HostConfig": {"PortBindings": {"8080/tcp": [{"HostPort": "49123"}]}},
+            "Mounts": [],
+        },
+    }
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, environment, timeout
+        command = tuple(args)
+        if command[1] == "inspect":
+            return _result(command, stdout=json.dumps([container_rows[command[2]]]))
+        if command[1:3] == ("image", "inspect"):
+            user = "101" if command[3] == "frontend-image" else "1000"
+            return _result(command, stdout=json.dumps([{"Config": {"User": user, "Env": []}}]))
+        assert command[1] == "history"
+        return _result(command, stdout="IMAGE CREATED BY\n")
+
+    grader = SystemEvolutionGrader(
+        _target(tmp_path),
+        2,
+        "idea-greenhouse-run19",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+    )
+    grader.database_volume = "idea-greenhouse-run19_postgres-data"
+    monkeypatch.setattr(
+        grader,
+        "_compose",
+        lambda *args, timeout: _result(args, stdout=f"{args[-1]}-id\n"),
+    )
+
+    grader._image_runtime_inspection()
+
+    assert [(check.id, check.status) for check in grader.result.checks] == [
+        ("G2-DEP-RUNTIME-INSPECTION", "passed"),
+        ("G2-DEP-IMAGE-INSPECTION", "passed"),
+    ]
+
+
 def _target(tmp_path: Path) -> Path:
     for relative in (
         "compose.yaml",
