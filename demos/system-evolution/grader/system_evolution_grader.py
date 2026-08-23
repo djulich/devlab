@@ -258,6 +258,7 @@ class SystemEvolutionGrader:
                 self._generation_2_migration_checks()
                 self._generation_2_archive_checks()
                 self._generation_2_concurrency_checks()
+                self._generation_2_browser_conflict_checks()
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             self.result.add(
                 Check(
@@ -1580,11 +1581,17 @@ class SystemEvolutionGrader:
                 )
 
     def _browser_checks(self) -> None:
+        self._run_browser_checks(BROWSER_CHECK_SCRIPT, "G1-UI-GRADER")
+
+    def _generation_2_browser_conflict_checks(self) -> None:
+        self._run_browser_checks(GENERATION_2_BROWSER_CHECK_SCRIPT, "G2-UI-GRADER")
+
+    def _run_browser_checks(self, script_content: str, grader_check_id: str) -> None:
         if self.docker is None:
             return
         with tempfile.TemporaryDirectory(prefix="devlab-system-evolution-browser-") as directory:
             script = Path(directory) / "browser-check.js"
-            script.write_text(BROWSER_CHECK_SCRIPT)
+            script.write_text(script_content)
             command = (
                 str(self.docker),
                 "run",
@@ -1607,7 +1614,7 @@ class SystemEvolutionGrader:
             except (OSError, subprocess.SubprocessError) as error:
                 self.result.add(
                     Check(
-                        "G1-UI-GRADER",
+                        grader_check_id,
                         "browser",
                         "grader_error",
                         0,
@@ -1626,7 +1633,7 @@ class SystemEvolutionGrader:
             if BROWSER_GRADER_ERROR_MARKER in output:
                 evidence = output[-4000:]
             self.result.add(
-                Check("G1-UI-GRADER", "browser", status, completed.duration_seconds, evidence)
+                Check(grader_check_id, "browser", status, completed.duration_seconds, evidence)
             )
             return
         try:
@@ -1648,7 +1655,7 @@ class SystemEvolutionGrader:
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             self.result.add(
                 Check(
-                    "G1-UI-GRADER",
+                    grader_check_id,
                     "browser",
                     "grader_error",
                     completed.duration_seconds,
@@ -2145,6 +2152,190 @@ async function main() {
     console.error('DEVLAB_GRADER_ERROR:' + JSON.stringify({ error: error.message, diagnostics }));
     process.exitCode = 2;
   } finally {
+    if (browser) await browser.close();
+  }
+}
+
+main();
+"""
+
+
+GENERATION_2_BROWSER_CHECK_SCRIPT = r"""
+const { chromium } = require('/tmp/evaluator-tools/node_modules/playwright');
+
+const baseUrl = process.argv[2];
+const checks = [];
+const diagnostics = { consoleErrors: [], pageErrors: [] };
+const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const originalTitle = `grader-conflict-${suffix}`;
+const draftTitle = `${originalTitle}-unsaved`;
+const serverTitle = `${originalTitle}-server`;
+const draftNotes = 'unsaved browser notes';
+let browser;
+let requestContext;
+let currentIdea;
+
+function record(id, passed, evidence, requirementIds) {
+  checks.push({ id, passed, evidence, requirement_ids: requirementIds });
+}
+
+async function main() {
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    requestContext = page.request;
+    page.on('pageerror', error => diagnostics.pageErrors.push(error.message));
+    page.on('console', message => {
+      if (message.type() === 'error' && !/favicon/i.test(message.text())) {
+        diagnostics.consoleErrors.push(message.text());
+      }
+    });
+
+    const created = await requestContext.post(`${baseUrl}/api/ideas`, {
+      data: { title: originalTitle, notes: 'original browser notes' }
+    });
+    if (created.status() !== 201) throw new Error(`probe create status=${created.status()}`);
+    currentIdea = await created.json();
+    if (!Number.isInteger(currentIdea.id) || currentIdea.version !== 1) {
+      throw new Error(`invalid probe representation=${JSON.stringify(currentIdea)}`);
+    }
+
+    const navigation = await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 20000 });
+    if (!navigation || !navigation.ok()) {
+      throw new Error(`navigation status=${navigation?.status()}`);
+    }
+    try {
+      const card = page.getByText(originalTitle, { exact: true })
+        .locator('xpath=ancestor::*[.//button][1]');
+      await card.getByRole('button', { name: /edit/i }).click();
+      const editTitle = page.getByLabel(/title/i).last();
+      const editNotes = page.getByLabel(/notes/i).last();
+      await editTitle.fill(draftTitle);
+      await editNotes.fill(draftNotes);
+
+    const external = await requestContext.patch(`${baseUrl}/api/ideas/${currentIdea.id}`, {
+      headers: { 'If-Match': `"${currentIdea.version}"` },
+      data: { title: serverTitle }
+    });
+    if (external.status() !== 200) {
+      throw new Error(`external mutation status=${external.status()}`);
+    }
+    currentIdea = await external.json();
+    if (currentIdea.version !== 2 || currentIdea.title !== serverTitle) {
+      throw new Error(`external mutation representation=${JSON.stringify(currentIdea)}`);
+    }
+
+    const attempts = [];
+    const observe = request => {
+      if (request.method() === 'PATCH' && request.url().endsWith(`/api/ideas/${currentIdea.id}`)) {
+        attempts.push(request.headers()['if-match'] || '');
+      }
+    };
+    page.on('request', observe);
+    const conflictResponse = page.waitForResponse(
+      response => response.request().method() === 'PATCH'
+        && response.url().endsWith(`/api/ideas/${currentIdea.id}`),
+      { timeout: 10000 }
+    );
+    await page.getByRole('button', { name: /save|update/i }).last().click();
+    const conflict = await conflictResponse;
+    await page.waitForTimeout(300);
+    page.off('request', observe);
+
+    const alert = page.locator('[role="alert"]:visible, [aria-live]:visible')
+      .filter({ hasText: /changed|conflict|elsewhere|reload/i });
+    const reload = page.getByRole('button', { name: /reload current idea/i });
+    const conflictVisible = await alert.count() > 0 && await alert.first().isVisible();
+    const reloadVisible = await reload.count() > 0 && await reload.first().isVisible();
+    record(
+      'G2-UI-STALE-CONFLICT',
+      conflict.status() === 409 && conflictVisible && reloadVisible,
+      `status=${conflict.status()}; alert=${conflictVisible}; reload=${reloadVisible}`,
+      ['G2-UI-03', 'G2-UI-04']
+    );
+
+    const titlePreserved = await editTitle.inputValue() === draftTitle;
+    const notesPreserved = await editNotes.inputValue() === draftNotes;
+    record(
+      'G2-UI-CONFLICT-PRESERVES-DRAFT',
+      titlePreserved && notesPreserved,
+      `title=${titlePreserved}; notes=${notesPreserved}`,
+      ['G2-UI-02', 'G2-UI-04']
+    );
+
+    const storedBeforeReload = await requestContext.get(`${baseUrl}/api/ideas/${currentIdea.id}`);
+    const storedBody = await storedBeforeReload.json();
+    const noRetry = attempts.length === 1
+      && attempts[0] === '"1"'
+      && storedBeforeReload.status() === 200
+      && storedBody.version === 2
+      && storedBody.title === serverTitle;
+    record(
+      'G2-UI-CONFLICT-NO-SILENT-RETRY',
+      noRetry,
+      `attempts=${JSON.stringify(attempts)}; stored_version=${storedBody.version}; stored_title=${storedBody.title}`,
+      ['G2-UI-03', 'G2-UI-04']
+    );
+
+      if (reloadVisible) {
+        await reload.click();
+        await page.getByText(serverTitle, { exact: true }).waitFor({ timeout: 8000 });
+      }
+      const draftHidden = reloadVisible && await page.getByDisplayValue(draftTitle).count() === 0;
+    record(
+      'G2-UI-CONFLICT-RELOAD-CURRENT',
+      draftHidden,
+      `server title visible; stale draft field count=${await page.getByDisplayValue(draftTitle).count()}`,
+      ['G2-UI-04']
+    );
+
+      record(
+        'G2-UI-CONFLICT-RUNTIME-ERRORS',
+        diagnostics.pageErrors.length === 0 && diagnostics.consoleErrors.length === 0,
+        `page_errors=${JSON.stringify(diagnostics.pageErrors)}; console_errors=${JSON.stringify(diagnostics.consoleErrors)}`,
+        ['G2-UI-05']
+      );
+    } catch (error) {
+      for (const [id, requirements] of [
+        ['G2-UI-STALE-CONFLICT', ['G2-UI-03', 'G2-UI-04']],
+        ['G2-UI-CONFLICT-PRESERVES-DRAFT', ['G2-UI-02', 'G2-UI-04']],
+        ['G2-UI-CONFLICT-NO-SILENT-RETRY', ['G2-UI-03', 'G2-UI-04']],
+        ['G2-UI-CONFLICT-RELOAD-CURRENT', ['G2-UI-04']],
+        ['G2-UI-CONFLICT-RUNTIME-ERRORS', ['G2-UI-05']]
+      ]) {
+        if (!checks.some(check => check.id === id)) {
+          record(id, false, `browser flow failed: ${error.message}`, requirements);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('DEVLAB_GRADER_ERROR:' + JSON.stringify({ error: error.message, diagnostics }));
+    process.exitCode = 2;
+  } finally {
+    if (currentIdea && requestContext) {
+      try {
+        const latest = await requestContext.get(`${baseUrl}/api/ideas/${currentIdea.id}`);
+        if (latest.status() === 200) {
+          const body = await latest.json();
+          const deleted = await requestContext.delete(`${baseUrl}/api/ideas/${currentIdea.id}`, {
+            headers: { 'If-Match': `"${body.version}"` }
+          });
+          if (deleted.status() !== 204) {
+            throw new Error(`cleanup delete status=${deleted.status()}`);
+          }
+        } else if (latest.status() !== 404) {
+          throw new Error(`cleanup read status=${latest.status()}`);
+        }
+      } catch (error) {
+        console.error('DEVLAB_GRADER_ERROR:' + JSON.stringify({
+          error: `browser probe cleanup failed: ${error.message}`, diagnostics
+        }));
+        process.exitCode = 2;
+      }
+    }
+    if (checks.length) {
+      console.log('DEVLAB_BROWSER_RESULT:' + JSON.stringify({ checks, diagnostics }));
+    }
     if (browser) await browser.close();
   }
 }

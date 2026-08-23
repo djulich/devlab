@@ -61,8 +61,13 @@ archived ideas. Temporary records are removed with their current versions;
 cleanup failures are reported as grader errors. The grader also checks the full
 expected-version syntax/status matrix, mutation-error precedence, sequential
 stale update/archive/restore/delete safety, and eight synchronized two-writer
-races that must each produce one success and one conflict. Generation 2
-browser-conflict grading remains a later slice.
+races that must each produce one success and one conflict. A separate
+Generation 2 Playwright flow creates an evaluator probe, opens a stale edit,
+mutates the server representation through the frontend `/api` boundary, and
+checks visible conflict recovery, preservation of unsaved title and notes,
+explicit reload, the stale quoted `If-Match`, and absence of a silent retry. It
+removes the probe with the latest server version even when the browser check
+fails.
 
 The grader never invokes agents, repairs targets, creates DevLab findings, or
 feeds results back into a workflow. Product failures, unavailable prerequisites,

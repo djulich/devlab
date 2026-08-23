@@ -280,6 +280,61 @@ def test_browser_setup_failure_is_a_grader_error(tmp_path: Path) -> None:
     assert grader.result.checks[0].status == "grader_error"
 
 
+def test_generation_two_browser_conflict_uses_stale_version_and_expands_results(
+    tmp_path: Path,
+) -> None:
+    target = _target(tmp_path)
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, environment
+        command = tuple(args)
+        assert timeout == 360
+        mount = command[command.index("--mount") + 1]
+        script_path = Path(mount.split(",")[1].removeprefix("src="))
+        script = script_path.read_text()
+        assert "Reload current idea" not in script
+        assert "/reload current idea/i" in script
+        assert "attempts.length === 1" in script
+        assert "attempts[0] === '\"1\"'" in script
+        assert "G2-UI-CONFLICT-PRESERVES-DRAFT" in script
+        assert "browser probe cleanup failed" in script
+        payload = {
+            "checks": [
+                {
+                    "id": "G2-UI-STALE-CONFLICT",
+                    "passed": True,
+                    "evidence": "409 and visible reload action",
+                    "requirement_ids": ["G2-UI-04"],
+                },
+                {
+                    "id": "G2-UI-CONFLICT-NO-SILENT-RETRY",
+                    "passed": False,
+                    "evidence": "two PATCH attempts",
+                    "requirement_ids": ["G2-UI-03", "G2-UI-04"],
+                },
+            ]
+        }
+        return _result(command, stdout=f"DEVLAB_BROWSER_RESULT:{json.dumps(payload)}\n")
+
+    grader = SystemEvolutionGrader(
+        target,
+        2,
+        "idea-greenhouse-run16",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+        host_port=49123,
+    )
+
+    grader._generation_2_browser_conflict_checks()
+
+    assert [(check.id, check.status) for check in grader.result.checks] == [
+        ("G2-UI-STALE-CONFLICT", "passed"),
+        ("G2-UI-CONFLICT-NO-SILENT-RETRY", "failed"),
+    ]
+
+
 def test_generation_one_fixture_is_seeded_through_public_api_and_digested(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
