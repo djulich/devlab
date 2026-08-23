@@ -254,6 +254,7 @@ class SystemEvolutionGrader:
                 self._create_generation_1_fixture()
             else:
                 self._generation_2_migration_checks()
+                self._generation_2_archive_checks()
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             self.result.add(
                 Check(
@@ -1038,6 +1039,286 @@ class SystemEvolutionGrader:
         base = f"http://127.0.0.1:{self.host_port}/api/ideas"
         return [self._request("GET", f"{base}/{idea['id']}") for idea in ideas]
 
+    def _generation_2_archive_checks(self) -> None:
+        """Exercise Generation 2 fields and archive behavior without touching fixture rows."""
+        base = f"http://127.0.0.1:{self.host_port}/api/ideas"
+        fixture = self.generation_1_fixture_data or {}
+        fixture_ideas = fixture.get("ideas", [])
+        temporary_ids: list[int] = []
+        responses: list[tuple[int, dict[str, Any], float, str]] = []
+
+        def request(
+            method: str,
+            url: str,
+            payload: dict[str, Any] | None = None,
+            *,
+            version: int | None = None,
+        ) -> tuple[int, dict[str, Any], float, str]:
+            response = self._request(
+                method,
+                url,
+                payload,
+                headers={"If-Match": f'"{version}"'} if version is not None else None,
+            )
+            responses.append(response)
+            return response
+
+        def add_check(
+            check_id: str, passed: bool, evidence: str, requirements: tuple[str, ...]
+        ) -> None:
+            self.result.add(
+                Check(
+                    check_id,
+                    "api",
+                    "passed" if passed else "failed",
+                    sum(item[2] for item in responses),
+                    evidence[:4000],
+                    requirements,
+                )
+            )
+            responses.clear()
+
+        try:
+            created: list[dict[str, Any]] = []
+            for stage in ("seed", "sprout", "bloom"):
+                response = request(
+                    "POST",
+                    base,
+                    {
+                        "title": f"{self.prefix} {stage}",
+                        "stage": stage,
+                        "next_action": "  Review evidence  " if stage == "seed" else None,
+                    },
+                )
+                idea_id = response[1].get("id")
+                if isinstance(idea_id, int) and not isinstance(idea_id, bool):
+                    temporary_ids.append(idea_id)
+                if (
+                    response[0] == 201
+                    and isinstance(idea_id, int)
+                    and not isinstance(idea_id, bool)
+                ):
+                    created.append(response[1])
+            create_ok = (
+                len(created) == 3
+                and created[0].get("next_action") == "Review evidence"
+                and all(
+                    idea.get("version") == 1 and idea.get("archived_at") is None
+                    for idea in created
+                )
+            )
+            add_check(
+                "G2-API-NEXT-ACTION-CREATE",
+                create_ok,
+                f"created={len(created)}; trimmed={created[0].get('next_action') if created else None!r}",
+                ("G2-API-02",),
+            )
+            if len(created) != 3:
+                return
+
+            seed, sprout, bloom = created
+            edited = request(
+                "PATCH",
+                f"{base}/{seed['id']}",
+                {"next_action": "  Ship the report  "},
+                version=seed["version"],
+            )
+            cleared = request(
+                "PATCH",
+                f"{base}/{seed['id']}",
+                {"next_action": "   "},
+                version=edited[1].get("version") if edited[0] == 200 else None,
+            )
+            edit_ok = (
+                edited[0] == 200
+                and edited[1].get("next_action") == "Ship the report"
+                and edited[1].get("version") == 2
+                and cleared[0] == 200
+                and cleared[1].get("next_action") is None
+                and cleared[1].get("version") == 3
+            )
+            seed = cleared[1] if cleared[0] == 200 else edited[1]
+            add_check(
+                "G2-API-NEXT-ACTION-EDIT-CLEAR",
+                edit_ok,
+                f"edit={summarize_http(edited)}; clear={summarize_http(cleared)}",
+                ("G2-API-06",),
+            )
+
+            overlong_create = request(
+                "POST", base, {"title": f"{self.prefix} invalid", "next_action": "x" * 241}
+            )
+            invalid_id = overlong_create[1].get("id")
+            if isinstance(invalid_id, int) and not isinstance(invalid_id, bool):
+                temporary_ids.append(invalid_id)
+            overlong_patch = request(
+                "PATCH",
+                f"{base}/{seed['id']}",
+                {"next_action": "x" * 241},
+                version=seed.get("version"),
+            )
+            length_ok = all(
+                response[0] == 422
+                and response[1].get("error", {}).get("code") == "validation_error"
+                for response in (overlong_create, overlong_patch)
+            )
+            add_check(
+                "G2-API-NEXT-ACTION-LIMIT",
+                length_ok,
+                f"create={summarize_http(overlong_create)}; patch={summarize_http(overlong_patch)}",
+                ("G2-API-02", "G2-API-06", "G2-API-10"),
+            )
+
+            archived = request(
+                "POST", f"{base}/{bloom['id']}/archive", {}, version=bloom["version"]
+            )
+            archive_ok = (
+                archived[0] == 200
+                and archived[1].get("archived_at") is not None
+                and archived[1].get("version") == 2
+                and archived[1].get("updated_at") != bloom.get("updated_at")
+            )
+            add_check(
+                "G2-API-ARCHIVE",
+                archive_ok,
+                summarize_http(archived),
+                ("G2-API-07",),
+            )
+            bloom = archived[1] if archived[0] == 200 else bloom
+
+            invalid_archive = request(
+                "POST", f"{base}/{bloom['id']}/archive", {}, version=bloom.get("version")
+            )
+            invalid_restore = request(
+                "POST", f"{base}/{sprout['id']}/restore", {}, version=sprout["version"]
+            )
+            invalid_ok = all(
+                response[0] == 409
+                and response[1].get("error", {}).get("code") == "invalid_archive_state"
+                and response[1].get("current", {}).get("id") == idea_id
+                for response, idea_id in (
+                    (invalid_archive, bloom["id"]),
+                    (invalid_restore, sprout["id"]),
+                )
+            )
+            add_check(
+                "G2-API-INVALID-ARCHIVE-STATE",
+                invalid_ok,
+                f"archive={summarize_http(invalid_archive)}; restore={summarize_http(invalid_restore)}",
+                ("G2-API-07", "G2-API-10"),
+            )
+
+            expected_all = {idea["id"] for idea in fixture_ideas} | set(temporary_ids)
+            expected_active = expected_all - {bloom["id"]}
+            expected_counts = {"seed": 1, "sprout": 1, "bloom": 0}
+            for idea in fixture_ideas:
+                expected_counts[idea["stage"]] += 1
+            expected_counts.update(
+                active=len(expected_active), archived=1, total=len(expected_all)
+            )
+            listings = {
+                "default": request("GET", base),
+                "active": request("GET", f"{base}?archive=active"),
+                "archived": request("GET", f"{base}?archive=archived"),
+                "all": request("GET", f"{base}?archive=all"),
+                "stage": request("GET", f"{base}?archive=all&stage=bloom"),
+            }
+            ids = {
+                name: {item.get("id") for item in response[1].get("ideas", [])}
+                for name, response in listings.items()
+            }
+            filters_ok = (
+                all(response[0] == 200 for response in listings.values())
+                and ids["default"] == expected_active
+                and ids["active"] == expected_active
+                and ids["archived"] == {bloom["id"]}
+                and ids["all"] == expected_all
+                and ids["stage"]
+                == {idea["id"] for idea in fixture_ideas if idea["stage"] == "bloom"}
+                | {bloom["id"]}
+                and all(
+                    response[1].get("counts") == expected_counts for response in listings.values()
+                )
+            )
+            add_check(
+                "G2-API-ARCHIVE-FILTERS-COUNTS",
+                filters_ok,
+                f"ids={ids}; expected_counts={expected_counts}; actual_counts="
+                f"{listings['all'][1].get('counts')}",
+                ("G2-API-03",),
+            )
+
+            restored = request(
+                "POST", f"{base}/{bloom['id']}/restore", {}, version=bloom.get("version")
+            )
+            restore_ok = (
+                restored[0] == 200
+                and restored[1].get("archived_at") is None
+                and restored[1].get("version") == 3
+                and restored[1].get("updated_at") != bloom.get("updated_at")
+            )
+            bloom = restored[1] if restored[0] == 200 else bloom
+            add_check(
+                "G2-API-RESTORE",
+                restore_ok,
+                summarize_http(restored),
+                ("G2-API-07",),
+            )
+
+            rearchived = request(
+                "POST", f"{base}/{bloom['id']}/archive", {}, version=bloom.get("version")
+            )
+            bloom = rearchived[1] if rearchived[0] == 200 else bloom
+            delete_active = request("DELETE", f"{base}/{sprout['id']}", version=sprout["version"])
+            delete_archived = request(
+                "DELETE", f"{base}/{bloom['id']}", version=bloom.get("version")
+            )
+            delete_ok = (
+                rearchived[0] == 200
+                and rearchived[1].get("version") == 4
+                and delete_active[0] == 204
+                and delete_active[1] == {}
+                and delete_archived[0] == 204
+                and delete_archived[1] == {}
+            )
+            if delete_active[0] == 204:
+                temporary_ids.remove(sprout["id"])
+            if delete_archived[0] == 204:
+                temporary_ids.remove(bloom["id"])
+            add_check(
+                "G2-API-PERMANENT-DELETE",
+                delete_ok,
+                f"rearchive={summarize_http(rearchived)}; active={summarize_http(delete_active)}; "
+                f"archived={summarize_http(delete_archived)}",
+                ("G2-API-08",),
+            )
+        finally:
+            failures: list[str] = []
+            for idea_id in dict.fromkeys(temporary_ids):
+                current = self._request("GET", f"{base}/{idea_id}")
+                version = current[1].get("version")
+                deleted = (
+                    self._request(
+                        "DELETE",
+                        f"{base}/{idea_id}",
+                        headers={"If-Match": f'"{version}"'},
+                    )
+                    if current[0] == 200 and isinstance(version, int)
+                    else current
+                )
+                if deleted[0] not in (204, 404):
+                    failures.append(f"id={idea_id}: {summarize_http(deleted)}")
+            if failures:
+                self.result.add(
+                    Check(
+                        "G2-API-TEMPORARY-CLEANUP",
+                        "api",
+                        "grader_error",
+                        0,
+                        "could not remove evaluator records; " + "; ".join(failures)[:3800],
+                    )
+                )
+
     def _browser_checks(self) -> None:
         if self.docker is None:
             return
@@ -1152,13 +1433,17 @@ class SystemEvolutionGrader:
         )
 
     def _request(
-        self, method: str, url: str, payload: dict[str, Any] | None = None
+        self,
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        headers: Mapping[str, str] | None = None,
     ) -> tuple[int, dict[str, Any], float, str]:
         started = time.monotonic()
         data = json.dumps(payload).encode() if payload is not None else None
-        request = urllib.request.Request(
-            url, data=data, method=method, headers={"Content-Type": "application/json"}
-        )
+        request_headers = {"Content-Type": "application/json", **(headers or {})}
+        request = urllib.request.Request(url, data=data, method=method, headers=request_headers)
         try:
             with urllib.request.urlopen(request, timeout=15) as response:
                 raw = response.read()

@@ -504,6 +504,140 @@ def test_generation_two_migration_preserves_fixture_and_is_restart_safe(
     ]
 
 
+def test_generation_two_fields_archive_filters_and_versioned_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = _target(tmp_path / "target")
+    grader = SystemEvolutionGrader(
+        target,
+        2,
+        "idea-greenhouse-run14",
+        docker_path=Path("/usr/bin/docker"),
+        host_port=49123,
+    )
+    fixture = _fixture_content("idea-greenhouse-run14")
+    grader.generation_1_fixture_data = fixture
+    records = {
+        idea["id"]: {**idea, "next_action": None, "archived_at": None, "version": 1}
+        for idea in fixture["ideas"]
+    }
+    next_id = 10
+    mutation_headers: list[str] = []
+
+    def request(
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> tuple[int, dict[str, Any], float, str]:
+        nonlocal next_id
+        path = url.removeprefix("http://127.0.0.1:49123/api/ideas")
+        path, _, query = path.partition("?")
+        if method == "POST" and path == "":
+            assert payload is not None
+            if len(str((payload or {}).get("next_action") or "")) > 240:
+                return _http(422, {"error": {"code": "validation_error"}})
+            idea = {
+                "id": next_id,
+                "title": payload["title"],
+                "notes": None,
+                "stage": payload.get("stage", "seed"),
+                "next_action": (payload.get("next_action") or "").strip() or None,
+                "archived_at": None,
+                "version": 1,
+                "created_at": f"2026-08-23T12:00:{next_id}Z",
+                "updated_at": f"2026-08-23T12:00:{next_id}Z",
+            }
+            records[next_id] = idea
+            next_id += 1
+            return _http(201, idea)
+        if method == "GET" and path == "":
+            filters = dict(item.split("=") for item in query.split("&") if item)
+            archive = filters.get("archive", "active")
+            ideas = list(records.values())
+            if archive == "active":
+                ideas = [idea for idea in ideas if idea["archived_at"] is None]
+            elif archive == "archived":
+                ideas = [idea for idea in ideas if idea["archived_at"] is not None]
+            if "stage" in filters:
+                ideas = [idea for idea in ideas if idea["stage"] == filters["stage"]]
+            active = [idea for idea in records.values() if idea["archived_at"] is None]
+            counts = {
+                stage: sum(idea["stage"] == stage for idea in active)
+                for stage in ("seed", "sprout", "bloom")
+            }
+            counts.update(
+                active=len(active), archived=len(records) - len(active), total=len(records)
+            )
+            return _http(200, {"ideas": ideas, "counts": counts})
+
+        parts = path.strip("/").split("/")
+        idea_id = int(parts[0])
+        idea = records.get(idea_id)
+        if method == "GET":
+            return _http(200, idea) if idea else _http(404, {})
+        assert headers is not None and "If-Match" in headers
+        mutation_headers.append(headers["If-Match"])
+        if idea is None:
+            return _http(404, {})
+        assert headers["If-Match"] == f'"{idea["version"]}"'
+        if method == "PATCH":
+            assert payload is not None
+            if len(str((payload or {}).get("next_action") or "")) > 240:
+                return _http(422, {"error": {"code": "validation_error"}})
+            idea.update(next_action=(payload.get("next_action") or "").strip() or None)
+            _advance(idea)
+            return _http(200, idea)
+        if method == "POST" and parts[1] == "archive":
+            if idea["archived_at"] is not None:
+                return _http(
+                    409,
+                    {"error": {"code": "invalid_archive_state"}, "current": dict(idea)},
+                )
+            idea["archived_at"] = "2026-08-23T13:00:00Z"
+            _advance(idea)
+            return _http(200, idea)
+        if method == "POST" and parts[1] == "restore":
+            if idea["archived_at"] is None:
+                return _http(
+                    409,
+                    {"error": {"code": "invalid_archive_state"}, "current": dict(idea)},
+                )
+            idea["archived_at"] = None
+            _advance(idea)
+            return _http(200, idea)
+        assert method == "DELETE"
+        del records[idea_id]
+        return _http(204, {})
+
+    monkeypatch.setattr(grader, "_request", request)
+
+    grader._generation_2_archive_checks()
+
+    assert [(check.id, check.status) for check in grader.result.checks] == [
+        ("G2-API-NEXT-ACTION-CREATE", "passed"),
+        ("G2-API-NEXT-ACTION-EDIT-CLEAR", "passed"),
+        ("G2-API-NEXT-ACTION-LIMIT", "passed"),
+        ("G2-API-ARCHIVE", "passed"),
+        ("G2-API-INVALID-ARCHIVE-STATE", "passed"),
+        ("G2-API-ARCHIVE-FILTERS-COUNTS", "passed"),
+        ("G2-API-RESTORE", "passed"),
+        ("G2-API-PERMANENT-DELETE", "passed"),
+    ]
+    assert set(records) == {1, 2, 3}
+    assert mutation_headers
+
+
+def _advance(idea: dict[str, Any]) -> None:
+    idea["version"] += 1
+    idea["updated_at"] = f"2026-08-23T14:00:0{idea['version']}Z"
+
+
+def _http(status: int, body: dict[str, Any]) -> tuple[int, dict[str, Any], float, str]:
+    return status, dict(body), 0.01, ""
+
+
 def test_generation_two_missing_preserved_volume_is_a_hard_gate(tmp_path: Path) -> None:
     target = _target(tmp_path / "target")
 

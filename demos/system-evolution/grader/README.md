@@ -54,8 +54,12 @@ The grader verifies both artifact digests and the Compose-project identity befor
 touching Docker. It refuses a missing replacement volume, restores the evaluator
 database configuration, starts Generation 2 in place, checks every preserved
 field and new default, verifies Alembic is at head, restarts the API, and repeats
-the preservation checks. Archive, concurrency, and Generation 2 browser-conflict
-grading remain later slices.
+the preservation checks. It then uses uniquely prefixed temporary records to
+check next-action normalization and validation, archive/restore transitions,
+global counts and archive/stage filters, and versioned deletion of active and
+archived ideas. Temporary records are removed with their current versions;
+cleanup failures are reported as grader errors. Concurrency and Generation 2
+browser-conflict grading remain later slices.
 
 The grader never invokes agents, repairs targets, creates DevLab findings, or
 feeds results back into a workflow. Product failures, unavailable prerequisites,
