@@ -11,6 +11,7 @@ from devlab.executable_config import (
     authorize_executable_config,
     build_executable_config_snapshot,
     executable_config_is_trusted,
+    format_executable_config,
     revoke_executable_config_trust,
     trust_executable_config,
 )
@@ -60,6 +61,23 @@ def test_snapshot_digest_includes_profile_default_validation(tmp_path: Path) -> 
     changed = build_executable_config_snapshot(tmp_path)
 
     assert changed.digest != initial.digest
+
+
+def test_format_executable_config_separates_profile_validation_and_lifecycle(
+    tmp_path: Path,
+) -> None:
+    init_workspace(tmp_path)
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        .replace("default_validation = []", 'default_validation = ["make check"]')
+        .replace("setup = []", 'setup = ["make setup"]')
+    )
+
+    text = format_executable_config(build_executable_config_snapshot(tmp_path))
+
+    assert "Profile default validation commands:\n- default: make check" in text
+    assert "Profile lifecycle commands:\n- default.setup: make setup" in text
 
 
 def test_snapshot_keeps_provider_and_profile_configuration_frozen(tmp_path: Path) -> None:

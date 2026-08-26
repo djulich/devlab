@@ -305,11 +305,16 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
             if isinstance(version_command, str) and version_command:
                 lines.append(f"  version discovery for {provider_name}: {version_command}")
     lifecycle_lines = []
+    validation_lines = []
     for profile_id, profile in sorted(snapshot.profiles.items()):
+        for command in profile.tooling.default_validation:
+            validation_lines.append(f"- {profile_id}: {command}")
         for phase in ("pre_session", "setup", "post_session"):
             commands = getattr(profile.environment, phase)
             for command in commands:
                 lifecycle_lines.append(f"- {profile_id}.{phase}: {command}")
+    lines.extend(["", "Profile default validation commands:"])
+    lines.extend(validation_lines or ["- None"])
     lines.extend(["", "Profile lifecycle commands:"])
     lines.extend(lifecycle_lines or ["- None"])
     lines.extend(

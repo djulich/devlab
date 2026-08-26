@@ -108,6 +108,32 @@ the experiment's predeclared policy. Record the question and answer. Do not use
 clarification to coach DevLab toward a grader implementation detail that is not
 part of the specification.
 
+### Recover an interrupted DevLab run without discarding evidence
+
+If DevLab stops after accepting a session but before committing its archived
+handoff, logs, session artifacts, or workflow event, do not use
+`clean-failed-session`: that command removes only untracked diagnostics in its
+bounded cleanup directories and does not restore tracked workflow state.
+
+1. Stop all target-agent activity and record the target HEAD, `git status`, the
+   DevLab revision/version, the stop reason, and the missing external
+   prerequisite in evaluator-owned evidence.
+2. Review the dirty paths only to distinguish session residue from unrelated
+   operator edits. Do not alter product, planning, task, finding, or verification
+   content.
+3. Preserve an otherwise accepted session exactly as left by committing its
+   tracked and untracked DevLab evidence with an explicit `Operator
+   intervention:` commit message. Commit unrelated operator configuration
+   separately, or revert it only when that was the predeclared experiment
+   configuration; record either choice.
+4. Resume only after installing the corrected DevLab version and satisfying the
+   external prerequisite. Re-run executable-configuration trust review when its
+   fingerprint changed, then continue with the same bounded `devlab implement`
+   policy.
+
+This bookkeeping commit is an intervention, not product progress. Include it in
+the final intervention log and keep the pre-intervention revision identifiable.
+
 ## 6. Run generation 1: single-agent arm
 
 1. Copy the generation 1 specifications into the single-agent repository under

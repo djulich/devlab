@@ -549,6 +549,12 @@ def test_cli_trust_executable_config_approves_shows_and_revokes(
     monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "operator-state"))
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text().replace(
+            "default_validation = []", 'default_validation = ["make check"]'
+        )
+    )
 
     _run_cli(
         monkeypatch,
@@ -561,6 +567,8 @@ def test_cli_trust_executable_config_approves_shows_and_revokes(
     shown = capsys.readouterr().out
     assert "Fingerprint: exec-v2:" in shown
     assert "Trust status: not trusted" in shown
+    assert "Profile default validation commands:\n- default: make check" in shown
+    assert "Profile lifecycle commands:\n- None" in shown
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
     _run_cli(

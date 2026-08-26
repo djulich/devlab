@@ -16,6 +16,8 @@ MILESTONES_DIR = ".devlab/milestones"
 MILESTONE_VERIFICATION_DIR = ".devlab/verification/milestones"
 MILESTONE_ID_RE = re.compile(r"(?<![A-Z0-9])M\d{1,5}(?!\d)")
 _PROJECT_PLAN_HEADING_RE = re.compile(r"^##\s+(M\d{1,5})(?::\s*(.+?))?\s*$", re.MULTILINE)
+_ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|[@-_])")
+_UNSAFE_TOML_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 class MilestoneStatus(StrEnum):
@@ -310,11 +312,18 @@ def _format_verification(value: MilestoneVerification) -> str:
         lines.extend(
             (
                 f"duration_seconds = {command.duration_seconds}",
-                f"output_summary = {format_toml_value(command.output_summary)}",
+                "output_summary = "
+                f"{format_toml_value(_sanitize_output_summary(command.output_summary))}",
                 f"log_path = {format_toml_value(command.log_path)}",
             )
         )
     return "\n".join(lines) + "\n"
+
+
+def _sanitize_output_summary(value: str) -> str:
+    """Remove terminal escapes and TOML-invalid controls from command evidence."""
+    without_ansi = _ANSI_ESCAPE_RE.sub("", value)
+    return _UNSAFE_TOML_CONTROL_RE.sub("", without_ansi)
 
 
 def _read_verification(path: Path) -> MilestoneVerification:

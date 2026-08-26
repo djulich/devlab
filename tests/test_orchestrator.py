@@ -4329,6 +4329,42 @@ def test_repeated_non_advancing_developer_stops_after_one_recovery(
     assert "## Bounded Recovery" in provider.calls[1].session_prompt
 
 
+def test_reworded_failed_handoffs_and_task_notes_do_not_reset_recovery_bound(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    task_path = _write_task(tmp_path, "T0001", "First")
+    invocations = 0
+
+    def on_invoke(call: AgentCall) -> None:
+        nonlocal invocations
+        invocations += 1
+        task_path.write_text(task_path.read_text() + f"\nPrerequisite note {invocations}.\n")
+        envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
+        envelope_path.with_name("handoff-candidate.toml").write_text(
+            'schema_version = 1\noutcome = "failed"\n'
+            f'commit_message = "Blocked attempt {invocations}"\n'
+            f'done = ["Rechecked prerequisite {invocations}"]\nchanged_artifacts = []\n'
+            f'open_issues = ["External service remains unavailable {invocations}"]\n'
+            "addressed_findings = []\n"
+            'next_session_hint = "Retry when available."\n'
+        )
+        submit_session_handoff(call.root, envelope_path=envelope_path)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=4,
+        agent_providers={"default": provider},
+    )
+
+    assert result.stop_reason == RunStopReason.DEVELOPER_NON_ADVANCING
+    assert result.sessions_run == 2
+    assert len(provider.calls) == 2
+
+
 def test_repeated_validation_failure_stops_after_one_developer_recovery(
     tmp_path: Path,
 ) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,34 @@ def test_milestone_verification_round_trip(tmp_path: Path) -> None:
     assert record.commands[0].command == "pytest"
     assert record.commands[0].exit_code == 0
     assert record.untested_claims == ("manual documentation review",)
+
+
+def test_milestone_verification_sanitizes_colored_output_for_toml(tmp_path: Path) -> None:
+    tracker = FileMilestoneTracker(tmp_path)
+    tracker.write_verification(
+        MilestoneVerification(
+            milestone_id="M1",
+            state="blocked",
+            repository_revision="abc123",
+            closed_task_ids=(),
+            commands=(
+                MilestoneVerificationCommand(
+                    command="vitest",
+                    task_ids=(),
+                    sources=("profile",),
+                    output_summary="\x1b[31mfailed\x1b[0m\x00\nnext line",
+                ),
+            ),
+        )
+    )
+
+    path = tmp_path / ".devlab/verification/milestones/M1.toml"
+    parsed = tomllib.loads(path.read_text())
+    record = tracker.read_verification("M1")
+
+    assert parsed["commands"][0]["output_summary"] == "failed\nnext line"
+    assert record is not None
+    assert record.commands[0].output_summary == "failed\nnext line"
 
 
 def test_upsert_from_tasks_creates_missing_milestone_files(tmp_path: Path) -> None:

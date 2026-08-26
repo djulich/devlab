@@ -228,10 +228,10 @@ class SessionProgress(StrEnum):
 
 @dataclasses.dataclass(frozen=True)
 class SessionProgressBaseline:
-    tasks: dict[str, tuple[TaskStatus, bool, bool, str]]
+    tasks: dict[str, tuple[object, ...]]
     milestones: dict[str, object]
     workflow_state: WorkflowState
-    findings: tuple[object, ...]
+    findings: tuple[tuple[object, ...], ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1386,21 +1386,14 @@ def _classify_session_progress(
         return SessionProgress.LEGITIMATE_STOP
     if process_result.research_id is not None:
         return SessionProgress.LEGITIMATE_STOP
-    after_tasks = {
-        task.id: (
-            task.status,
-            task.acceptance_criteria_complete,
-            task.review_approved,
-            task.body,
-        )
-        for task in after.list_tasks()
-    }
+    after_tasks = {task.id: _task_progress_state(task) for task in after.list_tasks()}
     after_milestones = {milestone.id: milestone for milestone in after.list_milestones()}
+    after_findings = tuple(_finding_progress_state(item) for item in after.list_findings())
     if (
         before.tasks != after_tasks
         or before.milestones != after_milestones
         or before.workflow_state != after.workflow_state()
-        or before.findings != tuple(after.list_findings())
+        or before.findings != after_findings
     ):
         return SessionProgress.WORKFLOW_ADVANCE
     return SessionProgress.NON_ADVANCING
@@ -1408,18 +1401,38 @@ def _classify_session_progress(
 
 def _session_progress_baseline(snapshot: WorkspaceSnapshot) -> SessionProgressBaseline:
     return SessionProgressBaseline(
-        tasks={
-            task.id: (
-                task.status,
-                task.acceptance_criteria_complete,
-                task.review_approved,
-                task.body,
-            )
-            for task in snapshot.list_tasks()
-        },
+        tasks={task.id: _task_progress_state(task) for task in snapshot.list_tasks()},
         milestones={milestone.id: milestone for milestone in snapshot.list_milestones()},
         workflow_state=snapshot.workflow_state(),
-        findings=tuple(snapshot.list_findings()),
+        findings=tuple(_finding_progress_state(item) for item in snapshot.list_findings()),
+    )
+
+
+def _task_progress_state(task: Task) -> tuple[object, ...]:
+    """Return task facts that change its executable workflow contract or state."""
+    return (
+        task.title,
+        task.status,
+        task.milestone,
+        task.profile,
+        task.domain,
+        task.depends_on,
+        task.addresses_findings,
+        task.validation,
+        task.acceptance_criteria_complete,
+        task.review_approved,
+    )
+
+
+def _finding_progress_state(finding: Finding) -> tuple[object, ...]:
+    """Ignore prose-only finding edits while retaining lifecycle transitions."""
+    return (
+        finding.id,
+        finding.title,
+        finding.status,
+        finding.source,
+        finding.milestone,
+        finding.handoff,
     )
 
 
