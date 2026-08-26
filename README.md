@@ -238,10 +238,11 @@ summary = "Database use requires operator authorization."
 sensitive = true
 ```
 
-Automatic checks run before every applicable operation. An operator approval is
-stored outside the target workspace and remains valid until revoked or until a
-semantic prerequisite field changes. Failed checks consume no agent session and
-write `.devlab/prerequisite-blocker.json`; inspect it with
+Automatic checks run as readiness screening before a session that will use them
+and are rechecked at the applicable setup or validation boundary. An operator
+approval is stored outside the target workspace and remains valid until revoked
+or until a semantic prerequisite field changes. Failed checks consume no agent
+session and write `.devlab/prerequisite-blocker.json`; inspect it with
 `devlab prerequisite blocked`. Guides provide project-specific resolution steps
 but are never executed by DevLab. DevLab does not install tools, start services,
 provision databases, or obtain credentials while evaluating prerequisites.

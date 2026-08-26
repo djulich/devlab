@@ -1114,6 +1114,7 @@ def _record_prerequisite_blocker(
     results: tuple[PrerequisiteResult, ...],
     *,
     command: str = "implement",
+    commit: bool = True,
 ) -> str:
     blocked = tuple(item for item in results if item.blocks)
     changed = workspace.prerequisites().record_blocker(
@@ -1135,7 +1136,8 @@ def _record_prerequisite_blocker(
             operation=operation.value,
             prerequisites=[item.prerequisite.reference for item in blocked],
         )
-        commit_all(workspace.root, "Record blocked workflow prerequisites")
+        if commit:
+            commit_all(workspace.root, "Record blocked workflow prerequisites")
     references = ", ".join(item.prerequisite.reference for item in blocked)
     return (
         f"{operation.value} prerequisites are not satisfied for "
@@ -1602,11 +1604,21 @@ def _retry_unverified_task_validation(
     if task is None:
         return None
     previous = _latest_validation_record(workspace.root, task.id)
-    if previous is None or previous.get("outcome") not in {
-        "missing_tool",
-        "timeout",
-        "infrastructure_error",
-    }:
+    blocker = FilePrerequisiteTracker(workspace.root).read_blocker()
+    prerequisite_retry = (
+        blocker is not None
+        and blocker.task == task.id
+        and blocker.operation == PrerequisiteOperation.VALIDATION
+    )
+    if not prerequisite_retry and (
+        previous is None
+        or previous.get("outcome")
+        not in {
+            "missing_tool",
+            "timeout",
+            "infrastructure_error",
+        }
+    ):
         return None
     profile = profile_from_snapshot(profiles, task.profile, root=workspace.root)
     route = SessionRoute("developer", task=task)
@@ -1628,7 +1640,7 @@ def _retry_unverified_task_validation(
         commands=validation.commands,
         source=validation.source,
         timeout=profile.environment.timeouts.setup,
-        recovery_of=str(previous.get("session_id") or ""),
+        recovery_of=str(previous.get("session_id") or "") if previous is not None else "",
     )
     if run.outcome in {"passed", "not_configured"}:
         return None
@@ -3249,6 +3261,56 @@ def run_loop(
             milestone_validation_contract = effective_milestone_validation(
                 milestone_tasks, profiles, root=root
             )
+            boundary_results = _evaluate_profile_prerequisites(
+                root, route_profiles, PrerequisiteOperation.VALIDATION
+            )
+            if any(item.blocks for item in boundary_results):
+                archive_handoff(root, role_name)
+                workspace.did_mutate()
+                message = _record_prerequisite_blocker(
+                    workspace,
+                    route,
+                    PrerequisiteOperation.VALIDATION,
+                    boundary_results,
+                    command=requested_command,
+                    commit=False,
+                )
+                progress = _classify_session_progress(
+                    root, progress_baseline, workspace.snapshot, ProcessResult()
+                )
+                append_workflow_event(
+                    root,
+                    "session_progress",
+                    role=role_name,
+                    task=route.task_id or "",
+                    milestone=route.milestone_id,
+                    progress=progress.value,
+                )
+                ctx.write_session_metadata(
+                    _build_session_metadata(
+                        ctx,
+                        agent_result,
+                        resolved_agent_configs,
+                        route.task_id,
+                        executable_config,
+                        progress,
+                        dependency_baseline,
+                    )
+                )
+                try:
+                    workspace.sync()
+                    commit_all(root, "Record blocked milestone validation prerequisite")
+                except VersionControlError as exc:
+                    return _error_result(
+                        sessions_run + 1,
+                        SessionError("version_control", str(exc), 1),
+                    )
+                logger.info("%s. Stopping before milestone validation.", message)
+                return _stop_result(
+                    sessions_run + 1,
+                    RunStopReason.PREREQUISITE_BLOCKED,
+                    (SessionError("prerequisite", message, 0),),
+                )
             timeouts = [
                 profile_from_snapshot(profiles, task.profile, root=root).environment.timeouts.setup
                 for task in milestone_tasks
@@ -3287,6 +3349,54 @@ def run_loop(
                 if frozen_profiles is not None
                 else load_profile(root, route.task.profile)
             )
+            boundary_results = evaluate_prerequisites(
+                root, profile.prerequisites, PrerequisiteOperation.VALIDATION
+            )
+            if any(item.blocks for item in boundary_results):
+                message = _record_prerequisite_blocker(
+                    workspace,
+                    route,
+                    PrerequisiteOperation.VALIDATION,
+                    boundary_results,
+                    command=requested_command,
+                    commit=False,
+                )
+                progress = _classify_session_progress(
+                    root, progress_baseline, workspace.snapshot, process_result
+                )
+                append_workflow_event(
+                    root,
+                    "session_progress",
+                    role=role_name,
+                    task=route.task_id,
+                    milestone=route.milestone_id or "",
+                    progress=progress.value,
+                )
+                ctx.write_session_metadata(
+                    _build_session_metadata(
+                        ctx,
+                        agent_result,
+                        resolved_agent_configs,
+                        route.task_id,
+                        executable_config,
+                        progress,
+                        dependency_baseline,
+                    )
+                )
+                try:
+                    workspace.sync()
+                    commit_all(root, "Record blocked task validation prerequisite")
+                except VersionControlError as exc:
+                    return _error_result(
+                        sessions_run + 1,
+                        SessionError("version_control", str(exc), 1),
+                    )
+                logger.info("%s. Stopping before task validation.", message)
+                return _stop_result(
+                    sessions_run + 1,
+                    RunStopReason.PREREQUISITE_BLOCKED,
+                    (SessionError("prerequisite", message, 0),),
+                )
             validation = effective_validation(route.task, profile)
             validation_run = run_validation_commands(
                 root,

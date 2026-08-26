@@ -3044,6 +3044,49 @@ class TestRunLoop:
         assert verification is not None
         assert verification.state == "unverified_not_configured"
 
+    def test_validation_prerequisite_is_rechecked_after_integrator_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_tree(tmp_path)
+        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
+        _write_task(
+            tmp_path,
+            "T0001",
+            "Done",
+            status="closed",
+            milestone="M1",
+            validation=["true"],
+        )
+        profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+        profile_path.write_text(
+            profile_path.read_text()
+            + "\n[[prerequisites]]\n"
+            + 'id = "docker"\n'
+            + 'required_for = ["validation"]\n'
+            + 'environment = "DOCKER_READY"\n'
+            + 'summary = "Docker Engine"\n'
+        )
+        monkeypatch.setenv("DOCKER_READY", "1")
+
+        def on_invoke(_call: AgentCall) -> None:
+            monkeypatch.delenv("DOCKER_READY")
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.stop_reason == RunStopReason.PREREQUISITE_BLOCKED
+        assert result.sessions_run == 1
+        assert len(provider.calls) == 1
+        milestone = FileMilestoneTracker(tmp_path).get("M1")
+        assert milestone.integrated is False
+        assert FileMilestoneTracker(tmp_path).read_verification("M1") is None
+        assert list((tmp_path / ".devlab/history").glob("*_integrator_handoff.md"))
+
     def test_failing_milestone_validation_blocks_integration_and_creates_finding(
         self, tmp_path: Path
     ) -> None:
@@ -4429,6 +4472,55 @@ def test_profile_prerequisite_blocks_before_agent_and_rechecks_on_retry(
     assert resumed.sessions_run == 1
     assert len(provider.calls) == 1
     assert not blocker.exists()
+
+
+def test_validation_prerequisite_is_rechecked_after_developer_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First", validation=["true"])
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "database-url"\n'
+        + 'required_for = ["validation"]\n'
+        + 'environment = "TEST_DATABASE_URL"\n'
+        + 'summary = "Disposable database"\n'
+    )
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql://available")
+
+    def on_invoke(call: AgentCall) -> None:
+        complete_acceptance(call.root, "T0001")
+        monkeypatch.delenv("TEST_DATABASE_URL")
+
+    provider = MockProvider(on_invoke=on_invoke)
+
+    blocked = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+    )
+
+    assert blocked.stop_reason == RunStopReason.PREREQUISITE_BLOCKED
+    assert blocked.sessions_run == 1
+    assert len(provider.calls) == 1
+    assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.IN_REVIEW
+    assert not list((tmp_path / ".devlab/verification/tasks/T0001").glob("*.json"))
+
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql://restored")
+    retry_provider = MockProvider()
+    retried = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": retry_provider},
+    )
+
+    assert retry_provider.calls[0].role_name == "reviewer"
+    assert retried.sessions_run == 1
+    records = list((tmp_path / ".devlab/verification/tasks/T0001").glob("*.json"))
+    assert len(records) == 1
 
 
 def test_repeated_validation_failure_stops_after_one_developer_recovery(
