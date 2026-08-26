@@ -20,7 +20,7 @@ from devlab.agent_config import (
 )
 from devlab.profiles import Profile, load_profiles
 
-EXECUTABLE_CONFIG_SCHEMA = 2
+EXECUTABLE_CONFIG_SCHEMA = 3
 TRUST_RECORD_SCHEMA = 1
 DEVLAB_STATE_HOME_ENV = "DEVLAB_STATE_HOME"
 
@@ -116,6 +116,18 @@ def build_executable_config_snapshot(
                 "pre_session": list(profile.environment.pre_session),
                 "setup": list(profile.environment.setup),
                 "post_session": list(profile.environment.post_session),
+                "prerequisites": [
+                    {
+                        "id": item.id,
+                        "required_for": [scope.value for scope in item.required_for],
+                        "check": item.check,
+                        "environment": item.environment,
+                        "attestation": item.attestation,
+                        "sensitive": item.sensitive,
+                        "timeout": item.timeout,
+                    }
+                    for item in profile.prerequisites
+                ],
                 "timeouts": {
                     "pre_session": profile.environment.timeouts.pre_session,
                     "setup": profile.environment.timeouts.setup,
@@ -306,6 +318,7 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
                 lines.append(f"  version discovery for {provider_name}: {version_command}")
     lifecycle_lines = []
     validation_lines = []
+    prerequisite_lines = []
     for profile_id, profile in sorted(snapshot.profiles.items()):
         for command in profile.tooling.default_validation:
             validation_lines.append(f"- {profile_id}: {command}")
@@ -313,10 +326,18 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
             commands = getattr(profile.environment, phase)
             for command in commands:
                 lifecycle_lines.append(f"- {profile_id}.{phase}: {command}")
+        for item in profile.prerequisites:
+            mechanism = item.check or (
+                f"environment {item.environment}" if item.environment else "operator attestation"
+            )
+            operations = ",".join(scope.value for scope in item.required_for)
+            prerequisite_lines.append(f"- {item.reference} [{operations}]: {mechanism}")
     lines.extend(["", "Profile default validation commands:"])
     lines.extend(validation_lines or ["- None"])
     lines.extend(["", "Profile lifecycle commands:"])
     lines.extend(lifecycle_lines or ["- None"])
+    lines.extend(["", "Profile prerequisite checks:"])
+    lines.extend(prerequisite_lines or ["- None"])
     lines.extend(
         [
             "",

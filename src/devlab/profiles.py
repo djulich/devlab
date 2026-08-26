@@ -4,9 +4,10 @@ import dataclasses
 import re
 import tomllib
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from devlab.environment import EnvironmentConfig, EnvironmentTimeouts, _int_value, _string_tuple
+from devlab.prerequisites import Prerequisite, PrerequisiteOperation
 from devlab.task_tracker import Task
 
 PROFILES_DIR = ".devlab/config/profiles"
@@ -26,6 +27,7 @@ class Profile:
     title: str
     tooling: ToolingConfig = dataclasses.field(default_factory=ToolingConfig)
     environment: EnvironmentConfig = dataclasses.field(default_factory=EnvironmentConfig)
+    prerequisites: tuple[Prerequisite, ...] = ()
     path: Path | None = None
 
 
@@ -149,6 +151,7 @@ def _read_profile(path: Path, expected_id: str) -> Profile:
     tooling_data = _table(data, "tooling")
     environment_data = _table(data, "environment")
     timeouts_data = _table(data, "timeouts")
+    prerequisites = _prerequisites(data.get("prerequisites", []), profile_id, path)
     return Profile(
         id=profile_id,
         title=title,
@@ -167,6 +170,7 @@ def _read_profile(path: Path, expected_id: str) -> Profile:
                 post_session=_int_value(timeouts_data, "post_session", 300),
             ),
         ),
+        prerequisites=prerequisites,
         path=path,
     )
 
@@ -176,3 +180,65 @@ def _table(data: dict[str, Any], key: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"profile field {key!r} must be a table")
     return value
+
+
+def _prerequisites(value: object, profile_id: str, path: Path) -> tuple[Prerequisite, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"profile prerequisites must be an array of tables: {path}")
+    results: list[Prerequisite] = []
+    seen: set[str] = set()
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise ValueError(f"profile prerequisite must be a table: {path}")
+        raw = cast("dict[str, Any]", raw)
+        prerequisite_id = str(raw.get("id") or "")
+        if not PROFILE_ID_RE.fullmatch(prerequisite_id) or prerequisite_id in seen:
+            raise ValueError(f"invalid or duplicate prerequisite id {prerequisite_id!r}: {path}")
+        seen.add(prerequisite_id)
+        required = raw.get("required_for", [])
+        if not isinstance(required, list) or not required:
+            raise ValueError(f"prerequisite {prerequisite_id!r} requires required_for")
+        try:
+            required_for = tuple(PrerequisiteOperation(str(item)) for item in required)
+        except ValueError as exc:
+            raise ValueError(
+                f"prerequisite {prerequisite_id!r} has invalid required_for: {path}"
+            ) from exc
+        if len(set(required_for)) != len(required_for):
+            raise ValueError(f"prerequisite {prerequisite_id!r} repeats required_for values")
+        check = str(raw.get("check") or "")
+        environment = str(raw.get("environment") or "")
+        attestation_value = raw.get("attestation", "")
+        if not isinstance(attestation_value, str):
+            raise ValueError(f"prerequisite {prerequisite_id!r} attestation must be a string")
+        attestation = attestation_value
+        if sum(bool(item) for item in (check, environment, attestation)) != 1:
+            raise ValueError(
+                f"prerequisite {prerequisite_id!r} must define exactly one of "
+                f"check, environment, or attestation: {path}"
+            )
+        timeout = raw.get("timeout", 30)
+        if not isinstance(timeout, int) or timeout <= 0:
+            raise ValueError(f"prerequisite {prerequisite_id!r} timeout must be positive")
+        if environment and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", environment):
+            raise ValueError(f"prerequisite {prerequisite_id!r} has invalid environment variable")
+        guide = str(raw.get("guide") or "")
+        if guide and (Path(guide).is_absolute() or ".." in Path(guide).parts):
+            raise ValueError(
+                f"prerequisite {prerequisite_id!r} guide must stay within the workspace"
+            )
+        results.append(
+            Prerequisite(
+                profile_id=profile_id,
+                id=prerequisite_id,
+                required_for=required_for,
+                summary=str(raw.get("summary") or prerequisite_id),
+                check=check,
+                environment=environment,
+                attestation=attestation,
+                guide=guide,
+                sensitive=bool(raw.get("sensitive", False)),
+                timeout=timeout,
+            )
+        )
+    return tuple(results)

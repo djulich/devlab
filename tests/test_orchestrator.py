@@ -4365,6 +4365,72 @@ def test_reworded_failed_handoffs_and_task_notes_do_not_reset_recovery_bound(
     assert len(provider.calls) == 2
 
 
+def test_profile_prerequisite_blocks_before_agent_and_rechecks_on_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First")
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "database-url"\n'
+        + 'required_for = ["session"]\n'
+        + 'environment = "TEST_DATABASE_URL"\n'
+        + 'summary = "Disposable database"\n'
+    )
+    provider = MockProvider()
+
+    blocked = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+    )
+
+    assert blocked.stop_reason == RunStopReason.PREREQUISITE_BLOCKED
+    assert blocked.sessions_run == 0
+    assert provider.calls == []
+    blocker = tmp_path / ".devlab/prerequisite-blocker.json"
+    assert blocker.exists()
+    blocker_text = blocker.read_text()
+    assert '"profile": "default"' in blocker_text
+    assert '"id": "database-url"' in blocker_text
+    blocked_head = subprocess.run(
+        ["git", "-C", tmp_path.as_posix(), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+
+    unchanged = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+    )
+    unchanged_head = subprocess.run(
+        ["git", "-C", tmp_path.as_posix(), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+
+    assert unchanged.stop_reason == RunStopReason.PREREQUISITE_BLOCKED
+    assert unchanged_head == blocked_head
+    assert provider.calls == []
+
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql://secret")
+    resumed = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+    )
+
+    assert resumed.sessions_run == 1
+    assert len(provider.calls) == 1
+    assert not blocker.exists()
+
+
 def test_repeated_validation_failure_stops_after_one_developer_recovery(
     tmp_path: Path,
 ) -> None:

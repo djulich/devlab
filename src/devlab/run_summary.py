@@ -290,6 +290,11 @@ def _next_commands(
         RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR,
     }:
         return ("Inspect the errors above and run devlab doctor before retrying.",)
+    if result.stop_reason == RunStopReason.PREREQUISITE_BLOCKED:
+        return (
+            "devlab prerequisite blocked",
+            f"devlab {command}",
+        )
     if result.stop_reason in {
         RunStopReason.RESEARCH_PENDING,
         RunStopReason.RESEARCH_COMPLETED,
@@ -326,5 +331,6 @@ def _stop_reason_text(reason: RunStopReason) -> str:
         RunStopReason.VALIDATION_FAILED: "task validation failed after bounded recovery",
         RunStopReason.VALIDATION_PREREQUISITE_MISSING: ("validation prerequisite is missing"),
         RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR: ("validation infrastructure failed"),
+        RunStopReason.PREREQUISITE_BLOCKED: "workflow prerequisite is not satisfied",
         RunStopReason.ERROR: "workflow error",
     }[reason]

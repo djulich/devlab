@@ -518,7 +518,7 @@ def test_cli_doctor_reports_ok_for_initialized_workspace(
 
     output = capsys.readouterr().out
     assert "DevLab doctor: OK" in output
-    assert "Executable configuration: not trusted (exec-v2:" in output
+    assert "Executable configuration: not trusted (exec-v3:" in output
 
 
 def test_cli_implement_emits_progress_logs_by_default(
@@ -565,7 +565,7 @@ def test_cli_trust_executable_config_approves_shows_and_revokes(
         "--show",
     )
     shown = capsys.readouterr().out
-    assert "Fingerprint: exec-v2:" in shown
+    assert "Fingerprint: exec-v3:" in shown
     assert "Trust status: not trusted" in shown
     assert "Profile default validation commands:\n- default: make check" in shown
     assert "Profile lifecycle commands:\n- None" in shown
@@ -578,7 +578,7 @@ def test_cli_trust_executable_config_approves_shows_and_revokes(
         str(tmp_path),
         "executable-config",
     )
-    assert "Trusted executable configuration exec-v2:" in capsys.readouterr().out
+    assert "Trusted executable configuration exec-v3:" in capsys.readouterr().out
 
     _run_cli(
         monkeypatch,
@@ -599,6 +599,50 @@ def test_cli_trust_executable_config_approves_shows_and_revokes(
         "--revoke",
     )
     assert "Revoked executable-configuration trust" in capsys.readouterr().out
+
+
+def test_cli_prerequisite_checks_and_persists_operator_approval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "operator-state"))
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "authorized"\n'
+        + 'required_for = ["session"]\n'
+        + 'attestation = "I am authorized to use the test service."\n'
+        + 'summary = "Test-service authorization"\n'
+    )
+
+    _run_cli(
+        monkeypatch,
+        "prerequisite",
+        "--root",
+        str(tmp_path),
+        "approve",
+        "default",
+        "authorized",
+        "--yes",
+    )
+    assert "Approved default.authorized" in capsys.readouterr().out
+
+    _run_cli(monkeypatch, "prerequisite", "--root", str(tmp_path), "list")
+    assert "default.authorized" in capsys.readouterr().out
+    _run_cli(
+        monkeypatch,
+        "prerequisite",
+        "--root",
+        str(tmp_path),
+        "check",
+        "default",
+        "authorized",
+    )
+    assert "Status: satisfied" in capsys.readouterr().out
 
 
 def test_cli_unattended_requires_trust_or_explicit_authorization(

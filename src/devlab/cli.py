@@ -40,6 +40,16 @@ from devlab.handoffs import (
 from devlab.history import format_history
 from devlab.init import INIT_TEMPLATES, format_init_next_steps, format_init_result, init_workspace
 from devlab.orchestrator import DEFAULT_PROJECT_ROOT, RunResult, run_loop, submit_session_handoff
+from devlab.prerequisites import (
+    FilePrerequisiteTracker,
+    Prerequisite,
+    attest_prerequisite,
+    evaluate_prerequisites,
+    format_prerequisite_result,
+    prerequisite_is_attested,
+    revoke_prerequisite_attestation,
+)
+from devlab.profiles import Profile, load_profiles
 from devlab.run_summary import build_run_summary, format_run_summary
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
@@ -448,6 +458,42 @@ def main() -> None:
         help="Project root to clean (default: current working directory).",
     )
 
+    prerequisite_parser = subparsers.add_parser(
+        "prerequisite", help="Inspect, check, approve, or revoke profile prerequisites."
+    )
+    prerequisite_parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_PROJECT_ROOT,
+        help="Project root to operate on (default: current working directory).",
+    )
+    prerequisite_subparsers = prerequisite_parser.add_subparsers(
+        dest="prerequisite_command", required=True
+    )
+    prerequisite_subparsers.add_parser("list", help="List configured prerequisites.")
+    prerequisite_subparsers.add_parser(
+        "blocked", help="Show the latest durable prerequisite blocker."
+    )
+    for action, help_text in (
+        ("show", "Show a prerequisite without executing its check."),
+        ("check", "Evaluate a prerequisite now."),
+        ("approve", "Record an operator attestation."),
+        ("revoke", "Revoke an operator attestation."),
+    ):
+        action_parser = prerequisite_subparsers.add_parser(action, help=help_text)
+        action_parser.add_argument("profile_id")
+        action_parser.add_argument("prerequisite_id")
+        if action == "approve":
+            action_parser.add_argument(
+                "--yes", action="store_true", help="Approve without an interactive prompt."
+            )
+            action_parser.add_argument(
+                "--operator", default="", help="Optional operator identity for local provenance."
+            )
+            action_parser.add_argument(
+                "--note", default="", help="Optional local evidence or rationale."
+            )
+
     clarify_parser = subparsers.add_parser(
         "clarify", help="Inspect and answer operator clarifications."
     )
@@ -714,6 +760,8 @@ def main() -> None:
     elif args.command == "clean-failed-session":
         result = clean_failed_session_artifacts(root)
         print(format_cleanup_result(result))
+    elif args.command == "prerequisite":
+        _run_prerequisite_command(args, root)
     elif args.command == "clarify":
         tracker = FileClarificationTracker(root)
         if args.clarify_command == "list":
@@ -896,6 +944,122 @@ def _run_trust_command(args: argparse.Namespace, root: Path) -> None:
     path = trust_executable_config(snapshot)
     print(f"Trusted executable configuration {snapshot.digest}.")
     print(f"Operator-local record: {path}")
+
+
+def _run_prerequisite_command(args: argparse.Namespace, root: Path) -> None:
+    try:
+        profiles = load_profiles(root)
+    except (OSError, ValueError) as exc:
+        print(f"DevLab prerequisite: could not load profiles: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    if args.prerequisite_command == "list":
+        items = [item for profile in profiles.values() for item in profile.prerequisites]
+        if not items:
+            print("No profile prerequisites are configured.")
+            return
+        for item in items:
+            kind = "attested" if item.attestation else "automatic"
+            state = (
+                " (approved)" if item.attestation and prerequisite_is_attested(root, item) else ""
+            )
+            print(
+                f"- {item.reference}: {item.summary} "
+                f"[{kind}; {', '.join(scope.value for scope in item.required_for)}]{state}"
+            )
+        return
+    if args.prerequisite_command == "blocked":
+        blocker = FilePrerequisiteTracker(root).read_blocker()
+        if blocker is None:
+            print("No workflow prerequisite blocker is recorded.")
+            return
+        print(
+            f"Workflow blocked before {blocker.operation.value}: "
+            f"role={blocker.role or 'none'} task={blocker.task or 'none'} "
+            f"milestone={blocker.milestone or 'none'}"
+        )
+        for result in blocker.results:
+            print("\n" + format_prerequisite_result(root, result))
+        print(
+            "\nAfter resolving the prerequisites, continue with:\n"
+            f"  devlab {blocker.command or 'implement'}"
+        )
+        return
+    prerequisite = _find_prerequisite(profiles, args.profile_id, args.prerequisite_id)
+    if args.prerequisite_command == "show":
+        status = (
+            "approved"
+            if prerequisite.attestation and prerequisite_is_attested(root, prerequisite)
+            else "not approved"
+            if prerequisite.attestation
+            else "not checked"
+        )
+        print(_format_prerequisite_definition(root, prerequisite, status))
+        return
+    if args.prerequisite_command == "check":
+        results = evaluate_prerequisites(
+            root,
+            (prerequisite,),
+            prerequisite.required_for[0],
+        )
+        result = results[0]
+        print(format_prerequisite_result(root, result))
+        if result.blocks:
+            raise SystemExit(1)
+        return
+    if args.prerequisite_command == "revoke":
+        revoked = revoke_prerequisite_attestation(root, prerequisite)
+        print("Prerequisite approval revoked." if revoked else "No approval record existed.")
+        return
+    if not prerequisite.attestation:
+        print(
+            f"DevLab prerequisite: {prerequisite.reference} is automatically checked "
+            "and cannot be operator-approved.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    print(_format_prerequisite_definition(root, prerequisite, "not approved"))
+    if not args.yes:
+        answer = input("\nApprove this prerequisite for this workspace? [y/N] ")
+        if answer.strip().lower() not in {"y", "yes"}:
+            print("Prerequisite was not approved.")
+            raise SystemExit(1)
+    path = attest_prerequisite(root, prerequisite, operator=args.operator, note=args.note)
+    print(f"Approved {prerequisite.reference}.")
+    print(f"Operator-local record: {path}")
+
+
+def _find_prerequisite(
+    profiles: dict[str, Profile], profile_id: str, prerequisite_id: str
+) -> Prerequisite:
+    profile = profiles.get(profile_id)
+    if profile is None:
+        raise SystemExit(f"unknown profile: {profile_id}")
+    for item in profile.prerequisites:
+        if item.id == prerequisite_id:
+            return item
+    raise SystemExit(f"unknown prerequisite: {profile_id}.{prerequisite_id}")
+
+
+def _format_prerequisite_definition(root: Path, prerequisite: Prerequisite, status: str) -> str:
+    mechanism = (
+        f"check command: {prerequisite.check}"
+        if prerequisite.check
+        else f"environment variable: {prerequisite.environment}"
+        if prerequisite.environment
+        else f"operator attestation: {prerequisite.attestation}"
+    )
+    lines = [
+        f"Prerequisite: {prerequisite.reference}",
+        f"Status: {status}",
+        f"Required for: {', '.join(item.value for item in prerequisite.required_for)}",
+        f"Summary: {prerequisite.summary}",
+        f"Mechanism: {mechanism}",
+    ]
+    if prerequisite.guide:
+        lines.append(f"Guide: {(root / prerequisite.guide).resolve()}")
+    if prerequisite.sensitive:
+        lines.append("Security: Do not commit or print sensitive values.")
+    return "\n".join(lines)
 
 
 def _print_agent_smoke_progress(event: AgentSmokeProgressEvent) -> None:

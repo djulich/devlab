@@ -59,8 +59,21 @@ A task whose `addresses_findings` metadata names a finding as corrective work. A
 _Avoid_: storing duplicate task lists on the finding
 
 **Profile**:
-A reusable task-type configuration that defines tooling summary, default validation, and optional environment lifecycle commands.
+A reusable task-type configuration that defines tooling summary, default validation, optional environment lifecycle commands, and operation-scoped prerequisites.
 _Avoid_: environment when referring to the full reusable task configuration
+
+**Prerequisite**:
+A profile-owned condition that DevLab checks or an operator attests before a
+profile-backed session, environment setup, or validation operation. Automatic
+checks are re-evaluated; attestations are operator-local and bound to the
+prerequisite's semantic fingerprint.
+_Avoid_: finding or task when the condition is external to product work
+
+**Prerequisite blocker**:
+The durable target-workspace record of the latest unsatisfied, unverified, or
+errored prerequisite that stopped workflow execution before an applicable
+operation.
+_Avoid_: validation failure when validation did not run
 
 **Handoff**:
 The per-session artifact that records what a role did, changed, could not finish, and recommends next steps.
@@ -98,6 +111,8 @@ _Avoid_: project documentation
 - **Research versus clarification**: research discovers facts; clarification
   obtains operator intent, secrets, preferences, risk acceptance, or authority.
 - A **Task** may belong to one **Milestone** and use one **Profile**.
+- A **Prerequisite** follows the profile operation that consumes it rather than
+  a manually maintained list of roles.
 - A **Finding** may belong to one **Milestone** and is converted into **Addressing tasks** by the planner.
 - A **Workspace** creates **WorkspaceSnapshots** for read-only decisions and exposes handles for workflow mutations.
 - A **Tracker** owns one storage format; the orchestrator coordinates trackers through workspace boundaries.

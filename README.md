@@ -202,6 +202,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab workflow-state [--root PATH] [--digest|--next-command] [--json]` — report lifecycle/provenance state, planning generations, spec reconciliation, and current work counts without mutating state. Use `--digest` for a compact operator summary or `--next-command` for one safe continuation/inspection command; add `--json` to serialize the selected view.
 - `devlab agent-smoke-test [--root PATH] [--config PATH] [--role ROLE] [...]` — start configured providers with a tiny prompt to verify commands, templated arguments, and prompt transport.
 - `devlab trust [--root PATH] executable-config [--config PATH] [--show|--revoke]` — inspect, approve, or revoke workspace-scoped executable-configuration trust stored in user-local DevLab state.
+- `devlab prerequisite [--root PATH] list|blocked|show|check|approve|revoke ...` — inspect profile-owned prerequisites, run automatic checks, review the durable workflow blocker, or manage semantic-fingerprint-scoped operator attestations.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab history [--root PATH] [--json]` — report archived session metadata without mutating state.
 - `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
@@ -215,6 +216,35 @@ sources, confidence, unresolved questions, and provenance. Configure an
 optional `[roles.researcher]`; otherwise it inherits the requesting role's
 provider. Invalid output or provider failure remains retryable. Research is
 supporting evidence, while operator choices and authority use clarification.
+
+Profile prerequisites use `[[prerequisites]]` tables. `required_for` accepts
+`session`, `setup`, and `validation`; it deliberately names workflow operations,
+not roles. Define exactly one of a non-mutating `check`, an `environment`
+variable whose non-empty presence is required, or an operator `attestation`:
+
+```toml
+[[prerequisites]]
+id = "docker-engine"
+required_for = ["validation"]
+check = "docker info"
+summary = "Docker Engine must be reachable."
+guide = ".devlab/config/prerequisites/docker-engine.md"
+
+[[prerequisites]]
+id = "test-database-authorized"
+required_for = ["validation"]
+attestation = "I am authorized to use the disposable integration database."
+summary = "Database use requires operator authorization."
+sensitive = true
+```
+
+Automatic checks run before every applicable operation. An operator approval is
+stored outside the target workspace and remains valid until revoked or until a
+semantic prerequisite field changes. Failed checks consume no agent session and
+write `.devlab/prerequisite-blocker.json`; inspect it with
+`devlab prerequisite blocked`. Guides provide project-specific resolution steps
+but are never executed by DevLab. DevLab does not install tools, start services,
+provision databases, or obtain credentials while evaluating prerequisites.
 
 Useful `implement` and `plan` options include `--provider`, `--model`, `--effort`,
 `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`. Both commands also

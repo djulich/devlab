@@ -63,6 +63,35 @@ def test_snapshot_digest_includes_profile_default_validation(tmp_path: Path) -> 
     assert changed.digest != initial.digest
 
 
+def test_snapshot_digest_tracks_prerequisite_semantics_but_not_help_text(
+    tmp_path: Path,
+) -> None:
+    init_workspace(tmp_path)
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "docker"\n'
+        + 'required_for = ["validation"]\n'
+        + 'check = "docker info"\n'
+        + 'summary = "Docker is available."\n'
+        + 'guide = ".devlab/config/prerequisites/docker.md"\n'
+    )
+    initial = build_executable_config_snapshot(tmp_path)
+    profile_path.write_text(
+        profile_path.read_text()
+        .replace("Docker is available.", "Docker Engine is reachable.")
+        .replace("docker.md", "docker-engine.md")
+    )
+
+    help_changed = build_executable_config_snapshot(tmp_path)
+    profile_path.write_text(profile_path.read_text().replace("docker info", "podman info"))
+    command_changed = build_executable_config_snapshot(tmp_path)
+
+    assert help_changed.digest == initial.digest
+    assert command_changed.digest != initial.digest
+
+
 def test_format_executable_config_separates_profile_validation_and_lifecycle(
     tmp_path: Path,
 ) -> None:

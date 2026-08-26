@@ -7,6 +7,7 @@ from devlab.clarifications import Clarification
 from devlab.findings import Finding
 from devlab.generations import active_generation, archived_generation_numbers
 from devlab.milestones import Milestone, MilestoneVerification
+from devlab.prerequisites import FilePrerequisiteTracker
 from devlab.prompt_context import PromptContextReport, build_prompt_context_report
 from devlab.task_tracker import Task, TaskStatus
 from devlab.workspace import Workspace, WorkspaceSnapshot
@@ -32,6 +33,15 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
         for clarification in blockers[:3]:
             lines.append(f"- {clarification.id}: {clarification.title}")
     lines.extend(_format_active_research(snapshot))
+    prerequisite_blocker = FilePrerequisiteTracker(root).read_blocker()
+    if prerequisite_blocker is not None:
+        references = ", ".join(
+            result.prerequisite.reference for result in prerequisite_blocker.results
+        )
+        lines.append(
+            f"Prerequisite blocker: {prerequisite_blocker.operation.value} — {references}"
+        )
+        lines.append("- inspect: devlab prerequisite blocked")
 
     if verbose:
         lines.extend(["", *_format_agent_configuration(root)])

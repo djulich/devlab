@@ -21,3 +21,11 @@ generated dependencies, build products, caches, and editor artifacts out of Git.
 DevLab does not install compilers, SDKs, package managers, build systems, or
 analyzers. Document required host tools and report unavailable checks as
 unverified prerequisites.
+
+Declare reusable external conditions as profile `[[prerequisites]]`, scoped to
+the `session`, `setup`, or `validation` operation that consumes them. Automatic
+checks must be fast and non-mutating. Use operator attestations only for
+authority or conditions that cannot be checked safely. Add a detailed guide
+under `.devlab/config/prerequisites/` when resolving the condition requires more
+than a concise summary. Never put credentials in profiles, guides, attestations,
+or Git.

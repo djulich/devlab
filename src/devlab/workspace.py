@@ -14,6 +14,11 @@ from devlab.clarifications import Clarification, FileClarificationTracker
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.generations import active_generation
 from devlab.milestones import FileMilestoneTracker, Milestone, MilestoneVerification
+from devlab.prerequisites import (
+    FilePrerequisiteTracker,
+    PrerequisiteOperation,
+    PrerequisiteResult,
+)
 from devlab.research import FileResearchTracker, Research, ResearchResult, ResearchStatus
 from devlab.task_tracker import (
     FileTaskTracker,
@@ -73,6 +78,9 @@ class Workspace:
         default=None, init=False, repr=False
     )
     _research: FileResearchTracker | None = dataclasses.field(default=None, init=False, repr=False)
+    _prerequisites: FilePrerequisiteTracker | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
 
     def _task_tracker(self) -> FileTaskTracker:
         if self._tasks is None:
@@ -98,6 +106,11 @@ class Workspace:
         if self._research is None:
             self._research = FileResearchTracker(self.root)
         return self._research
+
+    def _prerequisite_tracker(self) -> FilePrerequisiteTracker:
+        if self._prerequisites is None:
+            self._prerequisites = FilePrerequisiteTracker(self.root)
+        return self._prerequisites
 
     @property
     def snapshot(self) -> WorkspaceSnapshot:
@@ -134,6 +147,9 @@ class Workspace:
 
     def research(self) -> WorkspaceResearch:
         return WorkspaceResearch(self)
+
+    def prerequisites(self) -> WorkspacePrerequisites:
+        return WorkspacePrerequisites(self)
 
     def did_mutate(self) -> None:
         self._snapshot = None
@@ -237,6 +253,41 @@ class WorkspaceClarifications:
         )
         self.workspace.did_mutate()
         return clarification
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspacePrerequisites:
+    """Prerequisite blocker mutations bound to a target workspace."""
+
+    workspace: Workspace
+
+    def record_blocker(
+        self,
+        *,
+        command: str,
+        role: str,
+        task: str,
+        milestone: str,
+        operation: PrerequisiteOperation,
+        results: tuple[PrerequisiteResult, ...],
+    ) -> bool:
+        changed = self.workspace._prerequisite_tracker().record_blocker(
+            command=command,
+            role=role,
+            task=task,
+            milestone=milestone,
+            operation=operation,
+            results=results,
+        )
+        if changed:
+            self.workspace.did_mutate()
+        return changed
+
+    def clear_blocker(self) -> bool:
+        cleared = self.workspace._prerequisite_tracker().clear_blocker()
+        if cleared:
+            self.workspace.did_mutate()
+        return cleared
 
 
 @dataclasses.dataclass(frozen=True)

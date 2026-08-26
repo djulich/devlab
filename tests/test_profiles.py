@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from devlab.prerequisites import PrerequisiteOperation
 from devlab.profiles import (
     ProfileNotFoundError,
     effective_milestone_validation,
@@ -74,6 +75,13 @@ def test_loads_profile_tooling_and_environment(tmp_path: Path) -> None:
         'post_session = ["echo post"]\n'
         "\n[timeouts]\n"
         "setup = 42\n"
+        "\n[[prerequisites]]\n"
+        'id = "database"\n'
+        'required_for = ["session", "validation"]\n'
+        'environment = "TEST_DATABASE_URL"\n'
+        'summary = "Disposable database"\n'
+        'guide = ".devlab/config/prerequisites/database.md"\n'
+        "sensitive = true\n"
     )
 
     profile = load_profile(tmp_path, "api")
@@ -85,6 +93,13 @@ def test_loads_profile_tooling_and_environment(tmp_path: Path) -> None:
     assert profile.environment.managed_roles == ("developer",)
     assert profile.environment.setup == ("uv sync",)
     assert profile.environment.timeouts.setup == 42
+    prerequisite = profile.prerequisites[0]
+    assert prerequisite.id == "database"
+    assert prerequisite.required_for == (
+        PrerequisiteOperation.SESSION,
+        PrerequisiteOperation.VALIDATION,
+    )
+    assert prerequisite.sensitive
 
 
 def test_missing_sections_default_to_empty_noop(tmp_path: Path) -> None:

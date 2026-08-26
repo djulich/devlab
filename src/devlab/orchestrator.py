@@ -78,6 +78,12 @@ from devlab.milestones import (
     MilestoneVerification,
     MilestoneVerificationCommand,
 )
+from devlab.prerequisites import (
+    FilePrerequisiteTracker,
+    PrerequisiteOperation,
+    PrerequisiteResult,
+    evaluate_prerequisites,
+)
 from devlab.profiles import (
     EffectiveMilestoneValidation,
     Profile,
@@ -171,6 +177,7 @@ class RunStopReason(StrEnum):
     VALIDATION_FAILED = "validation_failed"
     VALIDATION_PREREQUISITE_MISSING = "validation_prerequisite_missing"
     VALIDATION_INFRASTRUCTURE_ERROR = "validation_infrastructure_error"
+    PREREQUISITE_BLOCKED = "prerequisite_blocked"
     ERROR = "error"
 
 
@@ -1063,6 +1070,103 @@ def _environment_for_session(
     return EnvironmentManager(root, profile.environment)
 
 
+def _profiles_for_route(
+    root: Path,
+    snapshot: WorkspaceSnapshot,
+    route: SessionRoute,
+    profiles: dict[str, Profile],
+) -> tuple[Profile, ...]:
+    profile_ids: list[str | None]
+    if route.task is not None:
+        profile_ids = [route.task.profile]
+    elif route.milestone_id is not None:
+        profile_ids = [task.profile for task in snapshot.tasks_for_milestone(route.milestone_id)]
+    else:
+        profile_ids = []
+    resolved: list[Profile] = []
+    for profile_id in profile_ids:
+        profile = profile_from_snapshot(profiles, profile_id, root=root)
+        if all(item.id != profile.id for item in resolved):
+            resolved.append(profile)
+    return tuple(resolved)
+
+
+def _evaluate_profile_prerequisites(
+    root: Path,
+    profiles: tuple[Profile, ...],
+    operation: PrerequisiteOperation,
+) -> tuple[PrerequisiteResult, ...]:
+    results: list[PrerequisiteResult] = []
+    seen: set[tuple[str, str]] = set()
+    for profile in profiles:
+        for result in evaluate_prerequisites(root, profile.prerequisites, operation):
+            identity = (result.prerequisite.profile_id, result.prerequisite.id)
+            if identity not in seen:
+                seen.add(identity)
+                results.append(result)
+    return tuple(results)
+
+
+def _record_prerequisite_blocker(
+    workspace: Workspace,
+    route: SessionRoute,
+    operation: PrerequisiteOperation,
+    results: tuple[PrerequisiteResult, ...],
+    *,
+    command: str = "implement",
+) -> str:
+    blocked = tuple(item for item in results if item.blocks)
+    changed = workspace.prerequisites().record_blocker(
+        command=command,
+        role=route.role_name,
+        task=route.task_id or "",
+        milestone=route.milestone_id or "",
+        operation=operation,
+        results=blocked,
+    )
+    if changed:
+        append_workflow_event(
+            workspace.root,
+            "prerequisite_blocked",
+            command=command,
+            role=route.role_name,
+            task=route.task_id or "",
+            milestone=route.milestone_id or "",
+            operation=operation.value,
+            prerequisites=[item.prerequisite.reference for item in blocked],
+        )
+        commit_all(workspace.root, "Record blocked workflow prerequisites")
+    references = ", ".join(item.prerequisite.reference for item in blocked)
+    return (
+        f"{operation.value} prerequisites are not satisfied for "
+        f"{route.task_id or route.milestone_id or route.role_name}: {references}"
+    )
+
+
+def _clear_resolved_prerequisite_blocker(
+    workspace: Workspace, route: SessionRoute, operation: PrerequisiteOperation
+) -> None:
+    blocker = FilePrerequisiteTracker(workspace.root).read_blocker()
+    if blocker is None:
+        return
+    if (
+        blocker.role == route.role_name
+        and blocker.task == (route.task_id or "")
+        and blocker.milestone == (route.milestone_id or "")
+        and blocker.operation == operation
+    ):
+        workspace.prerequisites().clear_blocker()
+        append_workflow_event(
+            workspace.root,
+            "prerequisite_resolved",
+            role=route.role_name,
+            task=route.task_id or "",
+            milestone=route.milestone_id or "",
+            operation=operation.value,
+        )
+        commit_all(workspace.root, "Record resolved workflow prerequisites")
+
+
 def _validate_exhausted_backlog_planner_progress(
     before: WorkspaceSnapshot,
     after: WorkspaceSnapshot,
@@ -1505,6 +1609,16 @@ def _retry_unverified_task_validation(
     }:
         return None
     profile = profile_from_snapshot(profiles, task.profile, root=workspace.root)
+    route = SessionRoute("developer", task=task)
+    prerequisite_results = _evaluate_profile_prerequisites(
+        workspace.root, (profile,), PrerequisiteOperation.VALIDATION
+    )
+    if any(item.blocks for item in prerequisite_results):
+        message = _record_prerequisite_blocker(
+            workspace, route, PrerequisiteOperation.VALIDATION, prerequisite_results
+        )
+        return RunStopReason.PREREQUISITE_BLOCKED, message
+    _clear_resolved_prerequisite_blocker(workspace, route, PrerequisiteOperation.VALIDATION)
     validation = effective_validation(task, profile)
     run = run_validation_commands(
         workspace.root,
@@ -2846,6 +2960,98 @@ def run_loop(
                     reason=RunStopReason.TASK_CONTRACT_INVALID,
                 )
         role = ROLES[role_name]
+        try:
+            available_profiles = (
+                frozen_profiles if frozen_profiles is not None else load_profiles(root)
+            )
+            route_profiles = _profiles_for_route(root, start_snapshot, route, available_profiles)
+            prerequisite_results = _evaluate_profile_prerequisites(
+                root, route_profiles, PrerequisiteOperation.SESSION
+            )
+        except ProfileNotFoundError as exc:
+            return _error_result(sessions_run, SessionError("profile_resolution", str(exc), 1))
+        except (OSError, ValueError) as exc:
+            return _error_result(
+                sessions_run, SessionError("prerequisite_configuration", str(exc), 1)
+            )
+        if any(item.blocks for item in prerequisite_results):
+            try:
+                message = _record_prerequisite_blocker(
+                    workspace,
+                    route,
+                    PrerequisiteOperation.SESSION,
+                    prerequisite_results,
+                    command=requested_command,
+                )
+            except (OSError, ValueError, VersionControlError) as exc:
+                return _error_result(
+                    sessions_run, SessionError("prerequisite_recording", str(exc), 1)
+                )
+            logger.info("%s. Stopping before agent invocation.", message)
+            return _stop_result(
+                sessions_run,
+                RunStopReason.PREREQUISITE_BLOCKED,
+                (SessionError("prerequisite", message, 0),),
+            )
+        _clear_resolved_prerequisite_blocker(workspace, route, PrerequisiteOperation.SESSION)
+        setup_results = (
+            _evaluate_profile_prerequisites(
+                root,
+                tuple(
+                    profile
+                    for profile in route_profiles
+                    if role.needs_environment and role_name in profile.environment.managed_roles
+                ),
+                PrerequisiteOperation.SETUP,
+            )
+            if role.needs_environment
+            else ()
+        )
+        if any(item.blocks for item in setup_results):
+            try:
+                message = _record_prerequisite_blocker(
+                    workspace,
+                    route,
+                    PrerequisiteOperation.SETUP,
+                    setup_results,
+                    command=requested_command,
+                )
+            except (OSError, ValueError, VersionControlError) as exc:
+                return _error_result(
+                    sessions_run, SessionError("prerequisite_recording", str(exc), 1)
+                )
+            logger.info("%s. Stopping before environment setup.", message)
+            return _stop_result(
+                sessions_run,
+                RunStopReason.PREREQUISITE_BLOCKED,
+                (SessionError("prerequisite", message, 0),),
+            )
+        _clear_resolved_prerequisite_blocker(workspace, route, PrerequisiteOperation.SETUP)
+        validation_results = (
+            _evaluate_profile_prerequisites(root, route_profiles, PrerequisiteOperation.VALIDATION)
+            if role_name in {"developer", "integrator"}
+            else ()
+        )
+        if any(item.blocks for item in validation_results):
+            try:
+                message = _record_prerequisite_blocker(
+                    workspace,
+                    route,
+                    PrerequisiteOperation.VALIDATION,
+                    validation_results,
+                    command=requested_command,
+                )
+            except (OSError, ValueError, VersionControlError) as exc:
+                return _error_result(
+                    sessions_run, SessionError("prerequisite_recording", str(exc), 1)
+                )
+            logger.info("%s. Stopping before agent invocation.", message)
+            return _stop_result(
+                sessions_run,
+                RunStopReason.PREREQUISITE_BLOCKED,
+                (SessionError("prerequisite", message, 0),),
+            )
+        _clear_resolved_prerequisite_blocker(workspace, route, PrerequisiteOperation.VALIDATION)
         ctx = build_session_context(
             root,
             sessions_run + 1,
