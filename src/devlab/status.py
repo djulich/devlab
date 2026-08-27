@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
@@ -98,9 +99,13 @@ def _format_milestone_status(snapshot: WorkspaceSnapshot) -> list[str]:
         return ["Milestones: none"]
     lines = ["Milestones:"]
     for milestone in milestones:
-        lines.extend(
-            _format_milestone(milestone, tasks, snapshot.milestone_verification(milestone.id))
-        )
+        try:
+            verification = snapshot.milestone_verification(milestone.id)
+        except (tomllib.TOMLDecodeError, ValueError) as exc:
+            lines.extend(_format_milestone(milestone, tasks))
+            lines.append(f"  verification: invalid ({exc})")
+        else:
+            lines.extend(_format_milestone(milestone, tasks, verification))
     for milestone_id in missing_milestones:
         task_ids = [task.id for task in tasks if task.milestone == milestone_id]
         lines.extend(

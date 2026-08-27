@@ -22,6 +22,7 @@ from devlab.clarification_ops import (
 from devlab.clarifications import FileClarificationTracker
 from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
 from devlab.doctor import check_workspace, format_doctor_report
+from devlab.doctor_common import DoctorOperation, DoctorProblem
 from devlab.executable_config import (
     ExecutableConfigSnapshot,
     ExecutableConfigTrustError,
@@ -61,6 +62,8 @@ from devlab.run_summary import build_run_summary, format_run_summary
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
 from devlab.workflow_state_report import (
+    NextCommandAdvice,
+    WorkflowStateReport,
     build_next_command_advice,
     build_workflow_state_digest,
     build_workflow_state_report,
@@ -639,6 +642,7 @@ def main() -> None:
     elif args.command == "continue":
         _run_continue_command(args, root)
     elif args.command == "implement":
+        _require_healthy_operation(root, DoctorOperation.SESSION)
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         executable_config = _authorized_executable_config(
             root,
@@ -674,6 +678,7 @@ def main() -> None:
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
     elif args.command == "plan":
+        _require_healthy_operation(root, DoctorOperation.PLANNING)
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         executable_config = (
             None
@@ -932,6 +937,7 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
     report = build_workflow_state_report(root)
     advice = build_next_command_advice(report)
     if advice.action == "none":
+        _report_workspace_health(root)
         print("Workflow is complete.")
         return
     if advice.action == "inspect_clarification":
@@ -953,6 +959,8 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
             file=sys.stderr,
         )
         raise SystemExit(1)
+    operation = _doctor_operation_for_advice(advice, report)
+    _require_healthy_operation(root, operation)
     if advice.action == "resume_workflow":
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         resumed = resume_workflow(
@@ -1015,6 +1023,58 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
         )
     if result.exit_code != 0:
         raise SystemExit(result.exit_code)
+
+
+def _doctor_operation_for_advice(
+    advice: NextCommandAdvice, report: WorkflowStateReport
+) -> DoctorOperation:
+    if advice.action in {"continue_planning", "reconcile_specifications"}:
+        return DoctorOperation.PLANNING
+    if (
+        advice.action == "continue_research_route"
+        and report.research is not None
+        and report.research.command == "plan"
+    ):
+        return DoctorOperation.PLANNING
+    return DoctorOperation.SESSION
+
+
+def _require_healthy_operation(root: Path, operation: DoctorOperation) -> None:
+    health_findings = check_workspace(root)
+    blocking_findings = [
+        finding for finding in health_findings if finding.blocks_operation(operation)
+    ]
+    if blocking_findings:
+        print(
+            "DevLab cannot continue because workspace health findings block "
+            f"{operation.value}:\n\n{format_doctor_report(blocking_findings)}\n\n"
+            "Inspect all findings with:\n  devlab doctor",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if health_findings:
+        print(_format_nonblocking_health_findings(health_findings, operation), file=sys.stderr)
+
+
+def _report_workspace_health(root: Path) -> None:
+    health_findings = check_workspace(root)
+    if health_findings:
+        print(
+            _format_nonblocking_health_findings(health_findings, "workflow completion"),
+            file=sys.stderr,
+        )
+
+
+def _format_nonblocking_health_findings(
+    findings: list[DoctorProblem], operation: DoctorOperation | str
+) -> str:
+    operation_name = operation.value if isinstance(operation, DoctorOperation) else operation
+    lines = [
+        "Workspace health findings do not block " + operation_name + ":",
+        *(f"- {finding.path}: {finding.message}" for finding in findings),
+        "Run 'devlab doctor' for the authoritative workspace-health result.",
+    ]
+    return "\n".join(lines)
 
 
 def _authorized_executable_config(

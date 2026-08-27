@@ -38,6 +38,13 @@ and retry advice emitted whenever DevLab cannot continue or the operator decline
 a proposed discard.
 _Avoid_: generic “run doctor” advice
 
+**Workspace health finding**:
+A read-only diagnostic produced by one domain-owned validator. Every finding
+makes the global `devlab doctor` result unhealthy and identifies the workflow
+operations it blocks. `devlab continue` consumes the same findings and stops
+only when one applies to its next action.
+_Avoid_: warning/error severity, duplicated doctor and orchestration checks
+
 **Role session**:
 One bounded agent invocation for exactly one workflow role.
 _Avoid_: conversation, chat

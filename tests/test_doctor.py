@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from devlab.doctor import check_workspace, format_doctor_report
+from devlab.doctor_common import DoctorOperation
 from devlab.init import init_workspace
 from devlab.workflow_state import ResumeState, set_resume_state
 from devlab.workspace import Workspace
@@ -743,6 +744,24 @@ def test_doctor_accepts_consistent_milestone_state(tmp_path: Path) -> None:
     )
 
     assert check_workspace(tmp_path) == []
+
+
+def test_doctor_malformed_verification_does_not_block_mutation(tmp_path: Path) -> None:
+    _write_default_profile(tmp_path)
+    _write_task(tmp_path, "T0001", milestone="M1")
+    _write_milestone(tmp_path, "M1", task_ids=["T0001"])
+    path = tmp_path / ".devlab/verification/milestones/M1.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text('milestone_id = "M1\x1b[0m"\n')
+
+    problem = next(
+        problem
+        for problem in check_workspace(tmp_path)
+        if problem.path == str(path.relative_to(tmp_path))
+    )
+
+    assert not problem.blocks_operation(DoctorOperation.PLANNING)
+    assert not problem.blocks_operation(DoctorOperation.SESSION)
 
 
 def _messages(root: Path) -> list[str]:

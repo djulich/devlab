@@ -169,6 +169,10 @@ inspection, stash-preservation, manual-discard, warning, and retry guidance.
 Immediately before discard, DevLab revalidates HEAD and the affected Git scope;
 afterward it requires a clean worktree before recording the interruption or
 continuing. Ignored files and external effects are never claimed to be restored.
+Before starting the derived planning or agent-session action, continuation reuses
+the same domain-owned workspace health findings reported by `devlab doctor`. It
+stops for findings that block that action and reports other known findings
+without treating them as clean workspace health.
 
 Inspect the workspace:
 
@@ -225,7 +229,8 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab prerequisite [--root PATH] list|blocked|show|check|approve|revoke ...` — inspect profile-owned prerequisites, run automatic checks, review the durable workflow blocker, or manage semantic-fingerprint-scoped operator attestations.
 - `devlab diagnostics [--root PATH] [--verbose] [--json]` — report workflow-history diagnostics and quality warnings without mutating state.
 - `devlab history [--root PATH] [--json]` — report archived session metadata without mutating state.
-- `devlab doctor [--root PATH]` — validate workspace configuration without mutating it.
+- `devlab doctor [--root PATH]` — report authoritative global workspace health
+  without mutating it; any finding produces a nonzero exit status.
 - `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.
 
 Research has no standalone command. Architect, planner, and developer may

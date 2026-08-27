@@ -19,6 +19,12 @@ Use the reported stop reason and next command rather than guessing which role
 should run. Fix provider availability, an unclean worktree, invalid state, or
 other reported prerequisites before continuing.
 
+`devlab doctor` is the authoritative global health check and returns nonzero for
+every finding. Workflow commands reuse those same domain-owned findings and stop
+only when a finding blocks the requested planning or session operation. They
+still print known non-blocking findings; proceeding does not make the global
+doctor result healthy.
+
 ## 2. Continue an ordinary bounded run
 
 If planning stopped only because its session bound was reached, rerun the

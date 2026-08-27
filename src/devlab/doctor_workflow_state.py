@@ -441,7 +441,13 @@ def check_milestones(root: Path, snapshot: WorkspaceSnapshot) -> list[DoctorProb
         try:
             verification = milestone_tracker.read_verification(path.stem)
         except (tomllib.TOMLDecodeError, ValueError) as exc:
-            problems.append(DoctorProblem(path_display, str(exc)))
+            problems.append(
+                DoctorProblem(
+                    path_display,
+                    str(exc),
+                    blocks=frozenset(),
+                )
+            )
             continue
         if verification is None:
             continue

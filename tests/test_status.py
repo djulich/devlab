@@ -70,6 +70,26 @@ def test_status_verbose_includes_milestone_state(tmp_path: Path) -> None:
     assert "  findings: F0001" in text
 
 
+def test_status_verbose_reports_malformed_milestone_verification(tmp_path: Path) -> None:
+    _setup_minimal_workspace(tmp_path)
+    _write_milestone(
+        tmp_path,
+        "M1",
+        status="planned",
+        integrated=False,
+        architecture_reviewed=False,
+        task_ids=[],
+    )
+    path = tmp_path / ".devlab/verification/milestones/M1.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text('milestone_id = "M1\x1b[0m"\n')
+
+    text = format_status(tmp_path, verbose=True)
+
+    assert "verification: invalid" in text
+    assert "Illegal character" in text
+
+
 def test_status_verbose_includes_finding_state(tmp_path: Path) -> None:
     _setup_minimal_workspace(tmp_path)
     _write_finding(tmp_path, "F0001", "Missing coverage", "planned", "M1")

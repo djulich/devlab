@@ -11,6 +11,7 @@ import pytest
 
 from devlab.clarifications import FileClarificationTracker
 from devlab.cli import main
+from devlab.doctor_common import DoctorProblem
 from devlab.executable_config import (
     ExecutableConfigSnapshot,
     build_executable_config_snapshot,
@@ -758,6 +759,74 @@ def test_cli_continue_routes_initial_work_to_planning(
     )
 
     assert seen["planning_only"] is True
+
+
+def test_cli_continue_reports_health_finding_that_does_not_block_next_action(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr(
+        "devlab.cli.check_workspace",
+        lambda _root: [
+            DoctorProblem(
+                ".devlab/verification/milestones/M1.toml",
+                "invalid TOML",
+                blocks=frozenset(),
+            )
+        ],
+    )
+
+    _run_cli(
+        monkeypatch,
+        "continue",
+        "--root",
+        str(tmp_path),
+        "--accept-current-exec-config",
+    )
+
+    assert seen["planning_only"] is True
+    assert "health findings do not block planning" in capsys.readouterr().err
+
+
+def test_cli_continue_stops_for_health_finding_that_blocks_next_action(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    monkeypatch.setattr(
+        "devlab.cli.check_workspace",
+        lambda _root: [DoctorProblem(".devlab/workflow.toml", "invalid workflow state")],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(
+            monkeypatch,
+            "continue",
+            "--root",
+            str(tmp_path),
+            "--accept-current-exec-config",
+        )
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().err
+    assert "workspace health findings block planning" in output
+    assert "invalid workflow state" in output
 
 
 def test_cli_continue_declines_discard_with_actionable_preservation_advice(

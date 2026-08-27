@@ -108,7 +108,7 @@ the experiment's predeclared policy. Record the question and answer. Do not use
 clarification to coach DevLab toward a grader implementation detail that is not
 part of the specification.
 
-### Recover an interrupted DevLab run without discarding evidence
+### Discard and restart an interrupted DevLab session
 
 If DevLab stops after accepting a session but before committing its archived
 handoff, logs, session artifacts, or workflow event, do not use
@@ -116,23 +116,27 @@ handoff, logs, session artifacts, or workflow event, do not use
 bounded cleanup directories and does not restore tracked workflow state.
 
 1. Stop all target-agent activity and record the target HEAD, `git status`, the
-   DevLab revision/version, the stop reason, and the missing external
-   prerequisite in evaluator-owned evidence.
+   interrupted session identity, the DevLab revision/version, the stop reason,
+   and any external prerequisite in evaluator-owned evidence.
 2. Review the dirty paths only to distinguish session residue from unrelated
    operator edits. Do not alter product, planning, task, finding, or verification
    content.
-3. Preserve an otherwise accepted session exactly as left by committing its
-   tracked and untracked DevLab evidence with an explicit `Operator
-   intervention:` commit message. Commit unrelated operator configuration
-   separately, or revert it only when that was the predeclared experiment
-   configuration; record either choice.
-4. Resume only after installing the corrected DevLab version and satisfying the
-   external prerequisite. Re-run executable-configuration trust review when its
-   fingerprint changed, then continue with the same bounded `devlab implement`
-   policy.
+3. Run `devlab continue` and review its HEAD-bound discard proposal. Preserve
+   state outside the active worktree with the exact stash command it prints if
+   evaluator policy requires a non-destructive copy; otherwise approve the
+   discard-and-restart action. Do not use a broader reset or clean command.
+4. Record the resulting interruption commit, post-action HEAD, and clean `git
+   status` in evaluator-owned evidence. Treat the discarded session as an
+   interrupted attempt, not accepted product progress, and include it in the
+   final intervention log and resource totals.
+5. Consider external effects separately because worktree discard does not undo
+   them. Resume only after satisfying the external prerequisite and confirming
+   that restarting the bounded session is safe.
+6. Re-run executable-configuration trust review when its fingerprint changed,
+   then use `devlab continue` for the same bounded workflow.
 
-This bookkeeping commit is an intervention, not product progress. Include it in
-the final intervention log and keep the pre-intervention revision identifiable.
+The interruption commit is evaluator-visible bookkeeping, not product progress.
+Keep both the pre-discard revision and discarded session identity identifiable.
 
 ## 6. Run generation 1: single-agent arm
 
