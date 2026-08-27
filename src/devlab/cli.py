@@ -50,6 +50,7 @@ from devlab.prerequisites import (
     revoke_prerequisite_attestation,
 )
 from devlab.profiles import Profile, load_profiles
+from devlab.recovery import apply_recovery, format_recovery_proposal, inspect_recovery
 from devlab.run_summary import build_run_summary, format_run_summary
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
@@ -215,6 +216,17 @@ def main() -> None:
         "implement",
         parents=[_run_parent_parser(max_sessions=IMPLEMENT_MAX_SESSIONS)],
         help="Implement planned DevLab workflow tasks.",
+    )
+
+    continue_parser = subparsers.add_parser(
+        "continue",
+        parents=[_run_parent_parser(max_sessions=IMPLEMENT_MAX_SESSIONS)],
+        help="Recover if necessary and perform the next valid workflow action.",
+    )
+    continue_parser.add_argument(
+        "--approve-recovery",
+        action="store_true",
+        help="Apply a recognized evidence-preserving recovery without prompting.",
     )
 
     plan_parser = subparsers.add_parser(
@@ -591,7 +603,7 @@ def main() -> None:
             parser.error(
                 "agent-smoke-test --use-provider-defaults requires --provider or --all-providers"
             )
-    if args.command in {"plan", "implement"} and args.unattended:
+    if args.command in {"continue", "plan", "implement"} and args.unattended:
         args.clarification_mode = "agent"
     if args.command == "init":
         result = init_workspace(
@@ -605,6 +617,8 @@ def main() -> None:
         print(format_init_result(result, root))
         print()
         print(format_init_next_steps())
+    elif args.command == "continue":
+        _run_continue_command(args, root)
     elif args.command == "implement":
         configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
         executable_config = _authorized_executable_config(
@@ -851,6 +865,118 @@ def _run_log_level(*, quiet: bool, verbose: bool) -> int:
     if verbose:
         return logging.DEBUG
     return logging.INFO
+
+
+def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
+    report = build_workflow_state_report(root)
+    if report.lifecycle_phase == "uninitialized":
+        print("Workspace is not initialized. Run devlab init, then devlab continue.")
+        raise SystemExit(1)
+    inspection = inspect_recovery(root)
+    if inspection.proposal is not None:
+        proposal = inspection.proposal
+        print(format_recovery_proposal(proposal))
+        approved = args.approve_recovery
+        if not approved and not args.unattended and sys.stdin.isatty():
+            answer = input("\nApply this recovery and continue? [y/N] ")
+            approved = answer.strip().lower() in {"y", "yes"}
+        if not approved:
+            print(
+                "Recovery requires approval. Re-run with --approve-recovery after review.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        commit = apply_recovery(root, proposal)
+        print(f"Recovered interrupted session evidence in commit {commit}.")
+    elif inspection.reason != "clean":
+        print(f"DevLab cannot continue safely: {inspection.reason}.", file=sys.stderr)
+        if inspection.dirty_paths:
+            print("Dirty paths:", file=sys.stderr)
+            for path in inspection.dirty_paths:
+                print(f"- {path}", file=sys.stderr)
+        print("Resolve the ambiguous state, then run devlab continue.", file=sys.stderr)
+        raise SystemExit(1)
+
+    report = build_workflow_state_report(root)
+    advice = build_next_command_advice(report)
+    if advice.action == "none":
+        print("Workflow is complete.")
+        return
+    if advice.action == "inspect_clarification":
+        clarification_id = report.clarifications.pending_blockers[0].id
+        clarification = FileClarificationTracker(root).get(clarification_id)
+        print(clarification.path.read_text(), end="")
+        print("\nAnswer the clarification, then run devlab continue.")
+        raise SystemExit(1)
+    if advice.action in {"inspect_dirty_specs", "inspect_workflow"}:
+        print(
+            f"DevLab cannot continue automatically: {advice.reason}.\n"
+            "Resolve the reported condition, then run devlab continue.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if advice.action == "resume_workflow":
+        configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+        resumed = resume_workflow(
+            root,
+            max_sessions=args.max_sessions,
+            executable_config_factory=lambda: _authorized_executable_config(
+                root,
+                provider=args.provider,
+                model=args.model,
+                effort=args.effort,
+                expected_digest=args.require_exec_config_digest,
+                accept_current=args.accept_current_exec_config,
+                allow_prompt=not args.unattended,
+            ),
+        )
+        print(resumed.message)
+        if not resumed.resumed or (
+            resumed.run_result is not None and resumed.run_result.exit_code != 0
+        ):
+            raise SystemExit(resumed.run_result.exit_code if resumed.run_result is not None else 1)
+        return
+
+    planning_only = advice.action in {"continue_planning", "reconcile_specifications"} or (
+        advice.action == "continue_research_route"
+        and report.research is not None
+        and report.research.command == "plan"
+    )
+    configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+    executable_config = _authorized_executable_config(
+        root,
+        provider=args.provider,
+        model=args.model,
+        effort=args.effort,
+        expected_digest=args.require_exec_config_digest,
+        accept_current=args.accept_current_exec_config,
+        allow_prompt=not args.unattended,
+    )
+    result = run_loop(
+        root,
+        max_sessions=args.max_sessions,
+        provider=args.provider,
+        model=args.model,
+        effort=args.effort,
+        retain_prompts=args.retain_prompts,
+        planning_only=planning_only,
+        clarification_mode=args.clarification_mode,
+        handoff_correction=args.handoff_correction,
+        executable_config=executable_config,
+    )
+    if isinstance(result, RunResult):
+        print(
+            format_run_summary(
+                build_run_summary(
+                    root,
+                    command="continue",
+                    result=result,
+                    initial_executable_config=executable_config,
+                )
+            )
+        )
+    if result.exit_code != 0:
+        raise SystemExit(result.exit_code)
 
 
 def _authorized_executable_config(

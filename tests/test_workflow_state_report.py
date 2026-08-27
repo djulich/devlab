@@ -157,7 +157,7 @@ def test_format_workflow_state_digest_includes_digest_sections(tmp_path: Path) -
     assert output.startswith("# Workflow State")
     assert "- Lifecycle phase: awaiting design" in output
     assert "## Next Action" in output
-    assert "Run `devlab plan` to continue design or planning." in output
+    assert "Run `devlab continue` to continue design or planning." in output
     assert "## Current Work" in output
     assert "- Tasks: 0 total, 0 closed, 0 active" in output
     assert "## Specs" in output
@@ -185,7 +185,7 @@ def test_workflow_state_digest_json_is_compact_projection(tmp_path: Path) -> Non
     }
     assert payload["summary"]["lifecycle_phase"] == "awaiting design"
     assert payload["summary"]["active_generation"] == 1
-    assert payload["next_action"] == "Run `devlab plan` to continue design or planning."
+    assert payload["next_action"] == "Run `devlab continue` to continue design or planning."
     assert payload["validation"]["state"] == "not_reported"
     assert payload["clarifications"]["pending_blockers"] == []
     assert payload["research"] is None
@@ -196,11 +196,11 @@ def test_next_command_advice_continues_planning(tmp_path: Path) -> None:
 
     advice = build_next_command_advice(build_workflow_state_report(tmp_path))
 
-    assert format_next_command(advice) == "devlab plan"
+    assert format_next_command(advice) == "devlab continue"
     assert advice.action == "continue_planning"
     assert advice.reason == "next_role_architect"
     assert advice.mutates_state is True
-    assert advice.as_dict()["argv"] == ["devlab", "plan"]
+    assert advice.as_dict()["argv"] == ["devlab", "continue"]
 
 
 def test_next_command_advice_prioritizes_clarification_inspection(tmp_path: Path) -> None:
@@ -209,7 +209,8 @@ def test_next_command_advice_prioritizes_clarification_inspection(tmp_path: Path
 
     advice = build_next_command_advice(build_workflow_state_report(tmp_path))
 
-    assert advice.command == f"devlab clarify show {clarification}"
+    assert clarification == "CL0001"
+    assert advice.command == "devlab continue"
     assert advice.action == "inspect_clarification"
     assert advice.mutates_state is False
 
@@ -223,7 +224,7 @@ def test_next_command_advice_resumes_answered_clarification(tmp_path: Path) -> N
 
     advice = build_next_command_advice(build_workflow_state_report(tmp_path))
 
-    assert advice.command == "devlab resume"
+    assert advice.command == "devlab continue"
     assert advice.reason == "clarification_answered"
 
 
@@ -292,7 +293,7 @@ def test_workflow_state_digest_prioritizes_clarification_next_action(
 
     assert digest.next_action == (
         f"Answer clarification {clarification} with "
-        f"`devlab clarify answer {clarification} ...`, then run `devlab resume`."
+        f"`devlab clarify answer {clarification} ...`, then run `devlab continue`."
     )
 
 
@@ -310,7 +311,7 @@ def test_workflow_state_digest_prioritizes_resume_pointer(
     output = format_workflow_state_digest(digest)
 
     assert digest.next_action == (
-        f"Answer clarification {clarification} if needed, then run `devlab resume`."
+        f"Answer clarification {clarification} if needed, then run `devlab continue`."
     )
     assert "## Clarifications" in output
     assert f"- {clarification}: Auth session timeout" in output
@@ -327,7 +328,7 @@ def test_workflow_state_reports_requested_and_completed_research_route(tmp_path:
     assert report.research.status == "requested"
     assert report.research.next_step == "researcher_invocation"
     assert build_workflow_state_digest(report).next_action == (
-        "Run `devlab plan` for the bounded researcher session."
+        "Run `devlab continue` for the bounded researcher session."
     )
 
     Workspace(tmp_path).research().get(research.id).complete(
@@ -347,7 +348,7 @@ def test_workflow_state_reports_requested_and_completed_research_route(tmp_path:
     assert completed.research.status == "completed"
     assert completed.research.next_step == "resumed_role_execution"
     assert build_workflow_state_digest(completed).next_action == (
-        "Run `devlab plan` for the resumed requesting-role session."
+        "Run `devlab continue` for the resumed requesting-role session."
     )
 
 

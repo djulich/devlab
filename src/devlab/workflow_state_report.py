@@ -338,47 +338,49 @@ def build_next_command_advice(report: WorkflowStateReport) -> NextCommandAdvice:
     if report.research is not None:
         return NextCommandAdvice(
             "continue_research_route",
-            ("devlab", report.research.command),
+            ("devlab", "continue"),
             f"research_{report.research.status}",
             True,
         )
     if report.clarifications.pending_blockers:
-        clarification_id = report.clarifications.pending_blockers[0].id
         return NextCommandAdvice(
             "inspect_clarification",
-            ("devlab", "clarify", "show", clarification_id),
+            ("devlab", "continue"),
             "clarification_pending",
             False,
         )
     if report.clarifications.resume is not None:
         return NextCommandAdvice(
             "resume_workflow",
-            ("devlab", "resume"),
+            ("devlab", "continue"),
             "clarification_answered",
             True,
         )
     if report.specs.dirty_spec_paths:
         return NextCommandAdvice(
             "inspect_dirty_specs",
-            ("git", "status", "--short", "--", ".devlab/specs"),
+            ("devlab", "continue"),
             "dirty_specifications",
             False,
         )
     if report.specs.specs_changed_since_baseline is True:
         return NextCommandAdvice(
             "reconcile_specifications",
-            ("devlab", "plan"),
+            ("devlab", "continue"),
             "specifications_changed",
             True,
         )
     if report.next_role in {"architect", "planner"}:
         return NextCommandAdvice(
-            "continue_planning", ("devlab", "plan"), f"next_role_{report.next_role}", True
+            "continue_planning",
+            ("devlab", "continue"),
+            f"next_role_{report.next_role}",
+            True,
         )
     if report.next_role in {"developer", "reviewer", "integrator"}:
         return NextCommandAdvice(
             "continue_implementation",
-            ("devlab", "implement"),
+            ("devlab", "continue"),
             f"next_role_{report.next_role}",
             True,
         )
@@ -386,7 +388,7 @@ def build_next_command_advice(report: WorkflowStateReport) -> NextCommandAdvice:
         return NextCommandAdvice("none", (), "workflow_complete", False)
     return NextCommandAdvice(
         "inspect_workflow",
-        ("devlab", "status", "--verbose"),
+        ("devlab", "continue"),
         "workflow_blocked_or_inconsistent",
         False,
     )
@@ -488,33 +490,33 @@ def _next_action(report: WorkflowStateReport) -> str:
     if report.lifecycle_phase == "uninitialized":
         return "Run `devlab init` to initialize DevLab workflow state."
     if report.research is not None:
-        return f"Run `devlab {report.research.command}` for " + (
+        return "Run `devlab continue` for " + (
             "the bounded researcher session."
             if report.research.status == "requested"
             else "the resumed requesting-role session."
         )
     if report.clarifications.resume is not None:
         resume = report.clarifications.resume
-        return f"Answer clarification {resume.blocked_by} if needed, then run `devlab resume`."
+        return f"Answer clarification {resume.blocked_by} if needed, then run `devlab continue`."
     if report.clarifications.pending_blockers:
         first = report.clarifications.pending_blockers[0]
         return (
             f"Answer clarification {first.id} with `devlab clarify answer {first.id} ...`, "
-            "then run `devlab resume`."
+            "then run `devlab continue`."
         )
     if report.specs.dirty_spec_paths:
-        return "Commit or revert dirty spec paths, then run `devlab plan` to reconcile specs."
+        return "Commit or revert dirty spec paths, then run `devlab continue`."
     if report.specs.specs_changed_since_baseline is True:
-        return "Run `devlab plan` to reconcile committed spec changes."
+        return "Run `devlab continue` to reconcile committed spec changes."
     if report.next_role in {"architect", "planner"}:
-        return "Run `devlab plan` to continue design or planning."
+        return "Run `devlab continue` to continue design or planning."
     if report.next_role in {"developer", "reviewer", "integrator"}:
-        return "Run `devlab implement` to continue the next eligible workflow session."
+        return "Run `devlab continue` to continue the next eligible workflow session."
     if report.lifecycle_phase == "complete":
         return "No workflow action is currently required."
     if report.lifecycle_phase == "blocked or inconsistent":
-        return "Run `devlab status --verbose` and `devlab doctor` to inspect the blockage."
-    return "Inspect `devlab status --verbose` for the next workflow action."
+        return "Run `devlab continue` to classify the blockage and report the required action."
+    return "Run `devlab continue` to determine the next workflow action."
 
 
 def _digest_notes(report: WorkflowStateReport) -> list[str]:

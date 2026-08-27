@@ -83,6 +83,13 @@ def test_cli_reports_installed_version(
             ),
         ),
         (
+            ("continue",),
+            (
+                "Maximum number of sessions to run (default: 20).",
+                "recognized evidence-preserving recovery",
+            ),
+        ),
+        (
             ("plan",),
             (
                 "Maximum number of planning sessions to run (default: 2).",
@@ -382,7 +389,7 @@ def test_cli_workflow_state_digest_reports_markdown_digest(
     output = capsys.readouterr().out
     assert output.startswith("# Workflow State")
     assert "## Next Action" in output
-    assert "Run `devlab plan` to continue design or planning." in output
+    assert "Run `devlab continue` to continue design or planning." in output
 
 
 def test_cli_workflow_state_digest_json_reports_structured_digest(
@@ -397,7 +404,7 @@ def test_cli_workflow_state_digest_json_reports_structured_digest(
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["summary"]["lifecycle_phase"] == "awaiting design"
-    assert payload["next_action"] == "Run `devlab plan` to continue design or planning."
+    assert payload["next_action"] == "Run `devlab continue` to continue design or planning."
     assert payload["validation"]["state"] == "not_reported"
 
 
@@ -411,7 +418,7 @@ def test_cli_workflow_state_next_command_prints_only_command(
 
     _run_cli(monkeypatch, "workflow-state", "--next-command", "--root", str(tmp_path))
 
-    assert capsys.readouterr().out == "devlab plan\n"
+    assert capsys.readouterr().out == "devlab continue\n"
 
 
 def test_cli_workflow_state_next_command_json_is_structured(
@@ -434,8 +441,8 @@ def test_cli_workflow_state_next_command_json_is_structured(
     payload = json.loads(capsys.readouterr().out)
     assert payload == {
         "action": "continue_planning",
-        "argv": ["devlab", "plan"],
-        "command": "devlab plan",
+        "argv": ["devlab", "continue"],
+        "command": "devlab continue",
         "mutates_state": True,
         "reason": "next_role_architect",
     }
@@ -723,6 +730,33 @@ def test_cli_run_is_not_registered(
 
     assert exc.value.code == 2
     assert "invalid choice: 'run'" in capsys.readouterr().err
+
+
+def test_cli_continue_routes_initial_work_to_planning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+
+    _run_cli(
+        monkeypatch,
+        "continue",
+        "--root",
+        str(tmp_path),
+        "--accept-current-exec-config",
+    )
+
+    assert seen["planning_only"] is True
 
 
 def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

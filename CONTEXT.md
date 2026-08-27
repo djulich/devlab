@@ -16,6 +16,19 @@ _Avoid_: project root when the distinction from DevLab's own source repository m
 Durable repository files that record DevLab's current progress, decisions, tasks, findings, milestones, handoffs, and configuration.
 _Avoid_: memory, runtime state
 
+**Workflow continuation**:
+The operator-facing `devlab continue` operation that derives and performs the
+next valid lifecycle action from durable workflow state. Planning,
+implementation, clarification resume, validation retry, and supported recovery
+are internal action kinds rather than choices the operator must diagnose.
+_Avoid_: using resume for every continuation or requiring operators to select a role command
+
+**Recovery proposal**:
+A fingerprinted description of one recognized, evidence-preserving completion
+of an interrupted DevLab-owned workflow transaction. Applying a proposal must
+be idempotent, refuse stale or mixed state, and never judge product correctness.
+_Avoid_: generic repository fix, cleanup
+
 **Role session**:
 One bounded agent invocation for exactly one workflow role.
 _Avoid_: conversation, chat

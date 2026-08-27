@@ -49,7 +49,7 @@ In particular:
 - `.devlab/config/profiles/*.toml` may define setup/teardown/environment lifecycle commands;
 - agent permission and approval behavior is provider-specific and controlled through `.devlab/config/agents.toml`.
 
-DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab implement`, especially in cloned or agent-modified workspaces.
+DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab continue`, especially in cloned or agent-modified workspaces.
 
 Before starting configured processes, DevLab fingerprints the effective provider
 and profile lifecycle/default-validation configuration. Operators can approve that fingerprint in
@@ -144,12 +144,27 @@ Configure the target project's agent command. The configured executable must be 
 .devlab/config/agents.toml
 ```
 
-Commit your user-authored setup changes before planning. `devlab plan` and `devlab implement` require a clean Git working tree so agent-authored changes can be isolated and committed safely:
+Commit your user-authored setup changes before continuing. Workflow execution requires a clean Git working tree so agent-authored changes can be isolated and committed safely:
 
 ```bash
 git add .devlab/specs .devlab/config
 git commit -m "Configure DevLab project"
 ```
+
+Run the workflow through its single normal operator entry point:
+
+```bash
+devlab continue
+```
+
+`devlab continue` derives the next valid action from durable state. It runs
+planning, implementation, review, integration, clarification resume, or a
+validation retry as needed. After a bounded stop, resolve any explicitly
+reported external condition and run the same command again. If DevLab recognizes
+a complete accepted session whose bookkeeping commit was interrupted, it shows
+an evidence-preserving recovery proposal. Approve it interactively or pass
+`--approve-recovery`; mixed or ambiguous repository changes are never repaired
+automatically.
 
 Inspect the workspace:
 
@@ -178,7 +193,7 @@ Implement the planned workflow. `devlab implement` carries out already-reconcile
 devlab implement --max-sessions 20
 ```
 
-Bounded `plan` and `implement` commands finish with an operator summary that
+Bounded workflow commands finish with an operator summary that
 states why the command stopped, the next role or task, whether clarification or
 executable-configuration review is required, and the recommended continuation
 command.
@@ -194,6 +209,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 ## CLI commands
 
 - `devlab init [--root PATH] [--force] [--template neutral|python|rust|go|c|cpp]` — create starter `.devlab/` files.
+- `devlab continue [--root PATH] [--max-sessions N] [--approve-recovery] [...]` — recover a recognized interrupted workflow transaction if necessary, then perform the next valid lifecycle action. This is the normal operator entry point.
 - `devlab plan [--root PATH] [--revise] [--adopt-existing] [--replace-plan] [--mark-specs-planned] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
 - `devlab implement [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab clarify [--root PATH] list|show|answer|supersede ...` — inspect and answer durable operator clarifications.
@@ -209,8 +225,8 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 - `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.
 
 Research has no standalone command. Architect, planner, and developer may
-return `needs_research`; rerun the stored `devlab plan` or `devlab implement`
-route to invoke one bounded researcher and then resume the requester. Results
+return `needs_research`; run `devlab continue` to invoke one bounded researcher
+and then resume the requester. Results
 are strict staged JSON and canonical `.devlab/research/` records with evidence,
 sources, confidence, unresolved questions, and provenance. Configure an
 optional `[roles.researcher]`; otherwise it inherits the requesting role's

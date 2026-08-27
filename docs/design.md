@@ -36,8 +36,7 @@ to work when invoked against another repository, for example:
 cd /path/to/target-project
 devlab init
 devlab status
-devlab plan
-devlab implement
+devlab continue
 ```
 
 ### Why separate the responsibilities?
@@ -194,7 +193,7 @@ For example, task files have statuses such as:
 
 The orchestrator changes these statuses after validating the relevant session output. Task files are not moved between folders to represent state.
 
-Reporting paths are intentionally non-mutating. `devlab status`, `devlab workflow-state`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. Explicit mutation belongs to workflow commands such as `devlab plan` and `devlab implement`, or to future commands whose purpose is repair/sync.
+Reporting paths are intentionally non-mutating. `devlab status`, `devlab workflow-state`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. `devlab continue` is the normal mutation entry point: it derives the next lifecycle action, applies only recognized and approved recovery proposals, and then delegates to existing planning, implementation, resume, or validation mechanics. `devlab plan` and `devlab implement` remain explicit phase-restricted commands for automation and expert use.
 
 `devlab plan` is the spec/workflow reconciliation command. It creates missing design/project planning state, records the latest committed revision that touched `.devlab/specs/system/` or `.devlab/specs/deployment/`, and stops before implementation roles. If those committed specs change later, `devlab plan` archives the active DevLab workflow bundle under `.devlab/generations/NNNN/`, starts a fresh active planning graph, and runs architect and planner again. `devlab plan --revise` explicitly asks architect and planner to review existing active plans even when the committed spec baseline has not changed. `devlab plan --replace-plan` forces the same archive-and-plan replacement when an active DevLab plan exists. `devlab plan --adopt-existing` tells first planning to treat repository files as an already-started project; the architect records a current-state design baseline in `.devlab/plans/design-plan.md` before the planner creates new work. `devlab plan --mark-specs-planned` is an explicit operator bypass for typo-only, format-only, or otherwise plan-neutral committed spec changes; it updates the recorded spec baseline without running architect or planner sessions and warns that it bypasses reconciliation. During adoption, DevLab prompts agents to preserve the existing development stack and use target-owned validation paths. If the project lacks reliable validation, planner work should add explicit tooling/profile support instead of silently relying on globally installed or DevLab-harness tools. `devlab implement` is implementation continuation: it reads durable reconciled state and stops before selecting developer, reviewer, integrator, or architecture-review sessions if committed specs no longer match the recorded planning baseline.
 

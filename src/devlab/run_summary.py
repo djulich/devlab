@@ -277,10 +277,10 @@ def _next_commands(
         return (
             f"devlab clarify show {clarification.id}",
             f"devlab clarify answer {clarification.id} ...",
-            "devlab resume",
+            "devlab continue",
         )
     if research is not None:
-        return (f"devlab {research.command}",)
+        return ("devlab continue",)
     if result.stop_reason in {
         RunStopReason.ERROR,
         RunStopReason.DEVELOPER_NON_ADVANCING,
@@ -289,28 +289,29 @@ def _next_commands(
         RunStopReason.VALIDATION_PREREQUISITE_MISSING,
         RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR,
     }:
-        return ("Inspect the errors above and run devlab doctor before retrying.",)
+        return (
+            "Inspect the errors above, resolve the reported condition, then run devlab continue.",
+        )
     if result.stop_reason == RunStopReason.PREREQUISITE_BLOCKED:
         return (
             "devlab prerequisite blocked",
-            f"devlab {command}",
+            "devlab continue",
         )
     if result.stop_reason in {
         RunStopReason.RESEARCH_PENDING,
         RunStopReason.RESEARCH_COMPLETED,
     }:
-        return (f"devlab {command}",)
+        return ("devlab continue",)
     if executable_config.state == "invalid":
         return ("devlab doctor",)
     if executable_config.state == "untrusted":
-        continuation = "devlab plan" if command == "plan" else "devlab implement"
         return (
             "devlab trust executable-config --show",
             "devlab trust executable-config",
-            continuation,
+            "devlab continue",
         )
-    if command == "implement" and state_advice.action == "continue_planning":
-        return ("devlab implement",)
+    if command in {"continue", "implement"} and state_advice.action == "continue_planning":
+        return ("devlab continue",)
     return (state_advice.command,) if state_advice.command else ()
 
 

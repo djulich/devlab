@@ -65,7 +65,7 @@ def test_summary_reports_requested_changes_and_new_untrusted_configuration(
     assert "Operator clarification: none" in text
     assert "Executable configuration changed during this run and is not trusted" in text
     assert "devlab trust executable-config --show" in text
-    assert text.rstrip().endswith("devlab implement")
+    assert text.rstrip().endswith("devlab continue")
 
 
 def test_summary_calls_out_dependency_introduced_in_latest_session(
@@ -141,7 +141,7 @@ def test_summary_reports_executable_configuration_boundary(
     assert "fresh authorized run is required" in text
     assert "changed during this run and is not trusted" in text
     assert "devlab trust executable-config --show" in text
-    assert text.rstrip().endswith("devlab implement")
+    assert text.rstrip().endswith("devlab continue")
 
 
 def test_summary_prioritizes_durable_clarification(
@@ -173,7 +173,7 @@ def test_summary_prioritizes_durable_clarification(
     assert f"Operator clarification: {clarification.id}" in text
     assert "Asked by: planner" in text
     assert f"devlab clarify show {clarification.id}" in text
-    assert text.rstrip().endswith("devlab resume")
+    assert text.rstrip().endswith("devlab continue")
 
 
 def test_summary_reports_complete_workflow_without_next_command(
@@ -216,7 +216,7 @@ def test_plan_summary_routes_actionable_work_to_implement(
     )
 
     assert summary.next_role == "developer"
-    assert summary.next_commands == ("devlab implement",)
+    assert summary.next_commands == ("devlab continue",)
 
 
 def test_implement_summary_continues_incremental_planning_with_implement(
@@ -236,7 +236,7 @@ def test_implement_summary_continues_incremental_planning_with_implement(
     )
 
     assert summary.next_role == "planner"
-    assert summary.next_commands == ("devlab implement",)
+    assert summary.next_commands == ("devlab continue",)
 
 
 @pytest.mark.parametrize(
@@ -265,7 +265,7 @@ def test_guard_stop_reasons_request_operator_inspection(
     )
 
     text = format_run_summary(summary)
-    assert "run devlab doctor before retrying" in text
+    assert "then run devlab continue" in text
 
 
 def test_summary_explains_pending_research_and_uses_stored_command(
@@ -303,7 +303,7 @@ def test_summary_explains_pending_research_and_uses_stored_command(
     )
     text = format_run_summary(summary)
 
-    assert summary.next_commands == ("devlab plan",)
+    assert summary.next_commands == ("devlab continue",)
     assert f"Research: {research.id} — Dependency behavior" in text
     assert "Research state: requested" in text
     assert "Next step: researcher invocation" in text
