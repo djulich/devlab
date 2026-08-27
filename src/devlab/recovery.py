@@ -58,6 +58,31 @@ class RecoveryInspection:
     guidance: OperatorGuidance | None = None
 
 
+class IncompleteDiscardError(VersionControlError):
+    """Raised when Git still reports uncommitted state after reset and clean."""
+
+    def __init__(self, entries: tuple[tuple[str, str], ...]) -> None:
+        self.entries = entries
+        paths = ", ".join(path for _status, path in entries)
+        super().__init__(f"repository is still dirty after discard: {paths}")
+
+    @property
+    def guidance(self) -> OperatorGuidance:
+        return OperatorGuidance(
+            summary="Git could not fully restore a clean workflow boundary.",
+            explanation=(
+                "DevLab stopped after reset and clean because Git still reports uncommitted "
+                "state. It did not record the interruption or start another session."
+            ),
+            inspection_commands=("git status --short", "git diff", "git diff --cached"),
+            alternatives=(),
+            warnings=(
+                "Inspect and explicitly commit, stash, or discard the remaining paths: "
+                + ", ".join(path for _status, path in self.entries),
+            ),
+        )
+
+
 def inspect_recovery(root: Path) -> RecoveryInspection:
     """Offer discard only when Git has a plain, restorable uncommitted state."""
     entries = _status_entries(root)
@@ -107,6 +132,9 @@ def discard_interrupted_session(root: Path, proposal: DiscardProposal) -> str:
         raise VersionControlError("discard proposal is stale; inspect the workspace again")
     run_git(root, "reset", "--hard", proposal.head)
     run_git(root, "clean", "-fd")
+    remaining = _status_entries(root)
+    if remaining:
+        raise IncompleteDiscardError(remaining)
     append_workflow_event(
         root,
         "interrupted_session_discarded",

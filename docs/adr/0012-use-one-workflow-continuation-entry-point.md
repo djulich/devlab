@@ -30,9 +30,12 @@ fix command. DevLab does not reconstruct arbitrary interrupted transactions or
 classify operations as repeatable. When plain uncommitted state prevents
 continuation, it may instead offer to discard tracked, staged, and non-ignored
 untracked changes back to the observed committed boundary. The proposal is
-bound to the exact HEAD and dirty-state preview, requires operator confirmation,
-and becomes stale after any change. Git conflicts, in-progress Git operations,
-and nested repository dirt are refused.
+bound to the exact HEAD, affected paths, Git status classifications, clean
+preview, and session identity, and requires operator confirmation. File contents
+are not hashed because approval concerns the affected Git scope, not a particular
+version of already-dirty content. Git conflicts, in-progress Git operations, and
+nested repository dirt are refused. After reset and clean, DevLab verifies that
+the worktree is actually clean before recording the interruption or continuing.
 
 If the operator declines or DevLab refuses, it emits structured, condition-specific
 guidance: inspection commands, a non-destructive stash alternative when

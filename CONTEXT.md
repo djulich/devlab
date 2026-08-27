@@ -24,11 +24,12 @@ are internal action kinds rather than choices the operator must diagnose.
 _Avoid_: using resume for every continuation or requiring operators to select a role command
 
 **Discard proposal**:
-A fingerprinted description of the exact uncommitted Git state that
+A structurally fingerprinted description of the uncommitted Git scope that
 `devlab continue` can restore to the current committed workflow boundary after
-operator confirmation. It includes the observed HEAD and tracked/untracked
-paths, becomes stale after any change, preserves ignored files, and makes no
-claim about external effects.
+operator confirmation. It revalidates the observed HEAD, affected paths, Git
+status classifications, clean preview, and session identity immediately before
+discard. It intentionally does not hash file contents, preserves ignored files,
+and makes no claim about external effects.
 _Avoid_: transaction reconstruction, generic repository fix
 
 **Operator guidance**:

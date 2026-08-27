@@ -5,10 +5,12 @@ from pathlib import Path
 
 import pytest
 
+import devlab.recovery as recovery
 from devlab.git import VersionControlError
 from devlab.handoffs import SessionEnvelope, write_session_envelope
 from devlab.recovery import (
     INTERRUPTION_COMMIT_MESSAGE,
+    IncompleteDiscardError,
     discard_interrupted_session,
     format_operator_guidance,
     inspect_recovery,
@@ -68,7 +70,7 @@ def test_discard_restores_boundary_and_records_compact_interruption(tmp_path: Pa
     assert '"session_id": "s1_developer"' in events
 
 
-def test_discard_proposal_is_invalidated_by_any_later_change(tmp_path: Path) -> None:
+def test_discard_proposal_is_invalidated_when_affected_git_scope_changes(tmp_path: Path) -> None:
     _dirty_session(tmp_path)
     proposal = inspect_recovery(tmp_path).proposal
     assert proposal is not None
@@ -76,6 +78,32 @@ def test_discard_proposal_is_invalidated_by_any_later_change(tmp_path: Path) -> 
 
     with pytest.raises(VersionControlError, match="stale"):
         discard_interrupted_session(tmp_path, proposal)
+
+
+def test_discard_stops_when_worktree_is_not_clean_after_reset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _dirty_session(tmp_path)
+    proposal = inspect_recovery(tmp_path).proposal
+    assert proposal is not None
+    original_status_entries = recovery._status_entries
+    calls = 0
+
+    def status_entries(root: Path) -> tuple[tuple[str, str], ...]:
+        nonlocal calls
+        calls += 1
+        if calls >= 2:
+            return (("??", "concurrent.txt"),)
+        return original_status_entries(root)
+
+    monkeypatch.setattr(recovery, "_status_entries", status_entries)
+
+    with pytest.raises(IncompleteDiscardError) as exc:
+        discard_interrupted_session(tmp_path, proposal)
+
+    assert "concurrent.txt" in str(exc.value)
+    assert "git status --short" in format_operator_guidance(exc.value.guidance)
+    assert not (tmp_path / ".devlab/workflow-events.jsonl").exists()
 
 
 def test_decline_guidance_offers_inspection_stash_and_exact_manual_boundary(

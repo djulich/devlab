@@ -51,6 +51,7 @@ from devlab.prerequisites import (
 )
 from devlab.profiles import Profile, load_profiles
 from devlab.recovery import (
+    IncompleteDiscardError,
     discard_interrupted_session,
     format_discard_proposal,
     format_operator_guidance,
@@ -914,7 +915,12 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
                 print("\nNo files were changed.\n", file=sys.stderr)
                 print(format_operator_guidance(inspection.guidance), file=sys.stderr)
             raise SystemExit(1)
-        commit = discard_interrupted_session(root, proposal)
+        try:
+            commit = discard_interrupted_session(root, proposal)
+        except IncompleteDiscardError as exc:
+            print(f"DevLab could not complete the discard: {exc}.", file=sys.stderr)
+            print("\n" + format_operator_guidance(exc.guidance), file=sys.stderr)
+            raise SystemExit(1) from exc
         print(f"Discarded interrupted repository state and recorded commit {commit}.")
     elif inspection.reason != "clean":
         print(f"DevLab cannot continue safely: {inspection.reason}.", file=sys.stderr)

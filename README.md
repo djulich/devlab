@@ -166,7 +166,9 @@ paths and offers to discard them back to the current committed boundary. It
 requires interactive confirmation, or both `--discard-interrupted-session` and
 `--require-interrupted-head COMMIT` for unattended use. Declining prints exact
 inspection, stash-preservation, manual-discard, warning, and retry guidance.
-Ignored files and external effects are never claimed to be restored.
+Immediately before discard, DevLab revalidates HEAD and the affected Git scope;
+afterward it requires a clean worktree before recording the interruption or
+continuing. Ignored files and external effects are never claimed to be restored.
 
 Inspect the workspace:
 
