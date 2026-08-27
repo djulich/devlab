@@ -50,7 +50,12 @@ from devlab.prerequisites import (
     revoke_prerequisite_attestation,
 )
 from devlab.profiles import Profile, load_profiles
-from devlab.recovery import apply_recovery, format_recovery_proposal, inspect_recovery
+from devlab.recovery import (
+    discard_interrupted_session,
+    format_discard_proposal,
+    format_operator_guidance,
+    inspect_recovery,
+)
 from devlab.run_summary import build_run_summary, format_run_summary
 from devlab.status import format_status
 from devlab.workflow_diagnostics import build_workflow_diagnostics, format_workflow_diagnostics
@@ -224,9 +229,15 @@ def main() -> None:
         help="Recover if necessary and perform the next valid workflow action.",
     )
     continue_parser.add_argument(
-        "--approve-recovery",
+        "--discard-interrupted-session",
         action="store_true",
-        help="Apply a recognized evidence-preserving recovery without prompting.",
+        help="Discard an observed interrupted session without prompting.",
+    )
+    continue_parser.add_argument(
+        "--require-interrupted-head",
+        default=None,
+        metavar="COMMIT",
+        help="Discard only when the observed restart boundary is this exact commit.",
     )
 
     plan_parser = subparsers.add_parser(
@@ -603,6 +614,13 @@ def main() -> None:
             parser.error(
                 "agent-smoke-test --use-provider-defaults requires --provider or --all-providers"
             )
+    if args.command == "continue" and (
+        args.discard_interrupted_session != (args.require_interrupted_head is not None)
+    ):
+        parser.error(
+            "continue requires --discard-interrupted-session and "
+            "--require-interrupted-head together"
+        )
     if args.command in {"continue", "plan", "implement"} and args.unattended:
         args.clarification_mode = "agent"
     if args.command == "init":
@@ -875,26 +893,34 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
     inspection = inspect_recovery(root)
     if inspection.proposal is not None:
         proposal = inspection.proposal
-        print(format_recovery_proposal(proposal))
-        approved = args.approve_recovery
+        print(format_discard_proposal(proposal))
+        approved = False
+        if args.discard_interrupted_session:
+            if args.require_interrupted_head != proposal.head:
+                print(
+                    "DevLab refused discard because --require-interrupted-head does not "
+                    f"match {proposal.head}.",
+                    file=sys.stderr,
+                )
+                if inspection.guidance is not None:
+                    print("\n" + format_operator_guidance(inspection.guidance), file=sys.stderr)
+                raise SystemExit(1)
+            approved = True
         if not approved and not args.unattended and sys.stdin.isatty():
-            answer = input("\nApply this recovery and continue? [y/N] ")
+            answer = input("\nDiscard the uncommitted repository state and restart? [y/N] ")
             approved = answer.strip().lower() in {"y", "yes"}
         if not approved:
-            print(
-                "Recovery requires approval. Re-run with --approve-recovery after review.",
-                file=sys.stderr,
-            )
+            if inspection.guidance is not None:
+                print("\nNo files were changed.\n", file=sys.stderr)
+                print(format_operator_guidance(inspection.guidance), file=sys.stderr)
             raise SystemExit(1)
-        commit = apply_recovery(root, proposal)
-        print(f"Recovered interrupted session evidence in commit {commit}.")
+        commit = discard_interrupted_session(root, proposal)
+        print(f"Discarded interrupted repository state and recorded commit {commit}.")
     elif inspection.reason != "clean":
         print(f"DevLab cannot continue safely: {inspection.reason}.", file=sys.stderr)
-        if inspection.dirty_paths:
-            print("Dirty paths:", file=sys.stderr)
-            for path in inspection.dirty_paths:
-                print(f"- {path}", file=sys.stderr)
-        print("Resolve the ambiguous state, then run devlab continue.", file=sys.stderr)
+        if inspection.guidance is not None:
+            print("\nNo files were changed.\n", file=sys.stderr)
+            print(format_operator_guidance(inspection.guidance), file=sys.stderr)
         raise SystemExit(1)
 
     report = build_workflow_state_report(root)
@@ -911,7 +937,13 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
     if advice.action in {"inspect_dirty_specs", "inspect_workflow"}:
         print(
             f"DevLab cannot continue automatically: {advice.reason}.\n"
-            "Resolve the reported condition, then run devlab continue.",
+            "No files were changed.\n\n"
+            "Inspect:\n"
+            "  devlab status --verbose\n"
+            "  devlab doctor\n"
+            "  git status --short\n\n"
+            "After resolving the reported condition, run:\n"
+            "  devlab continue",
             file=sys.stderr,
         )
         raise SystemExit(1)

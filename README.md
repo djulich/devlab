@@ -160,11 +160,13 @@ devlab continue
 `devlab continue` derives the next valid action from durable state. It runs
 planning, implementation, review, integration, clarification resume, or a
 validation retry as needed. After a bounded stop, resolve any explicitly
-reported external condition and run the same command again. If DevLab recognizes
-a complete accepted session whose bookkeeping commit was interrupted, it shows
-an evidence-preserving recovery proposal. Approve it interactively or pass
-`--approve-recovery`; mixed or ambiguous repository changes are never repaired
-automatically.
+reported external condition and run the same command again. If uncommitted state
+remains after an interruption, DevLab previews the exact tracked and untracked
+paths and offers to discard them back to the current committed boundary. It
+requires interactive confirmation, or both `--discard-interrupted-session` and
+`--require-interrupted-head COMMIT` for unattended use. Declining prints exact
+inspection, stash-preservation, manual-discard, warning, and retry guidance.
+Ignored files and external effects are never claimed to be restored.
 
 Inspect the workspace:
 
@@ -209,7 +211,7 @@ Prompt logs and agent output can contain target-project details. Treat `.devlab/
 ## CLI commands
 
 - `devlab init [--root PATH] [--force] [--template neutral|python|rust|go|c|cpp]` — create starter `.devlab/` files.
-- `devlab continue [--root PATH] [--max-sessions N] [--approve-recovery] [...]` — recover a recognized interrupted workflow transaction if necessary, then perform the next valid lifecycle action. This is the normal operator entry point.
+- `devlab continue [--root PATH] [--max-sessions N] [--discard-interrupted-session --require-interrupted-head COMMIT] [...]` — restore explicitly approved uncommitted state to its committed boundary if necessary, then perform the next valid lifecycle action. This is the normal operator entry point.
 - `devlab plan [--root PATH] [--revise] [--adopt-existing] [--replace-plan] [--mark-specs-planned] [--max-sessions N] [...]` — reconcile committed system/deployment specs with workflow state, run needed architect/planner sessions, and stop before implementation.
 - `devlab implement [--root PATH] [--max-sessions N] [...]` — run implementation/review/integration continuation from the current reconciled durable state.
 - `devlab clarify [--root PATH] list|show|answer|supersede ...` — inspect and answer durable operator clarifications.

@@ -86,7 +86,8 @@ def test_cli_reports_installed_version(
             ("continue",),
             (
                 "Maximum number of sessions to run (default: 20).",
-                "recognized evidence-preserving recovery",
+                "Discard an observed interrupted session",
+                "observed restart boundary",
             ),
         ),
         (
@@ -757,6 +758,85 @@ def test_cli_continue_routes_initial_work_to_planning(
     )
 
     assert seen["planning_only"] is True
+
+
+def test_cli_continue_declines_discard_with_actionable_preservation_advice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    head = _git_output(tmp_path, "rev-parse", "HEAD")
+    interrupted = tmp_path / "interrupted.txt"
+    interrupted.write_text("partial work\n")
+
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "continue", "--root", str(tmp_path))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr()
+    assert "No files were changed" in output.err
+    assert "git stash push --include-untracked" in output.err
+    assert f"git reset --hard {head}" in output.err
+    assert "external effects" in output.err
+    assert interrupted.exists()
+
+
+def test_cli_continue_explicit_discard_is_head_bound_and_then_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    head = _git_output(tmp_path, "rev-parse", "HEAD")
+    interrupted = tmp_path / "interrupted.txt"
+    interrupted.write_text("partial work\n")
+    seen: dict[str, object] = {}
+
+    def fake_run_loop(*_args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+
+    _run_cli(
+        monkeypatch,
+        "continue",
+        "--root",
+        str(tmp_path),
+        "--discard-interrupted-session",
+        "--require-interrupted-head",
+        head,
+        "--accept-current-exec-config",
+    )
+
+    assert not interrupted.exists()
+    assert seen["planning_only"] is True
+    assert _git_output(tmp_path, "log", "-1", "--pretty=%s") == (
+        "Record discarded interrupted DevLab session"
+    )
+
+
+def test_cli_continue_requires_discard_flag_and_head_together(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(
+            monkeypatch,
+            "continue",
+            "--root",
+            str(tmp_path),
+            "--discard-interrupted-session",
+        )
+
+    assert exc.value.code == 2
+    assert "requires --discard-interrupted-session" in capsys.readouterr().err
 
 
 def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

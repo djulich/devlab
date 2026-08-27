@@ -26,14 +26,20 @@ implementation, clarification-resume, research, and validation mechanics.
 After a bounded stop, operator guidance returns to `devlab continue`.
 
 Recovery is an internal continuation action, not a separate general-purpose
-fix command. A recovery recipe must:
+fix command. DevLab does not reconstruct arbitrary interrupted transactions or
+classify operations as repeatable. When plain uncommitted state prevents
+continuation, it may instead offer to discard tracked, staged, and non-ignored
+untracked changes back to the observed committed boundary. The proposal is
+bound to the exact HEAD and dirty-state preview, requires operator confirmation,
+and becomes stale after any change. Git conflicts, in-progress Git operations,
+and nested repository dirt are refused.
 
-- recognize one exact state from durable evidence;
-- enumerate every path it may mutate;
-- refuse staged, mixed, ambiguous, or stale state;
-- be idempotent and evidence-preserving;
-- require explicit operator approval when it creates an intervention commit;
-- never determine whether product work is correct.
+If the operator declines or DevLab refuses, it emits structured, condition-specific
+guidance: inspection commands, a non-destructive stash alternative when
+applicable, exact manual remediation, warnings, and `devlab continue` as the
+retry command. DevLab restores only Git-controlled repository state. Ignored
+files and external effects are neither reverted nor claimed to be repeatable;
+the operator decides whether restarting the bounded session is appropriate.
 
 `devlab status`, `devlab workflow-state`, `devlab doctor`, and `devlab
 diagnostics` remain read-only. `devlab plan`, `devlab implement`, and targeted
@@ -44,6 +50,8 @@ interfaces.
 
 Operators normally learn one continuation command rather than classifying the
 current lifecycle phase. The same read-only next-action resolver drives reports
-and execution, reducing contradictory advice. Known interrupted transactions
-can be completed safely, while unknown incidents still require a manual decision
-and are never hidden behind speculative repair.
+and execution, reducing contradictory advice. At most one bounded session of
+uncommitted progress is intentionally sacrificed instead of introducing a
+general transaction journal. External side effects remain an explicit operator
+consideration, and unsupported Git states are never hidden behind speculative
+repair.

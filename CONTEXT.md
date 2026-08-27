@@ -23,11 +23,19 @@ implementation, clarification resume, validation retry, and supported recovery
 are internal action kinds rather than choices the operator must diagnose.
 _Avoid_: using resume for every continuation or requiring operators to select a role command
 
-**Recovery proposal**:
-A fingerprinted description of one recognized, evidence-preserving completion
-of an interrupted DevLab-owned workflow transaction. Applying a proposal must
-be idempotent, refuse stale or mixed state, and never judge product correctness.
-_Avoid_: generic repository fix, cleanup
+**Discard proposal**:
+A fingerprinted description of the exact uncommitted Git state that
+`devlab continue` can restore to the current committed workflow boundary after
+operator confirmation. It includes the observed HEAD and tracked/untracked
+paths, becomes stale after any change, preserves ignored files, and makes no
+claim about external effects.
+_Avoid_: transaction reconstruction, generic repository fix
+
+**Operator guidance**:
+Structured, condition-specific inspection, preservation, remediation, warning,
+and retry advice emitted whenever DevLab cannot continue or the operator declines
+a proposed discard.
+_Avoid_: generic “run doctor” advice
 
 **Role session**:
 One bounded agent invocation for exactly one workflow role.

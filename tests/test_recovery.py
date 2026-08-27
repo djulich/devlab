@@ -3,80 +3,136 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from devlab.handoffs import (
-    SessionEnvelope,
-    parse_handoff_candidate,
-    publish_session_result,
-    write_session_envelope,
+import pytest
+
+from devlab.git import VersionControlError
+from devlab.handoffs import SessionEnvelope, write_session_envelope
+from devlab.recovery import (
+    INTERRUPTION_COMMIT_MESSAGE,
+    discard_interrupted_session,
+    format_operator_guidance,
+    inspect_recovery,
 )
-from devlab.recovery import apply_recovery, inspect_recovery
 
 
-def _git(root: Path, *args: str) -> str:
+def _git(root: Path, *args: str, check: bool = True) -> str:
     return subprocess.run(
         ["git", "-C", root.as_posix(), *args],
-        check=True,
+        check=check,
         capture_output=True,
         text=True,
     ).stdout.strip()
 
 
-def _interrupted_session(root: Path) -> None:
+def _repository(root: Path) -> str:
     _git(root, "init")
     _git(root, "config", "user.name", "Test")
     _git(root, "config", "user.email", "test@example.invalid")
-    _git(root, "commit", "--allow-empty", "-m", "Initial")
-    artifacts = root / ".devlab/session-artifacts/developer"
-    envelope_path = artifacts / "session.toml"
-    envelope = SessionEnvelope(1, "s1_developer", "developer", task="T0001")
-    write_session_envelope(envelope_path, envelope)
-    candidate_path = artifacts / "handoff-candidate.toml"
-    candidate_path.write_text(
-        'schema_version = 1\noutcome = "failed"\n'
-        'commit_message = "Record blocker"\n'
-        'done = ["Recorded the blocker"]\nchanged_artifacts = []\n'
-        'open_issues = ["External service unavailable"]\naddressed_findings = []\n'
-        'next_session_hint = "Continue when available."\n'
-    )
-    candidate = parse_handoff_candidate(candidate_path, "developer")
-    publish_session_result(envelope_path, envelope, candidate)
-    history = root / ".devlab/history"
-    history.mkdir(parents=True)
-    (history / "20260101T000000_developer_handoff.md").write_text(
-        (artifacts / "handoff.md").read_text()
-    )
-    (history / "20260101T000000_developer_result.toml").write_text(
-        (artifacts / "result.toml").read_text()
-    )
-    events = root / ".devlab/workflow-events.jsonl"
-    events.write_text("")
+    (root / ".gitignore").write_text("ignored.txt\n")
+    (root / "app.py").write_text("original = True\n")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Initial")
+    return _git(root, "rev-parse", "HEAD")
 
 
-def test_recovery_commits_one_complete_interrupted_session(tmp_path: Path) -> None:
-    _interrupted_session(tmp_path)
+def _dirty_session(root: Path) -> str:
+    head = _repository(root)
+    (root / "app.py").write_text("interrupted = True\n")
+    _git(root, "add", "app.py")
+    (root / "new.py").write_text("new = True\n")
+    (root / "ignored.txt").write_text("keep me\n")
+    write_session_envelope(
+        root / ".devlab/session-artifacts/developer/session.toml",
+        SessionEnvelope(1, "s1_developer", "developer", task="T0001"),
+    )
+    return head
 
+
+def test_discard_restores_boundary_and_records_compact_interruption(tmp_path: Path) -> None:
+    head = _dirty_session(tmp_path)
     inspection = inspect_recovery(tmp_path)
 
     assert inspection.proposal is not None
-    assert inspection.proposal.session_id == "s1_developer"
-    commit = apply_recovery(tmp_path, inspection.proposal)
+    assert inspection.proposal.head == head
+    assert inspection.proposal.session.session_id == "s1_developer"
+    commit = discard_interrupted_session(tmp_path, inspection.proposal)
+
     assert commit == _git(tmp_path, "rev-parse", "HEAD")
     assert _git(tmp_path, "status", "--short") == ""
-    assert _git(tmp_path, "log", "-1", "--pretty=%s") == (
-        "Operator intervention: preserve interrupted session evidence"
+    assert (tmp_path / "app.py").read_text() == "original = True\n"
+    assert not (tmp_path / "new.py").exists()
+    assert (tmp_path / "ignored.txt").read_text() == "keep me\n"
+    assert _git(tmp_path, "log", "-1", "--pretty=%s") == INTERRUPTION_COMMIT_MESSAGE
+    events = (tmp_path / ".devlab/workflow-events.jsonl").read_text()
+    assert '"type": "interrupted_session_discarded"' in events
+    assert '"session_id": "s1_developer"' in events
+
+
+def test_discard_proposal_is_invalidated_by_any_later_change(tmp_path: Path) -> None:
+    _dirty_session(tmp_path)
+    proposal = inspect_recovery(tmp_path).proposal
+    assert proposal is not None
+    (tmp_path / "later.txt").write_text("operator change\n")
+
+    with pytest.raises(VersionControlError, match="stale"):
+        discard_interrupted_session(tmp_path, proposal)
+
+
+def test_decline_guidance_offers_inspection_stash_and_exact_manual_boundary(
+    tmp_path: Path,
+) -> None:
+    head = _dirty_session(tmp_path)
+    inspection = inspect_recovery(tmp_path)
+    assert inspection.guidance is not None
+
+    text = format_operator_guidance(inspection.guidance)
+
+    assert "git status --short" in text
+    assert "git diff --cached" in text
+    assert "git stash push --include-untracked" in text
+    assert f"git reset --hard {head}" in text
+    assert "git clean -fd deletes" in text
+    assert "external effects" in text
+    assert text.endswith("  devlab continue")
+
+
+def test_discard_uses_latest_session_identity_across_role_artifacts(tmp_path: Path) -> None:
+    _dirty_session(tmp_path)
+    write_session_envelope(
+        tmp_path / ".devlab/session-artifacts/reviewer/session.toml",
+        SessionEnvelope(1, "s0_reviewer", "reviewer", task="T0000"),
     )
-    assert '"type": "recovery_applied"' in events_text(tmp_path)
+
+    proposal = inspect_recovery(tmp_path).proposal
+
+    assert proposal is not None
+    assert proposal.session.session_id == "s1_developer"
 
 
-def test_recovery_refuses_mixed_product_changes(tmp_path: Path) -> None:
-    _interrupted_session(tmp_path)
-    (tmp_path / "app.py").write_text("changed = True\n")
+def test_recovery_refuses_merge_and_advises_continue_or_abort(tmp_path: Path) -> None:
+    _repository(tmp_path)
+    (tmp_path / ".git/MERGE_HEAD").write_text("0" * 40 + "\n")
+    (tmp_path / "app.py").write_text("dirty = True\n")
 
     inspection = inspect_recovery(tmp_path)
 
     assert inspection.proposal is None
-    assert "mixes" in inspection.reason
+    assert inspection.reason == "Git merge is in progress"
+    assert inspection.guidance is not None
+    text = format_operator_guidance(inspection.guidance)
+    assert "git merge --continue" in text
+    assert "git merge --abort" in text
 
 
-def events_text(root: Path) -> str:
-    return (root / ".devlab/workflow-events.jsonl").read_text()
+def test_recovery_refuses_untracked_nested_repository(tmp_path: Path) -> None:
+    _repository(tmp_path)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    _git(nested, "init")
+
+    inspection = inspect_recovery(tmp_path)
+
+    assert inspection.proposal is None
+    assert "nested Git repositories" in inspection.reason
+    assert inspection.guidance is not None
+    assert "git -C nested/ status" in format_operator_guidance(inspection.guidance)
