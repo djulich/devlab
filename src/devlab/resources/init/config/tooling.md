@@ -27,5 +27,11 @@ the `session`, `setup`, or `validation` operation that consumes them. Automatic
 checks must be fast and non-mutating. Use operator attestations only for
 authority or conditions that cannot be checked safely. Add a detailed guide
 under `.devlab/config/prerequisites/` when resolving the condition requires more
-than a concise summary. Never put credentials in profiles, guides, attestations,
-or Git.
+than a concise summary. A resolution guide is not a prerequisite inventory: it
+must explain the required capability, installation or provisioning boundary,
+configuration, exact readiness check, common failures, and security or cleanup
+constraints when applicable. It may reference a focused Markdown section as
+`path.md#heading-slug`; whole-file guides belong under
+`.devlab/config/prerequisites/`. Prefer authoritative upstream links over copied
+volatile installation instructions. Never put credentials in profiles, guides,
+attestations, or Git.

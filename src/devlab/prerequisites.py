@@ -4,6 +4,7 @@ import dataclasses
 import hashlib
 import json
 import os
+import re
 import subprocess
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -16,6 +17,7 @@ from devlab._files import atomic_write_text
 PREREQUISITE_BLOCKER = ".devlab/prerequisite-blocker.json"
 ATTESTATION_SCHEMA = 1
 BLOCKER_SCHEMA = 1
+MAX_PREREQUISITE_GUIDE_CHARS = 8000
 
 
 class PrerequisiteOperation(StrEnum):
@@ -84,6 +86,12 @@ class PrerequisiteBlocker:
     operation: PrerequisiteOperation
     results: tuple[PrerequisiteResult, ...]
     recorded_at: str
+
+
+@dataclasses.dataclass(frozen=True)
+class PrerequisiteGuideReference:
+    path: Path
+    heading: str = ""
 
 
 class FilePrerequisiteTracker:
@@ -235,15 +243,37 @@ def prerequisite_attestation_path(root: Path, prerequisite: Prerequisite) -> Pat
 
 
 def prerequisite_guide_path(root: Path, prerequisite: Prerequisite) -> Path | None:
+    reference = prerequisite_guide_reference(root, prerequisite)
+    return reference.path if reference is not None else None
+
+
+def prerequisite_guide_reference(
+    root: Path, prerequisite: Prerequisite
+) -> PrerequisiteGuideReference | None:
     if not prerequisite.guide:
         return None
-    path = (root / prerequisite.guide).resolve()
+    path_text, separator, heading = prerequisite.guide.partition("#")
+    if not path_text or (separator and not heading):
+        raise ValueError(
+            f"prerequisite {prerequisite.reference} guide must name a file and optional heading"
+        )
+    path = (root / path_text).resolve()
     if not path.is_relative_to(root.resolve()):
         raise ValueError(
             f"prerequisite {prerequisite.reference} guide escapes the workspace: "
             f"{prerequisite.guide}"
         )
-    return path
+    return PrerequisiteGuideReference(path, heading)
+
+
+def read_prerequisite_guide(root: Path, prerequisite: Prerequisite) -> str | None:
+    reference = prerequisite_guide_reference(root, prerequisite)
+    if reference is None:
+        return None
+    text = reference.path.read_text()
+    if not reference.heading:
+        return text.strip()
+    return _markdown_section(text, reference.heading, prerequisite.reference)
 
 
 def format_prerequisite_result(root: Path, result: PrerequisiteResult) -> str:
@@ -255,19 +285,67 @@ def format_prerequisite_result(root: Path, result: PrerequisiteResult) -> str:
         f"Summary: {item.summary}",
         f"Observed: {result.detail}",
     ]
+    if item.check:
+        lines.append(f"Check: {item.check}")
+    elif item.environment:
+        lines.append(f"Environment: {item.environment}")
+    elif item.attestation:
+        lines.append(f"Attestation: {item.attestation}")
     if item.sensitive:
         lines.append("Security: Do not commit or print sensitive values.")
-    guide = prerequisite_guide_path(root, item)
-    if guide is not None:
-        lines.append(f"Guide: {guide}")
+    reference = prerequisite_guide_reference(root, item)
+    if reference is not None:
+        guide_display = str(reference.path)
+        if reference.heading:
+            guide_display += f"#{reference.heading}"
+        lines.append(f"Guide: {guide_display}")
         try:
-            guide_text = guide.read_text().strip()
+            guide_text = read_prerequisite_guide(root, item)
         except FileNotFoundError:
             lines.append("Resolution guide is missing.")
+        except ValueError as exc:
+            lines.append(f"Resolution guide is invalid: {exc}")
         else:
             if guide_text:
-                lines.extend(["", "Resolution guide:", guide_text[:8000]])
+                lines.extend(
+                    [
+                        "",
+                        "Resolution guide:",
+                        guide_text[:MAX_PREREQUISITE_GUIDE_CHARS],
+                    ]
+                )
+                if len(guide_text) > MAX_PREREQUISITE_GUIDE_CHARS:
+                    lines.append(
+                        "[Guide truncated; use a dedicated guide or Markdown heading reference.]"
+                    )
     return "\n".join(lines)
+
+
+def _markdown_section(text: str, fragment: str, prerequisite_reference: str) -> str:
+    requested = _heading_slug(fragment)
+    lines = text.splitlines()
+    start = None
+    level = 0
+    for index, line in enumerate(lines):
+        match = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", line)
+        if match is None:
+            continue
+        if start is None:
+            if _heading_slug(match.group(2)) == requested:
+                start = index
+                level = len(match.group(1))
+        elif len(match.group(1)) <= level:
+            return "\n".join(lines[start:index]).strip()
+    if start is not None:
+        return "\n".join(lines[start:]).strip()
+    raise ValueError(
+        f"prerequisite {prerequisite_reference} guide heading {fragment!r} was not found"
+    )
+
+
+def _heading_slug(value: str) -> str:
+    normalized = re.sub(r"[^\w\s-]", "", value.strip().lower())
+    return re.sub(r"[-\s]+", "-", normalized).strip("-")
 
 
 def _evaluate_prerequisite(
@@ -327,6 +405,9 @@ def _result_record(result: PrerequisiteResult) -> dict[str, Any]:
         "digest": item.digest,
         "required_for": [scope.value for scope in item.required_for],
         "summary": item.summary,
+        "check": item.check,
+        "environment": item.environment,
+        "attestation": item.attestation,
         "guide": item.guide,
         "sensitive": item.sensitive,
         "status": result.status.value,
@@ -345,6 +426,9 @@ def _result_from_record(value: object, path: Path) -> PrerequisiteResult:
             PrerequisiteOperation(str(item)) for item in value.get("required_for", [])
         ),
         summary=str(value.get("summary") or ""),
+        check=str(value.get("check") or ""),
+        environment=str(value.get("environment") or ""),
+        attestation=str(value.get("attestation") or ""),
         guide=str(value.get("guide") or ""),
         sensitive=bool(value.get("sensitive")),
     )

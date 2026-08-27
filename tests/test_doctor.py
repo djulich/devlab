@@ -13,6 +13,62 @@ def test_doctor_accepts_missing_agents_config(tmp_path: Path) -> None:
     assert check_workspace(tmp_path) == []
 
 
+def test_doctor_validates_prerequisite_guide_heading_and_focus(tmp_path: Path) -> None:
+    profile_path = tmp_path / ".devlab/config/profiles/deploy.toml"
+    profile_path.parent.mkdir(parents=True)
+    profile_path.write_text(
+        'version = 1\nid = "deploy"\n'
+        "[[prerequisites]]\n"
+        'id = "docker"\nrequired_for = ["session"]\ncheck = "docker info"\n'
+        'guide = "README.md#docker-daemon"\n'
+    )
+    (tmp_path / "README.md").write_text("# Project\n\nNo remediation section.\n")
+
+    problems = check_workspace(tmp_path)
+    guide_problem = next(
+        problem for problem in problems if problem.path == "README.md#docker-daemon"
+    )
+
+    assert "guide heading 'docker-daemon' was not found" in guide_problem.message
+    assert not guide_problem.blocks_operation(DoctorOperation.PLANNING)
+    assert not guide_problem.blocks_operation(DoctorOperation.SESSION)
+
+
+def test_doctor_rejects_oversized_whole_file_prerequisite_guide(tmp_path: Path) -> None:
+    profile_path = tmp_path / ".devlab/config/profiles/deploy.toml"
+    profile_path.parent.mkdir(parents=True)
+    profile_path.write_text(
+        'version = 1\nid = "deploy"\n'
+        "[[prerequisites]]\n"
+        'id = "docker"\nrequired_for = ["session"]\ncheck = "docker info"\n'
+        'guide = "README.md"\n'
+    )
+    (tmp_path / "README.md").write_text("x" * 8001)
+
+    messages = _messages(tmp_path)
+
+    assert any("limit focused guides to 8000 characters" in message for message in messages)
+
+
+def test_doctor_requires_nondedicated_guide_to_select_heading(tmp_path: Path) -> None:
+    profile_path = tmp_path / ".devlab/config/profiles/deploy.toml"
+    profile_path.parent.mkdir(parents=True)
+    profile_path.write_text(
+        'version = 1\nid = "deploy"\n'
+        "[[prerequisites]]\n"
+        'id = "docker"\nrequired_for = ["session"]\ncheck = "docker info"\n'
+        'guide = "README.md"\n'
+    )
+    (tmp_path / "README.md").write_text("# Project\n\n## Docker\n\nInstall Docker.\n")
+
+    messages = _messages(tmp_path)
+
+    assert any(
+        "whole-file resolution guide must be under .devlab/config/prerequisites/" in message
+        for message in messages
+    )
+
+
 def test_doctor_reports_multiple_agents_config_problems(tmp_path: Path) -> None:
     path = tmp_path / ".devlab/config/agents.toml"
     path.parent.mkdir(parents=True)

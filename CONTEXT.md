@@ -45,6 +45,12 @@ operations it blocks. `devlab continue` consumes the same findings and stops
 only when one applies to its next action.
 _Avoid_: warning/error severity, duplicated doctor and orchestration checks
 
+**Prerequisite resolution guide**:
+A focused repository-owned file or Markdown section that tells an operator how
+to establish, configure, and verify one external workflow prerequisite, including
+common failures and relevant security or cleanup boundaries.
+_Avoid_: prerequisite inventory, whole project documentation, executable setup
+
 **Role session**:
 One bounded agent invocation for exactly one workflow role.
 _Avoid_: conversation, chat

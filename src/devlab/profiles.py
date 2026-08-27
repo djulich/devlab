@@ -223,10 +223,18 @@ def _prerequisites(value: object, profile_id: str, path: Path) -> tuple[Prerequi
         if environment and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", environment):
             raise ValueError(f"prerequisite {prerequisite_id!r} has invalid environment variable")
         guide = str(raw.get("guide") or "")
-        if guide and (Path(guide).is_absolute() or ".." in Path(guide).parts):
-            raise ValueError(
-                f"prerequisite {prerequisite_id!r} guide must stay within the workspace"
-            )
+        if guide:
+            guide_path, separator, guide_heading = guide.partition("#")
+            if (
+                not guide_path
+                or (separator and not guide_heading)
+                or Path(guide_path).is_absolute()
+                or ".." in Path(guide_path).parts
+            ):
+                raise ValueError(
+                    f"prerequisite {prerequisite_id!r} guide must name a workspace-relative "
+                    "file and optional Markdown heading"
+                )
         results.append(
             Prerequisite(
                 profile_id=profile_id,

@@ -80,7 +80,7 @@ def test_loads_profile_tooling_and_environment(tmp_path: Path) -> None:
         'required_for = ["session", "validation"]\n'
         'environment = "TEST_DATABASE_URL"\n'
         'summary = "Disposable database"\n'
-        'guide = ".devlab/config/prerequisites/database.md"\n'
+        'guide = ".devlab/config/prerequisites/database.md#setup"\n'
         "sensitive = true\n"
     )
 
@@ -100,6 +100,7 @@ def test_loads_profile_tooling_and_environment(tmp_path: Path) -> None:
         PrerequisiteOperation.VALIDATION,
     )
     assert prerequisite.sensitive
+    assert prerequisite.guide == ".devlab/config/prerequisites/database.md#setup"
 
 
 def test_missing_sections_default_to_empty_noop(tmp_path: Path) -> None:

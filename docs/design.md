@@ -342,6 +342,16 @@ If `validation` is omitted, agents use default validation commands from the task
 
 Deployment work uses the same task/profile validation model as other domains. DevLab does not currently define separate structured deployment validation metadata; target projects own deployment verification commands and document host prerequisites. See `docs/adr/0009-defer-structured-deployment-validation-metadata.md`.
 
+Prerequisite summaries name required capabilities; they are not remediation
+instructions. When resolution is not obvious, the profile references either a
+dedicated guide under `.devlab/config/prerequisites/` or a focused Markdown
+section using `path.md#heading-slug`. DevLab renders only that selected content
+alongside the exact check, environment variable, or attestation mechanism. The
+doctor reports missing files or headings, oversized selected content, and broad
+whole-file references outside the dedicated guide directory. These guide-quality
+findings keep global workspace health nonzero but do not block planning or agent
+sessions; guides are operator information and are never executed by DevLab.
+
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
 
 ## Environment lifecycle

@@ -253,7 +253,7 @@ id = "docker-engine"
 required_for = ["validation"]
 check = "docker info"
 summary = "Docker Engine must be reachable."
-guide = ".devlab/config/prerequisites/docker-engine.md"
+guide = ".devlab/config/prerequisites/docker-engine.md#docker-engine"
 
 [[prerequisites]]
 id = "test-database-authorized"
@@ -269,8 +269,16 @@ approval is stored outside the target workspace and remains valid until revoked
 or until a semantic prerequisite field changes. Failed checks consume no agent
 session and write `.devlab/prerequisite-blocker.json`; inspect it with
 `devlab prerequisite blocked`. Guides provide project-specific resolution steps
-but are never executed by DevLab. DevLab does not install tools, start services,
-provision databases, or obtain credentials while evaluating prerequisites.
+but are never executed by DevLab. A guide may name a whole focused file under
+`.devlab/config/prerequisites/` or one Markdown section elsewhere using
+`path.md#heading-slug`; only the selected section through the next heading of
+equal or higher level is rendered. Guides should state the
+required capability, installation or provisioning boundary, configuration,
+exact readiness check, common failures, and any security or cleanup constraints.
+`devlab doctor` reports missing files/headings and guides whose selected content
+exceeds 8,000 characters; use a dedicated file or heading instead of a broad
+project document. DevLab does not install tools, start services, provision
+databases, or obtain credentials while evaluating prerequisites.
 
 Useful `implement` and `plan` options include `--provider`, `--model`, `--effort`,
 `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`. Both commands also

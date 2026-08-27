@@ -16,6 +16,12 @@ from devlab.doctor_workflow_state import (
     check_task_domains,
     check_workflow_state,
 )
+from devlab.prerequisites import (
+    MAX_PREREQUISITE_GUIDE_CHARS,
+    prerequisite_guide_reference,
+    read_prerequisite_guide,
+)
+from devlab.profiles import load_profiles
 from devlab.prompt_context import RolePromptContext, build_prompt_context_report
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
@@ -35,6 +41,7 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     problems.extend(check_milestones(root, snapshot))
     problems.extend(check_task_domains(snapshot))
     problems.extend(check_task_contracts(snapshot))
+    problems.extend(_check_prerequisite_guides(root))
     problems.extend(check_deployment_spec(root))
     problems.extend(check_project_knowledge(root))
     return problems
@@ -79,3 +86,64 @@ def _prompt_context_problem(role: RolePromptContext) -> DoctorProblem:
 
 def _format_count(value: int) -> str:
     return f"{value:,}"
+
+
+def _check_prerequisite_guides(root: Path) -> list[DoctorProblem]:
+    try:
+        profiles = load_profiles(root)
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        return [DoctorProblem(".devlab/config/profiles", str(exc))]
+    problems: list[DoctorProblem] = []
+    for profile in profiles.values():
+        for prerequisite in profile.prerequisites:
+            if not prerequisite.guide:
+                continue
+            try:
+                reference = prerequisite_guide_reference(root, prerequisite)
+                guide_text = read_prerequisite_guide(root, prerequisite)
+            except (OSError, ValueError) as exc:
+                problems.append(
+                    DoctorProblem(
+                        prerequisite.guide,
+                        f"{prerequisite.reference} resolution guide is invalid: {exc}",
+                        blocks=frozenset(),
+                    )
+                )
+                continue
+            if (
+                reference is not None
+                and guide_text is not None
+                and len(guide_text) > MAX_PREREQUISITE_GUIDE_CHARS
+            ):
+                problems.append(
+                    DoctorProblem(
+                        prerequisite.guide,
+                        f"{prerequisite.reference} resolution guide has {len(guide_text)} "
+                        f"characters; limit focused guides to {MAX_PREREQUISITE_GUIDE_CHARS} "
+                        "characters by using a dedicated file or Markdown heading reference",
+                        blocks=frozenset(),
+                    )
+                )
+            if (
+                reference is not None
+                and not reference.heading
+                and not _is_dedicated_prerequisite_guide(root, reference.path)
+            ):
+                problems.append(
+                    DoctorProblem(
+                        prerequisite.guide,
+                        f"{prerequisite.reference} whole-file resolution guide must be under "
+                        ".devlab/config/prerequisites/; use a dedicated file or add a "
+                        "Markdown heading reference",
+                        blocks=frozenset(),
+                    )
+                )
+    return problems
+
+
+def _is_dedicated_prerequisite_guide(root: Path, path: Path) -> bool:
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    return relative.parts[:3] == (".devlab", "config", "prerequisites")
