@@ -640,7 +640,24 @@ class SystemEvolutionGrader:
                 hard_gate=True,
             )
         )
-        return passed
+        if not passed:
+            return False
+
+        if self.docker is None:
+            return False
+        daemon = self.runner((str(self.docker), "info"), self.target, self.environment, 15)
+        daemon_available = daemon.returncode == 0
+        self.result.add(
+            Check(
+                "PREREQ-DOCKER-DAEMON",
+                "deployment",
+                "passed" if daemon_available else "unverified",
+                daemon.duration_seconds,
+                command_evidence(daemon),
+                hard_gate=True,
+            )
+        )
+        return daemon_available
 
     def _runtime_topology_check(self) -> None:
         result = self._compose("ps", "--format", "json", timeout=30)

@@ -127,6 +127,79 @@ def test_missing_docker_is_unverified_and_makes_run_invalid(
     assert result.as_dict()["valid_run"] is False
 
 
+def test_unavailable_docker_daemon_stops_before_product_build(tmp_path: Path) -> None:
+    target = _target(tmp_path)
+    calls: list[tuple[str, ...]] = []
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, environment, timeout
+        command = tuple(args)
+        calls.append(command)
+        if "rev-parse" in command:
+            return _result(command, stdout="abc123\n")
+        if command[-2:] == ("version", "--short"):
+            return _result(command, stdout="2.39.1\n")
+        if command[-1:] == ("info",):
+            return _result(command, returncode=1, stderr="daemon unavailable")
+        return _result(command)
+
+    grader = SystemEvolutionGrader(
+        target,
+        1,
+        "idea-greenhouse-run20",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+    )
+
+    result = grader.grade()
+
+    daemon = next(check for check in result.checks if check.id == "PREREQ-DOCKER-DAEMON")
+    assert daemon.status == "unverified"
+    assert daemon.hard_gate is True
+    assert result.invalid_reasons == ["PREREQ-DOCKER-DAEMON"]
+    assert not any("build" in call for call in calls)
+    assert not any(check.id == "G1-DEP-BUILD" for check in result.checks)
+
+
+def test_available_docker_daemon_preserves_product_build_failure(tmp_path: Path) -> None:
+    target = _target(tmp_path)
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, environment, timeout
+        command = tuple(args)
+        if "rev-parse" in command:
+            return _result(command, stdout="abc123\n")
+        if command[-2:] == ("version", "--short"):
+            return _result(command, stdout="2.39.1\n")
+        if command[-1:] == ("info",):
+            return _result(command, stdout="Server Version: 28.3.3\n")
+        if command[-3:] == ("config", "--format", "json"):
+            return _result(command, stdout=json.dumps(_compose_config()))
+        if command[-1:] == ("build",):
+            return _result(command, returncode=1, stderr="product image build failed")
+        return _result(command)
+
+    grader = SystemEvolutionGrader(
+        target,
+        1,
+        "idea-greenhouse-run21",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+    )
+
+    result = grader.grade()
+
+    daemon = next(check for check in result.checks if check.id == "PREREQ-DOCKER-DAEMON")
+    build = next(check for check in result.checks if check.id == "G1-DEP-BUILD")
+    assert daemon.status == "passed"
+    assert build.status == "failed"
+    assert result.invalid_reasons == ["G1-DEP-BUILD"]
+
+
 def test_resolved_compose_topology_checks_public_boundary(tmp_path: Path) -> None:
     target = _target(tmp_path)
 
