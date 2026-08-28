@@ -1990,16 +1990,18 @@ class SystemEvolutionGrader:
         if self.docker is None:
             return
         with tempfile.TemporaryDirectory(prefix="devlab-system-evolution-browser-") as directory:
+            Path(directory).chmod(0o755)
             script = Path(directory) / "browser-check.js"
             script.write_text(script_content)
+            script.chmod(0o644)
             command = (
                 str(self.docker),
                 "run",
                 "--rm",
                 "--pull=missing",
                 "--network=host",
-                "--mount",
-                f"type=bind,src={script},dst=/grader/browser-check.js,readonly",
+                "--volume",
+                f"{script}:/grader/browser-check.js:ro,Z",
                 PLAYWRIGHT_IMAGE,
                 "bash",
                 "-lc",

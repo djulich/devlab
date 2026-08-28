@@ -280,8 +280,11 @@ def test_browser_checks_use_isolated_pinned_playwright_and_expand_results(tmp_pa
         command = tuple(args)
         captured.append(command)
         assert timeout == 360
-        mount = command[command.index("--mount") + 1]
-        script_path = Path(mount.split(",")[1].removeprefix("src="))
+        mount = command[command.index("--volume") + 1]
+        script_path = Path(mount.split(":", 1)[0])
+        assert mount.endswith(":/grader/browser-check.js:ro,Z")
+        assert script_path.parent.stat().st_mode & 0o777 == 0o755
+        assert script_path.stat().st_mode & 0o777 == 0o644
         script = script_path.read_text()
         assert "require('/tmp/evaluator-tools/node_modules/playwright')" in script
         payload = {
@@ -364,8 +367,8 @@ def test_generation_two_browser_conflict_uses_stale_version_and_expands_results(
         del cwd, environment
         command = tuple(args)
         assert timeout == 360
-        mount = command[command.index("--mount") + 1]
-        script_path = Path(mount.split(",")[1].removeprefix("src="))
+        mount = command[command.index("--volume") + 1]
+        script_path = Path(mount.split(":", 1)[0])
         script = script_path.read_text()
         assert "Reload current idea" not in script
         assert "/reload current idea/i" in script
