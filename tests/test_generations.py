@@ -34,6 +34,8 @@ def test_archive_active_generation_moves_workflow_bundle_and_keeps_specs(
     _write(tmp_path / ".devlab/milestones/M1.toml", "milestone")
     _write(tmp_path / ".devlab/findings/F0001.md", "finding")
     _write(tmp_path / ".devlab/history/handoff.md", "history")
+    _write(tmp_path / ".devlab/verification/milestones/M1.toml", "milestone evidence")
+    _write(tmp_path / ".devlab/verification/tasks/T0001/session.json", "task evidence")
     _write(tmp_path / ".devlab/session-artifacts/planner/handoff.md", "artifact")
     _write(tmp_path / ".devlab/logs/agents/session.log", "log")
     _write(tmp_path / ".devlab/plans/project-plan.md", "plan")
@@ -58,6 +60,9 @@ def test_archive_active_generation_moves_workflow_bundle_and_keeps_specs(
     assert (archive / "session-artifacts/planner/handoff.md").read_text() == "artifact"
     assert (archive / "logs/agents/session.log").read_text() == "log"
     assert (archive / "plans/project-plan.md").read_text() == "plan"
+    assert (archive / "verification/milestones/M1.toml").read_text() == "milestone evidence"
+    assert (archive / "verification/tasks/T0001/session.json").read_text() == "task evidence"
+    assert list((tmp_path / ".devlab/verification").iterdir()) == []
     assert (archive / "workflow.toml").read_text() == "version = 1\n"
     assert not (archive / "specs").exists()
     assert not (archive / "config").exists()
