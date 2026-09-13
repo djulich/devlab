@@ -112,3 +112,9 @@ text; closing the editor is not required. Browser runtime diagnostics are scored
 independently when a later UI assertion fails. These corrections do not change
 scored target code. Preserve prior reports and use a new output filename when
 regrading; record the corrected grader revision for both arms.
+
+The Generation 2 conflict browser check excludes at most one native Chromium
+resource-error diagnostic for the exact probe URL, observed during the deliberate
+stale update and confirmed by its 409 response with the stale If-Match header.
+Application console errors, other URLs/statuses, duplicate diagnostics, and
+JavaScript page errors remain failures. Reports include the excluded count.

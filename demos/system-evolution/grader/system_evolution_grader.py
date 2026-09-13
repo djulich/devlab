@@ -2751,6 +2751,27 @@ const draftNotes = 'unsaved browser notes';
 let browser;
 let requestContext;
 let currentIdea;
+let observingConflict = false;
+let expectedConflictUrl = null;
+
+function unexpectedConsoleErrors(errors, expectedUrl) {
+  let excluded = false;
+  return errors.filter(error => {
+    const expected = !excluded && expectedUrl !== null && error.duringConflict
+      && error.url === expectedUrl && error.argumentCount === 0
+      && error.text === 'Failed to load resource: the server responded with a status of 409 (Conflict)';
+    if (expected) excluded = true;
+    return !expected;
+  }).map(error => error.text);
+}
+
+function runtimeDiagnostics() {
+  const errors = unexpectedConsoleErrors(diagnostics.consoleErrors, expectedConflictUrl);
+  return {
+    passed: diagnostics.pageErrors.length === 0 && errors.length === 0,
+    evidence: `page_errors=${JSON.stringify(diagnostics.pageErrors)}; console_errors=${JSON.stringify(errors)}; expected_conflict_diagnostics_excluded=${diagnostics.consoleErrors.length - errors.length}`
+  };
+}
 
 function record(id, passed, evidence, requirementIds) {
   checks.push({ id, passed, evidence, requirement_ids: requirementIds });
@@ -2764,7 +2785,8 @@ async function main() {
     page.on('pageerror', error => diagnostics.pageErrors.push(error.message));
     page.on('console', message => {
       if (message.type() === 'error' && !/favicon/i.test(message.text())) {
-        diagnostics.consoleErrors.push(message.text());
+        diagnostics.consoleErrors.push({ text: message.text(), url: message.location().url,
+          argumentCount: message.args().length, duringConflict: observingConflict });
       }
     });
 
@@ -2814,9 +2836,14 @@ async function main() {
         && response.url().endsWith(`/api/ideas/${currentIdea.id}`),
       { timeout: 10000 }
     );
+    observingConflict = true;
     await page.getByRole('button', { name: /save|update/i }).last().click();
     const conflict = await conflictResponse;
+    if (conflict.status() === 409 && conflict.request().headers()['if-match'] === '"1"') {
+      expectedConflictUrl = conflict.url();
+    }
     await page.waitForTimeout(300);
+    observingConflict = false;
     page.off('request', observe);
 
     const alert = page.locator('[role="alert"]:visible, [aria-live]:visible')
@@ -2872,8 +2899,8 @@ async function main() {
 
       record(
         'G2-UI-CONFLICT-RUNTIME-ERRORS',
-        diagnostics.pageErrors.length === 0 && diagnostics.consoleErrors.length === 0,
-        `page_errors=${JSON.stringify(diagnostics.pageErrors)}; console_errors=${JSON.stringify(diagnostics.consoleErrors)}`,
+        runtimeDiagnostics().passed,
+        runtimeDiagnostics().evidence,
         ['G2-UI-05']
       );
     } catch (error) {
@@ -2888,8 +2915,8 @@ async function main() {
         }
       }
       if (!checks.some(check => check.id === 'G2-UI-CONFLICT-RUNTIME-ERRORS')) {
-        record('G2-UI-CONFLICT-RUNTIME-ERRORS', diagnostics.pageErrors.length === 0 && diagnostics.consoleErrors.length === 0,
-          `page_errors=${JSON.stringify(diagnostics.pageErrors)}; console_errors=${JSON.stringify(diagnostics.consoleErrors)}`, ['G2-UI-05']);
+        record('G2-UI-CONFLICT-RUNTIME-ERRORS', runtimeDiagnostics().passed,
+          runtimeDiagnostics().evidence, ['G2-UI-05']);
       }
     }
   } catch (error) {

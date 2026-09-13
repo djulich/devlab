@@ -1271,3 +1271,41 @@ def test_browser_script_has_valid_javascript(tmp_path: Path) -> None:
     script = tmp_path / "browser.js"
     script.write_text(GENERATION_2_BROWSER_CHECK_SCRIPT)
     subprocess.run([node, "--check", str(script)], capture_output=True, timeout=10, check=True)
+
+
+def test_expected_conflict_console_diagnostic_is_narrowly_excluded() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is required to execute browser diagnostic regression")
+    helper = GENERATION_2_BROWSER_CHECK_SCRIPT.split("function unexpectedConsoleErrors", 1)[
+        1
+    ].split("function runtimeDiagnostics", 1)[0]
+    script = (
+        "function unexpectedConsoleErrors"
+        + helper
+        + r"""
+const assert = require('node:assert/strict');
+const url = 'http://127.0.0.1:8080/api/ideas/4';
+const expected = {
+  text: 'Failed to load resource: the server responded with a status of 409 (Conflict)',
+  url, argumentCount: 0, duringConflict: true
+};
+assert.deepEqual(unexpectedConsoleErrors([expected], url), []);
+// No exclusion without the confirmed stale PATCH 409 response.
+assert.deepEqual(unexpectedConsoleErrors([expected], null), [expected.text]);
+for (const changed of [
+  {url: url + '/other'}, {argumentCount: 1}, {duringConflict: false},
+  {text: 'Failed to load resource: the server responded with a status of ' +
+         '500 (Internal Server Error)'},
+  {text: 'Application failed to handle conflict'}
+]) {
+  const error = {...expected, ...changed};
+  assert.deepEqual(unexpectedConsoleErrors([error], url), [error.text]);
+}
+// Only one diagnostic is excluded; unrelated and duplicate errors remain visible.
+assert.deepEqual(unexpectedConsoleErrors([expected, expected], url), [expected.text]);
+const appError = {...expected, text: 'Application exception'};
+assert.deepEqual(unexpectedConsoleErrors([appError, expected], url), [appError.text]);
+"""
+    )
+    subprocess.run([node, "-e", script], capture_output=True, timeout=10, check=True)
