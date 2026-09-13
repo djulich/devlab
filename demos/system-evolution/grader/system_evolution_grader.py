@@ -569,7 +569,95 @@ class SystemEvolutionGrader:
             ("G2-TARGET-DEPLOYMENT", "deployment-check", ("G2-DEP-08", "G2-TEST-03")),
             ("G2-TARGET-CHECK", "check", ("G2-CMD-01", "G2-TEST-01")),
         )
+        database_name = f"{project}-test-db"
+        database_port = available_port()
+        database_created = False
         try:
+            setup = self.runner(
+                (
+                    str(self.docker),
+                    "create",
+                    "--name",
+                    database_name,
+                    "--tmpfs",
+                    "/var/lib/postgresql/data",
+                    "--publish",
+                    f"127.0.0.1:{database_port}:5432",
+                    "--env",
+                    "POSTGRES_USER",
+                    "--env",
+                    "POSTGRES_PASSWORD",
+                    "--env",
+                    "POSTGRES_DB",
+                    "postgres:17.6-bookworm",
+                ),
+                self.target,
+                environment,
+                180,
+            )
+            database_created = setup.returncode == 0
+            if not database_created:
+                self.result.add(
+                    Check(
+                        "PREREQ-TARGET-DATABASE",
+                        "target_validation",
+                        "unverified",
+                        setup.duration_seconds,
+                        "Could not start evaluator-owned disposable PostgreSQL; target validation not run.",
+                    )
+                )
+                return
+            started = self.runner(
+                (str(self.docker), "start", database_name), self.target, environment, 30
+            )
+            if started.returncode != 0:
+                self.result.add(
+                    Check(
+                        "PREREQ-TARGET-DATABASE",
+                        "target_validation",
+                        "unverified",
+                        started.duration_seconds,
+                        "Could not start evaluator-owned PostgreSQL; target validation not run.",
+                    )
+                )
+                return
+            deadline = time.monotonic() + 60
+            while True:
+                ready = self.runner(
+                    (
+                        str(self.docker),
+                        "exec",
+                        database_name,
+                        "pg_isready",
+                        "-h",
+                        "127.0.0.1",
+                        "-U",
+                        environment["POSTGRES_USER"],
+                        "-d",
+                        environment["POSTGRES_DB"],
+                    ),
+                    self.target,
+                    environment,
+                    10,
+                )
+                if ready.returncode == 0:
+                    break
+                if time.monotonic() >= deadline:
+                    self.result.add(
+                        Check(
+                            "PREREQ-TARGET-DATABASE",
+                            "target_validation",
+                            "unverified",
+                            60,
+                            "Evaluator-owned PostgreSQL did not become ready; target validation not run.",
+                        )
+                    )
+                    return
+                time.sleep(1)
+            environment["TEST_DATABASE_URL"] = (
+                f"postgresql+psycopg://{environment['POSTGRES_USER']}:{environment['POSTGRES_PASSWORD']}"
+                f"@127.0.0.1:{database_port}/{environment['POSTGRES_DB']}"
+            )
             for check_id, target, requirements in commands:
                 try:
                     command = self.runner(
@@ -601,7 +689,45 @@ class SystemEvolutionGrader:
                         requirements,
                     )
                 )
+        except (OSError, subprocess.SubprocessError):
+            self.result.add(
+                Check(
+                    "PREREQ-TARGET-DATABASE",
+                    "target_validation",
+                    "grader_error",
+                    0,
+                    "Evaluator database provisioning command failed.",
+                )
+            )
         finally:
+            if database_created:
+                try:
+                    removed = self.runner(
+                        (str(self.docker), "rm", "--force", database_name),
+                        self.target,
+                        environment,
+                        30,
+                    )
+                    if removed.returncode != 0:
+                        self.result.add(
+                            Check(
+                                "G2-TARGET-DATABASE-CLEANUP",
+                                "target_validation",
+                                "grader_error",
+                                removed.duration_seconds,
+                                "Could not remove evaluator-owned test database.",
+                            )
+                        )
+                except (OSError, subprocess.SubprocessError):
+                    self.result.add(
+                        Check(
+                            "G2-TARGET-DATABASE-CLEANUP",
+                            "target_validation",
+                            "grader_error",
+                            0,
+                            "Could not remove evaluator-owned test database.",
+                        )
+                    )
             try:
                 cleanup = self._compose_for(
                     project,
@@ -1234,7 +1360,9 @@ class SystemEvolutionGrader:
                 preserved_errors.append(f"id={idea_id}: status={status}; {error}")
                 continue
             changed = [
-                field for field in preserved_fields if current.get(field) != expected.get(field)
+                field
+                for field in preserved_fields
+                if not preserved_value_equal(field, current.get(field), expected.get(field))
             ]
             if changed:
                 preserved_errors.append(f"id={idea_id}: changed fields={changed}")
@@ -1299,7 +1427,8 @@ class SystemEvolutionGrader:
             and all(
                 response[0] == 200
                 and all(
-                    response[1].get(field) == expected.get(field) for field in preserved_fields
+                    preserved_value_equal(field, response[1].get(field), expected.get(field))
+                    for field in preserved_fields
                 )
                 and response[1].get("next_action") is None
                 and response[1].get("archived_at") is None
@@ -2293,6 +2422,25 @@ def validate_project_name(value: str) -> str:
     return value
 
 
+def preserved_value_equal(field: str, current: object, expected: object) -> bool:
+    """Compare timestamp instants; Generation 1 naive timestamps denote UTC."""
+    if field not in {"created_at", "updated_at"}:
+        return current == expected
+    if not isinstance(current, str) or not isinstance(expected, str):
+        return False
+    try:
+        values = [
+            datetime.fromisoformat(value.replace("Z", "+00:00")) for value in (current, expected)
+        ]
+    except ValueError:
+        return False
+    normalized = [
+        value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+        for value in values
+    ]
+    return normalized[0] == normalized[1]
+
+
 def available_port() -> int:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -2708,13 +2856,17 @@ async function main() {
 
       if (reloadVisible) {
         await reload.click();
-        await page.getByText(serverTitle, { exact: true }).waitFor({ timeout: 8000 });
+        await page.waitForFunction(({ serverTitle }) =>
+          [...document.querySelectorAll('input')].some(input => input.getClientRects().length > 0 && input.value === serverTitle)
+          || [...document.querySelectorAll('body *')].some(node => node.getClientRects().length > 0 && node.textContent.trim() === serverTitle),
+          { serverTitle }, { timeout: 8000 });
       }
-      const draftHidden = reloadVisible && await page.getByDisplayValue(draftTitle).count() === 0;
+      const staleDraftCount = await page.locator('input').evaluateAll((inputs, title) => inputs.filter(input => input.value === title).length, draftTitle);
+      const draftHidden = reloadVisible && staleDraftCount === 0;
     record(
       'G2-UI-CONFLICT-RELOAD-CURRENT',
       draftHidden,
-      `server title visible; stale draft field count=${await page.getByDisplayValue(draftTitle).count()}`,
+      `server title visible; stale draft field count=${staleDraftCount}`,
       ['G2-UI-04']
     );
 
@@ -2729,12 +2881,15 @@ async function main() {
         ['G2-UI-STALE-CONFLICT', ['G2-UI-03', 'G2-UI-04']],
         ['G2-UI-CONFLICT-PRESERVES-DRAFT', ['G2-UI-02', 'G2-UI-04']],
         ['G2-UI-CONFLICT-NO-SILENT-RETRY', ['G2-UI-03', 'G2-UI-04']],
-        ['G2-UI-CONFLICT-RELOAD-CURRENT', ['G2-UI-04']],
-        ['G2-UI-CONFLICT-RUNTIME-ERRORS', ['G2-UI-05']]
+        ['G2-UI-CONFLICT-RELOAD-CURRENT', ['G2-UI-04']]
       ]) {
         if (!checks.some(check => check.id === id)) {
           record(id, false, `browser flow failed: ${error.message}`, requirements);
         }
+      }
+      if (!checks.some(check => check.id === 'G2-UI-CONFLICT-RUNTIME-ERRORS')) {
+        record('G2-UI-CONFLICT-RUNTIME-ERRORS', diagnostics.pageErrors.length === 0 && diagnostics.consoleErrors.length === 0,
+          `page_errors=${JSON.stringify(diagnostics.pageErrors)}; console_errors=${JSON.stringify(diagnostics.consoleErrors)}`, ['G2-UI-05']);
       }
     }
   } catch (error) {

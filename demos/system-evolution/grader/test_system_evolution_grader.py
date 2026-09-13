@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from threading import Lock
@@ -9,10 +11,12 @@ from typing import Any
 
 import pytest
 from system_evolution_grader import (
+    GENERATION_2_BROWSER_CHECK_SCRIPT,
     Check,
     CommandResult,
     GradeResult,
     SystemEvolutionGrader,
+    preserved_value_equal,
     validate_project_name,
 )
 
@@ -614,7 +618,10 @@ def test_generation_two_migration_preserves_fixture_and_is_restart_safe(
         del method, payload
         idea_id = int(url.rsplit("/", 1)[1])
         expected = next(idea for idea in fixture["ideas"] if idea["id"] == idea_id)
-        return 200, {**expected, "next_action": None, "archived_at": None, "version": 1}, 0.01, ""
+        current = {**expected, "next_action": None, "archived_at": None, "version": 1}
+        for field in ("created_at", "updated_at"):
+            current[field] = str(expected[field]).removesuffix("Z") + "+00:00"
+        return 200, current, 0.01, ""
 
     def compose(*args: str, timeout: int) -> CommandResult:
         del timeout
@@ -929,6 +936,15 @@ def test_target_validation_uses_disposable_project_and_removes_only_its_volumes(
         "deployment-check",
         "check",
     ]
+    for _, environment in make_calls:
+        assert environment["TEST_DATABASE_URL"].startswith("postgresql+psycopg://grader_")
+        assert "@127.0.0.1:" in environment["TEST_DATABASE_URL"]
+        assert grader.environment["POSTGRES_PASSWORD"] not in environment["TEST_DATABASE_URL"]
+    create = next(args for args, _ in calls if args[1] == "create")
+    assert "--tmpfs" in create
+    assert create[create.index("--publish") + 1].startswith("127.0.0.1:")
+    database_name = create[create.index("--name") + 1]
+    assert any(args == ("/usr/bin/docker", "rm", "--force", database_name) for args, _ in calls)
     projects = {call[1]["COMPOSE_PROJECT_NAME"] for call in make_calls}
     assert len(projects) == 1
     disposable = projects.pop()
@@ -1153,3 +1169,105 @@ def _write_digested(path: Path, content: dict[str, Any]) -> None:
     path.write_text(json.dumps(content))
     if "postgres" in content:
         path.chmod(0o600)
+
+
+@pytest.mark.parametrize(
+    ("current", "expected", "equal"),
+    [
+        ("2026-08-28T00:52:44.265902Z", "2026-08-28T00:52:44.265902", True),
+        ("2026-08-28T02:52:44.265902+02:00", "2026-08-28T00:52:44.265902Z", True),
+        ("2026-08-28T00:52:44.265903Z", "2026-08-28T00:52:44.265902", False),
+        ("invalid", "invalid", False),
+        (None, None, False),
+    ],
+)
+def test_preservation_compares_timestamp_instants(
+    current: object, expected: object, equal: bool
+) -> None:
+    assert preserved_value_equal("created_at", current, expected) is equal
+    assert preserved_value_equal("updated_at", current, expected) is equal
+    assert not preserved_value_equal("title", "changed", "original")
+
+
+def test_validation_database_start_failure_cleans_owned_container_without_running_tests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def runner(
+        args: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
+    ) -> CommandResult:
+        del cwd, timeout
+        command = tuple(args)
+        calls.append(command)
+        if args[-3:] == ("config", "--format", "json"):
+            config = _compose_config()
+            config["volumes"] = {
+                "postgres-data": {"name": environment["COMPOSE_PROJECT_NAME"] + "_postgres-data"}
+            }
+            return _result(command, stdout=json.dumps(config))
+        return _result(command, returncode=1 if args[1] == "start" else 0)
+
+    monkeypatch.setattr("system_evolution_grader.shutil.which", lambda name: f"/usr/bin/{name}")
+    grader = SystemEvolutionGrader(
+        _target(tmp_path),
+        2,
+        "idea-greenhouse-run31",
+        runner=runner,
+        docker_path=Path("/usr/bin/docker"),
+    )
+    grader._target_validation_checks()
+    assert not any(args[0] == "/usr/bin/make" for args in calls)
+    assert any(args[1:3] == ("rm", "--force") for args in calls)
+    assert grader.result.checks[0].status == "unverified"
+
+
+@pytest.mark.parametrize(
+    ("kind", "visible", "expected"),
+    [
+        ("input", True, True),
+        ("text", True, True),
+        ("input", False, False),
+        ("text", False, False),
+        ("stale", True, False),
+    ],
+)
+def test_browser_reload_accepts_visible_form_or_text(
+    kind: str, visible: bool, expected: bool
+) -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is required to execute the browser assertion regression")
+    # Execute the actual browser predicate with minimal DOM nodes; no target or Docker access.
+    predicate = GENERATION_2_BROWSER_CHECK_SCRIPT.split("await page.waitForFunction(", 1)[1].split(
+        ",\n          { serverTitle }", 1
+    )[0]
+    script = (
+        "const kind="
+        + json.dumps(kind)
+        + "; const visible="
+        + json.dumps(visible)
+        + ";"
+        + """
+const element = {value: kind === 'stale' ? 'draft' : 'current', textContent: 'current',
+                 getClientRects: () => visible ? [{}] : []};
+const document = {querySelectorAll: selector => selector === 'input'
+    ? (kind === 'input' || kind === 'stale' ? [element] : [])
+    : (kind === 'text' ? [element] : [])};
+console.log(JSON.stringify(("""
+        + predicate
+        + """ )({serverTitle:'current'})));"""
+    )
+    result = subprocess.run(
+        [node, "-e", script], capture_output=True, text=True, timeout=10, check=True
+    )
+    assert json.loads(result.stdout) is expected
+
+
+def test_browser_script_has_valid_javascript(tmp_path: Path) -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is required for JavaScript syntax validation")
+    script = tmp_path / "browser.js"
+    script.write_text(GENERATION_2_BROWSER_CHECK_SCRIPT)
+    subprocess.run([node, "--check", str(script)], capture_output=True, timeout=10, check=True)

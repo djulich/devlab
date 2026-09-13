@@ -93,3 +93,22 @@ make -C demos check
 
 The complete fixed grading contract and deferred checks are documented in
 `../grading-design.md`.
+
+### Evaluation corrections after the first Generation 2 run
+
+Timestamp preservation compares UTC instants at full parsed precision, accepting
+Generation 1 timestamps without an offset as UTC and equivalent explicit offsets.
+Other preserved fields still require exact equality.
+
+Target-owned validation receives `TEST_DATABASE_URL` for an evaluator-owned
+PostgreSQL 17.6 container with randomized credentials, a loopback-only host port,
+and tmpfs database storage. It is separate from both the disposable Compose
+validation stack and the preserved evolution volume. Provisioning failures are
+reported separately; cleanup removes only this owned container. Shell-exported
+database URLs are not inherited by the evaluator's restricted environment.
+
+Conflict reload accepts the current title in a visible form input or rendered
+text; closing the editor is not required. Browser runtime diagnostics are scored
+independently when a later UI assertion fails. These corrections do not change
+scored target code. Preserve prior reports and use a new output filename when
+regrading; record the corrected grader revision for both arms.
