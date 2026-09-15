@@ -4,13 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from devlab.clarification_ops import resume_workflow, validate_clarification_answer
+from devlab.clarification_ops import (
+    answer_clarification,
+    resume_workflow,
+    validate_clarification_answer,
+)
 from devlab.clarifications import (
     CLARIFICATIONS_DIR,
+    Clarification,
     ClarificationAnswerShape,
     ClarificationStatus,
     FileClarificationTracker,
 )
+from devlab.git import run_git
+from devlab.version_control import commit_all, ensure_git_identity, init_repository
 from devlab.workflow_state import ResumeState, set_resume_state
 
 
@@ -28,6 +35,82 @@ def _body(title: str = "Auth session timeout") -> str:
         "## Options\n"
         "- A: 24-hour idle timeout.\n"
         "- B: No expiry for MVP.\n"
+    )
+
+
+@pytest.fixture
+def git_clarification(tmp_path: Path) -> Clarification:
+    init_repository(tmp_path)
+    ensure_git_identity(tmp_path)
+    clarification = FileClarificationTracker(tmp_path).create(
+        title="Auth session timeout",
+        asking_role="planner",
+        session_id="s1",
+        scope="planning",
+        blocks="planning",
+        answer_shape="choice",
+        recommended_option="A",
+        body=_body(),
+    )
+    (tmp_path / "product.txt").write_text("original\n")
+    commit_all(tmp_path, "Pending clarification")
+    return clarification
+
+
+def test_answer_commits_only_clarification_preserving_other_work(
+    tmp_path: Path,
+    git_clarification: Clarification,
+) -> None:
+    product = tmp_path / "product.txt"
+    product.write_text("staged change\n")
+    run_git(tmp_path, "add", "--", "product.txt")
+    product.write_text("unstaged change\n")
+    (tmp_path / "untracked.txt").write_text("untracked\n")
+    staged = run_git(tmp_path, "diff", "--cached").stdout
+    unstaged = run_git(tmp_path, "diff").stdout
+
+    answer_clarification(tmp_path, git_clarification.id, choice="A")
+
+    assert run_git(tmp_path, "diff", "--cached").stdout == staged
+    assert run_git(tmp_path, "diff").stdout == unstaged
+    assert (tmp_path / "untracked.txt").read_text() == "untracked\n"
+    assert run_git(tmp_path, "show", "HEAD:product.txt").stdout == "original\n"
+    assert run_git(
+        tmp_path, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"
+    ).stdout.strip() == (git_clarification.path.relative_to(tmp_path).as_posix())
+
+
+def test_answer_commit_failure_preserves_answer_and_does_not_resume(
+    tmp_path: Path,
+    git_clarification: Clarification,
+) -> None:
+    before = run_git(tmp_path, "rev-parse", "HEAD").stdout
+    hook = tmp_path / ".git/hooks/pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n")
+    hook.chmod(0o755)
+
+    def unexpected_authorization():
+        pytest.fail("Resume must not request authorization after the answer commit fails")
+
+    with pytest.raises(ValueError, match="answer was saved but could not be committed"):
+        answer_clarification(
+            tmp_path,
+            git_clarification.id,
+            choice="A",
+            resume=True,
+            executable_config_factory=unexpected_authorization,
+        )
+
+    assert run_git(tmp_path, "rev-parse", "HEAD").stdout == before
+    assert (
+        FileClarificationTracker(tmp_path).get(git_clarification.id).status
+        == ClarificationStatus.ANSWERED
+    )
+    assert (
+        'status = "pending"'
+        in run_git(
+            tmp_path, "show", f"HEAD:{git_clarification.path.relative_to(tmp_path).as_posix()}"
+        ).stdout
     )
 
 

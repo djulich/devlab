@@ -181,13 +181,18 @@ Inspect and answer with:
 
 Clarifications are workflow state, not findings. Answering records operator
 intent; resuming lets DevLab continue from the stored `[resume]` pointer in
-`.devlab/workflow.toml`. `--resume` answers and then invokes the stored command;
-plain `devlab resume` is useful after answering separately or validating a
+`.devlab/workflow.toml`. `--resume` answers and then invokes the stored command.
+In a Git workspace, answering first commits only the clarification file, even
+without `--resume`. Unrelated staged and unstaged changes remain uncommitted and
+must be resolved before workflow continuation. If the answer commit fails, the
+answer stays saved and DevLab reports the Git error without resuming.
+
+Plain `devlab resume` is useful after answering separately or validating a
 manually edited record. Superseding is an explicit repair for obsolete requests;
 it does not silently invent an answer.
 
 For a file-edit clarification, inspect the requested paths in the clarification
-record, make only those durable edits, then record a concise text answer
+record, make and commit those durable edits, then record a concise text answer
 summarizing the edits and run `devlab resume`. DevLab validates the answer and
 stored route before invoking another role.
 

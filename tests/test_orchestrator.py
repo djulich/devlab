@@ -12,6 +12,7 @@ import pytest
 
 from devlab._logging import logger
 from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider, ProviderError
+from devlab.clarification_ops import answer_clarification, resume_workflow
 from devlab.clarifications import FileClarificationTracker
 from devlab.executable_config import build_executable_config_snapshot
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
@@ -969,6 +970,61 @@ def test_run_loop_rejects_wrong_plain_command_for_active_resume_pointer(
     assert "Run `devlab resume`" in result.errors[0].message
     assert "explicitly run `devlab implement`" in result.errors[0].message
     assert "devlab plan --revise" in result.errors[0].message
+
+
+@pytest.mark.parametrize("immediate_resume", [False, True])
+@pytest.mark.parametrize("answer_shape", ["choice", "text"])
+def test_operator_answer_commits_before_resuming_real_workflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    immediate_resume: bool,
+    answer_shape: str,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001")
+    blocked = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={
+            "default": MockProvider(handoff_text=_clarification_handoff(answer_shape=answer_shape))
+        },
+    )
+    assert blocked.stop_reason == RunStopReason.CLARIFICATION_BLOCKED
+    clarification = Workspace(tmp_path).snapshot.list_clarifications()[0]
+    provider = MockProvider(on_invoke=lambda call: complete_acceptance(call.root, "T0001"))
+
+    def resume_with_provider(root: Path, **kwargs: Any) -> Any:
+        # Keep production orchestration and Git checks; inject only the role provider.
+        assert subprocess.check_output(["git", "status", "--porcelain"], cwd=root) == b""
+        assert "answered" in subprocess.check_output(
+            ["git", "show", f"HEAD:{clarification.path.relative_to(root).as_posix()}"],
+            cwd=root,
+            text=True,
+        )
+        return _production_run_loop(root, agent_providers={"default": provider}, **kwargs)
+
+    monkeypatch.setattr("devlab.orchestrator.run_loop", resume_with_provider)
+    answered = answer_clarification(
+        tmp_path,
+        clarification.id,
+        choice="A" if answer_shape == "choice" else None,
+        text="Use 24 hours." if answer_shape == "text" else None,
+        resume=immediate_resume,
+        max_sessions=1,
+    )
+    if immediate_resume:
+        result = answered.resumed
+    else:
+        assert provider.calls == []
+        dispatch = resume_workflow(tmp_path, max_sessions=1)
+        assert dispatch.resumed
+        result = dispatch.run_result
+    assert result is not None and result.exit_code == 0
+    assert [call.role_name for call in provider.calls] == ["developer"]
+    assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.IN_REVIEW
+    assert load_workflow_state(tmp_path).resume is None
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
 
 
 def test_run_loop_clears_matching_resume_pointer_after_session(

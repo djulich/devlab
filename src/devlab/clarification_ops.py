@@ -12,6 +12,11 @@ from devlab.clarifications import (
     ClarificationStatus,
     choice_option_texts,
 )
+from devlab.version_control import (
+    VersionControlError,
+    commit_clarification_answer,
+    has_git_repository,
+)
 from devlab.workflow_state import ResumeState, load_workflow_state
 from devlab.workspace import Workspace
 
@@ -163,6 +168,15 @@ def answer_clarification(
         clarification = apply_validated_clarification_answer(
             root, clarification_id, text, operator=operator
         )
+    if has_git_repository(root):
+        try:
+            commit_clarification_answer(root, clarification.id, clarification.path)
+        except VersionControlError as exc:
+            raise ValueError(
+                f"Clarification {clarification.id} answer was saved but could not be committed. "
+                "Resolve the Git error and commit the answer before running devlab continue: "
+                f"{exc}"
+            ) from exc
     run_result = None
     if resume:
         dispatch = resume_workflow(

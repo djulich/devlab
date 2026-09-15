@@ -288,10 +288,20 @@ def test_cli_clarify_show_prints_clarification_file(
     assert "## Question" in output
 
 
+@pytest.mark.parametrize("git_workspace", [False, True])
 def test_cli_clarify_answer_choice_updates_record(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    git_workspace: bool,
 ) -> None:
     clarification_id = _create_clarification(tmp_path)
+    if git_workspace:
+        _git(tmp_path, "init")
+        _git(tmp_path, "config", "user.name", "DevLab Test")
+        _git(tmp_path, "config", "user.email", "devlab-test@example.invalid")
+        _git(tmp_path, "add", ".")
+        _git(tmp_path, "commit", "-m", "Pending clarification")
 
     _run_cli(
         monkeypatch,
@@ -309,6 +319,11 @@ def test_cli_clarify_answer_choice_updates_record(
     clarification = FileClarificationTracker(tmp_path).get(clarification_id)
     assert clarification.status.value == "answered"
     assert "A: 24-hour idle timeout." in clarification.answer_text
+    if git_workspace:
+        assert _git_output(tmp_path, "status", "--porcelain") == ""
+        assert _git_output(tmp_path, "log", "-1", "--format=%s") == (
+            f"Answer DevLab clarification {clarification_id}"
+        )
 
 
 def test_cli_clarify_supersede_updates_record(

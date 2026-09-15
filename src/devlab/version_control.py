@@ -68,6 +68,21 @@ def tag(root: Path, name: str, message: str) -> None:
     run_git(root, "tag", "-f", "-a", name, "-m", message)
 
 
+def commit_clarification_answer(root: Path, clarification_id: str, path: Path) -> None:
+    """Commit one operator answer without including unrelated staged or unstaged work."""
+    relative = path.relative_to(root).as_posix()
+    run_git(root, "add", "--", relative)
+    run_git(
+        root,
+        "commit",
+        "--only",
+        "-m",
+        f"Answer DevLab clarification {clarification_id}",
+        "--",
+        relative,
+    )
+
+
 def commit_test_service_state(root: Path, service_id: str) -> None:
     """Commit only service ownership/provenance, preserving unrelated work in progress."""
     paths = (f".devlab/test-services/{service_id}.json", ".devlab/workflow-events.jsonl")
