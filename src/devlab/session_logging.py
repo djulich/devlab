@@ -32,6 +32,7 @@ class SessionMetadata:
     provider_version: str = ""
     executable_config_digest: str = ""
     executable_config_authorization: str = ""
+    test_service_instances: dict[str, str] = dataclasses.field(default_factory=dict)
     progress: str = ""
     dependency_introductions: tuple[dict[str, str], ...] = ()
 
@@ -48,6 +49,8 @@ class SessionContext:
     stderr_log: Path
     base_prompt_log: Path | None
     session_prompt_log: Path | None
+    service_environment: dict[str, str] = dataclasses.field(default_factory=dict)
+    service_instances: dict[str, str] = dataclasses.field(default_factory=dict)
 
     def build_invocation(self, base_prompt: str, session_prompt: str) -> AgentInvocation:
         envelope = self.root / ARTIFACTS_DIR / self.role_name / SESSION_ENVELOPE_FILE
@@ -60,6 +63,7 @@ class SessionContext:
             stdout_log=self.stdout_log,
             stderr_log=self.stderr_log,
             environment={
+                **self.service_environment,
                 SESSION_ENVELOPE_ENV: envelope.as_posix(),
                 DEVLAB_PYTHON_ENV: str(Path(sys.executable).absolute()),
             },

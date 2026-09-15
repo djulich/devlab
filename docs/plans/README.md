@@ -6,13 +6,14 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [managed-test-services.md](managed-test-services.md) — planned: authorized target-owned provisioning, workspace-scoped reuse, and explicit cleanup of local test services
 - [session-inactivity-monitor.md](session-inactivity-monitor.md) — planned after the demo: provider-output inactivity monitoring with an independent optional maximum session duration
 - [resilient-session-handoffs.md](resilient-session-handoffs.md) — structured submission and DevLab-owned publication are implemented; representative live-provider acceptance metrics remain to collect
 - [architectural-improvements.md](architectural-improvements.md) — cross-cutting backlog for concurrency policy, typed validation failures, resolver isolation, and artifact bounds; stop semantics, blocker ordering, and atomic durable writes are implemented
 - [durable-operator-clarifications.md](durable-operator-clarifications.md) — durable stop/answer/resume and bounded unattended resolution are implemented; scoped routing and external adapters remain optional
 
 ## Implemented
+
+- [managed-test-services.md](managed-test-services.md) — authorized target-owned provisioning, workspace-scoped reuse, and explicit cleanup of local test services
 
 - [language-neutral-target-workspaces.md](language-neutral-target-workspaces.md) — added neutral initialization, explicit Python/Rust/Go/C/C++ starters, compiled-language evaluations, and a mixed Rust/Go baseline
 - [run-stop-reasons-and-blocker-ordering.md](run-stop-reasons-and-blocker-ordering.md) — added explicit workflow/command/limit/blocker/ineligible/error outcomes and moved clarification blockers before ordinary role selection

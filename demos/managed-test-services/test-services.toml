@@ -1,0 +1,10 @@
+[services.postgres]
+summary = "Disposable local PostgreSQL test database"
+host_checks = ["docker info >/dev/null 2>&1", "docker image inspect postgres:16 >/dev/null 2>&1"]
+ensure = "python3 scripts/test-postgres.py ensure"
+check = "python3 scripts/test-postgres.py check"
+destroy = "python3 scripts/test-postgres.py destroy"
+exports = ["TEST_DATABASE_URL"]
+ensure_timeout_seconds = 180
+check_timeout_seconds = 40
+destroy_timeout_seconds = 40

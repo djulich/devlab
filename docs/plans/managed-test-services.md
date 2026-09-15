@@ -1,6 +1,11 @@
 # Managed Test Services
 
-Status: planned; not implemented.
+Status: implemented (2026-09-15). See ADR 0013 and the managed PostgreSQL demo.
+
+The automated fake-service and workflow tests cover the lifecycle and recovery
+contracts. The optional Docker integration test remains unverified locally
+because the `postgres:16` image is absent; it skips without pulling an image.
+The implementation uses POSIX process groups and file locks.
 
 ## Problem and intended outcome
 

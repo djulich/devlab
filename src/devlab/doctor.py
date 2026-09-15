@@ -21,7 +21,7 @@ from devlab.prerequisites import (
     prerequisite_guide_reference,
     read_prerequisite_guide,
 )
-from devlab.profiles import load_profiles
+from devlab.profiles import load_profiles, load_test_services
 from devlab.prompt_context import RolePromptContext, build_prompt_context_report
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
@@ -44,6 +44,7 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     problems.extend(_check_prerequisite_guides(root))
     problems.extend(check_deployment_spec(root))
     problems.extend(check_project_knowledge(root))
+    problems.extend(_check_test_services(snapshot))
     return problems
 
 
@@ -147,3 +148,34 @@ def _is_dedicated_prerequisite_guide(root: Path, path: Path) -> bool:
     except ValueError:
         return False
     return relative.parts[:3] == (".devlab", "config", "prerequisites")
+
+
+def _check_test_services(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
+    try:
+        definitions = load_test_services(snapshot.root)
+        records = snapshot.test_service_records()
+    except (OSError, ValueError) as exc:
+        return [DoctorProblem(".devlab/test-services", str(exc), blocks=frozenset())]
+    problems = []
+    for record in records:
+        if record["state"] == "destroyed":
+            continue
+        service = definitions.get(record["service"])
+        if record["workspace"] != str(snapshot.root.resolve()):
+            detail = "belongs to another workspace; recover in the original workspace"
+        elif service is None or service.digest != record["digest"]:
+            detail = "definition changed or removed; clean up the original instance"
+        elif record["state"] in {"destroying", "cleanup_failed"}:
+            detail = "cleanup unfinished; retry explicit cleanup"
+        elif record["state"] in {"preparing", "failed"}:
+            detail = "preparation unfinished; continue retries the same instance"
+        else:
+            continue
+        problems.append(
+            DoctorProblem(
+                f".devlab/test-services/{record['service']}.json",
+                detail,
+                blocks=frozenset(),
+            )
+        )
+    return problems

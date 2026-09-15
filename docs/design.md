@@ -584,3 +584,62 @@ The result should be a workflow that can run incrementally, recover from failure
 - <https://www.anthropic.com/engineering/harness-design-long-running-apps>
 - <https://openai.com/index/harness-engineering>
 - <https://ghuntley.com/ralph>
+
+## Managed test services
+
+Targets can declare local test services in `.devlab/config/test-services.toml`.
+Profiles reference their IDs with `required_for = ["session", "setup", "validation"]`
+(or a subset). Before the applicable operation, authorized continuation checks
+service host prerequisites, runs repeatable ensure, verifies readiness, then
+checks ordinary profile prerequisites using the supplied connection settings.
+Existing session setup/teardown remains in place and must not remove these
+workspace-lifetime services.
+
+A service defines `host_checks`, `ensure`, `check`, `destroy`, an explicit
+`exports` list, and positive `ensure_timeout_seconds`, `check_timeout_seconds`,
+`destroy_timeout_seconds` (defaults: 180, 30, 60). Host checks use the check limit.
+Commands run from the target root with these reserved variables:
+
+- `DEVLAB_TEST_SERVICE_ID`: configured ID.
+- `DEVLAB_TEST_SERVICE_INSTANCE`: durable random ownership identity.
+- `DEVLAB_TEST_SERVICE_STATE_DIR`: private instance directory.
+- `DEVLAB_TEST_SERVICE_RESULT`: result file that ensure must publish atomically.
+
+The result is a JSON object with exactly `schema` (1), `instance` (the supplied
+identity), and `environment` (string values for exactly the declared export keys).
+It must be a private regular file, at most 64 KiB. Commands run with a private
+umask. Exports override inherited values for their declared keys; process-control
+and DevLab-reserved variables cannot be exported. Conflicting exports from
+required services block execution. Milestone validation retains distinct service
+bindings when deduplicating commands.
+
+DevLab records non-secret state in `.devlab/test-services/`, with private exports
+and raw logs in `.devlab/local/test-services/`. New targets ignore `/local/` via
+`.devlab/.gitignore`; existing targets use `devlab test-service init` and commit
+that ignore rule. Unsafe, tracked, non-private, or symlinked private storage is
+rejected. Service operations hold an exclusive workspace lock through dependent
+sessions and validation. Reporting shows last observed state without running
+health checks or provisioning.
+
+Use `devlab test-service status` to inspect instances and
+`devlab test-service cleanup <id>` for explicit removal. Cleanup can use matching
+current executable trust. If the definition changed or disappeared, inspect the
+saved cleanup with `--show`, then authorize its digest with
+`--require-exec-config-digest`, trust it with `--trust`, or explicitly accept it
+for one invocation with `--accept-current-exec-config`. Neither trust nor a saved
+command certifies transitive script behavior. Cleanup never selects resources
+by global pruning or a name prefix; the target command must verify ownership.
+
+Failed preparation retries ensure with the same identity. Failed cleanup blocks
+reuse until cleanup succeeds. State from another canonical workspace or an
+incompatible definition blocks reuse. Service provisioning failures are reported
+as infrastructure errors; they do not create product findings or bypass task
+validation. Run summaries include service preparation time separately from
+provider execution. Session metadata records instance IDs without connection
+values.
+
+See [ADR 0013](adr/0013-use-workspace-owned-test-services.md) and the
+[PostgreSQL example](../demos/managed-test-services/README.md). The initial
+implementation requires POSIX process groups and file locking. Host tools and
+images remain explicit operator prerequisites; service lifetime ends only with
+explicit cleanup.

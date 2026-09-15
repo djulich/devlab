@@ -35,6 +35,7 @@ def test_distribution_development_content_boundary(tmp_path: Path) -> None:
         name for name in source_names if name.endswith("/pyproject.toml")
     ).removesuffix("/pyproject.toml")
     assert any(name.startswith("devlab/") for name in wheel_names)
+    assert "devlab/resources/init/.gitignore" in wheel_names
     assert not _contains(wheel_names, "tests")
     assert not _contains(wheel_names, "demos")
     assert "Makefile" not in wheel_names

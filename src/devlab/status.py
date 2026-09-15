@@ -44,6 +44,9 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
         )
         lines.append("- inspect: devlab prerequisite blocked")
 
+    for record in snapshot.test_service_records():
+        lines.append(f"Test service {record['service']}: {record['state']} (last observed)")
+
     if verbose:
         lines.extend(["", *_format_agent_configuration(root)])
         lines.extend(["", *_format_prompt_context(snapshot)])

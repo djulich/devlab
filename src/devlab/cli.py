@@ -23,6 +23,11 @@ from devlab.clarifications import FileClarificationTracker
 from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
 from devlab.doctor import check_workspace, format_doctor_report
 from devlab.doctor_common import DoctorOperation, DoctorProblem
+from devlab.environment import (
+    FileTestServiceTracker,
+    parse_test_service,
+    test_service_lock,
+)
 from devlab.executable_config import (
     ExecutableConfigSnapshot,
     ExecutableConfigTrustError,
@@ -31,15 +36,23 @@ from devlab.executable_config import (
     executable_config_is_trusted,
     format_executable_config,
     revoke_executable_config_trust,
+    test_service_cleanup_snapshot,
     trust_executable_config,
 )
+from devlab.git import VersionControlError
 from devlab.handoffs import (
     HandoffError,
     HandoffSubmissionError,
     initialize_handoff_candidate,
 )
 from devlab.history import format_history
-from devlab.init import INIT_TEMPLATES, format_init_next_steps, format_init_result, init_workspace
+from devlab.init import (
+    INIT_TEMPLATES,
+    format_init_next_steps,
+    format_init_result,
+    init_test_service_storage,
+    init_workspace,
+)
 from devlab.orchestrator import DEFAULT_PROJECT_ROOT, RunResult, run_loop, submit_session_handoff
 from devlab.prerequisites import (
     FilePrerequisiteTracker,
@@ -71,6 +84,7 @@ from devlab.workflow_state_report import (
     format_workflow_state_digest,
     format_workflow_state_report,
 )
+from devlab.workspace import Workspace
 
 IMPLEMENT_MAX_SESSIONS = 20
 PLAN_MAX_SESSIONS = 2
@@ -485,6 +499,21 @@ def main() -> None:
         help="Project root to clean (default: current working directory).",
     )
 
+    service_parser = subparsers.add_parser("test-service", help="Manage workspace test services.")
+    service_parser.add_argument("--root", type=Path, default=DEFAULT_PROJECT_ROOT)
+    service_actions = service_parser.add_subparsers(dest="service_action", required=True)
+    service_actions.add_parser("init", help="Prepare ignored private service storage.")
+    service_actions.add_parser("status", help="Show last observed service states.")
+    service_cleanup = service_actions.add_parser("cleanup", help="Remove one owned service.")
+    service_cleanup.add_argument("service_id")
+    service_cleanup.add_argument("--show", action="store_true")
+    service_cleanup.add_argument(
+        "--trust",
+        action="store_true",
+        help="Trust the displayed cleanup definition without running it.",
+    )
+    _add_executable_config_authorization_options(service_cleanup)
+
     prerequisite_parser = subparsers.add_parser(
         "prerequisite", help="Inspect, check, approve, or revoke profile prerequisites."
     )
@@ -798,6 +827,8 @@ def main() -> None:
     elif args.command == "clean-failed-session":
         result = clean_failed_session_artifacts(root)
         print(format_cleanup_result(result))
+    elif args.command == "test-service":
+        _run_test_service_command(args, root)
     elif args.command == "prerequisite":
         _run_prerequisite_command(args, root)
     elif args.command == "clarify":
@@ -1311,3 +1342,60 @@ def _format_agent_smoke_progress_roles(role_names: tuple[str, ...]) -> str:
 
 if __name__ == "__main__":
     main()
+
+
+def _run_test_service_command(args: argparse.Namespace, root: Path) -> None:
+    try:
+        if args.service_action == "init":
+            init_test_service_storage(root)
+            print(
+                "Private test service storage prepared; "
+                "commit .devlab/.gitignore before continuing."
+            )
+            return
+        if args.service_action == "status":
+            records = Workspace(root).snapshot.test_service_records()
+            for record in records:
+                print(
+                    f"{record['service']}: {record['state']} "
+                    f"(last observed {record['updated_at']}); instance {record['instance']}"
+                )
+            if not records:
+                print("No managed test service instances recorded.")
+            return
+        record = FileTestServiceTracker(root).read(args.service_id)
+        if record is None or record["state"] == "destroyed":
+            print("No live owned instance recorded.")
+            return
+        service = parse_test_service(args.service_id, record["definition"])
+        snapshot = test_service_cleanup_snapshot(root, service)
+        print(f"Cleanup {service.id}: {service.destroy}\nFingerprint: {snapshot.digest}")
+        if args.show:
+            return
+        if args.trust:
+            trust_executable_config(snapshot)
+            print("Cleanup definition trusted; no resource was removed.")
+            return
+        # Existing full-configuration trust also covers its unchanged destroy
+        # entry point. Otherwise authorize the exact saved cleanup definition.
+        if not args.require_exec_config_digest and not args.accept_current_exec_config:
+            try:
+                current = build_executable_config_snapshot(root)
+                if current.test_services.get(service.id) == service:
+                    authorization = authorize_executable_config(current)
+                else:
+                    authorization = authorize_executable_config(snapshot)
+            except (OSError, ValueError):
+                authorization = authorize_executable_config(snapshot)
+        else:
+            authorization = authorize_executable_config(
+                snapshot,
+                expected_digest=args.require_exec_config_digest,
+                accept_current=args.accept_current_exec_config,
+            )
+        with test_service_lock(root):
+            Workspace(root).test_services().cleanup(service)
+        print(f"Cleaned up test service {service.id} ({authorization.source.value}).")
+    except (OSError, ValueError, VersionControlError) as exc:
+        print(f"DevLab test service: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc

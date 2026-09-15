@@ -18,7 +18,8 @@ from devlab.agent_config import (
     load_agent_configuration_data,
     resolve_agent_configuration,
 )
-from devlab.profiles import Profile, load_profiles
+from devlab.environment import TestService
+from devlab.profiles import Profile, load_profiles, load_test_services
 
 EXECUTABLE_CONFIG_SCHEMA = 3
 TRUST_RECORD_SCHEMA = 1
@@ -50,6 +51,7 @@ class ExecutableConfigSnapshot:
     canonical_json: str
     digest: str
     authorization: ExecutableConfigAuthorization | None = None
+    test_services: dict[str, TestService] = dataclasses.field(default_factory=dict)
 
     def resolve_agents(self, *, discover_provider_versions: bool = False) -> AgentConfiguration:
         return resolve_agent_configuration(
@@ -92,6 +94,7 @@ def build_executable_config_snapshot(
         discover_provider_versions=False,
     )
     profiles = load_profiles(resolved_root)
+    test_services = load_test_services(resolved_root)
     profile_texts = {
         profile_id: profile.path.read_text()
         for profile_id, profile in profiles.items()
@@ -109,8 +112,27 @@ def build_executable_config_snapshot(
                 "effort": effort,
             },
         },
+        **(
+            {
+                "test_services": {
+                    key: service.definition() for key, service in test_services.items()
+                }
+            }
+            if test_services
+            else {}
+        ),
         "profiles": {
             profile_id: {
+                **(
+                    {
+                        "test_services": [
+                            {"id": ref.service.id, "required_for": ref.required_for}
+                            for ref in profile.test_services
+                        ]
+                    }
+                    if profile.test_services
+                    else {}
+                ),
                 "default_validation": list(profile.tooling.default_validation),
                 "managed_roles": list(profile.environment.managed_roles),
                 "pre_session": list(profile.environment.pre_session),
@@ -145,6 +167,7 @@ def build_executable_config_snapshot(
     )
     checksum = hashlib.sha256(canonical_json.encode()).hexdigest()
     return ExecutableConfigSnapshot(
+        test_services=test_services,
         root=resolved_root,
         config_path=resolved_config_path,
         agent_data=agent_data,
@@ -336,6 +359,10 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
     lines.extend(validation_lines or ["- None"])
     lines.extend(["", "Profile lifecycle commands:"])
     lines.extend(lifecycle_lines or ["- None"])
+    if snapshot.test_services:
+        lines.extend(["", "Managed test services:"])
+        for service in snapshot.test_services.values():
+            lines.append(json.dumps(service.definition(), sort_keys=True))
     lines.extend(["", "Profile prerequisite checks:"])
     lines.extend(prerequisite_lines or ["- None"])
     lines.extend(
@@ -359,3 +386,21 @@ def _json_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     raise ValueError(f"executable configuration contains unsupported value {value!r}")
+
+
+def test_service_cleanup_snapshot(root: Path, service: TestService) -> ExecutableConfigSnapshot:
+    """Authorize a saved cleanup entry point without trusting its storage record."""
+    canonical = json.dumps({"cleanup_service": service.definition(), "schema": 1}, sort_keys=True)
+    return ExecutableConfigSnapshot(
+        root=root.resolve(),
+        config_path=root.resolve() / ".devlab/config/test-services.toml",
+        agent_data={},
+        profiles={},
+        profile_texts={},
+        provider_override=None,
+        model_override=None,
+        effort_override=None,
+        canonical_json=canonical,
+        digest="sha256:" + hashlib.sha256(canonical.encode()).hexdigest(),
+        test_services={service.id: service},
+    )

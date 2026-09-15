@@ -376,6 +376,7 @@ def _evaluate_prerequisite(
         completed = subprocess.run(
             prerequisite.check,
             cwd=root,
+            env=dict(environ),
             shell=True,
             capture_output=True,
             text=True,

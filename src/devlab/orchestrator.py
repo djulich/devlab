@@ -3,10 +3,13 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import os
 import re
 import shutil
+import time
 import tomllib
 from collections.abc import Callable
+from contextlib import ExitStack
 from enum import StrEnum
 from pathlib import Path
 from typing import cast
@@ -42,8 +45,10 @@ from devlab.dependency_diagnostics import (
 from devlab.environment import (
     EnvironmentCommandError,
     EnvironmentManager,
+    TestServiceError,
     ValidationRun,
     run_validation_commands,
+    test_service_lock,
 )
 from devlab.executable_config import (
     ExecutableConfigSnapshot,
@@ -194,6 +199,7 @@ class RunResult:
     exit_code: int
     errors: tuple[SessionError, ...]
     stop_reason: RunStopReason
+    test_service_duration_seconds: float = 0
 
 
 def _error_result(
@@ -1095,11 +1101,19 @@ def _evaluate_profile_prerequisites(
     root: Path,
     profiles: tuple[Profile, ...],
     operation: PrerequisiteOperation,
+    environ: dict[str, str] | None = None,
 ) -> tuple[PrerequisiteResult, ...]:
     results: list[PrerequisiteResult] = []
     seen: set[tuple[str, str]] = set()
     for profile in profiles:
-        for result in evaluate_prerequisites(root, profile.prerequisites, operation):
+        prerequisites = (
+            tuple(dataclasses.replace(item, sensitive=True) for item in profile.prerequisites)
+            if environ
+            else profile.prerequisites
+        )
+        for result in evaluate_prerequisites(
+            root, prerequisites, operation, environ={**os.environ, **(environ or {})}
+        ):
             identity = (result.prerequisite.profile_id, result.prerequisite.id)
             if identity not in seen:
                 seen.add(identity)
@@ -1449,6 +1463,7 @@ def _build_session_metadata(
         provider_version = config.provider_version
     return SessionMetadata(
         invocation_id=ctx.invocation_id,
+        test_service_instances=ctx.service_instances,
         session_number=ctx.session_number,
         role_name=ctx.role_name,
         provider=provider,
@@ -1599,6 +1614,7 @@ def _latest_validation_failure(root: Path, task_id: str) -> dict[str, object] | 
 def _retry_unverified_task_validation(
     workspace: Workspace,
     profiles: dict[str, Profile],
+    services: _TestServicePreparation,
 ) -> tuple[RunStopReason, str] | None:
     task = workspace.snapshot.select_next_review_task()
     if task is None:
@@ -1610,20 +1626,33 @@ def _retry_unverified_task_validation(
         and blocker.task == task.id
         and blocker.operation == PrerequisiteOperation.VALIDATION
     )
-    if not prerequisite_retry and (
-        previous is None
-        or previous.get("outcome")
-        not in {
-            "missing_tool",
-            "timeout",
-            "infrastructure_error",
-        }
+    retry_profile = profile_from_snapshot(profiles, task.profile, root=workspace.root)
+    required_services = {
+        ref.service.id for ref in retry_profile.test_services if "validation" in ref.required_for
+    }
+    service_retry = any(
+        record["service"] in required_services and record["state"] == "failed"
+        for record in workspace.snapshot.test_service_records()
+    )
+    if (
+        not prerequisite_retry
+        and not service_retry
+        and (
+            previous is None
+            or previous.get("outcome")
+            not in {
+                "missing_tool",
+                "timeout",
+                "infrastructure_error",
+            }
+        )
     ):
         return None
     profile = profile_from_snapshot(profiles, task.profile, root=workspace.root)
     route = SessionRoute("developer", task=task)
+    service_environment = services.prepare((profile,), ("validation",))
     prerequisite_results = _evaluate_profile_prerequisites(
-        workspace.root, (profile,), PrerequisiteOperation.VALIDATION
+        workspace.root, (profile,), PrerequisiteOperation.VALIDATION, service_environment
     )
     if any(item.blocks for item in prerequisite_results):
         message = _record_prerequisite_blocker(
@@ -1640,6 +1669,7 @@ def _retry_unverified_task_validation(
         commands=validation.commands,
         source=validation.source,
         timeout=profile.environment.timeouts.setup,
+        environ=service_environment,
         recovery_of=str(previous.get("session_id") or "") if previous is not None else "",
     )
     if run.outcome in {"passed", "not_configured"}:
@@ -2500,10 +2530,132 @@ def _load_accepted_handoff(
     return session_result.as_handoff(handoff_path)
 
 
+class _TestServicePreparation:
+    def __init__(
+        self, root: Path, stack: ExitStack, config: ExecutableConfigSnapshot | None
+    ) -> None:
+        self.root = root
+        self.stack = stack
+        self.config = config
+        self.locked = False
+        self.sessions_run = 0
+        self.exports: dict[str, dict[str, str]] = {}
+        self.duration_seconds = 0.0
+
+    def prepare(
+        self,
+        profiles: tuple[Profile, ...],
+        operations: tuple[str, ...],
+        role_name: str | None = None,
+    ) -> dict[str, str]:
+        services = {}
+        for profile in profiles:
+            applicable = set(operations)
+            if role_name is not None and role_name not in profile.environment.managed_roles:
+                applicable.discard("setup")
+            for ref in profile.test_services:
+                if applicable.intersection(ref.required_for):
+                    services[ref.service.id] = ref.service
+        if not services:
+            return {}
+        if (
+            self.config is None
+            or self.config.authorization is None
+            or (self.config.authorization.digest != self.config.digest)
+        ):
+            raise TestServiceError(
+                "managed test services require authorized executable configuration"
+            )
+        if self.config.root.resolve() != self.root.resolve():
+            raise TestServiceError("test service authorization belongs to another workspace")
+        names: set[str] = set()
+        for service in services.values():
+            if self.config.test_services.get(service.id) != service:
+                raise TestServiceError("test service is absent from the authorized snapshot")
+            if names.intersection(service.exports):
+                raise TestServiceError("conflicting exports from required test services")
+            names.update(service.exports)
+        if not self.locked:
+            self.stack.enter_context(test_service_lock(self.root))
+            self.locked = True
+        started = time.monotonic()
+        try:
+            for service_id, service in sorted(services.items()):
+                self.exports[service_id] = Workspace(self.root).test_services().ensure(service)
+        except (OSError, VersionControlError) as exc:
+            raise TestServiceError(
+                f"test service infrastructure failed: {type(exc).__name__}"
+            ) from exc
+        finally:
+            self.duration_seconds += time.monotonic() - started
+        return self.environment(tuple(services))
+
+    def environment(self, service_ids: tuple[str, ...]) -> dict[str, str]:
+        return {
+            key: value
+            for service_id in service_ids
+            for key, value in self.exports[service_id].items()
+        }
+
+
 def run_loop(
     root: Path,
     *,
     max_sessions: int,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    retain_prompts: bool = False,
+    agent_providers: dict[str, AgentProvider] | None = None,
+    role_agent_providers: dict[str, str] | None = None,
+    planning_only: bool = False,
+    revise_plan: bool = False,
+    replace_plan: bool = False,
+    adopt_existing: bool = False,
+    mark_specs_planned: bool = False,
+    clarification_mode: str = "operator",
+    handoff_correction: bool = False,
+    session_progress: SessionProgressCallback | None = None,
+    executable_config: ExecutableConfigSnapshot | None = None,
+) -> RunResult:
+    """Keep owned test services locked across preparation and dependent execution."""
+    with ExitStack() as stack:
+        services = _TestServicePreparation(root, stack, executable_config)
+        try:
+            result = _run_loop(
+                root,
+                services=services,
+                max_sessions=max_sessions,
+                provider=provider,
+                model=model,
+                effort=effort,
+                retain_prompts=retain_prompts,
+                agent_providers=agent_providers,
+                role_agent_providers=role_agent_providers,
+                planning_only=planning_only,
+                revise_plan=revise_plan,
+                replace_plan=replace_plan,
+                adopt_existing=adopt_existing,
+                mark_specs_planned=mark_specs_planned,
+                clarification_mode=clarification_mode,
+                handoff_correction=handoff_correction,
+                session_progress=session_progress,
+                executable_config=executable_config,
+            )
+        except TestServiceError as exc:
+            result = _error_result(
+                services.sessions_run, SessionError("test_service", str(exc), 1)
+            )
+        return dataclasses.replace(
+            result, test_service_duration_seconds=round(services.duration_seconds, 3)
+        )
+
+
+def _run_loop(
+    root: Path,
+    *,
+    max_sessions: int,
+    services: _TestServicePreparation,
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
@@ -2789,7 +2941,7 @@ def run_loop(
             retry_profiles = (
                 frozen_profiles if frozen_profiles is not None else load_profiles(root)
             )
-            retry_stop = _retry_unverified_task_validation(workspace, retry_profiles)
+            retry_stop = _retry_unverified_task_validation(workspace, retry_profiles, services)
             if retry_stop is not None:
                 reason, message = retry_stop
                 logger.error("%s. Stopping.", message)
@@ -2977,9 +3129,21 @@ def run_loop(
                 frozen_profiles if frozen_profiles is not None else load_profiles(root)
             )
             route_profiles = _profiles_for_route(root, start_snapshot, route, available_profiles)
-            prerequisite_results = _evaluate_profile_prerequisites(
-                root, route_profiles, PrerequisiteOperation.SESSION
+            services.sessions_run = sessions_run
+            service_operations = ["session"]
+            if role.needs_environment:
+                service_operations.append("setup")
+            if role_name in {"developer", "integrator"}:
+                service_operations.append("validation")
+            service_environment = services.prepare(
+                route_profiles, tuple(service_operations), role_name
             )
+
+            prerequisite_results = _evaluate_profile_prerequisites(
+                root, route_profiles, PrerequisiteOperation.SESSION, service_environment
+            )
+        except TestServiceError:
+            raise
         except ProfileNotFoundError as exc:
             return _error_result(sessions_run, SessionError("profile_resolution", str(exc), 1))
         except (OSError, ValueError) as exc:
@@ -3015,6 +3179,7 @@ def run_loop(
                     if role.needs_environment and role_name in profile.environment.managed_roles
                 ),
                 PrerequisiteOperation.SETUP,
+                service_environment,
             )
             if role.needs_environment
             else ()
@@ -3040,7 +3205,9 @@ def run_loop(
             )
         _clear_resolved_prerequisite_blocker(workspace, route, PrerequisiteOperation.SETUP)
         validation_results = (
-            _evaluate_profile_prerequisites(root, route_profiles, PrerequisiteOperation.VALIDATION)
+            _evaluate_profile_prerequisites(
+                root, route_profiles, PrerequisiteOperation.VALIDATION, service_environment
+            )
             if role_name in {"developer", "integrator"}
             else ()
         )
@@ -3069,6 +3236,21 @@ def run_loop(
             sessions_run + 1,
             role_name,
             retain_prompts=retain_prompts,
+        )
+        ctx = dataclasses.replace(
+            ctx,
+            service_environment=service_environment,
+            service_instances={
+                record["service"]: record["instance"]
+                for record in Workspace(root).snapshot.test_service_records()
+                if record["service"]
+                in {
+                    ref.service.id
+                    for profile in route_profiles
+                    for ref in profile.test_services
+                    if set(service_operations).intersection(ref.required_for)
+                }
+            },
         )
         config_log: Path | None = None
 
@@ -3103,6 +3285,7 @@ def run_loop(
         except ProfileNotFoundError as exc:
             logger.error("%s. Stopping.", exc)
             return _error_result(sessions_run, SessionError("profile_resolution", str(exc), 1))
+        environment.environ = service_environment
         agent_provider = provider_for_role(role_name, agent_providers, role_agent_providers)
 
         logger.info(
@@ -3149,6 +3332,7 @@ def run_loop(
             session_prompt,
             config_log,
         )
+        services.sessions_run = sessions_run + 1
         agent_result = lifecycle.agent_result
         if lifecycle.errors:
             primary_error = lifecycle.errors[0]
@@ -3261,8 +3445,17 @@ def run_loop(
             milestone_validation_contract = effective_milestone_validation(
                 milestone_tasks, profiles, root=root
             )
-            boundary_results = _evaluate_profile_prerequisites(
-                root, route_profiles, PrerequisiteOperation.VALIDATION
+            service_validation_error = ""
+            try:
+                service_environment = services.prepare(route_profiles, ("validation",))
+            except TestServiceError as exc:
+                service_validation_error = str(exc)
+            boundary_results = (
+                ()
+                if service_validation_error
+                else _evaluate_profile_prerequisites(
+                    root, route_profiles, PrerequisiteOperation.VALIDATION, service_environment
+                )
             )
             if any(item.blocks for item in boundary_results):
                 archive_handoff(root, role_name)
@@ -3322,6 +3515,15 @@ def run_loop(
                 session_id=ctx.invocation_id,
                 commands=tuple(item.command for item in milestone_validation_contract.commands),
                 source="milestone",
+                infrastructure_error=service_validation_error,
+                command_environments=(
+                    None
+                    if service_validation_error
+                    else tuple(
+                        services.environment(item.service_ids)
+                        for item in milestone_validation_contract.commands
+                    )
+                ),
                 timeout=max(timeouts, default=600),
             )
         process_result = process_handoff(
@@ -3349,8 +3551,17 @@ def run_loop(
                 if frozen_profiles is not None
                 else load_profile(root, route.task.profile)
             )
-            boundary_results = evaluate_prerequisites(
-                root, profile.prerequisites, PrerequisiteOperation.VALIDATION
+            service_validation_error = ""
+            try:
+                service_environment = services.prepare((profile,), ("validation",))
+            except TestServiceError as exc:
+                service_validation_error = str(exc)
+            boundary_results = (
+                ()
+                if service_validation_error
+                else _evaluate_profile_prerequisites(
+                    root, (profile,), PrerequisiteOperation.VALIDATION, service_environment
+                )
             )
             if any(item.blocks for item in boundary_results):
                 message = _record_prerequisite_blocker(
@@ -3405,6 +3616,8 @@ def run_loop(
                 session_id=ctx.invocation_id,
                 commands=validation.commands,
                 source=validation.source,
+                infrastructure_error=service_validation_error,
+                environ=service_environment,
                 timeout=profile.environment.timeouts.setup,
                 recovery_of=(
                     str(prior_validation_failure.get("session_id") or "")

@@ -66,3 +66,10 @@ def commit_all(root: Path, message: str) -> bool:
 
 def tag(root: Path, name: str, message: str) -> None:
     run_git(root, "tag", "-f", "-a", name, "-m", message)
+
+
+def commit_test_service_state(root: Path, service_id: str) -> None:
+    """Commit only service ownership/provenance, preserving unrelated work in progress."""
+    paths = (f".devlab/test-services/{service_id}.json", ".devlab/workflow-events.jsonl")
+    run_git(root, "add", "--", *paths)
+    run_git(root, "commit", "--only", "-m", f"Record test service {service_id}", "--", *paths)

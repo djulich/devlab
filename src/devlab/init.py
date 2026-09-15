@@ -20,6 +20,7 @@ DEFAULT_TEMPLATE = "neutral"
 INIT_TEMPLATES = ("neutral", "python", "rust", "go", "c", "cpp")
 
 TEMPLATE_FILES = (
+    ".gitignore",
     "config/README.md",
     "config/tooling.md",
     "config/agents.toml",
@@ -229,3 +230,22 @@ def _display_path(path: Path, root: Path) -> str:
         return str(path.relative_to(root.resolve()))
     except ValueError:
         return str(path)
+
+
+def init_test_service_storage(root: Path) -> None:
+    """Explicit migration for existing workspaces; never run from reporting."""
+    from devlab.environment import TestServiceError, prepare_test_service_private
+
+    root = root.resolve()
+    for path in (root / ".devlab", root / ".devlab/.gitignore", root / ".devlab/local"):
+        if path.is_symlink():
+            raise TestServiceError("test service storage must not contain symlinks")
+    devlab = root / ".devlab"
+    devlab.mkdir(exist_ok=True)
+    ignore = devlab / ".gitignore"
+    previous = ignore.read_text() if ignore.exists() else ""
+    if "/local/" not in previous.splitlines():
+        ignore.write_text(
+            previous + ("\n" if previous and not previous.endswith("\n") else "") + "/local/\n"
+        )
+    prepare_test_service_private(root)

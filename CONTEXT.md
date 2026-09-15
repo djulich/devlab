@@ -97,6 +97,15 @@ _Avoid_: storing duplicate task lists on the finding
 A reusable task-type configuration that defines tooling summary, default validation, optional environment lifecycle commands, and operation-scoped prerequisites.
 _Avoid_: environment when referring to the full reusable task configuration
 
+**Managed test service**:
+A target-declared local test resource with workspace lifetime, supplied by
+profile references for session, setup, or validation operations. DevLab owns its
+durable instance identity, authorization, lock, and private export transport;
+target commands ensure, check, and destroy only matching owned resources.
+Cleanup is explicit. Session teardown and planning-generation replacement do
+not end this lifetime. See ADR 0013.
+_Avoid_: host-tool installer, implicit prerequisite repair, session environment
+
 **Prerequisite**:
 A profile-owned condition that DevLab checks or an operator attests before a
 profile-backed session, environment setup, or validation operation. Automatic

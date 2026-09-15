@@ -74,6 +74,7 @@ class RunSummary:
     errors: tuple[str, ...]
     dependency_introductions: tuple[str, ...]
     next_commands: tuple[str, ...]
+    test_service_duration_seconds: float = 0
 
 
 def build_run_summary(
@@ -143,13 +144,20 @@ def build_run_summary(
             f"{f', task {item.task_id}' if item.task_id else ''})"
             for item in dependency_introductions.items
         ),
-        next_commands=next_commands,
+        next_commands=(
+            ("devlab test-service status", *next_commands)
+            if any(error.phase == "test_service" for error in result.errors)
+            else next_commands
+        ),
+        test_service_duration_seconds=result.test_service_duration_seconds,
     )
 
 
 def format_run_summary(summary: RunSummary) -> str:
     lines = [f"DevLab stopped: {_stop_reason_text(summary.stop_reason)}"]
     lines.append(f"Sessions completed: {summary.sessions_run}")
+    if summary.test_service_duration_seconds:
+        lines.append(f"Test service preparation: {summary.test_service_duration_seconds:.3f}s")
     lines.extend(["", "Current workflow:"])
     lines.append(f"- Next role: {summary.next_role or 'none'}")
     if summary.task is not None:

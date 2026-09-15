@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import Any
 
 from devlab.clarifications import Clarification, FileClarificationTracker
+from devlab.environment import FileTestServiceTracker, TestService
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
 from devlab.generations import active_generation
 from devlab.milestones import FileMilestoneTracker, Milestone, MilestoneVerification
@@ -29,6 +31,8 @@ from devlab.task_tracker import (
     milestone_complete,
     tasks_for_milestone,
 )
+from devlab.version_control import commit_test_service_state
+from devlab.workflow_events import append_workflow_event
 from devlab.workflow_state import WORKFLOW_STATE, WorkflowState, load_workflow_state
 
 DESIGN_PLAN = ".devlab/plans/design-plan.md"
@@ -148,11 +152,38 @@ class Workspace:
     def research(self) -> WorkspaceResearch:
         return WorkspaceResearch(self)
 
+    def test_services(self) -> WorkspaceTestServices:
+        return WorkspaceTestServices(self)
+
     def prerequisites(self) -> WorkspacePrerequisites:
         return WorkspacePrerequisites(self)
 
     def did_mutate(self) -> None:
         self._snapshot = None
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkspaceTestServices:
+    workspace: Workspace
+
+    def _changed(self, record: dict[str, Any]) -> None:
+        self.workspace.did_mutate()
+        append_workflow_event(
+            self.workspace.root,
+            "test_service_state",
+            service=record["service"],
+            instance=record["instance"],
+            state=record["state"],
+            outcome=record["outcome"],
+            cumulative_duration_seconds=record.get("duration_seconds", 0),
+        )
+        commit_test_service_state(self.workspace.root, record["service"])
+
+    def ensure(self, service: TestService) -> dict[str, str]:
+        return FileTestServiceTracker(self.workspace.root, self._changed).ensure(service)
+
+    def cleanup(self, service: TestService) -> None:
+        FileTestServiceTracker(self.workspace.root, self._changed).cleanup(service)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -539,7 +570,15 @@ class WorkspaceSnapshot:
         default=None, init=False, repr=False
     )
     _research: list[Research] | None = dataclasses.field(default=None, init=False, repr=False)
+    _test_services: list[dict[str, Any]] | None = dataclasses.field(
+        default=None, init=False, repr=False
+    )
     _workflow_state: WorkflowState | None = dataclasses.field(default=None, init=False, repr=False)
+
+    def test_service_records(self) -> list[dict[str, Any]]:
+        if self._test_services is None:
+            self._test_services = FileTestServiceTracker(self.root).list_records()
+        return [dict(record) for record in self._test_services]
 
     def list_tasks(self) -> list[Task]:
         if self._tasks is None:

@@ -6,7 +6,16 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from devlab.environment import EnvironmentConfig, EnvironmentTimeouts, _int_value, _string_tuple
+from devlab.environment import (
+    EnvironmentConfig,
+    EnvironmentTimeouts,
+    TestService,
+    TestServiceError,
+    TestServiceReference,
+    _int_value,
+    _string_tuple,
+    parse_test_service,
+)
 from devlab.prerequisites import Prerequisite, PrerequisiteOperation
 from devlab.task_tracker import Task
 
@@ -28,6 +37,7 @@ class Profile:
     tooling: ToolingConfig = dataclasses.field(default_factory=ToolingConfig)
     environment: EnvironmentConfig = dataclasses.field(default_factory=EnvironmentConfig)
     prerequisites: tuple[Prerequisite, ...] = ()
+    test_services: tuple[TestServiceReference, ...] = ()
     path: Path | None = None
 
 
@@ -46,6 +56,7 @@ class MilestoneValidationCommand:
     command: str
     task_ids: tuple[str, ...]
     sources: tuple[Literal["task", "profile"], ...]
+    service_ids: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -69,28 +80,29 @@ def effective_milestone_validation(
     tasks: list[Task], profiles: dict[str, Profile], *, root: Path
 ) -> EffectiveMilestoneValidation:
     """Aggregate task contracts in stable order without changing precedence."""
-    ordered: list[str] = []
-    task_ids: dict[str, list[str]] = {}
-    sources: dict[str, list[Literal["task", "profile"]]] = {}
+    ordered: dict[
+        tuple[str, tuple[str, ...]], tuple[list[str], list[Literal["task", "profile"]]]
+    ] = {}
     for task in tasks:
         profile = profile_from_snapshot(profiles, task.profile, root=root)
         validation = effective_validation(task, profile)
         if validation.source == "none":
             continue
-        source = validation.source
+        binding = tuple(
+            sorted(
+                ref.service.id for ref in profile.test_services if "validation" in ref.required_for
+            )
+        )
         for command in validation.commands:
-            if command not in task_ids:
-                ordered.append(command)
-                task_ids[command] = []
-                sources[command] = []
-            if task.id not in task_ids[command]:
-                task_ids[command].append(task.id)
-            if source not in sources[command]:
-                sources[command].append(source)
+            task_ids, sources = ordered.setdefault((command, binding), ([], []))
+            if task.id not in task_ids:
+                task_ids.append(task.id)
+            if validation.source not in sources:
+                sources.append(validation.source)
     return EffectiveMilestoneValidation(
         tuple(
-            MilestoneValidationCommand(command, tuple(task_ids[command]), tuple(sources[command]))
-            for command in ordered
+            MilestoneValidationCommand(command, tuple(task_ids), tuple(sources), binding)
+            for (command, binding), (task_ids, sources) in ordered.items()
         )
     )
 
@@ -171,6 +183,7 @@ def _read_profile(path: Path, expected_id: str) -> Profile:
             ),
         ),
         prerequisites=prerequisites,
+        test_services=_test_service_references(data.get("test_services", []), path),
         path=path,
     )
 
@@ -250,3 +263,47 @@ def _prerequisites(value: object, profile_id: str, path: Path) -> tuple[Prerequi
             )
         )
     return tuple(results)
+
+
+TEST_SERVICES_CONFIG = ".devlab/config/test-services.toml"
+
+
+def load_test_services(root: Path) -> dict[str, TestService]:
+    path = root / TEST_SERVICES_CONFIG
+    if not path.exists():
+        return {}
+    data = tomllib.loads(path.read_text())
+    if set(data) != {"services"} or not isinstance(data["services"], dict):
+        raise TestServiceError("test-services.toml requires a services table")
+    return {key: parse_test_service(key, value) for key, value in data["services"].items()}
+
+
+def _test_service_references(
+    value: object, profile_path: Path
+) -> tuple[TestServiceReference, ...]:
+    if not isinstance(value, list):
+        raise TestServiceError("profile test_services must be an array of tables")
+    definitions = load_test_services(profile_path.parents[3]) if value else {}
+    references = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"id", "required_for"}:
+            raise TestServiceError("test service reference requires id and required_for")
+        item = cast(dict[str, Any], item)
+        service_id = item["id"]
+        scopes = item["required_for"]
+        if not isinstance(service_id, str) or service_id not in definitions or service_id in seen:
+            raise TestServiceError("unknown or repeated test service reference")
+        if (
+            not isinstance(scopes, list)
+            or not scopes
+            or any(
+                not isinstance(scope, str) or scope not in {"session", "setup", "validation"}
+                for scope in scopes
+            )
+            or len(set(scopes)) != len(scopes)
+        ):
+            raise TestServiceError("invalid test service required_for")
+        references.append(TestServiceReference(definitions[service_id], tuple(sorted(scopes))))
+        seen.add(service_id)
+    return tuple(references)
