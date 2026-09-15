@@ -20,7 +20,9 @@
 provider = "default"
 model = ""
 effort = ""
-timeout_seconds = 3600
+max_session_duration_seconds = 3600
+# Optional silence detection. Any bytes on stdout or stderr reset this limit.
+# inactivity_timeout_seconds = 600
 
 [providers.default]
 command = "claude"
@@ -87,7 +89,7 @@ args = [
 # provider = "codex"
 # model = "gpt-5.5"
 # effort = "medium"
-# timeout_seconds = 1200
+# max_session_duration_seconds = 1200
 #
 # [providers.pi]
 # command = "pi"

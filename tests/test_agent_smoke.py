@@ -59,7 +59,7 @@ def test_smoke_test_invokes_deduplicated_workflow_provider_configs_by_default(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path)
 
@@ -127,7 +127,7 @@ def test_smoke_test_can_invoke_all_configured_providers(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path, all_providers=True)
 
@@ -177,7 +177,7 @@ def test_smoke_test_can_select_unassigned_provider_with_provider_defaults(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path, provider="unused")
 
@@ -220,7 +220,7 @@ def test_smoke_test_can_select_provider_defaults_for_assigned_provider(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     role_result = run_agent_smoke_test(tmp_path, provider="test")
     default_result = run_agent_smoke_test(
@@ -280,7 +280,7 @@ def test_smoke_test_can_select_all_provider_defaults(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(
         tmp_path,
@@ -327,7 +327,7 @@ def test_smoke_test_skips_unassigned_provider_without_provider_defaults(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path, all_providers=True)
     output = format_agent_smoke_report(result)
@@ -401,7 +401,7 @@ def test_smoke_test_supports_custom_config_without_changing_workspace(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path, config_path=config_path, role_names=("developer",))
 
@@ -442,7 +442,7 @@ def test_smoke_test_supports_role_specific_checks(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path, role_names=("developer",))
 
@@ -490,7 +490,7 @@ def test_smoke_test_deduplicates_role_configs_that_only_differ_by_timeout(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path)
 
@@ -558,7 +558,7 @@ def test_smoke_test_deduplicates_role_name_placeholder_without_normalizing_liter
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path)
 
@@ -608,7 +608,7 @@ def test_smoke_report_includes_config_command_and_logs(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path, role_names=("developer",))
     output = format_agent_smoke_report(result)
@@ -622,7 +622,8 @@ def test_smoke_report_includes_config_command_and_logs(
     assert "Assigned roles: architect, planner, developer, reviewer, integrator" in output
     assert "Model: model-a" in output
     assert "Effort: medium" in output
-    assert "Timeout: 30s" in output
+    assert "Inactivity timeout: none" in output
+    assert "Maximum duration: 30s" in output
     assert "Command: agent --role test --model model-a" in output
     assert "Command: agent --role architect" not in output
     assert "Result: OK" in output
@@ -655,7 +656,7 @@ def test_smoke_test_fails_when_marker_is_missing(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path, role_names=("developer",))
     output = format_agent_smoke_report(result)
@@ -689,7 +690,7 @@ def test_smoke_test_does_not_accept_marker_echoed_to_stderr(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
 
     result = run_agent_smoke_test(tmp_path, role_names=("developer",))
 
@@ -733,7 +734,7 @@ def test_smoke_test_emits_progress_events(tmp_path: Path, monkeypatch: pytest.Mo
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
     events: list[tuple[str, str]] = []
 
     run_agent_smoke_test(

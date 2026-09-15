@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +14,7 @@ from devlab.agents import (
     AgentResult,
     CliAgentProvider,
     MockProvider,
+    _expired_timeout_kind,
     claude_cli_provider,
     codex_cli_provider,
     pi_cli_provider,
@@ -104,7 +108,7 @@ def test_cli_agent_provider_renders_prompt_arguments(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
     provider = CliAgentProvider.from_command(
         "pi -p",
         args=[
@@ -177,7 +181,7 @@ def test_cli_agent_provider_supports_stdin_prompt_mode(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
     provider = CliAgentProvider.from_command(
         "agent run",
         args=["--role", "{role_name}"],
@@ -205,7 +209,7 @@ def test_codex_cli_provider_uses_exec_stdin_mode(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
     provider = codex_cli_provider()
 
     provider.invoke(_invocation(tmp_path, "reviewer", "system", "session"))
@@ -222,14 +226,40 @@ def test_cli_agent_provider_returns_timeout_failure(
     def fake_run(*_args: Any, **_kwargs: Any) -> object:
         raise subprocess.TimeoutExpired(cmd=["agent"], timeout=5)
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
     provider = CliAgentProvider.from_command("agent", timeout_seconds=5)
 
     result = provider.invoke(_invocation(tmp_path))
 
     assert result.return_code == 124
     assert result.failure_kind == "timeout"
-    assert "timed out" in (tmp_path / ".devlab/logs/agents/test.stderr.log").read_text()
+    assert "maximum duration" in (tmp_path / ".devlab/logs/agents/test.stderr.log").read_text()
+
+
+def test_maximum_duration_adds_trusted_deadline_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: Any) -> object:
+        commands.append(command)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
+    provider = CliAgentProvider.from_command(
+        "agent",
+        args=("{session_prompt}",),
+        max_session_duration_seconds=30,
+    )
+
+    provider.invoke(_invocation(tmp_path))
+
+    assert "Maximum provider duration: 30 seconds" in commands[0][-1]
+    assert "Advisory wall-clock deadline:" in commands[0][-1]
 
 
 def test_cli_agent_provider_returns_missing_executable_failure(
@@ -238,7 +268,7 @@ def test_cli_agent_provider_returns_missing_executable_failure(
     def fake_run(*_args: Any, **_kwargs: Any) -> object:
         raise FileNotFoundError("missing", "missing", "agent")
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
     provider = CliAgentProvider.from_command("agent")
 
     result = provider.invoke(_invocation(tmp_path))
@@ -247,3 +277,153 @@ def test_cli_agent_provider_returns_missing_executable_failure(
     assert result.failure_kind == "missing_executable"
     assert "not found" in result.message
     assert "not found" in (tmp_path / ".devlab/logs/agents/test.stderr.log").read_text()
+
+
+def test_cli_agent_provider_stops_silent_process_for_inactivity(tmp_path: Path) -> None:
+    provider = CliAgentProvider.from_command(
+        sys.executable,
+        args=("-c", "import time; time.sleep(5)"),
+        inactivity_timeout_seconds=1,
+        max_session_duration_seconds=4,
+    )
+
+    result = provider.invoke(_invocation(tmp_path))
+
+    assert result.return_code == 124
+    assert result.failure_kind == "timeout"
+    assert result.timeout_kind == "inactivity"
+    assert result.inactivity_timeout_seconds == 1
+    assert result.max_session_duration_seconds == 4
+    assert result.inactive_seconds_at_stop is not None
+    assert result.inactive_seconds_at_stop >= 1
+
+
+def test_partial_binary_output_resets_inactivity_until_maximum(tmp_path: Path) -> None:
+    script = (
+        "import os,time\n"
+        "for _ in range(5):\n"
+        " os.write(2, b'\\xff'); time.sleep(.35)\n"
+        "time.sleep(5)\n"
+    )
+    provider = CliAgentProvider.from_command(
+        sys.executable,
+        args=("-c", script),
+        inactivity_timeout_seconds=1,
+        max_session_duration_seconds=2,
+    )
+
+    result = provider.invoke(_invocation(tmp_path))
+
+    assert result.timeout_kind == "max_duration"
+    assert (
+        (tmp_path / ".devlab/logs/agents/test.stderr.log")
+        .read_bytes()
+        .startswith(b"\xff\xff\xff\xff\xff")
+    )
+
+
+def test_stream_eof_does_not_stop_monitoring_other_stream(tmp_path: Path) -> None:
+    script = "import os,time; os.close(1); time.sleep(.2); os.write(2,b'partial'); time.sleep(.2)"
+    provider = CliAgentProvider.from_command(
+        sys.executable,
+        args=("-c", script),
+        inactivity_timeout_seconds=1,
+        max_session_duration_seconds=3,
+    )
+
+    result = provider.invoke(_invocation(tmp_path))
+
+    assert result.succeeded
+    assert (tmp_path / ".devlab/logs/agents/test.stderr.log").read_bytes() == b"partial"
+
+
+def test_large_stdin_and_output_do_not_deadlock(tmp_path: Path) -> None:
+    script = "import sys; data=sys.stdin.buffer.read(); sys.stdout.write(str(len(data)))"
+    provider = CliAgentProvider.from_command(
+        sys.executable,
+        args=("-c", script),
+        stdin_template="{system_prompt}{session_prompt}",
+        max_session_duration_seconds=3,
+    )
+    invocation = _invocation(
+        tmp_path,
+        system_prompt="s" * 500_000,
+        session_prompt="p" * 500_000,
+    )
+
+    result = provider.invoke(invocation)
+
+    assert result.succeeded
+    # The trusted maximum-duration context is appended to the delivered prompt.
+    assert int(invocation.stdout_log.read_text()) > 1_000_000
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process-group cleanup is POSIX-specific")
+def test_timeout_kills_child_that_ignores_graceful_termination(tmp_path: Path) -> None:
+    survived = tmp_path / "child-survived"
+    child_script = (
+        "import pathlib,signal,time; "
+        "signal.signal(signal.SIGTERM, lambda *_: None); "
+        "print('ready', flush=True); time.sleep(2.7); "
+        f"pathlib.Path({str(survived)!r}).write_text('survived')"
+    )
+    parent_script = (
+        "import subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable, '-c', {child_script!r}]); "
+        "time.sleep(30)"
+    )
+    provider = CliAgentProvider.from_command(
+        sys.executable,
+        args=("-c", parent_script),
+        max_session_duration_seconds=1,
+    )
+
+    result = provider.invoke(_invocation(tmp_path))
+    time.sleep(1.5)
+
+    assert result.timeout_kind == "max_duration"
+    assert not survived.exists()
+
+
+def test_output_capture_failure_cleans_up_and_returns_provider_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_capture(_target: object, _chunk: bytes) -> None:
+        raise OSError("capture failed")
+
+    monkeypatch.setattr("devlab.agents._write_output", fail_capture)
+    provider = CliAgentProvider.from_command(
+        sys.executable,
+        args=("-c", "import time; print('output', flush=True); time.sleep(30)"),
+        max_session_duration_seconds=5,
+    )
+
+    result = provider.invoke(_invocation(tmp_path))
+
+    assert result.failure_kind == "provider_error"
+    assert "capture failed" in result.message
+    assert result.duration_seconds is not None
+    assert result.duration_seconds < 3
+
+
+def test_deadline_decision_prefers_earlier_deadline_and_maximum_on_tie() -> None:
+    assert (
+        _expired_timeout_kind(
+            12,
+            started=0,
+            last_output=5,
+            inactivity_timeout_seconds=6,
+            max_session_duration_seconds=20,
+        )
+        == "inactivity"
+    )
+    assert (
+        _expired_timeout_kind(
+            10,
+            started=0,
+            last_output=5,
+            inactivity_timeout_seconds=5,
+            max_session_duration_seconds=10,
+        )
+        == "max_duration"
+    )

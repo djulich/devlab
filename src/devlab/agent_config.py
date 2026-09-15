@@ -25,6 +25,8 @@ class ResolvedAgentConfig:
     effort: str
     provider_version: str
     timeout_seconds: int | None
+    inactivity_timeout_seconds: int | None
+    max_session_duration_seconds: int | None
     command: tuple[str, ...]
     provider_identity_command: tuple[str, ...]
     uses_stdin: bool
@@ -37,6 +39,8 @@ class ResolvedProviderConfig:
     effort: str
     provider_version: str
     timeout_seconds: int | None
+    inactivity_timeout_seconds: int | None
+    max_session_duration_seconds: int | None
     command: tuple[str, ...]
     uses_stdin: bool
 
@@ -171,9 +175,9 @@ def resolve_agent_configuration(
             values["model"] = model
         if effort is not None:
             values["effort"] = effort
-        timeout_seconds = _optional_int(
-            values.get("timeout_seconds"),
-            f"providers.{provider_name}.defaults.timeout_seconds",
+        inactivity_timeout_seconds, max_session_duration_seconds = _invocation_limits(
+            values,
+            f"providers.{provider_name}.defaults",
         )
         template_values = {
             "role_name": provider_name,
@@ -192,7 +196,8 @@ def resolve_agent_configuration(
             provider_table=provider_table,
             template_values=template_values,
             identity_template_values=template_values,
-            timeout_seconds=timeout_seconds,
+            inactivity_timeout_seconds=inactivity_timeout_seconds,
+            max_session_duration_seconds=max_session_duration_seconds,
             discover_provider_version=discover_provider_versions,
         )
         providers_with_defaults[provider_name] = invocation.provider
@@ -201,7 +206,9 @@ def resolve_agent_configuration(
             model=template_values["model"],
             effort=template_values["effort"],
             provider_version=invocation.provider_version,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=max_session_duration_seconds,
+            inactivity_timeout_seconds=inactivity_timeout_seconds,
+            max_session_duration_seconds=max_session_duration_seconds,
             command=invocation.command,
             uses_stdin=invocation.uses_stdin,
         )
@@ -221,8 +228,8 @@ def resolve_agent_configuration(
 
         provider_name = _string(values.get("provider", "default"), f"roles.{role_name}.provider")
         provider_table = _table(providers_config.get(provider_name), f"providers.{provider_name}")
-        timeout_seconds = _optional_int(
-            values.get("timeout_seconds"), f"roles.{role_name}.timeout_seconds"
+        inactivity_timeout_seconds, max_session_duration_seconds = _invocation_limits(
+            values, f"roles.{role_name}"
         )
         provider_key = f"{role_name}:{provider_name}"
         template_values = {
@@ -237,7 +244,8 @@ def resolve_agent_configuration(
             provider_table=provider_table,
             template_values=template_values,
             identity_template_values=identity_template_values,
-            timeout_seconds=timeout_seconds,
+            inactivity_timeout_seconds=inactivity_timeout_seconds,
+            max_session_duration_seconds=max_session_duration_seconds,
             discover_provider_version=discover_provider_versions,
         )
         agent_providers[provider_key] = invocation.provider
@@ -248,7 +256,9 @@ def resolve_agent_configuration(
             model=template_values["model"],
             effort=template_values["effort"],
             provider_version=invocation.provider_version,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=max_session_duration_seconds,
+            inactivity_timeout_seconds=inactivity_timeout_seconds,
+            max_session_duration_seconds=max_session_duration_seconds,
             command=invocation.command,
             provider_identity_command=invocation.provider_identity_command,
             uses_stdin=invocation.uses_stdin,
@@ -274,8 +284,12 @@ def format_resolved_agent_config(config: ResolvedAgentConfig) -> str:
     ]
     if config.provider_version:
         lines.append(f"provider_version = {_toml_string(config.provider_version)}")
-    if config.timeout_seconds is not None:
-        lines.append(f"timeout_seconds = {config.timeout_seconds}")
+    lines.append(
+        "inactivity_timeout_seconds = " + _toml_duration(config.inactivity_timeout_seconds)
+    )
+    lines.append(
+        "max_session_duration_seconds = " + _toml_duration(config.max_session_duration_seconds)
+    )
     lines.append("command = [" + ", ".join(_toml_string(part) for part in config.command) + "]")
     return "\n".join(lines) + "\n"
 
@@ -286,7 +300,8 @@ def _resolve_provider_invocation(
     provider_table: dict[str, Any],
     template_values: Mapping[str, str],
     identity_template_values: Mapping[str, str],
-    timeout_seconds: int | None,
+    inactivity_timeout_seconds: int | None,
+    max_session_duration_seconds: int | None,
     discover_provider_version: bool,
 ) -> _ResolvedProviderInvocation:
     args = _string_list(provider_table.get("args", []), f"providers.{provider_name}.args")
@@ -310,7 +325,8 @@ def _resolve_provider_invocation(
             args=args,
             stdin_template=stdin_template,
             template_values=template_values,
-            timeout_seconds=timeout_seconds,
+            inactivity_timeout_seconds=inactivity_timeout_seconds,
+            max_session_duration_seconds=max_session_duration_seconds,
         ),
         provider_version=provider_version,
         command=tuple(
@@ -492,11 +508,30 @@ def _optional_string(value: object, name: str) -> str | None:
     return _string(value, name)
 
 
-def _optional_int(value: object, name: str) -> int | None:
-    if value is None:
+def _invocation_limits(values: Mapping[str, object], name: str) -> tuple[int | None, int | None]:
+    if "timeout_seconds" in values and "max_session_duration_seconds" in values:
+        raise ValueError(
+            f"{name} must not specify both timeout_seconds and max_session_duration_seconds"
+        )
+    inactivity = _optional_duration(
+        values.get("inactivity_timeout_seconds"), f"{name}.inactivity_timeout_seconds"
+    )
+    maximum_key = (
+        "max_session_duration_seconds"
+        if "max_session_duration_seconds" in values
+        else "timeout_seconds"
+    )
+    maximum = _optional_duration(values.get(maximum_key), f"{name}.{maximum_key}")
+    return inactivity, maximum
+
+
+def _optional_duration(value: object, name: str) -> int | None:
+    if value is None or value == "none":
         return None
-    if not isinstance(value, int):
-        raise ValueError(f"{name} must be an integer")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f'{name} must be a positive integer or "none"')
+    if value <= 0:
+        raise ValueError(f'{name} must be a positive integer or "none"')
     return value
 
 
@@ -512,3 +547,7 @@ def _toml_bool(value: bool) -> str:
 
 def _toml_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _toml_duration(value: int | None) -> str:
+    return '"none"' if value is None else str(value)

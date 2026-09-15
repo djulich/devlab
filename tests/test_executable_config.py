@@ -47,6 +47,22 @@ def test_snapshot_digest_includes_invocation_overrides(tmp_path: Path) -> None:
     assert overridden.digest != default.digest
 
 
+def test_snapshot_digest_includes_session_limits(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    initial = build_executable_config_snapshot(tmp_path)
+    agents_path = tmp_path / ".devlab/config/agents.toml"
+    agents_path.write_text(
+        agents_path.read_text().replace(
+            "# inactivity_timeout_seconds = 600",
+            "inactivity_timeout_seconds = 600",
+        )
+    )
+
+    changed = build_executable_config_snapshot(tmp_path)
+
+    assert changed.digest != initial.digest
+
+
 def test_snapshot_digest_includes_profile_default_validation(tmp_path: Path) -> None:
     init_workspace(tmp_path)
     initial = build_executable_config_snapshot(tmp_path)

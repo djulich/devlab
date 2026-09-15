@@ -3561,6 +3561,8 @@ class TestRunLoop:
             'provider = "mock-cli"\n'
             'model = "test-model"\n'
             'effort = "medium"\n'
+            "inactivity_timeout_seconds = 30\n"
+            "max_session_duration_seconds = 90\n"
             "\n[providers.mock-cli]\n"
             'command = "mock-agent"\n'
             'args = ["--role", "{role_name}", "--model", "{model}", '
@@ -3597,7 +3599,8 @@ class TestRunLoop:
 
             return Result()
 
-        monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("devlab.agents._run_process", fake_run)
+        monkeypatch.setattr("devlab.agent_config.subprocess.run", fake_run)
         monkeypatch.setattr("devlab.agent_config.shutil.which", lambda _command: "/mock-agent")
 
         run_loop(tmp_path, max_sessions=1, retain_prompts=True)
@@ -3609,8 +3612,12 @@ class TestRunLoop:
         assert 'provider = "mock-cli"' in text
         assert 'model = "test-model"' in text
         assert 'provider_version = "mock-agent 9.8.7"' in text
+        assert "inactivity_timeout_seconds = 30" in text
+        assert "max_session_duration_seconds = 90" in text
         meta = _find_metadata(tmp_path)
         assert meta["provider_version"] == "mock-agent 9.8.7"
+        assert meta["inactivity_timeout_seconds"] == 30
+        assert meta["max_session_duration_seconds"] == 90
         assert "base_prompt =" not in text
         assert "session_prompt =" not in text
         assert '"{system_prompt}"' in text

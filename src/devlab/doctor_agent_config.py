@@ -216,16 +216,30 @@ def _check_role_values(
         value = values.get(key)
         if value is not None and not isinstance(value, str):
             problems.append(DoctorProblem(display_path, f"{name}.{key} must be a string"))
-    timeout = values.get("timeout_seconds")
-    if timeout is not None:
-        if not isinstance(timeout, int):
-            problems.append(
-                DoctorProblem(display_path, f"{name}.timeout_seconds must be an integer")
+    if "timeout_seconds" in values and "max_session_duration_seconds" in values:
+        problems.append(
+            DoctorProblem(
+                display_path,
+                f"{name} must not specify both timeout_seconds and max_session_duration_seconds",
             )
-        elif timeout <= 0:
+        )
+    for key in (
+        "timeout_seconds",
+        "inactivity_timeout_seconds",
+        "max_session_duration_seconds",
+    ):
+        value = values.get(key)
+        if value is None or value == "none":
+            continue
+        if isinstance(value, bool) or not isinstance(value, int):
             problems.append(
-                DoctorProblem(display_path, f"{name}.timeout_seconds must be greater than zero")
+                DoctorProblem(
+                    display_path,
+                    f"{name}.{key} must be an integer",
+                )
             )
+        elif value <= 0:
+            problems.append(DoctorProblem(display_path, f"{name}.{key} must be greater than zero"))
 
 
 def _check_provider(

@@ -57,7 +57,8 @@ def _format_entry(entry: SessionMetadata) -> str:
     if entry.failure_kind == "none" and entry.return_code == 0:
         outcome = "ok"
     else:
-        outcome = f"FAILED ({entry.failure_kind})"
+        failure = entry.timeout_kind or entry.failure_kind
+        outcome = f"FAILED ({failure})"
     task = entry.task_id or ""
     duration = f"{entry.duration_seconds:.1f}s" if entry.duration_seconds is not None else ""
     parts = [

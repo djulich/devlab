@@ -238,14 +238,24 @@ def _format_count(value: int) -> str:
 
 
 def _format_role_agent(config: ResolvedAgentConfig) -> str:
-    timeout = "none" if config.timeout_seconds is None else str(config.timeout_seconds)
+    inactivity = (
+        "none"
+        if config.inactivity_timeout_seconds is None
+        else str(config.inactivity_timeout_seconds)
+    )
+    maximum = (
+        "none"
+        if config.max_session_duration_seconds is None
+        else str(config.max_session_duration_seconds)
+    )
     command = "[" + ", ".join(repr(part) for part in config.command) + "]"
     stdin = "true" if config.uses_stdin else "false"
     return (
         f"- {config.role_name}: {config.provider} "
         f'model="{config.model}" '
         f'effort="{config.effort}" '
-        f"timeout={timeout} "
+        f"inactivity_timeout={inactivity} "
+        f"max_duration={maximum} "
         f"command={command} "
         f"stdin={stdin}"
     )

@@ -6,13 +6,13 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Active
 
-- [session-inactivity-monitor.md](session-inactivity-monitor.md) — planned after the demo: provider-output inactivity monitoring with an independent optional maximum session duration
 - [resilient-session-handoffs.md](resilient-session-handoffs.md) — structured submission and DevLab-owned publication are implemented; representative live-provider acceptance metrics remain to collect
 - [architectural-improvements.md](architectural-improvements.md) — cross-cutting backlog for concurrency policy, typed validation failures, resolver isolation, and artifact bounds; stop semantics, blocker ordering, and atomic durable writes are implemented
 - [durable-operator-clarifications.md](durable-operator-clarifications.md) — durable stop/answer/resume and bounded unattended resolution are implemented; scoped routing and external adapters remain optional
 
 ## Implemented
 
+- [session-inactivity-monitor.md](session-inactivity-monitor.md) — provider-output inactivity monitoring with an independent optional maximum session duration; development is complete, while live-provider output-gap observation remains evidence for any future default-policy decision
 - [resolvable-prerequisites.md](resolvable-prerequisites.md) — authorized check/prepare/recheck for ignored local runtime artifacts and initialization inside owned test services
 - [managed-test-services.md](managed-test-services.md) — authorized target-owned provisioning, workspace-scoped reuse, and explicit cleanup of local test services
 

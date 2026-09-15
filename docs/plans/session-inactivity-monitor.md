@@ -1,12 +1,15 @@
 # Session Inactivity Monitor and Maximum Duration
 
-Status: planned; implement after the system-evolution demo run.
+Status: implemented and development-complete (2026-09-16). No further
+development slice is planned. A controlled live-provider smoke run and output-gap
+observation remain as an operational follow-up before any inactivity default is
+considered; they are not required to complete this implementation.
 
 ## Problem and evidence
 
-DevLab currently applies an absolute timeout to an agent CLI invocation. This
-bounds elapsed time but does not distinguish a silent provider from an active
-agent that has exhausted its budget.
+DevLab previously applied only an absolute timeout to an agent CLI invocation.
+That bounded elapsed time but did not distinguish a silent provider from an
+active agent that had exhausted its budget.
 
 During Generation 2 of system-evolution-01, developer invocation
 `20260913T000729_019_developer` on T0006 reached its 1,200-second limit.
@@ -15,11 +18,11 @@ check began, about six seconds before termination. An earlier successful check
 took approximately 126 seconds. This supports budget exhaustion rather than an
 approval wait; it does not establish that the final check would have succeeded.
 Keep that attempt's result and recovery evidence intact. Do not change the
-running experiment's timeout policy as part of this plan.
+completed comparison's recorded timeout policy or preserved evidence.
 
 ## Decision
 
-Introduce two independent limits with narrowly defined semantics:
+DevLab now enforces two independent limits with narrowly defined semantics:
 
 | Limit | Purpose | Reset condition |
 |---|---|---|
@@ -60,30 +63,28 @@ generic kernel abstraction is needed for this implementation.
 
 ## Configuration and compatibility
 
-Proposed names (illustrative durations, not selected defaults):
+Configuration names (illustrative durations, not selected defaults):
 
 ```toml
 inactivity_timeout_seconds = 600
 max_session_duration_seconds = 1800
 ```
 
-- Keep existing `timeout_seconds` behavior as an absolute duration. Never
+- Existing `timeout_seconds` behavior remains an absolute duration. Never
   reinterpret an existing configured limit as inactivity.
-- During migration, accept the legacy name as an alias for the maximum duration;
+- The legacy name is accepted as an alias for the maximum duration;
   reject configurations specifying both names rather than selecting silently.
-- Keep inactivity monitoring opt-in initially. Preserve existing defaults for
-  existing workspaces, including the existing meaning of an omitted timeout.
-- Decide and document how to explicitly disable a limit within the existing
-  TOML configuration conventions. Reject negative durations and booleans as
-  durations; do not introduce ambiguous zero semantics.
-- Log effective values and include new configuration fields in existing
-  executable-configuration fingerprinting/trust behavior.
-- Allow disabling the maximum where operator policy permits, while explaining
-  that output-producing loops can then run indefinitely. Experiments should
-  retain explicitly recorded finite limits.
-- Do not choose inactivity defaults from this one failed run. Observe typical
-  output gaps, especially during silent builds and tests, before proposing a
-  default change.
+- Inactivity monitoring is opt-in. Existing workspaces preserve their defaults,
+  including the existing meaning of an omitted timeout.
+- The string `"none"` explicitly disables an inherited limit. Negative values,
+  zero, booleans, and other non-integer values are rejected.
+- Effective values are logged and the new fields participate in executable-
+  configuration fingerprinting and trust.
+- The maximum can be disabled where operator policy permits, with the documented
+  consequence that an output-producing loop can then run indefinitely.
+- No inactivity default was selected from the motivating failed run. Typical
+  output gaps, especially during silent builds and tests, must be observed before
+  proposing a default change.
 
 ## Monitoring algorithm
 
@@ -162,18 +163,19 @@ Related plans: [invocation observability](agent-invocation-observability-and-err
 and [resilient handoffs](resilient-session-handoffs.md). Implemented portions of
 those plans remain historical context, not instructions to replace current code.
 
-## Implementation sequence
+## Implementation record
 
-1. Audit current provider execution, configuration resolution, trust, metadata,
-   and recovery consumers. Finalize disable semantics and compatibility mapping.
-2. Add configuration and structured timeout distinctions with focused tests.
-3. Replace blocking invocation waiting with concurrent stream capture and the
-   two-deadline monitor; preserve existing logs and prompt transport.
-4. Wire stop diagnostics and trusted deadline context without changing task
-   transitions, validation execution, or retry policy.
-5. Document configuration, limitations, and migration; run complete validation.
-6. After the demo, perform a controlled provider smoke run outside scored targets.
-   Record observed output gaps before considering default changes.
+The implementation audit, configuration model, concurrent stream monitor,
+bounded process cleanup, structured outcomes, durable metadata, reporting,
+trusted deadline context, documentation, and automated validation are complete.
+The completed source validation was 808 passed and 12 skipped; the demo grader
+validation was 40 passed.
+
+One non-development follow-up remains: perform a controlled provider smoke run
+outside scored targets and record representative output gaps. This is evidence
+collection for any future default-policy proposal, not an unfinished development
+slice. Do not infer or introduce a default inactivity timeout without that
+evidence and a separate decision.
 
 ## Acceptance and tests
 

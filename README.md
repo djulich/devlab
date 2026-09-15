@@ -23,6 +23,9 @@ Current confidence:
   collection still ongoing;
 - existing-project adoption, spec reconciliation, prompt-size monitoring, and
   agent invocation diagnostics are implemented;
+- provider sessions support an opt-in output-inactivity limit and an independent
+  optional maximum duration, with structured timeout reporting and bounded local
+  process-tree cleanup;
 - role sessions use same-session structured handoff submission with trusted
   session identity, aggregate validation feedback, and DevLab-owned publication;
 - durable operator clarifications support explicit answer/resume flows and an
@@ -355,6 +358,12 @@ DevLab also discovers optional target-owned project knowledge in `CONTEXT.md`, `
 ## Agent configuration
 
 Agent invocation is configured per target workspace in `.devlab/config/agents.toml`.
+
+`inactivity_timeout_seconds` optionally stops a provider that produces no stdout
+or stderr bytes for the configured interval. `max_session_duration_seconds`
+independently bounds total runtime; the legacy `timeout_seconds` name retains its
+absolute-duration meaning. Inactivity monitoring has no default pending broader
+live-provider output-gap observations.
 
 Prefer stdin prompt transport when supported to avoid command-line length limits and prompt text in process listings. See [`docs/agent-configuration.md`](docs/agent-configuration.md) for examples.
 

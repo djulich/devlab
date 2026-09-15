@@ -53,6 +53,7 @@ def test_defaults_apply_to_all_roles(tmp_path: Path) -> None:
     assert config.resolved["developer"].model == "gpt-5-codex"
     assert config.resolved["developer"].effort == "medium"
     assert config.resolved["developer"].timeout_seconds == 120
+    assert config.resolved["developer"].max_session_duration_seconds == 120
     assert config.resolved["developer"].command == (
         "pi",
         "-p",
@@ -64,6 +65,76 @@ def test_defaults_apply_to_all_roles(tmp_path: Path) -> None:
         "{system_prompt}",
         "{session_prompt}",
     )
+
+
+def test_new_limits_resolve_and_none_disables_inherited_inactivity(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "pi"
+        inactivity_timeout_seconds = 30
+        max_session_duration_seconds = 120
+
+        [roles.reviewer]
+        inactivity_timeout_seconds = "none"
+
+        [providers.pi]
+        command = "pi"
+        args = ["{system_prompt}", "{session_prompt}"]
+        """,
+    )
+
+    config = load_agent_configuration(tmp_path)
+
+    assert config.resolved["developer"].inactivity_timeout_seconds == 30
+    assert config.resolved["developer"].max_session_duration_seconds == 120
+    assert config.resolved["reviewer"].inactivity_timeout_seconds is None
+
+
+def test_legacy_and_new_maximum_names_conflict(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "pi"
+        timeout_seconds = 30
+        max_session_duration_seconds = 60
+
+        [providers.pi]
+        command = "pi"
+        args = ["{system_prompt}", "{session_prompt}"]
+        """,
+    )
+
+    with pytest.raises(ValueError, match="must not specify both"):
+        load_agent_configuration(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("inactivity_timeout_seconds", "true"),
+        ("max_session_duration_seconds", "0"),
+        ("max_session_duration_seconds", "-1"),
+    ],
+)
+def test_limits_reject_boolean_zero_and_negative(tmp_path: Path, field: str, value: str) -> None:
+    _write_agents_config(
+        tmp_path,
+        f"""
+        [defaults]
+        provider = "pi"
+        {field} = {value}
+
+        [providers.pi]
+        command = "pi"
+        args = ["{{system_prompt}}", "{{session_prompt}}"]
+        """,
+    )
+
+    with pytest.raises(ValueError, match="positive integer"):
+        load_agent_configuration(tmp_path)
 
 
 def test_role_override_changes_one_role(tmp_path: Path) -> None:
@@ -588,7 +659,7 @@ def test_provider_renders_configured_template_values(
 
         return Result()
 
-    monkeypatch.setattr("devlab.agents.subprocess.run", fake_run)
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
     config = load_agent_configuration(tmp_path)
     provider = config.providers[config.role_providers["developer"]]
 

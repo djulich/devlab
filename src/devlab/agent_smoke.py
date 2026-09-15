@@ -223,7 +223,8 @@ def format_agent_smoke_report(result: AgentSmokeResult) -> str:
                 f"Provider: {config.provider}",
                 f"Model: {config.model}",
                 f"Effort: {config.effort}",
-                f"Timeout: {_format_timeout(config.timeout_seconds)}",
+                "Inactivity timeout: " + _format_timeout(config.inactivity_timeout_seconds),
+                "Maximum duration: " + _format_timeout(config.max_session_duration_seconds),
                 f"Assigned roles: {_format_roles(check_result.role_names)}",
                 f"Stdin: {_format_bool(config.uses_stdin)}",
                 "Command: " + shlex.join(agent_result.command),
@@ -452,7 +453,7 @@ def _format_bool(value: bool) -> str:
 
 def _format_failure(result: AgentSmokeCheckResult) -> str:
     if not result.result.succeeded:
-        return result.result.failure_kind
+        return result.result.timeout_kind or result.result.failure_kind
     return f"missing marker {SMOKE_MARKER!r}"
 
 

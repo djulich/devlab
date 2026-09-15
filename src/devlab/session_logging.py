@@ -29,6 +29,10 @@ class SessionMetadata:
     failure_kind: str
     duration_seconds: float | None
     task_id: str
+    timeout_kind: str = ""
+    inactivity_timeout_seconds: int | None = None
+    max_session_duration_seconds: int | None = None
+    inactive_seconds_at_stop: float | None = None
     provider_version: str = ""
     executable_config_digest: str = ""
     executable_config_authorization: str = ""

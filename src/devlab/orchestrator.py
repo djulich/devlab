@@ -1354,6 +1354,12 @@ def _agent_error_message(ctx: SessionContext, result: AgentResult, config_log: P
         details.append(f"duration={result.duration_seconds:.1f}s")
     if result.timeout_seconds is not None:
         details.append(f"timeout_seconds={result.timeout_seconds}")
+    if result.inactivity_timeout_seconds is not None:
+        details.append(f"inactivity_timeout_seconds={result.inactivity_timeout_seconds}")
+    if result.timeout_kind is not None:
+        details.append(f"timeout_kind={result.timeout_kind}")
+    if result.inactive_seconds_at_stop is not None:
+        details.append(f"inactive_at_stop={result.inactive_seconds_at_stop:.1f}s")
     details.extend(_log_path_details(ctx.stdout_log, ctx.stderr_log, config_log))
     details.extend(_log_command_details(ctx.stdout_log, ctx.stderr_log, config_log))
     return "; ".join(details)
@@ -1540,11 +1546,17 @@ def _build_session_metadata(
     provider = ""
     model = ""
     provider_version = ""
+    inactivity_timeout_seconds = agent_result.inactivity_timeout_seconds
+    max_session_duration_seconds = agent_result.max_session_duration_seconds
     if resolved_agent_configs is not None and ctx.role_name in resolved_agent_configs:
         config = resolved_agent_configs[ctx.role_name]
         provider = config.provider
         model = config.model
         provider_version = config.provider_version
+        if inactivity_timeout_seconds is None:
+            inactivity_timeout_seconds = config.inactivity_timeout_seconds
+        if max_session_duration_seconds is None:
+            max_session_duration_seconds = config.max_session_duration_seconds
     return SessionMetadata(
         invocation_id=ctx.invocation_id,
         test_service_instances=ctx.service_instances,
@@ -1556,6 +1568,10 @@ def _build_session_metadata(
         failure_kind=agent_result.failure_kind,
         duration_seconds=agent_result.duration_seconds,
         task_id=task_id or "",
+        timeout_kind=agent_result.timeout_kind or "",
+        inactivity_timeout_seconds=inactivity_timeout_seconds,
+        max_session_duration_seconds=max_session_duration_seconds,
+        inactive_seconds_at_stop=agent_result.inactive_seconds_at_stop,
         provider_version=provider_version,
         executable_config_digest=(
             executable_config.digest if executable_config is not None else ""

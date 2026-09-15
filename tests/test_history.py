@@ -141,6 +141,19 @@ class TestFormatHistory:
         assert "FAILED" in output
         assert "timeout" in output
 
+    def test_timeout_subtype_is_reported_when_present(self, tmp_path: Path) -> None:
+        path = _write_metadata(
+            tmp_path,
+            "20260529T120000_001_developer",
+            return_code=124,
+            failure_kind="timeout",
+        )
+        data = json.loads(path.read_text())
+        data["timeout_kind"] = "inactivity"
+        path.write_text(json.dumps(data))
+
+        assert "FAILED (inactivity)" in format_history(tmp_path)
+
     def test_json_output(self, tmp_path: Path) -> None:
         _write_metadata(
             tmp_path,

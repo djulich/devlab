@@ -9,7 +9,8 @@ This file is target-owned and intended to be edited by the human operator. It co
 ```toml
 [defaults]
 provider = "default"
-timeout_seconds = 3600
+max_session_duration_seconds = 3600
+# inactivity_timeout_seconds = 600
 
 [providers.default]
 command = "claude"
@@ -35,7 +36,7 @@ Example:
 provider = "pi"
 model = "gpt-5-codex"
 effort = "medium"
-timeout_seconds = 3600
+max_session_duration_seconds = 3600
 
 [roles.architect]
 model = "gpt-5"
@@ -104,7 +105,7 @@ when the provider is assigned to roles.
 [providers.codex.defaults]
 model = "gpt-5.5"
 effort = "medium"
-timeout_seconds = 1200
+max_session_duration_seconds = 1200
 ```
 
 If an unassigned provider has no `[providers.<name>.defaults]`, `--all-providers`
@@ -161,7 +162,7 @@ To reduce shared blind spots, use a different reviewer provider or model from th
 provider = "pi"
 model = "gpt-5-codex"
 effort = "medium"
-timeout_seconds = 3600
+max_session_duration_seconds = 3600
 
 [roles.developer]
 provider = "codex"
@@ -185,6 +186,25 @@ Resolved role settings use this precedence:
 Provider-local defaults do not participate in normal role resolution. They only provide
 invocation policy for provider smoke tests that are not based on an assigned role.
 
+## Session Limits
+
+`max_session_duration_seconds` bounds total provider runtime. The legacy
+`timeout_seconds` name remains an alias with the same absolute-duration meaning;
+specifying both names in one resolved role configuration is an error.
+`inactivity_timeout_seconds` independently bounds time with no bytes received on
+either provider stdout or stderr. It is opt-in: omission leaves silence unbounded.
+
+Set either limit to the string `"none"` to disable an inherited value. Durations
+must otherwise be positive integers; zero, negative values, and booleans are
+invalid. With no maximum, a provider that keeps producing output can run
+indefinitely.
+
+Inactivity observes bytes, not semantic progress. A noisy retry loop remains
+active, while a healthy command that emits nothing can reach the inactivity
+limit. On either limit DevLab terminates the local provider process group with a
+bounded grace period, but detached descendants and remote or container side
+effects may remain and are handled by the existing recovery workflow.
+
 ## Prompt Context Thresholds
 
 `devlab status --verbose` reports approximate prompt context sizes for each role. The estimate is intentionally dependency-free and uses roughly four characters per token.
@@ -205,7 +225,9 @@ Role-specific thresholds inherit the global values when omitted. If the section 
 
 ## Inspection and Validation
 
-Use `devlab status --verbose` to inspect the resolved provider, model, effort, timeout, command shape, stdin mode, and approximate prompt context size for each role. Prompt contents are not printed.
+Use `devlab status --verbose` to inspect the resolved provider, model, effort,
+inactivity timeout, maximum duration, command shape, stdin mode, and approximate
+prompt context size for each role. Prompt contents are not printed.
 
 Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
 
