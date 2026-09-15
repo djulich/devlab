@@ -147,6 +147,16 @@ def build_executable_config_snapshot(
                         "attestation": item.attestation,
                         "sensitive": item.sensitive,
                         "timeout": item.timeout,
+                        **(
+                            {
+                                "prepare": item.prepare,
+                                "prepare_timeout": item.prepare_timeout,
+                                "prepare_kind": item.prepare_kind,
+                                "prepare_outputs": list(item.prepare_outputs),
+                            }
+                            if item.prepare
+                            else {}
+                        ),
                     }
                     for item in profile.prerequisites
                 ],
@@ -354,7 +364,10 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
                 f"environment {item.environment}" if item.environment else "operator attestation"
             )
             operations = ",".join(scope.value for scope in item.required_for)
-            prerequisite_lines.append(f"- {item.reference} [{operations}]: {mechanism}")
+            preparation = f"; prepare {item.prepare}" if item.prepare else ""
+            prerequisite_lines.append(
+                f"- {item.reference} [{operations}]: {mechanism}{preparation}"
+            )
     lines.extend(["", "Profile default validation commands:"])
     lines.extend(validation_lines or ["- None"])
     lines.extend(["", "Profile lifecycle commands:"])

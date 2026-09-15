@@ -277,8 +277,30 @@ required capability, installation or provisioning boundary, configuration,
 exact readiness check, common failures, and any security or cleanup constraints.
 `devlab doctor` reports missing files/headings and guides whose selected content
 exceeds 8,000 characters; use a dedicated file or heading instead of a broad
-project document. DevLab does not install tools, start services, provision
-databases, or obtain credentials while evaluating prerequisites.
+project document.
+
+Command checks may declare an automatic runtime preparation action. DevLab runs
+it only from mutating workflow commands, only after the check reports
+unsatisfied, and checks again afterward:
+
+```toml
+[[prerequisites]]
+id = "test-config"
+required_for = ["session"]
+check = "test -f .local/test.toml"
+prepare = "./scripts/prepare-test-config"
+prepare_kind = "workspace_local"
+prepare_outputs = [".local/test.toml"]
+prepare_timeout = 120
+```
+
+`workspace_local` outputs must be ignored and untracked. `owned_service` may
+initialize an applicable DevLab-managed test service, such as applying schemas
+or deterministic fixtures. Preparation commands are part of executable trust,
+must be repeatable, and cannot satisfy missing host executables, environment
+variables, or operator attestations. DevLab does not install tools or images,
+obtain credentials, or create tracked product artifacts through this mechanism.
+The explicit `devlab prerequisite check` command never prepares anything.
 
 Useful `implement` and `plan` options include `--provider`, `--model`, `--effort`,
 `--quiet`, `--verbose`, `--log-file`, and `--retain-prompts`. Both commands also

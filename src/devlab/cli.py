@@ -1213,7 +1213,13 @@ def _run_prerequisite_command(args: argparse.Namespace, root: Path) -> None:
             print("No profile prerequisites are configured.")
             return
         for item in items:
-            kind = "attested" if item.attestation else "automatic"
+            kind = (
+                "attested"
+                if item.attestation
+                else "automatically resolvable"
+                if item.prepare
+                else "automatic check"
+            )
             state = (
                 " (approved)" if item.attestation and prerequisite_is_attested(root, item) else ""
             )
@@ -1310,6 +1316,16 @@ def _format_prerequisite_definition(root: Path, prerequisite: Prerequisite, stat
         f"Summary: {prerequisite.summary}",
         f"Mechanism: {mechanism}",
     ]
+    if prerequisite.prepare:
+        lines.extend(
+            [
+                f"Automatic preparation: {prerequisite.prepare}",
+                f"Preparation kind: {prerequisite.prepare_kind}",
+                f"Preparation timeout: {prerequisite.prepare_timeout}s",
+            ]
+        )
+        if prerequisite.prepare_outputs:
+            lines.append(f"Preparation outputs: {', '.join(prerequisite.prepare_outputs)}")
     if prerequisite.guide:
         lines.append(f"Guide: {(root / prerequisite.guide).resolve()}")
     if prerequisite.sensitive:

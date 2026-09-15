@@ -5,8 +5,12 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
+import time
+import uuid
 from collections.abc import Mapping
+from contextlib import suppress
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -45,6 +49,10 @@ class Prerequisite:
     guide: str = ""
     sensitive: bool = False
     timeout: int = 30
+    prepare: str = ""
+    prepare_timeout: int = 120
+    prepare_kind: str = ""
+    prepare_outputs: tuple[str, ...] = ()
 
     @property
     def reference(self) -> str:
@@ -61,6 +69,16 @@ class Prerequisite:
             "attestation": self.attestation,
             "sensitive": self.sensitive,
             "timeout": self.timeout,
+            **(
+                {
+                    "prepare": self.prepare,
+                    "prepare_timeout": self.prepare_timeout,
+                    "prepare_kind": self.prepare_kind,
+                    "prepare_outputs": list(self.prepare_outputs),
+                }
+                if self.prepare
+                else {}
+            ),
         }
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return "prerequisite-v1:" + hashlib.sha256(canonical.encode()).hexdigest()
@@ -75,6 +93,21 @@ class PrerequisiteResult:
     @property
     def blocks(self) -> bool:
         return self.status != PrerequisiteStatus.SATISFIED
+
+
+@dataclasses.dataclass(frozen=True)
+class PrerequisitePreparation:
+    prerequisite: Prerequisite
+    outcome: str
+    return_code: int | None
+    duration_seconds: float
+    log_path: str
+
+
+@dataclasses.dataclass(frozen=True)
+class PrerequisiteResolution:
+    results: tuple[PrerequisiteResult, ...]
+    preparations: tuple[PrerequisitePreparation, ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -167,13 +200,56 @@ def evaluate_prerequisites(
     operation: PrerequisiteOperation,
     *,
     environ: Mapping[str, str] | None = None,
+    redact_output: bool = False,
 ) -> tuple[PrerequisiteResult, ...]:
     environment = os.environ if environ is None else environ
     return tuple(
-        _evaluate_prerequisite(root, item, environment)
+        _evaluate_prerequisite(root, item, environment, redact_output=redact_output)
         for item in prerequisites
         if operation in item.required_for
     )
+
+
+def resolve_prerequisites(
+    root: Path,
+    prerequisites: tuple[Prerequisite, ...],
+    operation: PrerequisiteOperation,
+    *,
+    environ: Mapping[str, str] | None = None,
+    redact_output: bool = False,
+) -> PrerequisiteResolution:
+    """Prepare eligible unsatisfied checks once, then evaluate them again."""
+    environment = os.environ if environ is None else environ
+    results: list[PrerequisiteResult] = []
+    preparations: list[PrerequisitePreparation] = []
+    for prerequisite in prerequisites:
+        if operation not in prerequisite.required_for:
+            continue
+        result = _evaluate_prerequisite(
+            root, prerequisite, environment, redact_output=redact_output
+        )
+        if result.status == PrerequisiteStatus.UNSATISFIED and prerequisite.prepare:
+            preparation = _run_preparation(
+                root, prerequisite, environment, redact_output=redact_output
+            )
+            preparations.append(preparation)
+            if preparation.outcome == "succeeded":
+                result = _evaluate_prerequisite(
+                    root, prerequisite, environment, redact_output=redact_output
+                )
+                if result.status != PrerequisiteStatus.SATISFIED:
+                    result = dataclasses.replace(
+                        result,
+                        detail=f"{result.detail}; still unsatisfied after preparation",
+                    )
+            else:
+                result = PrerequisiteResult(
+                    prerequisite,
+                    PrerequisiteStatus.ERROR,
+                    f"preparation {preparation.outcome}; see {preparation.log_path}",
+                )
+        results.append(result)
+    return PrerequisiteResolution(tuple(results), tuple(preparations))
 
 
 def attest_prerequisite(
@@ -291,6 +367,8 @@ def format_prerequisite_result(root: Path, result: PrerequisiteResult) -> str:
         lines.append(f"Environment: {item.environment}")
     elif item.attestation:
         lines.append(f"Attestation: {item.attestation}")
+    if item.prepare:
+        lines.append(f"Automatic preparation: {item.prepare}")
     if item.sensitive:
         lines.append("Security: Do not commit or print sensitive values.")
     reference = prerequisite_guide_reference(root, item)
@@ -349,7 +427,11 @@ def _heading_slug(value: str) -> str:
 
 
 def _evaluate_prerequisite(
-    root: Path, prerequisite: Prerequisite, environ: Mapping[str, str]
+    root: Path,
+    prerequisite: Prerequisite,
+    environ: Mapping[str, str],
+    *,
+    redact_output: bool = False,
 ) -> PrerequisiteResult:
     if prerequisite.attestation:
         status = (
@@ -389,11 +471,17 @@ def _evaluate_prerequisite(
         return PrerequisiteResult(
             prerequisite, PrerequisiteStatus.SATISFIED, "check exited successfully"
         )
+    if completed.returncode == 127:
+        return PrerequisiteResult(
+            prerequisite,
+            PrerequisiteStatus.UNVERIFIED,
+            "check could not run because a host executable is missing",
+        )
     output = "\n".join(
         line.rstrip() for line in (completed.stdout + "\n" + completed.stderr).splitlines()
     ).strip()
     detail = f"check exited with {completed.returncode}"
-    if output and not prerequisite.sensitive:
+    if output and not prerequisite.sensitive and not redact_output:
         detail += f": {output[-500:]}"
     return PrerequisiteResult(prerequisite, PrerequisiteStatus.UNSATISFIED, detail)
 
@@ -411,6 +499,10 @@ def _result_record(result: PrerequisiteResult) -> dict[str, Any]:
         "attestation": item.attestation,
         "guide": item.guide,
         "sensitive": item.sensitive,
+        "prepare": item.prepare,
+        "prepare_timeout": item.prepare_timeout,
+        "prepare_kind": item.prepare_kind,
+        "prepare_outputs": list(item.prepare_outputs),
         "status": result.status.value,
         "detail": result.detail,
     }
@@ -432,9 +524,91 @@ def _result_from_record(value: object, path: Path) -> PrerequisiteResult:
         attestation=str(value.get("attestation") or ""),
         guide=str(value.get("guide") or ""),
         sensitive=bool(value.get("sensitive")),
+        prepare=str(value.get("prepare") or ""),
+        prepare_timeout=int(value.get("prepare_timeout") or 120),
+        prepare_kind=str(value.get("prepare_kind") or ""),
+        prepare_outputs=tuple(str(item) for item in value.get("prepare_outputs", [])),
     )
     return PrerequisiteResult(
         prerequisite,
         PrerequisiteStatus(str(value.get("status") or "")),
         str(value.get("detail") or ""),
     )
+
+
+def _run_preparation(
+    root: Path,
+    prerequisite: Prerequisite,
+    environ: Mapping[str, str],
+    *,
+    redact_output: bool = False,
+) -> PrerequisitePreparation:
+    log_path = (
+        root
+        / ".devlab/logs/environment"
+        / f"prerequisite-{prerequisite.profile_id}-{prerequisite.id}-{uuid.uuid4().hex}.log"
+    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    started = time.monotonic()
+    process = subprocess.Popen(
+        prerequisite.prepare,
+        cwd=root,
+        env=dict(environ),
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=os.name == "posix",
+    )
+    output = b""
+    error = b""
+    outcome = "failed"
+    return_code: int | None = None
+    try:
+        output, error = process.communicate(timeout=prerequisite.prepare_timeout)
+        return_code = process.returncode
+        outcome = "succeeded" if return_code == 0 else "failed"
+    except subprocess.TimeoutExpired as exc:
+        output = exc.output or b""
+        error = exc.stderr or b""
+        outcome = "timeout"
+        _signal_preparation(process, signal.SIGTERM)
+        try:
+            tail_output, tail_error = process.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            _signal_preparation(process, signal.SIGKILL)
+            tail_output, tail_error = process.communicate(timeout=1)
+        output += tail_output or b""
+        error += tail_error or b""
+    duration = round(time.monotonic() - started, 3)
+    header = (
+        f"prerequisite: {prerequisite.reference}\n"
+        f"outcome: {outcome}\n"
+        f"return_code: {return_code if return_code is not None else ''}\n"
+        f"duration_seconds: {duration}\n\n"
+    )
+    body = (
+        "[output redacted for sensitive prerequisite]\n"
+        if prerequisite.sensitive or redact_output
+        else "## stdout\n"
+        + output.decode(errors="replace")
+        + "\n## stderr\n"
+        + error.decode(errors="replace")
+    )
+    log_path.write_text(header + body)
+    return PrerequisitePreparation(
+        prerequisite,
+        outcome,
+        return_code,
+        duration,
+        log_path.relative_to(root).as_posix(),
+    )
+
+
+def _signal_preparation(process: subprocess.Popen[bytes], signal_number: int) -> None:
+    with suppress(ProcessLookupError):
+        if os.name == "posix":
+            os.killpg(process.pid, signal_number)
+        elif signal_number == signal.SIGTERM:
+            process.terminate()
+        else:
+            process.kill()

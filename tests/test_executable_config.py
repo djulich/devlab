@@ -88,8 +88,17 @@ def test_snapshot_digest_tracks_prerequisite_semantics_but_not_help_text(
     profile_path.write_text(profile_path.read_text().replace("docker info", "podman info"))
     command_changed = build_executable_config_snapshot(tmp_path)
 
+    profile_path.write_text(
+        profile_path.read_text()
+        + 'prepare = "make prepare-docker"\n'
+        + 'prepare_kind = "workspace_local"\n'
+        + 'prepare_outputs = [".local/docker"]\n'
+    )
+    preparation_changed = build_executable_config_snapshot(tmp_path)
+
     assert help_changed.digest == initial.digest
     assert command_changed.digest != initial.digest
+    assert preparation_changed.digest != command_changed.digest
 
 
 def test_format_executable_config_separates_profile_validation_and_lifecycle(

@@ -73,3 +73,10 @@ def commit_test_service_state(root: Path, service_id: str) -> None:
     paths = (f".devlab/test-services/{service_id}.json", ".devlab/workflow-events.jsonl")
     run_git(root, "add", "--", *paths)
     run_git(root, "commit", "--only", "-m", f"Record test service {service_id}", "--", *paths)
+
+
+def commit_prerequisite_preparation(root: Path) -> None:
+    """Commit preparation provenance without including target workspace changes."""
+    path = ".devlab/workflow-events.jsonl"
+    run_git(root, "add", "--", path)
+    run_git(root, "commit", "--only", "-m", "Record prerequisite preparation", "--", path)

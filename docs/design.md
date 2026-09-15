@@ -352,6 +352,36 @@ whole-file references outside the dedicated guide directory. These guide-quality
 findings keep global workspace health nonzero but do not block planning or agent
 sessions; guides are operator information and are never executed by DevLab.
 
+A command-check prerequisite may also declare narrowly scoped runtime
+preparation:
+
+```toml
+[[prerequisites]]
+id = "test-config"
+required_for = ["session", "validation"]
+check = "test -f .local/test.toml"
+prepare = "./scripts/prepare-test-config"
+prepare_kind = "workspace_local"
+prepare_outputs = [".local/test.toml"]
+prepare_timeout = 120
+```
+
+During a mutating operation DevLab checks first, runs preparation once only when
+unsatisfied, then checks again. `workspace_local` outputs must be relative,
+ignored, and untracked. `owned_service` preparation instead requires an
+applicable managed test service and is intended for schema or fixture setup
+inside that owned resource. Managed service connection settings are passed to
+the check and preparation. Preparation that fails, times out, changes visible
+Git state, or leaves its check unsatisfied blocks before the dependent operation.
+Attempts and duration are recorded as workflow events; sensitive output is
+redacted from preparation logs.
+
+Exit 127 means the check lacks a host executable and remains an unverified
+operator prerequisite. DevLab does not prepare environment-variable or
+attestation prerequisites, install host programs or images, obtain credentials,
+or generate tracked product artifacts. `devlab prerequisite check` and all
+reporting paths never prepare. See ADR 0014.
+
 This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
 
 ## Environment lifecycle

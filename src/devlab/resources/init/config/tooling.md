@@ -35,3 +35,10 @@ constraints when applicable. It may reference a focused Markdown section as
 `.devlab/config/prerequisites/`. Prefer authoritative upstream links over copied
 volatile installation instructions. Never put credentials in profiles, guides,
 attestations, or Git.
+
+A command check may declare a repeatable `prepare` action for routine runtime
+state. Use `prepare_kind = "workspace_local"` with explicit ignored, untracked
+`prepare_outputs`, or `prepare_kind = "owned_service"` when initializing an
+applicable managed test service. DevLab checks, prepares once when unsatisfied,
+then rechecks. Do not use preparation to install host tools or images, obtain
+credentials, satisfy an attestation, or generate tracked product artifacts.

@@ -164,6 +164,11 @@ def _read_profile(path: Path, expected_id: str) -> Profile:
     environment_data = _table(data, "environment")
     timeouts_data = _table(data, "timeouts")
     prerequisites = _prerequisites(data.get("prerequisites", []), profile_id, path)
+    test_services = _test_service_references(data.get("test_services", []), path)
+    if any(item.prepare_kind == "owned_service" for item in prerequisites) and not test_services:
+        raise ValueError(
+            f"profile {profile_id!r} has owned_service preparation without a test service: {path}"
+        )
     return Profile(
         id=profile_id,
         title=title,
@@ -183,7 +188,7 @@ def _read_profile(path: Path, expected_id: str) -> Profile:
             ),
         ),
         prerequisites=prerequisites,
-        test_services=_test_service_references(data.get("test_services", []), path),
+        test_services=test_services,
         path=path,
     )
 
@@ -231,8 +236,48 @@ def _prerequisites(value: object, profile_id: str, path: Path) -> tuple[Prerequi
                 f"check, environment, or attestation: {path}"
             )
         timeout = raw.get("timeout", 30)
-        if not isinstance(timeout, int) or timeout <= 0:
+        if type(timeout) is not int or timeout <= 0:
             raise ValueError(f"prerequisite {prerequisite_id!r} timeout must be positive")
+        prepare_value = raw.get("prepare", "")
+        if not isinstance(prepare_value, str):
+            raise ValueError(f"prerequisite {prerequisite_id!r} prepare must be a string")
+        prepare = prepare_value.strip()
+        prepare_timeout = raw.get("prepare_timeout", 120)
+        if type(prepare_timeout) is not int or prepare_timeout <= 0:
+            raise ValueError(f"prerequisite {prerequisite_id!r} prepare_timeout must be positive")
+        if not prepare and "prepare_timeout" in raw:
+            raise ValueError(
+                f"prerequisite {prerequisite_id!r} prepare_timeout requires prepare: {path}"
+            )
+        if prepare and not check:
+            raise ValueError(
+                f"prerequisite {prerequisite_id!r} can prepare only a command check: {path}"
+            )
+        prepare_kind = str(raw.get("prepare_kind") or "")
+        if prepare_kind not in ({"workspace_local", "owned_service"} if prepare else {""}):
+            raise ValueError(f"prerequisite {prerequisite_id!r} has invalid prepare_kind: {path}")
+        raw_outputs = raw.get("prepare_outputs", [])
+        if not isinstance(raw_outputs, list) or any(
+            not isinstance(item, str)
+            or not item
+            or Path(item).is_absolute()
+            or ".." in Path(item).parts
+            for item in raw_outputs
+        ):
+            raise ValueError(
+                f"prerequisite {prerequisite_id!r} has invalid prepare_outputs: {path}"
+            )
+        prepare_outputs = tuple(raw_outputs)
+        if prepare_kind == "workspace_local" and not prepare_outputs:
+            raise ValueError(
+                f"prerequisite {prerequisite_id!r} workspace_local preparation "
+                f"requires prepare_outputs: {path}"
+            )
+        if prepare_kind != "workspace_local" and prepare_outputs:
+            raise ValueError(
+                f"prerequisite {prerequisite_id!r} prepare_outputs require "
+                f"prepare_kind = 'workspace_local': {path}"
+            )
         if environment and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", environment):
             raise ValueError(f"prerequisite {prerequisite_id!r} has invalid environment variable")
         guide = str(raw.get("guide") or "")
@@ -260,6 +305,10 @@ def _prerequisites(value: object, profile_id: str, path: Path) -> tuple[Prerequi
                 guide=guide,
                 sensitive=bool(raw.get("sensitive", False)),
                 timeout=timeout,
+                prepare=prepare,
+                prepare_timeout=prepare_timeout,
+                prepare_kind=prepare_kind,
+                prepare_outputs=prepare_outputs,
             )
         )
     return tuple(results)

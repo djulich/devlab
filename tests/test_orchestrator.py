@@ -4474,6 +4474,108 @@ def test_profile_prerequisite_blocks_before_agent_and_rechecks_on_retry(
     assert not blocker.exists()
 
 
+def test_profile_prerequisite_is_prepared_before_agent(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First")
+    (tmp_path / ".gitignore").write_text("/.runtime/\n")
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "test-config"\n'
+        + 'required_for = ["session"]\n'
+        + 'check = "test -f .runtime/ready"\n'
+        + 'prepare = "mkdir -p .runtime && touch .runtime/ready"\n'
+        + 'prepare_kind = "workspace_local"\n'
+        + 'prepare_outputs = [".runtime/ready"]\n'
+    )
+
+    def on_invoke(call: AgentCall) -> None:
+        assert (call.root / ".runtime/ready").exists()
+
+    provider = MockProvider(on_invoke=on_invoke)
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+    )
+
+    assert result.sessions_run == 1
+    assert len(provider.calls) == 1
+    events = load_workflow_events(tmp_path)
+    preparation = [event for event in events if event.type == "prerequisite_prepared"]
+    assert len(preparation) == 1
+    assert preparation[0].data["outcome"] == "succeeded"
+    assert not (tmp_path / ".devlab/prerequisite-blocker.json").exists()
+
+
+def test_prerequisite_preparation_rejects_unignored_output_before_execution(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First")
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "test-config"\n'
+        + 'required_for = ["session"]\n'
+        + 'check = "false"\n'
+        + 'prepare = "touch local-config"\n'
+        + 'prepare_kind = "workspace_local"\n'
+        + 'prepare_outputs = ["local-config"]\n'
+    )
+    provider = MockProvider()
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+    )
+
+    assert result.exit_code == 1
+    assert result.errors[0].phase == "prerequisite_configuration"
+    assert "ignored and untracked" in result.errors[0].message
+    assert provider.calls == []
+    assert not (tmp_path / "local-config").exists()
+
+
+def test_prerequisite_preparation_stops_on_undeclared_visible_change(
+    tmp_path: Path,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First")
+    (tmp_path / ".gitignore").write_text("/.runtime/\n")
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "test-config"\n'
+        + 'required_for = ["session"]\n'
+        + 'check = "test -f .runtime/ready"\n'
+        + 'prepare = "mkdir -p .runtime && touch .runtime/ready unexpected-visible"\n'
+        + 'prepare_kind = "workspace_local"\n'
+        + 'prepare_outputs = [".runtime/ready"]\n'
+    )
+    provider = MockProvider()
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+    )
+
+    assert result.exit_code == 1
+    assert "changed Git-visible workspace state" in result.errors[0].message
+    assert provider.calls == []
+    assert (tmp_path / "unexpected-visible").exists()
+    events = load_workflow_events(tmp_path)
+    assert any(event.type == "prerequisite_prepared" for event in events)
+
+
 def test_validation_prerequisite_is_rechecked_after_developer_session(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

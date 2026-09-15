@@ -13,6 +13,7 @@ Plans capture design decisions and implementation strategies for DevLab features
 
 ## Implemented
 
+- [resolvable-prerequisites.md](resolvable-prerequisites.md) — authorized check/prepare/recheck for ignored local runtime artifacts and initialization inside owned test services
 - [managed-test-services.md](managed-test-services.md) — authorized target-owned provisioning, workspace-scoped reuse, and explicit cleanup of local test services
 
 - [language-neutral-target-workspaces.md](language-neutral-target-workspaces.md) — added neutral initialization, explicit Python/Rust/Go/C/C++ starters, compiled-language evaluations, and a mixed Rust/Go baseline

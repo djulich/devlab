@@ -51,6 +51,14 @@ to establish, configure, and verify one external workflow prerequisite, includin
 common failures and relevant security or cleanup boundaries.
 _Avoid_: prerequisite inventory, whole project documentation, executable setup
 
+**Resolvable prerequisite**:
+A command-check prerequisite whose authorized, repeatable preparation can create
+declared ignored workspace-local runtime artifacts or initialize an applicable
+managed test service. DevLab checks, prepares once when unsatisfied, then checks
+again. Missing host executables, credentials, attestations, and tracked product
+artifacts are not resolvable prerequisites.
+_Avoid_: repair hook, dependency installer, arbitrary setup command
+
 **Role session**:
 One bounded agent invocation for exactly one workflow role.
 _Avoid_: conversation, chat

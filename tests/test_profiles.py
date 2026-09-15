@@ -103,6 +103,55 @@ def test_loads_profile_tooling_and_environment(tmp_path: Path) -> None:
     assert prerequisite.guide == ".devlab/config/prerequisites/database.md#setup"
 
 
+def test_loads_workspace_local_prerequisite_preparation(tmp_path: Path) -> None:
+    profiles = tmp_path / ".devlab/config/profiles"
+    profiles.mkdir(parents=True)
+    (profiles / "api.toml").write_text(
+        'id = "api"\n'
+        "[[prerequisites]]\n"
+        'id = "test-config"\n'
+        'required_for = ["session"]\n'
+        'check = "test -f .local/test.toml"\n'
+        'prepare = "make test-config"\n'
+        'prepare_kind = "workspace_local"\n'
+        'prepare_outputs = [".local/test.toml"]\n'
+        "prepare_timeout = 45\n"
+    )
+
+    prerequisite = load_profile(tmp_path, "api").prerequisites[0]
+
+    assert prerequisite.prepare == "make test-config"
+    assert prerequisite.prepare_kind == "workspace_local"
+    assert prerequisite.prepare_outputs == (".local/test.toml",)
+    assert prerequisite.prepare_timeout == 45
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'prepare = "make prepare"\n',
+        'prepare = "make prepare"\nprepare_kind = "workspace_local"\n',
+        'prepare = "make prepare"\nprepare_kind = "owned_service"\n',
+        'prepare_outputs = ["../outside"]\n',
+        "prepare_timeout = 12\n",
+        "prepare_timeout = true\n",
+    ],
+)
+def test_rejects_unsafe_prerequisite_preparation(tmp_path: Path, declaration: str) -> None:
+    profiles = tmp_path / ".devlab/config/profiles"
+    profiles.mkdir(parents=True)
+    (profiles / "api.toml").write_text(
+        'id = "api"\n'
+        "[[prerequisites]]\n"
+        'id = "test-config"\n'
+        'required_for = ["session"]\n'
+        'check = "false"\n' + declaration
+    )
+
+    with pytest.raises(ValueError):
+        load_profile(tmp_path, "api")
+
+
 def test_missing_sections_default_to_empty_noop(tmp_path: Path) -> None:
     profiles = tmp_path / ".devlab/config/profiles"
     profiles.mkdir(parents=True)

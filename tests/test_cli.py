@@ -654,6 +654,43 @@ def test_cli_prerequisite_checks_and_persists_operator_approval(
     assert "Status: satisfied" in capsys.readouterr().out
 
 
+def test_cli_prerequisite_check_never_runs_preparation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    profile_path = tmp_path / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "runtime"\n'
+        + 'required_for = ["session"]\n'
+        + 'check = "false"\n'
+        + 'prepare = "touch .runtime-ready"\n'
+        + 'prepare_kind = "workspace_local"\n'
+        + 'prepare_outputs = [".runtime-ready"]\n'
+    )
+
+    _run_cli(monkeypatch, "prerequisite", "--root", str(tmp_path), "list")
+    assert "automatically resolvable" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as error:
+        _run_cli(
+            monkeypatch,
+            "prerequisite",
+            "--root",
+            str(tmp_path),
+            "check",
+            "default",
+            "runtime",
+        )
+
+    assert error.value.code == 1
+    assert "Status: unsatisfied" in capsys.readouterr().out
+    assert not (tmp_path / ".runtime-ready").exists()
+
+
 def test_cli_unattended_requires_trust_or_explicit_authorization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import shlex
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,7 @@ from devlab.prerequisites import (
     format_prerequisite_result,
     prerequisite_is_attested,
     read_prerequisite_guide,
+    resolve_prerequisites,
     revoke_prerequisite_attestation,
 )
 
@@ -51,6 +54,92 @@ def test_automatic_prerequisites_check_environment_and_command(tmp_path: Path) -
     assert present.status == PrerequisiteStatus.SATISFIED
     assert "secret" not in present.detail
     assert checked.status == PrerequisiteStatus.SATISFIED
+
+
+def test_resolvable_prerequisite_prepares_once_and_rechecks(tmp_path: Path) -> None:
+    state = tmp_path / "ready"
+    code = f"from pathlib import Path; Path({str(state)!r}).write_text('ready')"
+    prerequisite = Prerequisite(
+        "api",
+        "test-config",
+        (PrerequisiteOperation.SESSION,),
+        "Local test configuration",
+        check=f"test -f {shlex.quote(str(state))}",
+        prepare=f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}",
+        prepare_kind="workspace_local",
+        prepare_outputs=("ready",),
+    )
+
+    first = resolve_prerequisites(tmp_path, (prerequisite,), PrerequisiteOperation.SESSION)
+    second = resolve_prerequisites(tmp_path, (prerequisite,), PrerequisiteOperation.SESSION)
+
+    assert first.results[0].status == PrerequisiteStatus.SATISFIED
+    assert first.preparations[0].outcome == "succeeded"
+    assert second.results[0].status == PrerequisiteStatus.SATISFIED
+    assert second.preparations == ()
+
+
+def test_missing_host_executable_is_not_prepared(tmp_path: Path) -> None:
+    marker = tmp_path / "must-not-exist"
+    prerequisite = Prerequisite(
+        "api",
+        "tool",
+        (PrerequisiteOperation.SESSION,),
+        "Host tool",
+        check="devlab-command-that-does-not-exist",
+        prepare=f"touch {shlex.quote(str(marker))}",
+        prepare_kind="workspace_local",
+        prepare_outputs=("must-not-exist",),
+    )
+
+    resolution = resolve_prerequisites(tmp_path, (prerequisite,), PrerequisiteOperation.SESSION)
+
+    assert resolution.results[0].status == PrerequisiteStatus.UNVERIFIED
+    assert resolution.preparations == ()
+    assert not marker.exists()
+
+
+def test_failed_and_sensitive_preparation_is_bounded_and_redacted(tmp_path: Path) -> None:
+    prerequisite = Prerequisite(
+        "api",
+        "fixture",
+        (PrerequisiteOperation.VALIDATION,),
+        "Test fixture",
+        check="false",
+        prepare="printf secret-canary; exit 4",
+        prepare_kind="workspace_local",
+        prepare_outputs=("fixture",),
+        sensitive=True,
+    )
+
+    resolution = resolve_prerequisites(tmp_path, (prerequisite,), PrerequisiteOperation.VALIDATION)
+
+    assert resolution.results[0].status == PrerequisiteStatus.ERROR
+    assert resolution.preparations[0].return_code == 4
+    log = tmp_path / resolution.preparations[0].log_path
+    assert "secret-canary" not in log.read_text()
+    assert "output redacted" in log.read_text()
+
+
+def test_successful_preparation_that_does_not_satisfy_check_still_blocks(
+    tmp_path: Path,
+) -> None:
+    prerequisite = Prerequisite(
+        "api",
+        "fixture",
+        (PrerequisiteOperation.VALIDATION,),
+        "Test fixture",
+        check="false",
+        prepare="true",
+        prepare_kind="workspace_local",
+        prepare_outputs=("fixture",),
+    )
+
+    resolution = resolve_prerequisites(tmp_path, (prerequisite,), PrerequisiteOperation.VALIDATION)
+
+    assert resolution.preparations[0].outcome == "succeeded"
+    assert resolution.results[0].status == PrerequisiteStatus.UNSATISFIED
+    assert "still unsatisfied after preparation" in resolution.results[0].detail
 
 
 def test_operator_attestation_is_durable_until_revoked_or_definition_changes(

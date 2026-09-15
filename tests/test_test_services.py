@@ -34,6 +34,7 @@ from devlab.orchestrator import _TestServicePreparation, run_loop
 from devlab.profiles import load_profiles, load_test_services
 from devlab.spec_reconciliation import latest_spec_commit
 from devlab.version_control import commit_all
+from devlab.workflow_events import load_workflow_events
 from devlab.workflow_state import update_workflow_state
 from devlab.workspace import Workspace
 from tests.helpers import complete_acceptance
@@ -349,6 +350,53 @@ def test_provider_and_validation_receive_service_on_continue(
     assert "secret-canary" not in subprocess.check_output(
         ["git", "show", "HEAD"], cwd=target, text=True
     )
+
+
+def test_owned_service_prerequisite_initializes_before_agent(target: Path) -> None:
+    (target / ".devlab/plans/design-plan.md").write_text("# Design\n")
+    (target / ".devlab/plans/project-plan.md").write_text("# Plan\n")
+    _write_task(target, "T0001")
+    profile = target / ".devlab/config/profiles/default.toml"
+    profile.write_text(
+        profile.read_text()
+        + "\n[[prerequisites]]\n"
+        + 'id = "schema"\n'
+        + 'required_for = ["session"]\n'
+        + 'check = "test -f .devlab/local/schema-ready"\n'
+        + 'prepare = "test -n $TEST_DATABASE_URL && touch .devlab/local/schema-ready"\n'
+        + 'prepare_kind = "owned_service"\n'
+    )
+    update_workflow_state(
+        target,
+        planning_complete=True,
+        last_planned_spec_commit=latest_spec_commit(target),
+    )
+    commit_all(target, "Add owned service initialization")
+    snapshot = build_executable_config_snapshot(target)
+    snapshot = dataclasses.replace(
+        snapshot,
+        authorization=authorize_executable_config(snapshot, accept_current=True),
+    )
+
+    def invoke(call: AgentInvocation) -> None:
+        assert (target / ".devlab/local/schema-ready").exists()
+        complete_acceptance(target, "T0001")
+        (target / "product.txt").write_text("implementation")
+
+    provider = MockProvider(on_invoke=invoke)
+    result = run_loop(
+        target,
+        max_sessions=1,
+        agent_providers={"default": provider},
+        executable_config=snapshot,
+    )
+
+    assert result.exit_code == 0, result.errors
+    assert len(provider.calls) == 1
+    events = load_workflow_events(target)
+    attempts = [event for event in events if event.type == "prerequisite_prepared"]
+    assert len(attempts) == 1
+    assert attempts[0].data["outcome"] == "succeeded"
 
 
 def test_timeout_preserves_recoverable_record(target: Path) -> None:

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import time
 import tomllib
 from collections.abc import Callable
@@ -85,9 +86,10 @@ from devlab.milestones import (
 )
 from devlab.prerequisites import (
     FilePrerequisiteTracker,
+    Prerequisite,
     PrerequisiteOperation,
     PrerequisiteResult,
-    evaluate_prerequisites,
+    resolve_prerequisites,
 )
 from devlab.profiles import (
     EffectiveMilestoneValidation,
@@ -127,6 +129,7 @@ from devlab.task_tracker import DEVELOPABLE_STATUSES, Task, TaskStatus
 from devlab.version_control import (
     assert_clean_worktree,
     commit_all,
+    commit_prerequisite_preparation,
     ensure_git_repository,
 )
 from devlab.version_control import (
@@ -1097,28 +1100,109 @@ def _profiles_for_route(
     return tuple(resolved)
 
 
-def _evaluate_profile_prerequisites(
+def _resolve_profile_prerequisites(
     root: Path,
     profiles: tuple[Profile, ...],
     operation: PrerequisiteOperation,
     environ: dict[str, str] | None = None,
 ) -> tuple[PrerequisiteResult, ...]:
     results: list[PrerequisiteResult] = []
+    preparations_recorded = False
     seen: set[tuple[str, str]] = set()
     for profile in profiles:
-        prerequisites = (
-            tuple(dataclasses.replace(item, sensitive=True) for item in profile.prerequisites)
-            if environ
-            else profile.prerequisites
-        )
-        for result in evaluate_prerequisites(
-            root, prerequisites, operation, environ={**os.environ, **(environ or {})}
-        ):
-            identity = (result.prerequisite.profile_id, result.prerequisite.id)
-            if identity not in seen:
-                seen.add(identity)
-                results.append(result)
+        prerequisites = profile.prerequisites
+        applicable = tuple(item for item in prerequisites if operation in item.required_for)
+        _validate_preparation_contracts(root, profile, applicable, operation)
+        for prerequisite in applicable:
+            before = _git_visible_preparation_state(root)
+            resolution = resolve_prerequisites(
+                root,
+                (prerequisite,),
+                operation,
+                environ={**os.environ, **(environ or {})},
+                redact_output=bool(environ),
+            )
+            after = _git_visible_preparation_state(root)
+            for preparation in resolution.preparations:
+                append_workflow_event(
+                    root,
+                    "prerequisite_prepared",
+                    profile=profile.id,
+                    prerequisite=preparation.prerequisite.id,
+                    operation=operation.value,
+                    outcome=preparation.outcome,
+                    return_code=preparation.return_code,
+                    duration_seconds=preparation.duration_seconds,
+                    log_path=preparation.log_path,
+                )
+                preparations_recorded = True
+            if resolution.preparations and after != before:
+                commit_prerequisite_preparation(root)
+                changed = ", ".join(sorted(after.symmetric_difference(before)))
+                raise ValueError(
+                    "prerequisite preparation changed Git-visible workspace state; "
+                    f"preparation outputs must be ignored runtime artifacts: {changed}"
+                )
+            for result in resolution.results:
+                identity = (result.prerequisite.profile_id, result.prerequisite.id)
+                if identity not in seen:
+                    seen.add(identity)
+                    results.append(result)
+    if preparations_recorded:
+        commit_prerequisite_preparation(root)
     return tuple(results)
+
+
+def _validate_preparation_contracts(
+    root: Path,
+    profile: Profile,
+    prerequisites: tuple[Prerequisite, ...],
+    operation: PrerequisiteOperation,
+) -> None:
+    for prerequisite in prerequisites:
+        if not prerequisite.prepare:
+            continue
+        if prerequisite.prepare_kind == "workspace_local":
+            for output in prerequisite.prepare_outputs:
+                tracked = subprocess.run(
+                    ["git", "ls-files", "--error-unmatch", "--", output],
+                    cwd=root,
+                    capture_output=True,
+                    check=False,
+                )
+                ignored = subprocess.run(
+                    ["git", "check-ignore", "-q", "--", output],
+                    cwd=root,
+                    check=False,
+                )
+                if tracked.returncode == 0 or ignored.returncode != 0:
+                    raise ValueError(
+                        f"prerequisite {prerequisite.reference} preparation output "
+                        f"must be ignored and untracked: {output}"
+                    )
+        elif not any(
+            operation.value in reference.required_for for reference in profile.test_services
+        ):
+            raise ValueError(
+                f"prerequisite {prerequisite.reference} owned_service preparation "
+                f"requires a managed service for {operation.value}"
+            )
+
+
+def _git_visible_preparation_state(root: Path) -> set[str]:
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return {
+        line
+        for line in result.stdout.splitlines()
+        if ".devlab/logs/environment/prerequisite-" not in line
+        and ".devlab/workflow-events.jsonl" not in line
+    }
 
 
 def _record_prerequisite_blocker(
@@ -1651,7 +1735,7 @@ def _retry_unverified_task_validation(
     profile = profile_from_snapshot(profiles, task.profile, root=workspace.root)
     route = SessionRoute("developer", task=task)
     service_environment = services.prepare((profile,), ("validation",))
-    prerequisite_results = _evaluate_profile_prerequisites(
+    prerequisite_results = _resolve_profile_prerequisites(
         workspace.root, (profile,), PrerequisiteOperation.VALIDATION, service_environment
     )
     if any(item.blocks for item in prerequisite_results):
@@ -3139,7 +3223,7 @@ def _run_loop(
                 route_profiles, tuple(service_operations), role_name
             )
 
-            prerequisite_results = _evaluate_profile_prerequisites(
+            prerequisite_results = _resolve_profile_prerequisites(
                 root, route_profiles, PrerequisiteOperation.SESSION, service_environment
             )
         except TestServiceError:
@@ -3171,7 +3255,7 @@ def _run_loop(
             )
         _clear_resolved_prerequisite_blocker(workspace, route, PrerequisiteOperation.SESSION)
         setup_results = (
-            _evaluate_profile_prerequisites(
+            _resolve_profile_prerequisites(
                 root,
                 tuple(
                     profile
@@ -3205,7 +3289,7 @@ def _run_loop(
             )
         _clear_resolved_prerequisite_blocker(workspace, route, PrerequisiteOperation.SETUP)
         validation_results = (
-            _evaluate_profile_prerequisites(
+            _resolve_profile_prerequisites(
                 root, route_profiles, PrerequisiteOperation.VALIDATION, service_environment
             )
             if role_name in {"developer", "integrator"}
@@ -3453,7 +3537,7 @@ def _run_loop(
             boundary_results = (
                 ()
                 if service_validation_error
-                else _evaluate_profile_prerequisites(
+                else _resolve_profile_prerequisites(
                     root, route_profiles, PrerequisiteOperation.VALIDATION, service_environment
                 )
             )
@@ -3559,7 +3643,7 @@ def _run_loop(
             boundary_results = (
                 ()
                 if service_validation_error
-                else _evaluate_profile_prerequisites(
+                else _resolve_profile_prerequisites(
                     root, (profile,), PrerequisiteOperation.VALIDATION, service_environment
                 )
             )
