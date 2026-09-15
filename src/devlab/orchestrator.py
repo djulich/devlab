@@ -2987,6 +2987,15 @@ def _run_loop(
     forced_planning_roles = (
         ("architect", "planner") if revise_plan or fresh_generation_plan or adopt_existing else ()
     )
+    # Supporting sessions consume the invocation budget, but only completed
+    # planning roles advance this sequence. Resume from the durable route.
+    completed_planning_roles = (
+        forced_planning_roles.index(active_resume.role)
+        if active_resume is not None
+        and active_resume.command == requested_command == "plan"
+        and active_resume.role in forced_planning_roles
+        else 0
+    )
     planning_update = PlanningStateUpdate(
         last_planned_spec_commit=(
             spec_status.latest_spec_commit
@@ -3073,8 +3082,8 @@ def _run_loop(
         else:
             workspace.sync()
             role_name = (
-                forced_planning_roles[sessions_run]
-                if sessions_run < len(forced_planning_roles)
+                forced_planning_roles[completed_planning_roles]
+                if completed_planning_roles < len(forced_planning_roles)
                 else workspace.snapshot.assess_state()
             )
         selected_task = (
@@ -3167,7 +3176,7 @@ def _run_loop(
         if (
             planning_only
             and (revise_plan or fresh_generation_plan or adopt_existing)
-            and sessions_run >= len(forced_planning_roles)
+            and completed_planning_roles >= len(forced_planning_roles)
         ):
             logger.info("Planning revision complete; stopping before implementation roles.")
             return _stop_result(sessions_run, RunStopReason.COMMAND_COMPLETE)
@@ -3996,9 +4005,15 @@ def _run_loop(
             continue
 
         if (
+            completed_planning_roles < len(forced_planning_roles)
+            and role_name == forced_planning_roles[completed_planning_roles]
+            and accepted_result.candidate.outcome == "completed"
+        ):
+            completed_planning_roles += 1
+        if (
             planning_only
             and (revise_plan or fresh_generation_plan or adopt_existing)
-            and sessions_run >= len(forced_planning_roles)
+            and completed_planning_roles >= len(forced_planning_roles)
         ):
             logger.info("Planning revision complete; stopping before implementation roles.")
             return _stop_result(sessions_run, RunStopReason.COMMAND_COMPLETE)
@@ -4012,6 +4027,8 @@ def _run_loop(
             RunStopReason.CLARIFICATION_BLOCKED,
             (clarification_error,),
         )
+    if completed_planning_roles < len(forced_planning_roles):
+        return _stop_result(sessions_run, RunStopReason.SESSION_LIMIT)
     next_role = workspace.snapshot.assess_state()
     if next_role is None:
         reason = (

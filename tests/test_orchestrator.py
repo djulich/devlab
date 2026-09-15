@@ -61,7 +61,7 @@ from devlab.workspace import (
     PROJECT_PLAN,
     Workspace,
 )
-from tests.helpers import complete_acceptance
+from tests.helpers import complete_acceptance, handoff
 
 
 def run_loop(root: Path, **kwargs: Any) -> Any:
@@ -510,6 +510,221 @@ def _write_researcher_result(call: AgentCall, research_id: str) -> None:
             }
         )
     )
+
+
+def _planning_interruption_provider(role: str, request_kind: str) -> MockProvider:
+    requested = False
+
+    def handoff_for(call: AgentCall) -> str:
+        nonlocal requested
+        if call.role_name != role or requested:
+            return handoff(call.role_name)
+        requested = True
+        if request_kind == "clarification":
+            return _clarification_handoff(role).replace(
+                'scope = "task:T0001"', 'scope = "planning"'
+            ).replace('blocks = "implementation"', 'blocks = "planning"') + (
+                "## Planning State\nplanning_complete = false\n" if role == "planner" else ""
+            )
+        return handoff(role) + (
+            "## Research Request\n"
+            "research_required = true\n"
+            'title = "Lock behavior"\n'
+            'scope = "planning"\n'
+            'question = "How do locks behave?"\n'
+            'context = "Planning needs evidence."\n'
+            'desired_outcome = "Choose an approach."\n'
+            'acceptance_criteria = ["Use primary documentation."]\n'
+        )
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "researcher":
+            _write_researcher_result(call, "RS0001")
+        elif call.role_name == "clarification-resolver":
+            (call.root / ARTIFACTS_DIR / call.role_name / "answer.json").write_text(
+                '{"clarification_id":"CL0001","answer_shape":"choice","choice":"A"}'
+            )
+
+    return MockProvider(handoff_text=handoff_for, on_invoke=on_invoke)
+
+
+@pytest.mark.parametrize("mode", ["revise", "replace", "adopt", "reconcile"])
+@pytest.mark.parametrize("role", ["architect", "planner"])
+@pytest.mark.parametrize("request_kind", ["research", "clarification"])
+def test_forced_planning_completes_interrupted_roles(
+    tmp_path: Path, mode: str, role: str, request_kind: str
+) -> None:
+    _setup_tree(tmp_path)
+    if mode != "adopt":
+        (tmp_path / DESIGN_PLAN).write_text("# Existing design\n")
+        _write_task(tmp_path, "T0001")
+    if mode == "reconcile":
+        _write_system_spec(tmp_path, "# Original spec\n")
+        _prepare_workflow_repo(tmp_path)
+        _write_system_spec(tmp_path, "# Changed spec\n")
+        _commit_all(tmp_path, "Change specification")
+    provider = _planning_interruption_provider(role, request_kind)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=6,
+        planning_only=True,
+        revise_plan=mode == "revise",
+        replace_plan=mode == "replace",
+        adopt_existing=mode == "adopt",
+        clarification_mode="agent",
+        agent_providers={"default": provider},
+    )
+
+    helper = "researcher" if request_kind == "research" else "clarification-resolver"
+    expected = (
+        ["architect", helper, "architect", "planner"]
+        if role == "architect"
+        else ["architect", "planner", helper, "planner"]
+    )
+    assert result.exit_code == 0
+    assert result.stop_reason == RunStopReason.COMMAND_COMPLETE
+    assert result.sessions_run == 4
+    assert [call.role_name for call in provider.calls] == expected
+    assert load_workflow_state(tmp_path).resume is None
+    assert (
+        len([event for event in load_workflow_events(tmp_path) if event.type == "plan_completed"])
+        == 1
+    )
+    if request_kind == "research":
+        resumed = provider.calls[2 if role == "architect" else 3]
+        assert "## Completed Research For This Route" in resumed.session_prompt
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+
+
+@pytest.mark.parametrize("max_sessions", [2, 3])
+@pytest.mark.parametrize("request_kind", ["research", "clarification"])
+def test_forced_planning_interruption_respects_session_budget(
+    tmp_path: Path, max_sessions: int, request_kind: str
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Existing design\n")
+    provider = _planning_interruption_provider("architect", request_kind)
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=max_sessions,
+        planning_only=True,
+        revise_plan=True,
+        clarification_mode="agent",
+        agent_providers={"default": provider},
+    )
+
+    assert result.sessions_run == max_sessions
+    assert len(provider.calls) == max_sessions
+    assert result.stop_reason == (
+        RunStopReason.RESEARCH_COMPLETED
+        if request_kind == "research" and max_sessions == 2
+        else RunStopReason.SESSION_LIMIT
+    )
+    assert not any(event.type == "plan_completed" for event in load_workflow_events(tmp_path))
+    assert (load_workflow_state(tmp_path).resume is not None) == (max_sessions == 2)
+
+
+@pytest.mark.parametrize("role", ["architect", "planner"])
+@pytest.mark.parametrize("request_kind", ["research", "clarification"])
+def test_forced_planning_resumes_stored_role_after_supporting_session(
+    tmp_path: Path, role: str, request_kind: str
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Existing design\n")
+    _write_task(tmp_path, "T0001")
+    provider = _planning_interruption_provider(role, request_kind)
+    run_loop(
+        tmp_path,
+        max_sessions=2 if role == "architect" else 3,
+        planning_only=True,
+        revise_plan=True,
+        clarification_mode="agent",
+        agent_providers={"default": provider},
+    )
+    assert load_workflow_state(tmp_path).resume is not None
+    resumed_provider = MockProvider(handoff_text=lambda call: handoff(call.role_name))
+
+    result = run_loop(
+        tmp_path,
+        max_sessions=4,
+        planning_only=True,
+        revise_plan=True,
+        agent_providers={"default": resumed_provider},
+    )
+
+    assert result.stop_reason == RunStopReason.COMMAND_COMPLETE
+    assert [call.role_name for call in resumed_provider.calls] == (
+        ["architect", "planner"] if role == "architect" else ["planner"]
+    )
+    assert load_workflow_state(tmp_path).resume is None
+
+
+@pytest.mark.parametrize("role", ["architect", "planner"])
+def test_forced_planning_pending_research_uses_budget_without_advancing_role(
+    tmp_path: Path, role: str
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Existing design\n")
+    _write_task(tmp_path, "T0001")
+    provider = _planning_interruption_provider(role, "research")
+    first = run_loop(
+        tmp_path,
+        max_sessions=1 if role == "architect" else 2,
+        planning_only=True,
+        revise_plan=True,
+        agent_providers={"default": provider},
+    )
+    assert first.stop_reason == RunStopReason.RESEARCH_PENDING
+    previous_calls = len(provider.calls)
+    expected = (
+        ["researcher", "architect", "planner"]
+        if role == "architect"
+        else ["researcher", "planner"]
+    )
+
+    resumed = run_loop(
+        tmp_path,
+        max_sessions=len(expected),
+        planning_only=True,
+        revise_plan=True,
+        agent_providers={"default": provider},
+    )
+
+    assert resumed.stop_reason == RunStopReason.COMMAND_COMPLETE
+    assert resumed.sessions_run == len(expected)
+    assert [call.role_name for call in provider.calls[previous_calls:]] == expected
+    assert load_workflow_state(tmp_path).resume is None
+
+
+def test_forced_planning_does_not_advance_failed_handoff(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Existing design\n")
+
+    def on_invoke(call: AgentCall) -> None:
+        envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
+        envelope_path.with_name("handoff-candidate.toml").write_text(
+            'schema_version = 1\noutcome = "failed"\n'
+            'commit_message = "Unable to finish design review"\n'
+            'done = ["Inspected design"]\nchanged_artifacts = []\n'
+            'open_issues = ["Design review is incomplete"]\n'
+            'addressed_findings = []\nnext_session_hint = "Retry."\n'
+        )
+        submit_session_handoff(call.root, envelope_path=envelope_path)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+    result = run_loop(
+        tmp_path,
+        max_sessions=2,
+        planning_only=True,
+        revise_plan=True,
+        agent_providers={"default": provider},
+    )
+
+    assert result.stop_reason == RunStopReason.SESSION_LIMIT
+    assert [call.role_name for call in provider.calls] == ["architect", "architect"]
+    assert not any(event.type == "plan_completed" for event in load_workflow_events(tmp_path))
 
 
 def _create_completed_research(

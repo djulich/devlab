@@ -214,6 +214,12 @@ During spec reconciliation or `devlab plan --replace-plan`, DevLab archives the
 active generation bundle under `.devlab/generations/NNNN/` and starts a fresh
 active planning graph. Archived generations are evidence, not active work.
 
+Research and clarification-resolver sessions count toward `--max-sessions`,
+but do not replace the required architect and planner sessions. The interrupted
+planning role must complete its handoff before the sequence advances. Reaching
+the session limit with a required planning role still outstanding does not
+report planning completion.
+
 Use:
 
 - `devlab plan`: reconcile committed specs and create missing planning state.
