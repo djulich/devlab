@@ -19,6 +19,8 @@ from typing import Any, cast
 from devlab._files import atomic_write_text
 
 ENVIRONMENT_LOG_DIR = ".devlab/logs/environment"
+_ENVIRONMENT_TERMINATION_GRACE_SECONDS = 1.0
+_ENVIRONMENT_FINAL_DRAIN_SECONDS = 1.0
 
 TEST_SERVICE_RECORDS = ".devlab/test-services"
 TEST_SERVICE_PRIVATE = ".devlab/local/test-services"
@@ -449,6 +451,70 @@ class ValidationRun:
     infrastructure_error: str = ""
 
 
+def _run_environment_command(
+    root: Path, command: str, *, environ: Mapping[str, str], timeout: int
+) -> subprocess.CompletedProcess[str]:
+    """Capture a lifecycle/validation command, owning its POSIX group on interruption."""
+    process = subprocess.Popen(
+        command,
+        cwd=root,
+        env=environ,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=os.name == "posix",
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    except subprocess.TimeoutExpired as exc:
+        stdout, stderr = _stop_environment_command(process)
+        exc.output, exc.stderr = stdout.encode(), stderr.encode()
+        raise
+    except BaseException:
+        _stop_environment_command(process)
+        raise
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
+
+
+def _stop_environment_command(process: subprocess.Popen[str]) -> tuple[str, str]:
+    deadline = time.monotonic() + _ENVIRONMENT_TERMINATION_GRACE_SECONDS
+    _signal_environment_command(process, kill=False)
+    try:
+        with suppress(subprocess.TimeoutExpired):
+            process.communicate(timeout=_ENVIRONMENT_TERMINATION_GRACE_SECONDS)
+        # EOF and a reaped shell do not mean every child exited: children can
+        # close their output streams and ignore SIGTERM.
+        time.sleep(max(0.0, deadline - time.monotonic()))
+    finally:
+        _signal_environment_command(process, kill=True)
+    try:
+        stdout, stderr = process.communicate(timeout=_ENVIRONMENT_FINAL_DRAIN_SECONDS)
+    except subprocess.TimeoutExpired as exc:
+        # Detached descendants may retain the pipes. Keep the cumulative output
+        # captured so far without waiting indefinitely for their EOF.
+        stdout, stderr = _decode_output(exc.output), _decode_output(exc.stderr)
+    finally:
+        with suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=_ENVIRONMENT_FINAL_DRAIN_SECONDS)
+    return stdout, stderr
+
+
+def _signal_environment_command(process: subprocess.Popen[str], *, kill: bool) -> None:
+    with suppress(ProcessLookupError):
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL if kill else signal.SIGTERM)
+        elif kill:
+            process.kill()
+        else:
+            process.terminate()
+
+
 def run_validation_commands(
     root: Path,
     *,
@@ -482,10 +548,10 @@ def run_validation_commands(
         log_path.parent.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
         try:
-            result = subprocess.run(
+            result = _run_environment_command(
+                root,
                 command,
-                cwd=root,
-                env={
+                environ={
                     **os.environ,
                     **(
                         command_environments[index - 1]
@@ -493,11 +559,7 @@ def run_validation_commands(
                         else environ or {}
                     ),
                 },
-                shell=True,
-                capture_output=True,
-                text=True,
                 timeout=timeout,
-                check=False,
             )
         except subprocess.TimeoutExpired as exc:
             log_path.write_text(
@@ -635,15 +697,11 @@ class EnvironmentManager:
                 f"cwd: {self.root}\n\n"
             )
             try:
-                result = subprocess.run(
+                result = _run_environment_command(
+                    self.root,
                     command,
-                    cwd=self.root,
-                    env={**os.environ, **self.environ},
-                    shell=True,
-                    capture_output=True,
-                    text=True,
+                    environ={**os.environ, **self.environ},
                     timeout=timeout,
-                    check=False,
                 )
             except subprocess.TimeoutExpired as exc:
                 stdout = _decode_output(exc.stdout)

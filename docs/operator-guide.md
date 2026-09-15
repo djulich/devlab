@@ -253,6 +253,13 @@ A profile contains:
   commands;
 - `[timeouts]`: command timeouts.
 
+On POSIX systems, a timed-out validation or environment lifecycle command gets
+a one-second termination grace period before DevLab kills its owned process
+group. Output capture and shell reaping are bounded; timeout logs retain the
+output captured during cleanup. Detached descendants and external effects such
+as containers are outside this cleanup boundary. On other platforms, cleanup
+terminates only the directly launched process.
+
 Profile commands are trusted executable configuration. DevLab does not sandbox
 them or install missing tools. Review profile changes before running workflow
 commands, especially in cloned or agent-modified workspaces.
