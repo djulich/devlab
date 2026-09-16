@@ -112,6 +112,9 @@ DevLab is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).
 Pre-1.0 compatibility and release expectations are documented in
 [`docs/release-policy.md`](docs/release-policy.md).
 
+New to DevLab? Follow [Your First DevLab Workflow](docs/tutorial.md) for a
+step-by-step installation, configuration, and small example project.
+
 ## Quickstart inside a target project
 
 ```bash
