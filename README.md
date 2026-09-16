@@ -35,9 +35,8 @@ Current confidence:
 Current limits:
 
 - broad live-agent baseline results are not collected yet;
-- orchestrator-enforced execution and recording of task validation commands is
-  deferred; worker roles currently run target-owned validation from task/profile
-  instructions;
+- configured task and milestone validation is executed and recorded by the
+  orchestrator, while missing host tools remain explicit unverified prerequisites;
 - sandboxing and approval policy are not implemented.
 
 Use DevLab on disposable or version-controlled workspaces until you have reviewed the generated changes and trust your local configuration.
@@ -388,7 +387,7 @@ Playwright container images used by the evaluation harness. These are
 development/live-evaluation prerequisites, not DevLab runtime package
 dependencies.
 
-Keep environment-specific live-agent configs under `.local/live-eval/` and out of version control. See [`docs/evaluations.md`](docs/evaluations.md).
+Keep environment-specific live-agent configs under `.local/live-eval/` and out of version control. See [`docs/evaluations/`](docs/evaluations/README.md).
 
 ## Development validation
 
@@ -423,11 +422,12 @@ shell-command, or exact-output fixture.
 
 ## More documentation
 
+- [`docs/README.md`](docs/README.md) — documentation map and ownership.
 - [`docs/design.md`](docs/design.md) — architecture and workflow overview.
 - [`docs/operator-guide.md`](docs/operator-guide.md) — operating DevLab in a target workspace.
 - [`docs/how-to/`](docs/how-to/README.md) — step-by-step procedures for common DevLab use cases.
 - [`docs/agent-configuration.md`](docs/agent-configuration.md) — target-owned agent command configuration.
-- [`docs/evaluations.md`](docs/evaluations.md) — scripted and live workflow evaluations.
+- [`docs/evaluations/`](docs/evaluations/README.md) — scripted and live workflow evaluations.
 - [`demos/`](demos/README.md) — repository-only demonstrations and external graders.
 - [`docs/release-policy.md`](docs/release-policy.md) — versioning, compatibility, and release expectations.
-- [`docs/todo.md`](docs/todo.md) — current roadmap and known gaps.
+- [`docs/roadmap.md`](docs/roadmap.md) — strategic outcomes and 1.0 release gates.

@@ -105,7 +105,7 @@ DevLab code should avoid assuming that the target workspace is DevLab repository
 The guiding principle is: DevLab is a reusable tool that operates on a target
 workspace. DevLab may be tested against temporary target repositories, but this
 repository's durable maintenance state should remain in normal project files
-such as `docs/`, `docs/adr/`, `docs/todo.md`, `CONTEXT.md`, and `AGENTS.md`.
+such as `docs/`, `docs/adr/`, `docs/roadmap.md`, `CONTEXT.md`, and `AGENTS.md`.
 
 ## Core design principles
 

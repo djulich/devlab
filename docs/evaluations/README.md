@@ -17,7 +17,7 @@ architecture-review findings remain visible to the workflow and may cause
 bounded rework before completion. Evaluation checks may independently repeat or
 strengthen that verification afterward, but their results are recorded only as
 grading evidence. See
-[ADR 0011](adr/0011-keep-workflow-evaluation-grading-outside-the-workflow.md).
+[ADR 0011](../adr/0011-keep-workflow-evaluation-grading-outside-the-workflow.md).
 
 Independence includes runtime resolution, not only workflow policy. Evaluator
 executables and libraries must resolve from evaluator-owned absolute locations;
@@ -28,7 +28,7 @@ isolation. Checks that copy a target into disposable storage must preserve both
 boundaries explicitly.
 
 Specification-specific demonstration graders are repository-only packages under
-[`demos/`](../demos/). Generic DevLab workflow-evaluation infrastructure remains
+[`demos/`](../../demos/). Generic DevLab workflow-evaluation infrastructure remains
 in this test suite.
 
 Black-box check diagnostics use four statuses:
@@ -147,7 +147,7 @@ is absent; DevLab does not install or bootstrap the toolchains. Every scenario
 requires the product task to use its dedicated profile and requires milestone
 verification to contain the expected passing profile-sourced commands. The
 four-language baseline is recorded in
-`docs/plans/compiled-language-live-baseline-2026-08-20.md`.
+[`baselines/2026-08-20-compiled-languages.md`](baselines/2026-08-20-compiled-languages.md).
 
 Run all four scenarios with:
 
@@ -255,6 +255,8 @@ Useful environment variables:
 
 Live evaluations configure the DevLab logger at INFO level so normal workflow session logs are visible, including contextual start/finish lines such as `Starting session 3: developer task=T0001 ...` and `Finished session 3: developer task=T0001 status=in_review next=reviewer`. Use `pytest -s` if your pytest invocation captures output and you want to watch those lines as they happen.
 
-Live evaluation failures report the temporary target root, diagnostics JSON path, and `.devlab/logs/agents/` path. Deployment baseline notes are kept under `docs/plans/`, starting with `docs/plans/deployment-live-baseline-2026-06-06.md`.
+Live evaluation failures report the temporary target root, diagnostics JSON path,
+and `.devlab/logs/agents/` path. Selected dated evidence is retained under
+[`baselines/`](baselines/README.md).
 
 Evaluation correctness checks are hard failures. Live evaluations also structurally assert automatic version-control behavior: the target workspace must be a Git repository, finish with a clean worktree, create at least one commit per completed role session after evaluation setup, and include expected milestone tags such as `devlab/milestone/M1`. Diagnostics record baseline and final commit counts, session commit count, target HEAD commit, milestone tags, missing expected tags, and peeled tag target commits. Quality warnings are diagnostic only and currently cover flagged artifact paths, same-task developer/reviewer rework, integrator findings, high sessions per closed task, attribution failures, and unusually large non-conventional ignored artifact footprints. Artifact hygiene uses `git ls-files --cached --others --exclude-standard` for product files and `git ls-files --others --ignored --exclude-standard` for ignored files, excluding `.devlab/` from both classes. Conventional directories such as `.venv`, `node_modules`, Python tool caches, `.tox`, and `.nox` remain measured but do not trigger size warnings by themselves. Verbose diagnostics include top product, conventional ignored, other ignored, and `.devlab/` contributors. Target-owned test-suite execution is intentionally deferred because target projects may require their own environment setup.
