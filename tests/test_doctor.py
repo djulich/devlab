@@ -96,7 +96,7 @@ def test_doctor_reports_additional_agents_config_misconfigurations(tmp_path: Pat
     path.parent.mkdir(parents=True)
     path.write_text(
         "[defaults]\n"
-        "timeout_seconds = 0\n"
+        "max_session_duration_seconds = 0\n"
         "\n[providers.default]\n"
         'command = "VAR=value claude -p && echo done"\n'
         'args = ["{unknown_prompt}"]\n'
@@ -107,7 +107,7 @@ def test_doctor_reports_additional_agents_config_misconfigurations(tmp_path: Pat
 
     messages = _messages(tmp_path)
 
-    assert "defaults.timeout_seconds must be greater than zero" in messages
+    assert "defaults.max_session_duration_seconds must be greater than zero" in messages
     assert any("providers.default.command appears to use shell syntax" in m for m in messages)
     assert any(
         "providers.default.command appears to require shell evaluation" in m for m in messages

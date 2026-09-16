@@ -188,9 +188,7 @@ invocation policy for provider smoke tests that are not based on an assigned rol
 
 ## Session Limits
 
-`max_session_duration_seconds` bounds total provider runtime. The legacy
-`timeout_seconds` name remains an alias with the same absolute-duration meaning;
-specifying both names in one resolved role configuration is an error.
+`max_session_duration_seconds` bounds total provider runtime.
 `inactivity_timeout_seconds` independently bounds time with no bytes received on
 either provider stdout or stderr. It is opt-in: omission leaves silence unbounded.
 

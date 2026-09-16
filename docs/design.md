@@ -436,11 +436,10 @@ Target workspaces configure concrete invocation in `.devlab/config/agents.toml`.
 
 Provider invocations can have two independent limits: an opt-in output-
 inactivity timeout, reset by bytes on either stdout or stderr, and an optional
-maximum duration that never resets. The legacy `timeout_seconds` setting remains
-an alias for maximum duration. Providers stream both output channels to separate
-logs while DevLab monitors monotonic deadlines and performs bounded cleanup of
-the owned local process group. Timeout subtype and stop metrics are retained in
-session metadata without changing handoff or recovery policy.
+maximum duration that never resets. Providers stream both output channels to
+separate logs while DevLab monitors monotonic deadlines and performs bounded
+cleanup of the owned local process group. Timeout subtype and stop metrics are
+retained in session metadata without changing handoff or recovery policy.
 
 This keeps the orchestrator independent from a specific CLI shape. For example, Claude- and Pi-style CLIs can be represented with provider-specific `args` entries containing prompt placeholders, while Codex CLI can be represented with stdin-based `codex exec -` invocation. Configurations can map different roles to different providers or models.
 

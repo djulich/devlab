@@ -34,7 +34,6 @@ class AgentResult:
     message: str = ""
     role_name: str = ""
     command: tuple[str, ...] = ()
-    timeout_seconds: int | None = None
     inactivity_timeout_seconds: int | None = None
     max_session_duration_seconds: int | None = None
     timeout_kind: AgentTimeoutKind | None = None
@@ -90,7 +89,6 @@ class CliAgentProvider:
     args: tuple[str, ...] = ()
     stdin_template: str | None = None
     template_values: Mapping[str, str] = dataclasses.field(default_factory=dict)
-    timeout_seconds: int | None = None
     inactivity_timeout_seconds: int | None = None
     max_session_duration_seconds: int | None = None
 
@@ -102,24 +100,20 @@ class CliAgentProvider:
         args: Sequence[str] = (),
         stdin_template: str | None = None,
         template_values: Mapping[str, str] | None = None,
-        timeout_seconds: int | None = None,
         inactivity_timeout_seconds: int | None = None,
         max_session_duration_seconds: int | None = None,
     ) -> CliAgentProvider:
-        maximum = max_session_duration_seconds
-        if maximum is None:
-            maximum = timeout_seconds
         return cls(
             argv=tuple(shlex.split(command)),
             args=tuple(args),
             stdin_template=stdin_template,
             template_values=dict(template_values or {}),
-            timeout_seconds=maximum,
             inactivity_timeout_seconds=inactivity_timeout_seconds,
-            max_session_duration_seconds=maximum,
+            max_session_duration_seconds=max_session_duration_seconds,
         )
 
     def invoke(self, invocation: AgentInvocation) -> AgentResult:
+        maximum_duration = self.max_session_duration_seconds
         values = {
             **self.template_values,
             "role_name": invocation.role_name,
@@ -131,11 +125,11 @@ class CliAgentProvider:
         stdin: str | None = None
         if self.stdin_template is not None:
             stdin = self.stdin_template.format_map(values)
-        if self.max_session_duration_seconds is not None:
-            deadline = datetime.now(UTC) + timedelta(seconds=self.max_session_duration_seconds)
+        if maximum_duration is not None:
+            deadline = datetime.now(UTC) + timedelta(seconds=maximum_duration)
             limit_context = (
                 "\n\n## DevLab session limit\n\n"
-                f"Maximum provider duration: {self.max_session_duration_seconds} seconds. "
+                f"Maximum provider duration: {maximum_duration} seconds. "
                 f"Advisory wall-clock deadline: {deadline.isoformat()}. "
                 "DevLab enforces this with a monotonic timer. Complete validation and "
                 "submit the handoff before the limit; you cannot extend it."
@@ -160,7 +154,7 @@ class CliAgentProvider:
                     input=stdin,
                     text=stdin is not None,
                     check=False,
-                    timeout=self.timeout_seconds,
+                    timeout=maximum_duration,
                     inactivity_timeout_seconds=self.inactivity_timeout_seconds,
                     stdout=stdout_handle,
                     stderr=stderr_handle,
@@ -174,9 +168,8 @@ class CliAgentProvider:
                 message=f"agent command not found: {exc.filename!r}",
                 role_name=invocation.role_name,
                 command=tuple(command),
-                timeout_seconds=self.timeout_seconds,
                 inactivity_timeout_seconds=self.inactivity_timeout_seconds,
-                max_session_duration_seconds=self.max_session_duration_seconds,
+                max_session_duration_seconds=maximum_duration,
                 stdout_log=invocation.stdout_log,
                 stderr_log=invocation.stderr_log,
                 duration_seconds=duration,
@@ -192,8 +185,7 @@ class CliAgentProvider:
                 )
             else:
                 message = (
-                    "Session stopped: maximum duration of "
-                    f"{self.max_session_duration_seconds} seconds reached."
+                    f"Session stopped: maximum duration of {maximum_duration} seconds reached."
                 )
             if inactive_seconds is not None:
                 message += f" Last provider output: {inactive_seconds:.1f} seconds ago."
@@ -208,9 +200,8 @@ class CliAgentProvider:
                 message=message,
                 role_name=invocation.role_name,
                 command=tuple(command),
-                timeout_seconds=self.timeout_seconds,
                 inactivity_timeout_seconds=self.inactivity_timeout_seconds,
-                max_session_duration_seconds=self.max_session_duration_seconds,
+                max_session_duration_seconds=maximum_duration,
                 timeout_kind=timeout_kind,
                 inactive_seconds_at_stop=inactive_seconds,
                 stdout_log=invocation.stdout_log,
@@ -226,9 +217,8 @@ class CliAgentProvider:
                 message=f"agent provider error: {exc}",
                 role_name=invocation.role_name,
                 command=tuple(command),
-                timeout_seconds=self.timeout_seconds,
                 inactivity_timeout_seconds=self.inactivity_timeout_seconds,
-                max_session_duration_seconds=self.max_session_duration_seconds,
+                max_session_duration_seconds=maximum_duration,
                 stdout_log=invocation.stdout_log,
                 stderr_log=invocation.stderr_log,
                 duration_seconds=duration,
@@ -243,9 +233,8 @@ class CliAgentProvider:
             message=message,
             role_name=invocation.role_name,
             command=tuple(command),
-            timeout_seconds=self.timeout_seconds,
             inactivity_timeout_seconds=self.inactivity_timeout_seconds,
-            max_session_duration_seconds=self.max_session_duration_seconds,
+            max_session_duration_seconds=maximum_duration,
             stdout_log=invocation.stdout_log,
             stderr_log=invocation.stderr_log,
             duration_seconds=duration,

@@ -70,10 +70,6 @@ inactivity_timeout_seconds = 600
 max_session_duration_seconds = 1800
 ```
 
-- Existing `timeout_seconds` behavior remains an absolute duration. Never
-  reinterpret an existing configured limit as inactivity.
-- The legacy name is accepted as an alias for the maximum duration;
-  reject configurations specifying both names rather than selecting silently.
 - Inactivity monitoring is opt-in. Existing workspaces preserve their defaults,
   including the existing meaning of an omitted timeout.
 - The string `"none"` explicitly disables an inherited limit. Negative values,

@@ -216,15 +216,7 @@ def _check_role_values(
         value = values.get(key)
         if value is not None and not isinstance(value, str):
             problems.append(DoctorProblem(display_path, f"{name}.{key} must be a string"))
-    if "timeout_seconds" in values and "max_session_duration_seconds" in values:
-        problems.append(
-            DoctorProblem(
-                display_path,
-                f"{name} must not specify both timeout_seconds and max_session_duration_seconds",
-            )
-        )
     for key in (
-        "timeout_seconds",
         "inactivity_timeout_seconds",
         "max_session_duration_seconds",
     ):

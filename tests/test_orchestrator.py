@@ -3981,7 +3981,7 @@ class TestRunLoop:
                 return_code=124,
                 failure_kind="timeout",
                 message="agent command timed out after 1 second(s)",
-                timeout_seconds=1,
+                max_session_duration_seconds=1,
             )
         )
 
@@ -3995,7 +3995,7 @@ class TestRunLoop:
         assert result.completed is False
         assert result.errors[0].phase == "agent_invocation"
         assert "timeout" in result.errors[0].message
-        assert "timeout_seconds=1" in result.errors[0].message
+        assert "max_session_duration_seconds=1" in result.errors[0].message
 
     def test_agent_failure_still_reports_after_environment_teardown(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

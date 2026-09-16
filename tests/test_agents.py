@@ -227,7 +227,7 @@ def test_cli_agent_provider_returns_timeout_failure(
         raise subprocess.TimeoutExpired(cmd=["agent"], timeout=5)
 
     monkeypatch.setattr("devlab.agents._run_process", fake_run)
-    provider = CliAgentProvider.from_command("agent", timeout_seconds=5)
+    provider = CliAgentProvider.from_command("agent", max_session_duration_seconds=5)
 
     result = provider.invoke(_invocation(tmp_path))
 
@@ -260,6 +260,49 @@ def test_maximum_duration_adds_trusted_deadline_context(
 
     assert "Maximum provider duration: 30 seconds" in commands[0][-1]
     assert "Advisory wall-clock deadline:" in commands[0][-1]
+
+
+def test_direct_provider_uses_maximum_duration_consistently(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def fake_run(command: list[str], **kwargs: Any) -> object:
+        calls.append((command, kwargs))
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
+    provider = CliAgentProvider(
+        argv=("agent",),
+        args=("{session_prompt}",),
+        max_session_duration_seconds=30,
+    )
+
+    result = provider.invoke(_invocation(tmp_path))
+
+    command, kwargs = calls[0]
+    assert kwargs["timeout"] == 30
+    assert "Maximum provider duration: 30 seconds" in command[-1]
+    assert result.max_session_duration_seconds == 30
+
+
+def test_direct_provider_enforces_max_session_duration(tmp_path: Path) -> None:
+    provider = CliAgentProvider(
+        argv=(sys.executable,),
+        args=("-c", "import time; time.sleep(5)"),
+        max_session_duration_seconds=1,
+    )
+
+    result = provider.invoke(_invocation(tmp_path))
+
+    assert result.failure_kind == "timeout"
+    assert result.timeout_kind == "max_duration"
+    assert result.max_session_duration_seconds == 1
+    assert "maximum duration of 1 seconds reached" in result.message
 
 
 def test_cli_agent_provider_returns_missing_executable_failure(

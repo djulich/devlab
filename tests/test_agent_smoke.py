@@ -458,7 +458,7 @@ def test_smoke_test_supports_role_specific_checks(
     assert calls[0][2] == "test"
 
 
-def test_smoke_test_deduplicates_role_configs_that_only_differ_by_timeout(
+def test_smoke_test_deduplicates_role_configs_that_only_differ_by_maximum_duration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_agents_config(
@@ -468,10 +468,10 @@ def test_smoke_test_deduplicates_role_configs_that_only_differ_by_timeout(
         provider = "test"
         model = "model-a"
         effort = "medium"
-        timeout_seconds = 1200
+        max_session_duration_seconds = 1200
 
         [roles.developer]
-        timeout_seconds = 30
+        max_session_duration_seconds = 30
 
         [providers.test]
         command = "agent"
@@ -496,7 +496,7 @@ def test_smoke_test_deduplicates_role_configs_that_only_differ_by_timeout(
 
     assert result.passed
     assert [check.check_name for check in result.check_results] == ["test"]
-    assert result.check_results[0].config.timeout_seconds == 30
+    assert result.check_results[0].config.max_session_duration_seconds == 30
     assert timeouts == [30]
 
 
@@ -583,7 +583,7 @@ def test_smoke_report_includes_config_command_and_logs(
         provider = "test"
         model = "model-a"
         effort = "medium"
-        timeout_seconds = 30
+        max_session_duration_seconds = 30
 
         [providers.test]
         command = "agent"

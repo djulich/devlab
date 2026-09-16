@@ -361,9 +361,8 @@ Agent invocation is configured per target workspace in `.devlab/config/agents.to
 
 `inactivity_timeout_seconds` optionally stops a provider that produces no stdout
 or stderr bytes for the configured interval. `max_session_duration_seconds`
-independently bounds total runtime; the legacy `timeout_seconds` name retains its
-absolute-duration meaning. Inactivity monitoring has no default pending broader
-live-provider output-gap observations.
+independently bounds total runtime. Inactivity monitoring has no default pending
+broader live-provider output-gap observations.
 
 Prefer stdin prompt transport when supported to avoid command-line length limits and prompt text in process listings. See [`docs/agent-configuration.md`](docs/agent-configuration.md) for examples.
 

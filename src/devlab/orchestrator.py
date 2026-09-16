@@ -1352,10 +1352,10 @@ def _agent_error_message(ctx: SessionContext, result: AgentResult, config_log: P
         details.append("command=" + " ".join(result.command))
     if result.duration_seconds is not None:
         details.append(f"duration={result.duration_seconds:.1f}s")
-    if result.timeout_seconds is not None:
-        details.append(f"timeout_seconds={result.timeout_seconds}")
     if result.inactivity_timeout_seconds is not None:
         details.append(f"inactivity_timeout_seconds={result.inactivity_timeout_seconds}")
+    if result.max_session_duration_seconds is not None:
+        details.append(f"max_session_duration_seconds={result.max_session_duration_seconds}")
     if result.timeout_kind is not None:
         details.append(f"timeout_kind={result.timeout_kind}")
     if result.inactive_seconds_at_stop is not None:

@@ -35,7 +35,7 @@ Extend `devlab.agents.AgentResult` from only `return_code` to an invocation reco
 - `message: str`
 - `command: tuple[str, ...]`
 - `role_name: str`
-- `timeout_seconds: int | None`
+- `max_session_duration_seconds: int | None`
 - `stdout_log: Path | None`
 - `stderr_log: Path | None`
 - optionally `duration_seconds: float | None`
@@ -70,7 +70,7 @@ provider = "pi"
 model = "gpt-5-codex"
 effort = "medium"
 uses_stdin = true
-timeout_seconds = 3600
+max_session_duration_seconds = 3600
 command = ["pi", "-p", "--model", "gpt-5-codex"]
 stdout_log = ".devlab/logs/agents/20260518T120000_001_developer.stdout.log"
 stderr_log = ".devlab/logs/agents/20260518T120000_001_developer.stderr.log"

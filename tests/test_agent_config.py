@@ -33,7 +33,7 @@ def test_defaults_apply_to_all_roles(tmp_path: Path) -> None:
         provider = "pi"
         model = "gpt-5-codex"
         effort = "medium"
-        timeout_seconds = 120
+        max_session_duration_seconds = 120
 
         [providers.pi]
         command = "pi"
@@ -52,7 +52,6 @@ def test_defaults_apply_to_all_roles(tmp_path: Path) -> None:
     assert config.resolved["developer"].provider == "pi"
     assert config.resolved["developer"].model == "gpt-5-codex"
     assert config.resolved["developer"].effort == "medium"
-    assert config.resolved["developer"].timeout_seconds == 120
     assert config.resolved["developer"].max_session_duration_seconds == 120
     assert config.resolved["developer"].command == (
         "pi",
@@ -90,25 +89,6 @@ def test_new_limits_resolve_and_none_disables_inherited_inactivity(tmp_path: Pat
     assert config.resolved["developer"].inactivity_timeout_seconds == 30
     assert config.resolved["developer"].max_session_duration_seconds == 120
     assert config.resolved["reviewer"].inactivity_timeout_seconds is None
-
-
-def test_legacy_and_new_maximum_names_conflict(tmp_path: Path) -> None:
-    _write_agents_config(
-        tmp_path,
-        """
-        [defaults]
-        provider = "pi"
-        timeout_seconds = 30
-        max_session_duration_seconds = 60
-
-        [providers.pi]
-        command = "pi"
-        args = ["{system_prompt}", "{session_prompt}"]
-        """,
-    )
-
-    with pytest.raises(ValueError, match="must not specify both"):
-        load_agent_configuration(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -280,7 +260,7 @@ def test_provider_defaults_resolve_provider_without_role_policy(tmp_path: Path) 
         [providers.unused.defaults]
         model = "unused-model"
         effort = "low"
-        timeout_seconds = 90
+        max_session_duration_seconds = 90
         """,
     )
 
@@ -289,7 +269,7 @@ def test_provider_defaults_resolve_provider_without_role_policy(tmp_path: Path) 
     assert "codex" not in config.provider_configs_with_defaults
     assert config.provider_configs_with_defaults["unused"].model == "unused-model"
     assert config.provider_configs_with_defaults["unused"].effort == "low"
-    assert config.provider_configs_with_defaults["unused"].timeout_seconds == 90
+    assert config.provider_configs_with_defaults["unused"].max_session_duration_seconds == 90
     assert config.provider_configs_with_defaults["unused"].command == (
         "unused-agent",
         "--model",

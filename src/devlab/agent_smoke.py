@@ -342,7 +342,7 @@ def _role_provider_targets(configuration: AgentConfiguration) -> list[AgentSmoke
     provider_name_counts: dict[str, int] = {}
     targets: list[AgentSmokeTarget] = []
     for resolved, provider_instance, assigned_roles, configs in groups.values():
-        config, provider_for_timeout = _config_with_min_timeout(
+        config, provider_for_duration = _config_with_minimum_duration(
             configs,
             configuration,
             fallback_provider=provider_instance,
@@ -352,7 +352,7 @@ def _role_provider_targets(configuration: AgentConfiguration) -> list[AgentSmoke
             AgentSmokeTarget(
                 check_name=check_name,
                 config=config,
-                provider=provider_for_timeout,
+                provider=provider_for_duration,
                 role_names=tuple(assigned_roles),
             )
         )
@@ -370,19 +370,19 @@ def _provider_default_target(
     return AgentSmokeTarget(check_name=provider_name, config=config, provider=provider)
 
 
-def _config_with_min_timeout(
+def _config_with_minimum_duration(
     configs: list[ResolvedAgentConfig],
     configuration: AgentConfiguration,
     *,
     fallback_provider: AgentProvider,
 ) -> tuple[ResolvedAgentConfig, AgentProvider]:
-    def timeout_sort_key(config: ResolvedAgentConfig) -> tuple[int, int]:
-        if config.timeout_seconds is None:
+    def duration_sort_key(config: ResolvedAgentConfig) -> tuple[int, int]:
+        if config.max_session_duration_seconds is None:
             return (1, 0)
-        return (0, config.timeout_seconds)
+        return (0, config.max_session_duration_seconds)
 
-    selected = min(configs, key=timeout_sort_key)
-    if selected.timeout_seconds is None:
+    selected = min(configs, key=duration_sort_key)
+    if selected.max_session_duration_seconds is None:
         return selected, fallback_provider
     provider = configuration.providers[configuration.role_providers[selected.role_name]]
     return selected, provider
@@ -441,10 +441,10 @@ def _log_contains(path: Path, text: str) -> bool:
         return False
 
 
-def _format_timeout(timeout_seconds: int | None) -> str:
-    if timeout_seconds is None:
+def _format_timeout(duration_seconds: int | None) -> str:
+    if duration_seconds is None:
         return "none"
-    return f"{timeout_seconds}s"
+    return f"{duration_seconds}s"
 
 
 def _format_bool(value: bool) -> str:

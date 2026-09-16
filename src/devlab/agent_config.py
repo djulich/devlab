@@ -24,7 +24,6 @@ class ResolvedAgentConfig:
     model: str
     effort: str
     provider_version: str
-    timeout_seconds: int | None
     inactivity_timeout_seconds: int | None
     max_session_duration_seconds: int | None
     command: tuple[str, ...]
@@ -38,7 +37,6 @@ class ResolvedProviderConfig:
     model: str
     effort: str
     provider_version: str
-    timeout_seconds: int | None
     inactivity_timeout_seconds: int | None
     max_session_duration_seconds: int | None
     command: tuple[str, ...]
@@ -206,7 +204,6 @@ def resolve_agent_configuration(
             model=template_values["model"],
             effort=template_values["effort"],
             provider_version=invocation.provider_version,
-            timeout_seconds=max_session_duration_seconds,
             inactivity_timeout_seconds=inactivity_timeout_seconds,
             max_session_duration_seconds=max_session_duration_seconds,
             command=invocation.command,
@@ -256,7 +253,6 @@ def resolve_agent_configuration(
             model=template_values["model"],
             effort=template_values["effort"],
             provider_version=invocation.provider_version,
-            timeout_seconds=max_session_duration_seconds,
             inactivity_timeout_seconds=inactivity_timeout_seconds,
             max_session_duration_seconds=max_session_duration_seconds,
             command=invocation.command,
@@ -509,19 +505,12 @@ def _optional_string(value: object, name: str) -> str | None:
 
 
 def _invocation_limits(values: Mapping[str, object], name: str) -> tuple[int | None, int | None]:
-    if "timeout_seconds" in values and "max_session_duration_seconds" in values:
-        raise ValueError(
-            f"{name} must not specify both timeout_seconds and max_session_duration_seconds"
-        )
     inactivity = _optional_duration(
         values.get("inactivity_timeout_seconds"), f"{name}.inactivity_timeout_seconds"
     )
-    maximum_key = (
-        "max_session_duration_seconds"
-        if "max_session_duration_seconds" in values
-        else "timeout_seconds"
+    maximum = _optional_duration(
+        values.get("max_session_duration_seconds"), f"{name}.max_session_duration_seconds"
     )
-    maximum = _optional_duration(values.get(maximum_key), f"{name}.{maximum_key}")
     return inactivity, maximum
 
 

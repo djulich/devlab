@@ -13,7 +13,7 @@ def test_status_verbose_includes_agent_configuration_without_prompts(tmp_path: P
         'provider = "codex"\n'
         'model = "gpt-5-codex"\n'
         'effort = "medium"\n'
-        "timeout_seconds = 3600\n"
+        "max_session_duration_seconds = 3600\n"
         "\n[providers.codex]\n"
         'command = "codex"\n'
         'args = ["--model", "{model}", "exec", "-"]\n'
