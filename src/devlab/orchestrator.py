@@ -3054,6 +3054,13 @@ def _run_loop(
             if retry_stop is not None:
                 reason, message = retry_stop
                 logger.error("%s. Stopping.", message)
+                try:
+                    commit_all(root, "Record blocked task validation retry")
+                except VersionControlError as exc:
+                    return _error_result(
+                        sessions_run,
+                        SessionError("version_control", str(exc), 1),
+                    )
                 return _error_result(
                     sessions_run,
                     SessionError("task_validation", message, 1),

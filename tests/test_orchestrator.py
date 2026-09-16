@@ -4903,6 +4903,75 @@ def test_validation_prerequisite_is_rechecked_after_developer_session(
     assert len(records) == 1
 
 
+@pytest.mark.parametrize(
+    ("outcome", "expected_reason"),
+    [
+        ("missing_tool", RunStopReason.VALIDATION_PREREQUISITE_MISSING),
+        ("timeout", RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR),
+        ("infrastructure_error", RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR),
+    ],
+)
+def test_unsuccessful_validation_retries_commit_evidence_for_next_continue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+    expected_reason: RunStopReason,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    command = "exit 127" if outcome == "missing_tool" else "true"
+    _write_task(tmp_path, "T0001", "First", status="in_review", validation=[command])
+    verification = tmp_path / ".devlab/verification/tasks/T0001"
+    verification.mkdir(parents=True)
+    (verification / "000_initial.json").write_text(
+        json.dumps({"outcome": outcome, "session_id": "developer-session"})
+    )
+    timestamps = iter(("20260916T010101", "20260916T010102"))
+    monkeypatch.setattr("devlab.orchestrator._timestamp", lambda: next(timestamps))
+    if outcome == "timeout":
+        monkeypatch.setattr(
+            "devlab.environment._run_environment_command",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                subprocess.TimeoutExpired(command, 1, output=b"partial", stderr=b"timed out")
+            ),
+        )
+    elif outcome == "infrastructure_error":
+        monkeypatch.setattr(
+            "devlab.environment._run_environment_command",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("validation unavailable")),
+        )
+
+    for expected_record_count in (2, 3):
+        provider = MockProvider()
+        result = run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": provider},
+        )
+
+        assert result.stop_reason == expected_reason
+        assert result.sessions_run == 0
+        assert provider.calls == []
+        assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+        assert (
+            subprocess.check_output(
+                ["git", "log", "-1", "--format=%s"], cwd=tmp_path, text=True
+            ).strip()
+            == "Record blocked task validation retry"
+        )
+        records = sorted(verification.glob("*.json"))
+        assert len(records) == expected_record_count
+        latest = json.loads(records[-1].read_text())
+        assert latest["outcome"] == outcome
+        assert latest["recovery_of"]
+        committed_paths = subprocess.check_output(
+            ["git", "show", "--pretty=", "--name-only", "HEAD"], cwd=tmp_path, text=True
+        )
+        assert records[-1].relative_to(tmp_path).as_posix() in committed_paths
+        if latest["commands"]:
+            assert latest["commands"][-1]["log_path"] in committed_paths
+
+
 def test_repeated_validation_failure_stops_after_one_developer_recovery(
     tmp_path: Path,
 ) -> None:

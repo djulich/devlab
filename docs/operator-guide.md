@@ -334,6 +334,11 @@ Developer sessions work on exactly one eligible task. Reviewer sessions review
 exactly one task in review. The orchestrator updates task status after validating
 handoffs and task-file signals.
 
+If task validation stops because a tool is missing, a command times out, or the
+validation infrastructure fails, DevLab retries it before the reviewer session.
+Each unsuccessful retry is committed with its verification record and log, so a
+later `devlab continue` starts from a clean workflow boundary and can retry again.
+
 Task files are generated workflow state. Operators should usually change
 requirements through specs and then run `devlab plan` rather than editing task
 scope directly.
