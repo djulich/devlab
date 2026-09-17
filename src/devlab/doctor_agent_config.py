@@ -117,7 +117,7 @@ def _check_prompt_context(
     if roles is None:
         return
     for role_name, role_value in roles.items():
-        if role_name not in ROLE_NAMES:
+        if role_name not in ROLE_NAMES + AUXILIARY_ROLE_NAMES:
             problems.append(
                 DoctorProblem(
                     display_path,

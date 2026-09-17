@@ -69,7 +69,8 @@ _Avoid_: agent CLI when referring to the abstraction
 
 **Executable configuration snapshot**:
 A canonical, fingerprinted, per-command frozen view of provider invocation and
-profile lifecycle configuration that DevLab may execute.
+profile validation, lifecycle, prerequisite/preparation, and managed-test-service
+configuration that DevLab may execute.
 _Avoid_: sandbox, safe configuration
 
 **Executable configuration trust**:
@@ -92,6 +93,12 @@ _Avoid_: bug report, defect, ticket
 **Clarification**:
 A repository-backed operator decision request created when a role session cannot safely continue without explicit operator intent.
 _Avoid_: chat question, conversation, finding
+
+**Research**:
+A repository-backed request for one discoverable fact, resolved by a bounded
+researcher session and returned as cited supporting evidence to the exact
+requesting route. Research does not supply operator intent or workflow authority.
+_Avoid_: clarification, design decision, unverified agent opinion
 
 **Architecture-reviewed milestone**:
 An integrated milestone for which the architect performed project-state sync against design/spec/project direction. It is not an approval claim; remaining drift is represented as findings.
@@ -136,7 +143,9 @@ The mutation boundary object for a target workspace and its first-class domain h
 _Avoid_: repository when referring to the DevLab API object
 
 **WorkspaceSnapshot**:
-A cached read-only view of task, milestone, and finding state for a target workspace.
+A cached read-only view of the target workspace's domain and workflow state,
+including tasks, milestones, findings, clarifications, research, verification,
+and managed-test-service records.
 _Avoid_: workspace when the read-only/cache semantics matter
 
 **Tracker**:

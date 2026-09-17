@@ -24,7 +24,7 @@ the current workflow cannot satisfy the intended public contract without them.
 
 ## Release Outcomes
 
-### 1. [Define the public compatibility contract](https://github.com/djulich/devlab/issues/1)
+### Issue #1 — [Define the DevLab 1.x compatibility contract](https://github.com/djulich/devlab/issues/1)
 
 Document what remains stable throughout 1.x for:
 
@@ -38,21 +38,21 @@ Document what remains stable throughout 1.x for:
 Correctness-critical policy must remain enforced in code and tests. Record
 surprising or hard-to-reverse compatibility decisions in ADRs.
 
-### 2. [Prove compatibility and repair behavior](https://github.com/djulich/devlab/issues/2)
+### Issue #2 — [Add compatibility and unsupported-state fixtures](https://github.com/djulich/devlab/issues/2)
 
 Add small fixtures for each historical workspace representation that 1.0 promises
 to support. Verify that reporting remains non-mutating, supported interrupted
 workflows resume correctly, and unsupported formats fail with actionable
 diagnostics instead of silent best-effort migration.
 
-### 3. [Make release verification repeatable](https://github.com/djulich/devlab/issues/3)
+### Issue #3 — [Add repeatable package and release verification](https://github.com/djulich/devlab/issues/3)
 
 Provide one repository-owned command that builds the source distribution and
 wheel, inspects their contents and metadata, installs the wheel in a clean
 environment, and smoke-tests the installed CLI. Publication and tag creation
 remain deliberate operator actions.
 
-### 4. [Complete a representative evidence baseline](https://github.com/djulich/devlab/issues/5)
+### Issue #5 — [Complete and calibrate the representative live baseline](https://github.com/djulich/devlab/issues/5)
 
 Use existing live scenarios to cover materially different workflow families,
 providers, toolchains, and deployment behavior. Calibrate diagnostic thresholds
@@ -62,7 +62,7 @@ evaluated workflow as required by ADR 0011.
 Required evidence should be bounded by distinct risk, not by every possible
 provider and tool combination.
 
-### 5. [Prepare the public documentation and demo](https://github.com/djulich/devlab/issues/4)
+### Issue #4 — [Prepare the public repository and colleague demo](https://github.com/djulich/devlab/issues/4)
 
 Reconcile the README, operator guide, design, command help, configuration
 reference, and release policy with implemented behavior. Provide a short,
@@ -70,7 +70,7 @@ repeatable demonstration that starts from a clean target repository and shows
 planning, reviewed implementation, durable state, interruption recovery, and
 diagnostics without requiring private infrastructure.
 
-### 6. [Rehearse an immutable candidate release](https://github.com/djulich/devlab/issues/6)
+### Issue #6 — [Rehearse an immutable pre-1.0 release](https://github.com/djulich/devlab/issues/6)
 
 Publish at least one pre-1.0 tag, install it outside an editable checkout, and use
 it against a representative existing workspace. Release 1.0 only after candidate

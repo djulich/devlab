@@ -27,12 +27,10 @@ doctor result healthy.
 
 ## 2. Continue an ordinary bounded run
 
-If planning stopped only because its session bound was reached, rerun the
-recommended bounded planning command. If implementation stopped at its session
-bound, continue with:
+If a run stopped only because its session bound was reached, continue with:
 
 ```bash
-devlab implement --max-sessions 20
+devlab continue --max-sessions 20
 ```
 
 A session-limit stop is successful but does not mean the workflow is complete.

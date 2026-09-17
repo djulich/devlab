@@ -28,6 +28,13 @@ Supported roles are:
 - `developer`
 - `reviewer`
 - `integrator`
+- `researcher` (optional auxiliary role)
+
+The five software-workflow roles always resolve from `[defaults]` when they do
+not have an override. The researcher inherits the requesting architect,
+planner, or developer configuration unless `[roles.researcher]` is present.
+The clarification resolver always inherits the role that requested the
+clarification and is not independently configurable.
 
 Example:
 
@@ -71,7 +78,9 @@ Fields:
 - `command`: executable name or command prefix.
 - `args`: ordered command arguments. These may include provider options and prompt placeholders.
 - `stdin_template`: optional template used to send prompts through standard input. When set, DevLab treats stdin as the prompt transport; otherwise prompt placeholders should appear in `args`.
-- `version_command`: optional provider version command used when recording session metadata during `devlab implement`. If omitted, DevLab tries `<provider-executable> --version`; set it to `""` to skip version discovery.
+- `version_command`: optional provider version command used when recording
+  workflow-session metadata. If omitted, DevLab tries
+  `<provider-executable> --version`; set it to `""` to skip version discovery.
 
 Supported placeholders:
 
@@ -220,6 +229,8 @@ critical_tokens = 90000
 ```
 
 Role-specific thresholds inherit the global values when omitted. If the section is omitted entirely, DevLab uses `60000` warning tokens and `100000` critical tokens.
+`prompt_context.roles.researcher` is valid and applies while requested research
+is awaiting its bounded researcher session.
 
 ## Inspection and Validation
 
@@ -235,9 +246,10 @@ DevLab does not interpret provider permission, approval, authentication,
 network, or sandbox options. Those policies are provider-native and
 operator-owned.
 
-Before an operator-facing command starts a provider or profile lifecycle
-command, DevLab builds a canonical snapshot of effective provider configuration,
-role mappings, invocation overrides, and profile lifecycle configuration. It
+Before an operator-facing command starts configured processes, DevLab builds a
+canonical snapshot of effective provider configuration, role mappings,
+invocation overrides, profile validation/lifecycle/prerequisite configuration,
+profile test-service references, and managed-test-service definitions. It
 fingerprints and freezes that parsed snapshot for the command. Formatting and
 comment-only TOML changes do not change the digest; executable values and
 provider/model/effort overrides do.

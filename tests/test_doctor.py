@@ -364,6 +364,9 @@ def test_doctor_reports_prompt_context_configuration_problems(tmp_path: Path) ->
         "critical_tokens = 20\n"
         "\n[prompt_context.roles.planner]\n"
         'warning_tokens = "many"\n'
+        "\n[prompt_context.roles.researcher]\n"
+        "warning_tokens = 10\n"
+        "critical_tokens = 20\n"
     )
 
     messages = _messages(tmp_path)
@@ -374,6 +377,7 @@ def test_doctor_reports_prompt_context_configuration_problems(tmp_path: Path) ->
     )
     assert "prompt_context.roles.unknown is not a known role" in messages
     assert "prompt_context.roles.planner.warning_tokens must be an integer" in messages
+    assert not any("prompt_context.roles.researcher" in message for message in messages)
 
 
 def test_doctor_report_formats_success_and_failure(tmp_path: Path) -> None:

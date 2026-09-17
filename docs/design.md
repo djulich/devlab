@@ -401,6 +401,21 @@ The planner owns recognizing when upcoming work requires tooling or environment 
 
 Target-specific DevLab workflow artifacts live in the committed, project-local `.devlab/` directory. Role and convention prompt files remain DevLab-owned package resources under `src/devlab/resources/prompts/`.
 
+### Runtime prerequisites and managed test services
+
+Profiles may declare operation-scoped readiness checks, operator attestations,
+and narrowly bounded runtime preparation. Targets may also declare local test
+services whose identity and lifetime belong to the workspace rather than one
+session or planning generation. DevLab owns durable identity, authorization,
+locking, private export transport, and explicit cleanup mechanics; target
+commands own service creation, readiness, and destruction.
+
+Missing host tools, images, credentials, and authority remain operator or CI
+prerequisites. Reporting and explicit prerequisite checks never provision
+resources. See [Runtime Prerequisites and Managed Test
+Services](runtime-prerequisites.md), [ADR 0013](adr/0013-use-workspace-owned-test-services.md),
+and [ADR 0014](adr/0014-prepare-only-declared-runtime-prerequisites.md).
+
 ## Milestone integration
 
 When all tasks for a milestone are closed, the integrator validates the current repository state at that milestone boundary. The goal is to confirm that the milestone's changes work correctly with the previously implemented system, not merely that tasks from the milestone work with each other.
@@ -450,8 +465,8 @@ A useful pattern is to run the developer and reviewer with different providers t
 Provider command options are opaque to DevLab; provider-native permission and
 sandbox policy belongs to the operator. Before an operator-facing CLI command
 starts configured processes, DevLab canonically fingerprints effective provider
-invocation and profile lifecycle configuration and freezes the parsed snapshot
-for that command.
+invocation, profile validation/lifecycle/prerequisite configuration, and managed
+test services, then freezes the parsed snapshot for that command.
 
 Authorization comes from workspace/config/digest-scoped user-local trust, an
 independently supplied expected digest, or explicit acceptance of the current
@@ -460,11 +475,13 @@ trust. This protects the transition from unreviewed executable configuration to
 execution, but does not certify transitive command behavior or contain the
 resulting process. See ADR 0010.
 
-The snapshot includes provider invocation, profile lifecycle, and profile default
-validation commands. A task may author and review executable-configuration changes
-while the orchestrator continues to use the original frozen snapshot. Once that task
-cycle closes, DevLab stops successfully before preparing another session. A fresh
-invocation must authorize the new digest; the running command never adopts it.
+The snapshot includes provider invocation, profile validation/lifecycle and
+prerequisite/preparation configuration, profile test-service references, and
+managed-test-service definitions. A task may author and review
+executable-configuration changes while the orchestrator continues to use the
+original frozen snapshot. Once that task cycle closes, DevLab stops successfully
+before preparing another session. A fresh invocation must authorize the new
+digest; the running command never adopts it.
 
 ## Prompt context monitoring
 
@@ -493,10 +510,17 @@ Target-project DevLab workflow artifacts are collected under `.devlab/` in the t
   plans/
   tasks/
   milestones/
+  verification/
   findings/
+  clarifications/
+  research/
+  test-services/
+  prerequisite-blocker.json
+  generations/
   history/
   logs/
   session-artifacts/
+  local/
 ```
 
 This directory should be committed by default, including history and logs, so the workflow is auditable and reproducible. `devlab init` initializes Git when needed and creates an initial commit containing all non-ignored files; existing projects should ignore secrets and local/generated files first. Workflow execution has no non-Git mode: `devlab plan`, `devlab implement`, and resume operations require a Git repository with a clean working tree and commit all non-ignored changes after every valid session. Sensitive projects may need redaction, size limits, or opt-out policies for logs.
@@ -612,7 +636,7 @@ It does this by combining:
 - profile-based tooling,
 - target-owned agent configuration,
 - cached read-only workspace snapshots,
-- backend abstractions for task, milestone, and finding state.
+- storage-specific trackers behind workspace read and mutation boundaries.
 
 The result should be a workflow that can run incrementally, recover from failures, remain understandable to humans, and evolve toward more capable development automation over time.
 
@@ -621,62 +645,3 @@ The result should be a workflow that can run incrementally, recover from failure
 - <https://www.anthropic.com/engineering/harness-design-long-running-apps>
 - <https://openai.com/index/harness-engineering>
 - <https://ghuntley.com/ralph>
-
-## Managed test services
-
-Targets can declare local test services in `.devlab/config/test-services.toml`.
-Profiles reference their IDs with `required_for = ["session", "setup", "validation"]`
-(or a subset). Before the applicable operation, authorized continuation checks
-service host prerequisites, runs repeatable ensure, verifies readiness, then
-checks ordinary profile prerequisites using the supplied connection settings.
-Existing session setup/teardown remains in place and must not remove these
-workspace-lifetime services.
-
-A service defines `host_checks`, `ensure`, `check`, `destroy`, an explicit
-`exports` list, and positive `ensure_timeout_seconds`, `check_timeout_seconds`,
-`destroy_timeout_seconds` (defaults: 180, 30, 60). Host checks use the check limit.
-Commands run from the target root with these reserved variables:
-
-- `DEVLAB_TEST_SERVICE_ID`: configured ID.
-- `DEVLAB_TEST_SERVICE_INSTANCE`: durable random ownership identity.
-- `DEVLAB_TEST_SERVICE_STATE_DIR`: private instance directory.
-- `DEVLAB_TEST_SERVICE_RESULT`: result file that ensure must publish atomically.
-
-The result is a JSON object with exactly `schema` (1), `instance` (the supplied
-identity), and `environment` (string values for exactly the declared export keys).
-It must be a private regular file, at most 64 KiB. Commands run with a private
-umask. Exports override inherited values for their declared keys; process-control
-and DevLab-reserved variables cannot be exported. Conflicting exports from
-required services block execution. Milestone validation retains distinct service
-bindings when deduplicating commands.
-
-DevLab records non-secret state in `.devlab/test-services/`, with private exports
-and raw logs in `.devlab/local/test-services/`. New targets ignore `/local/` via
-`.devlab/.gitignore`; existing targets use `devlab test-service init` and commit
-that ignore rule. Unsafe, tracked, non-private, or symlinked private storage is
-rejected. Service operations hold an exclusive workspace lock through dependent
-sessions and validation. Reporting shows last observed state without running
-health checks or provisioning.
-
-Use `devlab test-service status` to inspect instances and
-`devlab test-service cleanup <id>` for explicit removal. Cleanup can use matching
-current executable trust. If the definition changed or disappeared, inspect the
-saved cleanup with `--show`, then authorize its digest with
-`--require-exec-config-digest`, trust it with `--trust`, or explicitly accept it
-for one invocation with `--accept-current-exec-config`. Neither trust nor a saved
-command certifies transitive script behavior. Cleanup never selects resources
-by global pruning or a name prefix; the target command must verify ownership.
-
-Failed preparation retries ensure with the same identity. Failed cleanup blocks
-reuse until cleanup succeeds. State from another canonical workspace or an
-incompatible definition blocks reuse. Service provisioning failures are reported
-as infrastructure errors; they do not create product findings or bypass task
-validation. Run summaries include service preparation time separately from
-provider execution. Session metadata records instance IDs without connection
-values.
-
-See [ADR 0013](adr/0013-use-workspace-owned-test-services.md) and the
-[PostgreSQL example](../demos/managed-test-services/README.md). The initial
-implementation requires POSIX process groups and file locking. Host tools and
-images remain explicit operator prerequisites; service lifetime ends only with
-explicit cleanup.

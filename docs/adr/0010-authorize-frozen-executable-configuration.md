@@ -6,10 +6,11 @@ Accepted.
 
 ## Context
 
-DevLab executes target-owned provider and profile lifecycle configuration. It
-must support unattended operation, but interpreting provider-specific permission
-flags would require continuously tracking external provider behavior and would
-still produce incomplete safety judgments.
+DevLab executes target-owned provider commands, profile validation/lifecycle and
+prerequisite/preparation commands, and managed-test-service commands. It must
+support unattended operation, but interpreting provider-specific permission
+flags or target-command behavior would require continuously tracking external
+tools and would still produce incomplete safety judgments.
 
 A repository-local trust marker would allow a target to authorize itself.
 Documentation alone would preserve unattended operation but would not detect
@@ -21,10 +22,11 @@ DevLab treats provider-native permission, approval, authentication, network, and
 sandbox policy as opaque and operator-owned.
 
 Operator-facing commands that start configured processes build a canonical,
-versioned snapshot of effective provider invocation and profile lifecycle and
-default-validation configuration. DevLab computes its digest before configured
-version discovery or other target-owned execution, obtains authorization, and uses
-the frozen parsed snapshot for the entire command.
+versioned snapshot of effective provider invocation, profile validation,
+lifecycle, prerequisite/preparation and service-reference configuration, and
+managed-test-service definitions. DevLab computes its digest before configured
+version discovery or other target-owned execution, obtains authorization, and
+uses the frozen parsed snapshot for the entire command.
 
 Authorization is provided by exactly one of:
 

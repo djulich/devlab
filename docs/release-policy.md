@@ -68,15 +68,24 @@ The following should be treated as user-facing compatibility surfaces:
 - CLI commands, options, and exit behavior;
 - `.devlab/config/agents.toml`;
 - profile TOML files under `.devlab/config/profiles/`;
-- task, finding, milestone, clarification, workflow, workflow-event, and generation file formats;
+- managed-test-service configuration under `.devlab/config/test-services.toml`;
+- task, finding, milestone, clarification, research, workflow, workflow-event,
+  prerequisite-blocker, verification, test-service-state, and generation file
+  formats;
+- operator-local executable-configuration trust and prerequisite-attestation
+  semantics;
 - trusted session envelopes, structured result candidates/results, rendered
   handoff contracts, and archived submission evidence;
 - target workspace layout under `.devlab/`;
 - package installation and the `devlab` console script.
 
-Packaged prompts are part of DevLab behavior, but their prose is not a stable API.
-Prompt changes should still be reviewed carefully because they affect generated
-workflow output.
+This list is the current candidate surface, not the final 1.x promise. The
+stabilized compatibility and migration contract is tracked in
+[issue #1](https://github.com/djulich/devlab/issues/1).
+
+Packaged prompts are part of DevLab behavior, but their prose is not a stable
+API. Prompt changes should still be reviewed carefully because they affect
+generated workflow output.
 
 ## Breaking Changes Before 1.0
 

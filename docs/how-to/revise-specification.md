@@ -42,7 +42,7 @@ Inspect the new plans, tasks, and milestones, then continue:
 
 ```bash
 devlab doctor
-devlab implement --max-sessions 20
+devlab continue --max-sessions 20
 ```
 
 ## Related planning modes

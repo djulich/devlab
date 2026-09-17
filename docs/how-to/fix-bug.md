@@ -51,7 +51,7 @@ specification instead:
 
 ```bash
 devlab doctor
-devlab plan
+devlab continue
 ```
 
 Inspect the generated task acceptance criteria and profile assignment under
@@ -61,7 +61,7 @@ validation error; use `devlab doctor` to identify the underlying problem.
 ## 5. Implement and review
 
 ```bash
-devlab implement --max-sessions 20
+devlab continue --max-sessions 20
 ```
 
 DevLab runs bounded developer and reviewer sessions and commits valid session

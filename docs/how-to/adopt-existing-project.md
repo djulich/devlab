@@ -65,8 +65,8 @@ devlab trust executable-config
 devlab agent-smoke-test
 ```
 
-Executable configuration includes agent configuration and profiles. Inspect it
-before trusting it.
+Executable configuration includes agent configuration, executable profile
+fields, and managed-test-service definitions. Inspect it before trusting it.
 
 ## 6. Create the adoption plan
 
@@ -86,12 +86,12 @@ devlab doctor
 devlab status --verbose
 ```
 
-## 7. Implement the plan
+## 7. Continue the workflow
 
 ```bash
-devlab implement --max-sessions 20
+devlab continue --max-sessions 20
 ```
 
 The session limit is a bound, not a completion target. If the summary reports
 `session limit reached`, inspect its next-command advice and run another bounded
-implementation command when appropriate.
+continuation command when appropriate.

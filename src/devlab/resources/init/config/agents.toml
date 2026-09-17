@@ -5,7 +5,8 @@
 #
 # Values in [defaults] apply to every role. A [roles.<role>] table overrides
 # defaults for one role. Supported roles are:
-# architect, planner, developer, reviewer, integrator.
+# architect, planner, developer, reviewer, integrator, and the optional
+# auxiliary researcher role.
 #
 # Provider command templates may use these placeholders:
 # {role_name}, {provider}, {model}, {effort}, {system_prompt}, {session_prompt}

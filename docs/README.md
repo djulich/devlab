@@ -16,6 +16,9 @@ documentation.
 - [How-to guides](how-to/README.md) provide task-oriented procedures.
 - [Agent configuration](agent-configuration.md) is the provider and role
   configuration reference.
+- [Runtime prerequisites and managed test services](runtime-prerequisites.md)
+  documents readiness checks, bounded preparation, service ownership, and
+  cleanup.
 
 ## Project Direction and Decisions
 

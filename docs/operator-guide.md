@@ -24,21 +24,25 @@ The usual operator loop is:
 2. Commit those operator-authored changes.
 3. Run `devlab doctor`, `devlab status --verbose`, and optionally
    `devlab agent-smoke-test`.
-4. Run `devlab plan`.
-5. Inspect generated plans/tasks if needed.
-6. Run `devlab implement --max-sessions N`.
+4. Run `devlab continue --max-sessions N`.
+5. Inspect generated plans, tasks, and summaries at bounded checkpoints.
+6. Resolve any explicitly reported external condition, then run the same
+   continuation command again.
 7. Use `devlab status`, `devlab diagnostics`, and Git history to inspect results.
 
-`devlab plan` and `devlab implement` require a clean working tree before agent
-sessions. This keeps operator-authored changes separate from DevLab-authored
+`devlab continue` is the normal entry point and derives planning,
+implementation, clarification resume, validation retry, or supported recovery
+from durable state. `devlab plan`, `devlab implement`, and `devlab resume` remain
+phase-restricted interfaces for explicit planning modes, automation, and expert
+use. Mutating workflow commands require a clean working tree before agent
+sessions so operator-authored changes remain separate from DevLab-authored
 session commits.
 
 ## Workflow Termination Summaries
 
-Every bounded `devlab plan` and `devlab implement` invocation that reaches an
-orchestrator result prints a final operator summary. The summary is command
-output rather than progress logging, so it remains visible with `--quiet`. It
-reports:
+Every bounded continuation command that reaches an orchestrator result prints a
+final operator summary. The summary is command output rather than progress
+logging, so it remains visible with `--quiet`. It reports:
 
 - why the invocation stopped and how many sessions completed;
 - the next role, task, task status, or milestone when applicable;
@@ -49,7 +53,7 @@ reports:
 `session limit reached` is a successful bounded-command stop, not workflow
 completion. Run the recommended continuation command to allow more sessions.
 Reviewer-requested task changes are ordinary agent-to-agent workflow work: the
-next developer session handles them through `devlab implement`. They are not
+next `devlab continue` invocation routes them to a developer. They are not
 operator clarifications.
 
 A durable clarification is explicitly labeled `operator clarification
@@ -57,17 +61,18 @@ required` and includes `devlab clarify show`, `devlab clarify answer`, and
 `devlab resume` guidance. It requires operator intent unless unattended
 clarification resolution was selected.
 
-Profiles and agent configuration are executable configuration. If a session changes
-them, its bounded task review may finish using the command's frozen snapshot, but
-DevLab stops successfully before preparing work outside that task. The worktree
-remains clean, and the final summary compares the frozen authorized digest with the
+Agent configuration, executable profile fields, and managed-test-service
+definitions are executable configuration. If a session changes them, its
+bounded task review may finish using the command's frozen snapshot, but DevLab
+stops successfully before preparing work outside that task. The worktree remains
+clean, and the final summary compares the frozen authorized digest with the
 repository's current digest. Review and authorize an untrusted current snapshot
 before continuation:
 
 ```bash
 devlab trust executable-config --show
 devlab trust executable-config
-devlab implement
+devlab continue
 ```
 
 DevLab does not execute the changed configuration or create the next session's
@@ -80,12 +85,11 @@ clarifications, repair state, or alter role selection and exit behavior.
 ### Durable research
 
 Research resolves discoverable facts; clarification obtains operator intent.
-When status shows requested research, rerun its stored `devlab plan` or
-`devlab implement` command to invoke the researcher. When it shows completed
-research, run the same command to resume the requesting role. There is no
-standalone research command. Provider failure or invalid output leaves the
-record requested: inspect logs and staged output, run `devlab doctor`, fix the
-provider/configuration issue, and retry the stored command.
+When status shows requested or completed research, run `devlab continue` to
+invoke the researcher or resume the requesting role. There is no standalone
+research command. Provider failure or invalid output leaves the record
+requested: inspect logs and staged output, run `devlab doctor`, fix the
+provider/configuration issue, and retry continuation.
 
 An optional `[roles.researcher]` in `agents.toml` selects its provider/model;
 otherwise the requesting role's resolved provider is used. Result JSON schema
@@ -143,11 +147,19 @@ DevLab and worker agents normally write:
 - `.devlab/findings/`
 - `.devlab/clarifications/`
 - `.devlab/research/`
+- `.devlab/test-services/`
+- `.devlab/verification/`
 - `.devlab/history/`
 - `.devlab/session-artifacts/`
 - `.devlab/logs/`
 - `.devlab/workflow.toml`
+- `.devlab/workflow-events.jsonl`
+- `.devlab/prerequisite-blocker.json`
 - `.devlab/generations/`
+
+Private managed-service exports/logs and smoke-test logs live under ignored
+`.devlab/local/`; they are runtime artifacts rather than committed workflow
+state.
 
 Manual edits to generated workflow state are sometimes useful for repair, but
 prefer `devlab doctor` before and after doing so. Reporting commands such as
@@ -205,10 +217,12 @@ DevLab reads all Markdown files under:
 .devlab/specs/deployment/
 ```
 
-After editing specs, commit the changes and run `devlab plan`. DevLab records the
-latest committed spec revision it planned against in `.devlab/workflow.toml`.
-If committed specs change later, `devlab implement` stops and asks you to run
-`devlab plan` again.
+After editing specs, commit the changes and run `devlab continue`. Continuation
+derives the required planning reconciliation and records the latest committed
+spec revision in `.devlab/workflow.toml`. The phase-restricted `devlab plan`
+command exposes the same planning mechanics when an operator or automation needs
+an explicit planning-only boundary. `devlab implement` refuses stale planning
+state rather than bypassing reconciliation.
 
 During spec reconciliation or `devlab plan --replace-plan`, DevLab archives the
 active generation bundle under `.devlab/generations/NNNN/` and starts a fresh
@@ -270,24 +284,30 @@ Profile commands are trusted executable configuration. DevLab does not sandbox
 them or install missing tools. Review profile changes before running workflow
 commands, especially in cloned or agent-modified workspaces.
 
+Profiles may also declare operation-scoped prerequisites and references to
+workspace-owned test services. Their checks, preparation commands, service
+definitions, ownership state, private export boundary, and explicit cleanup
+commands are documented in [Runtime Prerequisites and Managed Test
+Services](runtime-prerequisites.md).
+
 ## Executable Configuration Authorization
 
-Commands that start agents or profile lifecycle processes require authorization
-of a canonical executable-configuration snapshot. The normal workstation flow
-is:
+Commands that start agents, profile commands, prerequisite checks/preparation,
+or managed test services require authorization of a canonical
+executable-configuration snapshot. The normal workstation flow is:
 
 ```bash
 devlab trust executable-config --show
 devlab trust executable-config
 devlab agent-smoke-test
-devlab plan --unattended
-devlab implement --unattended
+devlab continue --unattended
 ```
 
-The parsed provider and profile snapshot is frozen for each command. Changes
-made during a run do not affect later sessions in that run. If a later session
-selects a profile that was not in the frozen snapshot, the run stops and asks
-the operator to restart after reviewing the new configuration.
+The parsed provider, profile, prerequisite, and managed-service snapshot is
+frozen for each command. Changes made during a run do not affect later sessions
+in that run. If a later session selects a profile that was not in the frozen
+snapshot, the run stops and asks the operator to restart after reviewing the new
+configuration.
 
 `devlab doctor` reports the current fingerprint and whether it has matching
 operator-local trust. An untrusted fingerprint is not malformed repository
@@ -340,8 +360,8 @@ Each unsuccessful retry is committed with its verification record and log, so a
 later `devlab continue` starts from a clean workflow boundary and can retry again.
 
 Task files are generated workflow state. Operators should usually change
-requirements through specs and then run `devlab plan` rather than editing task
-scope directly.
+requirements through specs and then run `devlab continue` rather than editing
+task scope directly.
 
 ## Milestones
 
@@ -516,14 +536,14 @@ generation archival. Role agents should not edit it directly.
 
 ## Before Running Unattended
 
-Both workflow commands support durable unattended clarification resolution:
+Continuation commands support durable unattended clarification resolution:
 
 ```text
-devlab plan --unattended
-devlab implement --unattended
+devlab continue --unattended
 ```
 
-`--unattended` is an alias for `--clarification-mode=agent`. When a role requests
+`--unattended` is an alias for `--clarification-mode=agent`. The phase-restricted
+`plan` and `implement` commands support the same option. When a role requests
 a blocking clarification, DevLab still writes the clarification and resume
 pointer, then starts a separate bounded resolver session. The resolver validates
 and records its answer with agent provenance before the interrupted route

@@ -7,6 +7,9 @@ This directory contains target-local DevLab configuration. These files are part 
 - `tooling.md` — human/agent-readable tooling policy and preferences.
 - `agents.toml` — human-owned worker agent provider/model/command configuration.
 - `profiles/*.toml` — task profiles defining tooling summaries, default validation, and executable environment lifecycle.
+- `test-services.toml` — optional workspace-owned local test-service definitions.
+- `prerequisites/*.md` — optional focused operator resolution guides referenced
+  by profile prerequisites.
 
 ## Tooling Policy
 
@@ -25,7 +28,10 @@ Each task resolves to exactly one profile:
 - if task metadata contains `profile = "<id>"`, DevLab uses `.devlab/config/profiles/<id>.toml`;
 - otherwise DevLab uses `profile = "default"`.
 
-Profiles define task-type defaults such as validation commands and session environment lifecycle. Profile sections omitted from a profile are treated as empty/no-op values.
+Profiles define task-type defaults such as validation commands, session
+environment lifecycle, operation-scoped prerequisites, and managed-test-service
+references. Profile sections omitted from a profile are treated as empty/no-op
+values.
 
 The default `neutral` initialization template leaves validation empty until the
 project's toolchain is chosen. Explicit `python`, `rust`, `go`, `c`, and `cpp`
