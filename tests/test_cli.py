@@ -25,6 +25,13 @@ def _run_cli(monkeypatch: pytest.MonkeyPatch, *args: str) -> None:
     main()
 
 
+def _mock_default_agent_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "devlab.doctor_agent_config.shutil.which",
+        lambda name: "/usr/bin/claude" if name == "claude" else None,
+    )
+
+
 def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", "-C", root.as_posix(), *args], check=True)
 
@@ -533,10 +540,7 @@ def test_cli_doctor_reports_ok_for_initialized_workspace(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
-    monkeypatch.setattr(
-        "devlab.doctor_agent_config.shutil.which",
-        lambda name: "/usr/bin/claude" if name == "claude" else None,
-    )
+    _mock_default_agent_available(monkeypatch)
 
     _run_cli(monkeypatch, "doctor", "--root", str(tmp_path))
 
@@ -550,6 +554,7 @@ def test_cli_implement_emits_progress_logs_by_default(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
+    _mock_default_agent_available(monkeypatch)
 
     _run_cli(
         monkeypatch,
@@ -790,6 +795,7 @@ def test_cli_continue_routes_initial_work_to_planning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    _mock_default_agent_available(monkeypatch)
     seen: dict[str, object] = {}
 
     def fake_run_loop(*_args: object, **kwargs: object) -> object:
@@ -909,6 +915,7 @@ def test_cli_continue_explicit_discard_is_head_bound_and_then_routes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    _mock_default_agent_available(monkeypatch)
     head = _git_output(tmp_path, "rev-parse", "HEAD")
     interrupted = tmp_path / "interrupted.txt"
     interrupted.write_text("partial work\n")
@@ -1111,6 +1118,7 @@ def test_cli_implement_quiet_suppresses_progress_logs(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
+    _mock_default_agent_available(monkeypatch)
 
     _run_cli(
         monkeypatch,
