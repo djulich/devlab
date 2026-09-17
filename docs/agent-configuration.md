@@ -285,7 +285,7 @@ process entry points only; it does not cover the implementation or transitive
 behavior of commands such as `make setup`, nor does it contain a process after
 launch.
 
-Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under `.devlab/logs/agents/`. Use `--provider <name>` to select one provider, or `--all-providers` to also test unassigned provider entries that have provider-local defaults. Add `--use-provider-defaults` with `--provider` or `--all-providers` to test `[providers.<name>.defaults]` directly instead of role-derived policy.
+Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under the ignored `.devlab/local/agent-smoke/` directory so the diagnostic does not dirty the target worktree. Use `--provider <name>` to select one provider, or `--all-providers` to also test unassigned provider entries that have provider-local defaults. Add `--use-provider-defaults` with `--provider` or `--all-providers` to test `[providers.<name>.defaults]` directly instead of role-derived policy.
 
 ```bash
 devlab agent-smoke-test

@@ -37,7 +37,8 @@ Current limits:
 - broad live-agent baseline results are not collected yet;
 - configured task and milestone validation is executed and recorded by the
   orchestrator, while missing host tools remain explicit unverified prerequisites;
-- sandboxing and approval policy are not implemented.
+- DevLab does not supply its own operating-system sandbox or approval layer;
+  those controls belong to the configured provider and execution environment.
 
 Use DevLab on disposable or version-controlled workspaces until you have reviewed the generated changes and trust your local configuration.
 
@@ -72,7 +73,9 @@ To install and run DevLab, you need:
 - Python 3.12 or newer.
 - [`uv`](https://docs.astral.sh/uv/) for installing and running the DevLab tool.
 - Git on `PATH`; DevLab initializes target repositories when needed and commits workflow changes after valid sessions.
-- At least one configured agent CLI/provider, such as a local coding-agent command, declared in the target project's `.devlab/config/agents.toml` before running `devlab plan` or `devlab implement`.
+- At least one configured agent CLI/provider, such as a local coding-agent
+  command, declared in the target project's `.devlab/config/agents.toml` before
+  running `devlab continue`, `devlab plan`, or `devlab implement`.
 
 Target projects may define their own validation, build, environment lifecycle, or deployment commands. DevLab may invoke those target-owned commands when configured, but it does not install missing project tools for you.
 
@@ -111,9 +114,13 @@ devlab --version
 DevLab is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).
 Pre-1.0 compatibility and release expectations are documented in
 [`docs/release-policy.md`](docs/release-policy.md).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) to contribute and
+[`SECURITY.md`](SECURITY.md) to report vulnerabilities privately.
 
 New to DevLab? Follow [Your First DevLab Workflow](docs/tutorial.md) for a
 step-by-step installation, configuration, and small example project.
+For a resettable live presentation, use the
+[reproducible first-workflow demo](demos/first-workflow/).
 
 ## Quickstart inside a target project
 

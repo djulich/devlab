@@ -1,0 +1,12 @@
+[defaults]
+provider = "codex"
+max_session_duration_seconds = 900
+
+[providers.codex]
+command = "codex"
+args = [
+    "--sandbox", "workspace-write",
+    "--ask-for-approval", "never",
+    "exec", "-",
+]
+stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"

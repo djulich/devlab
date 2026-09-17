@@ -8,6 +8,8 @@ documentation.
 
 - [Tutorial: Your First Workflow](tutorial.md) takes a new user from installing
   DevLab to completing a small planned and reviewed Python project.
+- [Reproducible first-workflow demo](../demos/first-workflow/) provides
+  versioned preparation and reset procedures for presenting that tutorial.
 - [Vision](vision.md) explains why DevLab exists and which projects it targets.
 - [Design](design.md) describes the current architecture and workflow model.
 - [Operator guide](operator-guide.md) explains how to run and inspect DevLab.

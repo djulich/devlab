@@ -1,0 +1,65 @@
+# Contributing to DevLab
+
+DevLab is approaching its 1.0 compatibility boundary. Contributions are
+welcome, but changes should strengthen the existing workflow before expanding
+its feature surface.
+
+## Before You Start
+
+- Use a GitHub issue to discuss substantial behavior or compatibility changes
+  before implementation.
+- Report security problems privately as described in [SECURITY.md](SECURITY.md).
+- Read [AGENTS.md](AGENTS.md) for the repository's architecture, ownership
+  boundaries, and coding standards. These constraints apply to human- and
+  agent-authored changes alike.
+
+## Development Setup
+
+DevLab requires Python 3.12 or newer, Git, and
+[`uv`](https://docs.astral.sh/uv/). From a clone:
+
+```bash
+make setup
+```
+
+This synchronizes the locked development environment and installs the
+repository-managed Git hooks. To run DevLab from the checkout without installing
+it globally:
+
+```bash
+uv run devlab --help
+```
+
+## Making Changes
+
+- Keep workflow policy in the owning module rather than in packaged prompts.
+- Preserve the provider, tracker, workspace, and orchestration boundaries in
+  `AGENTS.md`.
+- Add focused tests for behavior changes, especially file formats, state
+  transitions, validation failures, and CLI output.
+- Update current documentation when observable behavior changes. Put durable
+  trade-off decisions in `docs/adr/`, not in implementation notes.
+- Do not commit target-workspace logs, retained prompts, credentials, local
+  configuration, or agent-session transcripts.
+
+Run the complete validation before submitting a pull request:
+
+```bash
+make check
+```
+
+The check includes formatting, linting, type checking, and the full test suite.
+If the change affects a repository demonstration, also run:
+
+```bash
+make -C demos check
+```
+
+## Pull Requests
+
+Describe the user-visible outcome, important design choices, and validation you
+ran. Call out compatibility or migration effects explicitly. Keep each pull
+request focused enough that its workflow and state implications can be reviewed
+as one coherent change.
+
+Contributions are accepted under the repository's Apache License 2.0.

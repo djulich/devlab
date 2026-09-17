@@ -7,6 +7,7 @@ help: ## Show available demo validation targets.
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 check: ## Validate all repository-only demo packages.
+	sh -n first-workflow/prepare.sh first-workflow/reset.sh
 	$(UV) run ruff format --check system-evolution/grader
 	$(UV) run ruff check system-evolution/grader
 	$(UV) run ty check system-evolution/grader

@@ -33,8 +33,9 @@ small example normally needs separate architecture, planning, development, and
 review sessions. The exact number and duration depend on the agent's decisions,
 and every session consumes usage from your configured provider. The commands
 below limit each DevLab run to at most two sessions so that you get regular
-checkpoints. Plan for at least four provider calls and possibly more if review
-finds changes to make. DevLab does not estimate or cap provider billing; your
+checkpoints. Plan for seven to twelve provider calls and allow up to 80 minutes
+for a first run; a simple successful run may finish sooner. Review can add more
+development sessions. DevLab does not estimate or cap provider billing; your
 Codex sign-in method and account determine whether those calls use an included
 allowance or billed API usage.
 
@@ -290,6 +291,7 @@ Read the summary at the end. Then inspect what changed:
 
 ```bash
 devlab status
+devlab diagnostics
 git log --oneline --max-count=5
 ```
 
@@ -302,6 +304,11 @@ Continue with the same bounded command:
 ```bash
 devlab continue --max-sessions 2
 ```
+
+The process ending at this checkpoint demonstrates interruption and
+continuation: DevLab is no longer running, but its plans, tasks, events,
+handoffs, and resume position remain in files and Git. Starting the same command
+continues from that durable state rather than relying on conversational memory.
 
 Later sessions implement and review the planned tasks. A reviewer may request
 changes, which adds another development and review cycle. Keep reading each
@@ -346,6 +353,9 @@ Git.
 
 - Read the [Operator Guide](operator-guide.md) to understand the files and
   lifecycle in more detail.
+- Use the [reproducible first-workflow demo](../demos/first-workflow/) when you
+  want versioned preparation and marker-protected reset commands for a live
+  presentation or repeated rehearsal.
 - Read [Agent Configuration](agent-configuration.md) to select models, set
   reasoning effort, use another provider, or use a separate reviewer.
 - Follow [Adopt an Existing Project](how-to/adopt-existing-project.md) when you

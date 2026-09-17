@@ -6,9 +6,16 @@ from typing import Any
 import pytest
 
 from devlab.agent_smoke import (
+    SMOKE_LOG_DIR,
     SMOKE_MARKER,
     format_agent_smoke_report,
     run_agent_smoke_test,
+)
+from devlab.version_control import (
+    assert_clean_worktree,
+    commit_all,
+    ensure_git_identity,
+    init_repository,
 )
 
 
@@ -410,8 +417,44 @@ def test_smoke_test_supports_custom_config_without_changing_workspace(
     assert seen["cmd"] == ["agent", "--model", "model-a"]
     assert seen["cwd"] == str(tmp_path)
     assert SMOKE_MARKER in seen["input"]
-    assert (tmp_path / ".devlab/logs/agents").exists()
+    assert (tmp_path / SMOKE_LOG_DIR).exists()
     assert not (tmp_path / ".devlab/config/agents.toml").exists()
+
+
+def test_smoke_test_keeps_initialized_workspace_clean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [providers.test]
+        command = "agent"
+        args = ["{system_prompt}", "{session_prompt}"]
+        version_command = ""
+        """,
+    )
+    (tmp_path / ".devlab/.gitignore").write_text("/local/\n")
+    init_repository(tmp_path)
+    ensure_git_identity(tmp_path)
+    commit_all(tmp_path, "Initialize workspace")
+
+    def fake_run(*_args: Any, **kwargs: Any) -> object:
+        kwargs["stdout"].write(SMOKE_MARKER)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
+
+    result = run_agent_smoke_test(tmp_path)
+
+    assert result.passed
+    assert_clean_worktree(tmp_path)
 
 
 def test_smoke_test_supports_role_specific_checks(

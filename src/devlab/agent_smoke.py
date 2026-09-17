@@ -19,6 +19,7 @@ from devlab.agents import AgentInvocation, AgentProvider, AgentResult
 from devlab.executable_config import ExecutableConfigSnapshot
 
 SMOKE_MARKER = "DEVLAB_SMOKE_OK"
+SMOKE_LOG_DIR = ".devlab/local/agent-smoke"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -131,12 +132,8 @@ def run_agent_smoke_test(
         use_provider_defaults=use_provider_defaults,
     )
     for target in targets:
-        stdout_log = (
-            root / ".devlab/logs/agents" / f"{timestamp}_smoke_{target.check_name}.stdout.log"
-        )
-        stderr_log = (
-            root / ".devlab/logs/agents" / f"{timestamp}_smoke_{target.check_name}.stderr.log"
-        )
+        stdout_log = root / SMOKE_LOG_DIR / f"{timestamp}_{target.check_name}.stdout.log"
+        stderr_log = root / SMOKE_LOG_DIR / f"{timestamp}_{target.check_name}.stderr.log"
         invocation = AgentInvocation(
             root=root,
             role_name=target.check_name,

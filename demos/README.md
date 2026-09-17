@@ -16,6 +16,8 @@ make -C demos check
 
 Available demonstrations:
 
+- [`first-workflow/`](first-workflow/) — run the tutorial's small Python
+  workflow from deterministic, resettable inputs using bounded checkpoints.
 - [`system-evolution/`](system-evolution/) — compare DevLab with fresh
   single-agent sessions across an initial full-stack build and a later
   data-preserving specification evolution.
