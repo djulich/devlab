@@ -7,8 +7,8 @@ Scenarios:
 - `live-c-cmake-cli-happy-path`
 - `live-cpp-cmake-cli-happy-path`
 
-Rust and C++ were run at DevLab commit `26041b8`; Go and C were run at
-`8bc4017`. All four used role-specific local agent configuration: Codex
+Rust and C++ were run at DevLab commit `bc8e37b`; Go and C were run at
+`e4d63a3`. All four used role-specific local agent configuration: Codex
 `gpt-5.5` for architecture, planning, development, integration, and architecture
 review; Claude `opus` for task review. The local configuration and provider
 credentials remain outside the repository.
@@ -43,7 +43,7 @@ same profile-sourced commands.
 - Workflow: 8 sessions, 2 closed tasks, 0 rework or findings
 - Git: clean, 8 session commits, M1 tag present
 
-The successful rerun confirmed the fix in `26041b8`. An earlier product run had
+The successful rerun confirmed the fix in `bc8e37b`. An earlier product run had
 copied explicit `validation = []` task boilerplate, suppressing the `rust`
 profile even though agents ran Cargo manually. The safer template now omits task
 validation so profile defaults are durable workflow evidence, and the live
