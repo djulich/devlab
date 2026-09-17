@@ -101,7 +101,7 @@ uv tool install /path/to/devlab-checkout
 If the repository is available over Git, install directly from a branch, tag, or commit:
 
 ```bash
-uv tool install "git+https://github.com/mucisland/devlab.git@main"
+uv tool install "git+https://github.com/djulich/devlab.git@main"
 ```
 
 After installation, the `devlab` command can be run from inside any target project repository.

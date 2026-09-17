@@ -27,7 +27,7 @@ contract.
 ---
 status: draft
 created: YYYY-MM-DD
-issue: https://github.com/mucisland/devlab/issues/NNN
+issue: https://github.com/djulich/devlab/issues/NNN
 ---
 
 # Proposal: Short title

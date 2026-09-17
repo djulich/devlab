@@ -19,8 +19,8 @@ classifiers = [
 ]
 
 [project.urls]
-Issues = "https://github.com/mucisland/devlab/issues"
-Source = "https://github.com/mucisland/devlab"
+Issues = "https://github.com/djulich/devlab/issues"
+Source = "https://github.com/djulich/devlab"
 
 [dependency-groups]
 dev = ["pytest", "ruff", "ty"]

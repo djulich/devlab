@@ -114,7 +114,7 @@ codex --version
 DevLab is not yet published to PyPI. Install it from its Git repository:
 
 ```bash
-uv tool install --python 3.12 "git+https://github.com/mucisland/devlab.git@main"
+uv tool install --python 3.12 "git+https://github.com/djulich/devlab.git@main"
 ```
 
 Confirm the installation:
