@@ -61,31 +61,130 @@ Do not bump the package version for every development commit. Select and record
 the next version while preparing a release. If the current version has not yet
 been released, compatible work may be included without another bump.
 
-## Compatibility Surfaces
+## 1.x Compatibility Contract
 
-The following should be treated as user-facing compatibility surfaces:
+This contract takes effect with `1.0.0`. A supported 1.x release must read and
+continue target workspaces created by `1.0.0` and by every earlier 1.x release.
+Historical 0.x workspaces are supported only when a release note or a retained
+compatibility fixture names that representation explicitly. The minimum
+supported representation is therefore the committed 1.0 compatibility fixture,
+not every intermediate development format.
 
-- CLI commands, options, and exit behavior;
-- `.devlab/config/agents.toml`;
-- profile TOML files under `.devlab/config/profiles/`;
-- managed-test-service configuration under `.devlab/config/test-services.toml`;
-- task, finding, milestone, clarification, research, workflow, workflow-event,
-  prerequisite-blocker, verification, test-service-state, and generation file
-  formats;
-- operator-local executable-configuration trust and prerequisite-attestation
-  semantics;
-- trusted session envelopes, structured result candidates/results, rendered
-  handoff contracts, and archived submission evidence;
-- target workspace layout under `.devlab/`;
-- package installation and the `devlab` console script.
+Compatibility means that read-only commands can inspect the workspace without
+changing it and that eligible workflows can continue without regenerating valid
+state. It does not guarantee identical prose, prompts, agent decisions, session
+counts, timestamps, generated commit IDs, or provider output.
 
-This list is the current candidate surface, not the final 1.x promise. The
-stabilized compatibility and migration contract is tracked in
-[issue #1](https://github.com/djulich/devlab/issues/1).
+### CLI and structured output
 
-Packaged prompts are part of DevLab behavior, but their prose is not a stable
-API. Prompt changes should still be reviewed carefully because they affect
-generated workflow output.
+The `devlab` console script, documented command names and options, their argument
+meanings, and whether an operation is read-only or mutating are public 1.x
+interfaces. Successful commands exit zero; validation, refusal, or execution
+failure exits nonzero. Individual nonzero values are stable only when a command's
+reference documentation assigns them a meaning.
+
+Human-readable output is intended for operators. Headings and meaning remain
+recognizable, but wording, whitespace, ordering, and added diagnostics are not a
+machine interface. Automation should use the documented JSON modes for
+`workflow-state`, `diagnostics`, and `history`. During 1.x, existing JSON fields
+retain their meaning and value type; minor releases may add fields, and consumers
+must ignore fields they do not understand. Removing or repurposing a field, or
+changing its type, requires a major release.
+
+Expert phase commands such as `plan` and `implement` remain supported, but
+`continue` is the stable normal entry point. The derived next action may change
+when a minor release adds a safer validation or recovery case, provided the
+documented workflow invariants and stored state remain compatible.
+
+### Configuration and executable behavior
+
+The documented fields and semantics of `.devlab/config/agents.toml`, profile
+files under `.devlab/config/profiles/`, and
+`.devlab/config/test-services.toml` are public. Required fields remain required;
+new optional fields may be added in a minor release. Unknown fields are not a
+general extension mechanism: a reader may reject them where the parser protects
+an executable or identity-bearing contract. Users must not depend on an
+undocumented field being ignored.
+
+Provider commands, profile lifecycle commands, prerequisites, and managed test
+services are target-owned executable configuration. Their canonical
+fingerprints, authorization boundary, prerequisite-attestation meaning, and
+workspace-owned service identity remain compatible throughout 1.x. Adding a new
+field that changes executed commands changes the fingerprint and requires fresh
+operator authorization; that is a safety property, not a compatibility break.
+
+### Durable workspace formats
+
+Fields are classified as follows:
+
+- **required** fields must be present with a valid type and value;
+- **optional** fields may be absent and use the documented default;
+- **extensible** formats may contain unknown fields, which a reader preserves or
+  ignores as documented; and
+- **versioned** formats carry `version`, `schema_version`, `layout_version`, or
+  `schema`. A reader must not interpret an unsupported version as the current
+  one.
+
+The 1.x format families are:
+
+| Format | Required/versioned core | Optional or extensible behavior |
+| --- | --- | --- |
+| `.devlab/manifest.toml` | `layout_version = 1` identifies the workspace layout. | Creation metadata may grow additively. An unsupported layout blocks workspace mutation. |
+| `.devlab/workflow.toml` | `version = 1` and `[planning].complete` are required. | `[specs]` and `[resume]` are optional state sections. Unknown top-level or section fields are preserved when DevLab updates known state. |
+| Task, finding, clarification, and research Markdown | Identity and state fields required by the owning tracker form the control contract; the prose body remains user/agent-authored evidence. | These unversioned front-matter formats are extensible. Tracker mutations preserve unknown front-matter fields. A future incompatible representation must add a version discriminator before 1.x stops accepting this form. |
+| Milestone TOML | DevLab-written milestones carry `version = 1`; identity, status, and task membership are workflow control fields. | Optional integration, review, handoff, and finding fields have safe defaults. Unknown fields are preserved by milestone mutations. Missing `version` remains accepted for the 1.0 baseline representation. |
+| Workflow events JSONL | Each recognized event requires `version = 1`, `type`, and `at`. | Additional scalar or scalar-list event data is extensible. Events are diagnostic history; they do not override authoritative workflow state. |
+| Planning-generation manifests | `version = 1`, generation identity, archive time, and reason are required. | `spec_baseline` is optional for the initial representation. Unknown fields do not change the meaning of known fields. |
+| Milestone verification | `schema_version = 1`, milestone identity, state, revision, and recorded command evidence form the verification record. | Later readers may add optional evidence, but must retain the meaning of existing fields. |
+| Session metadata, handoffs, and archived submission evidence | Trusted envelopes and structured results use `schema_version = 1` and exact identity fields. | These are closed protocol records, not user extension points. Unknown or missing protocol fields are rejected; rendered Markdown may evolve without becoming a machine API. |
+| Prerequisite blockers, attestations, executable-config trust, and managed-test-service records | Their schema/digest, target identity, and semantic fingerprint bind the record to the condition or executable configuration it authorizes. | These are closed safety records. A mismatch invalidates the record instead of being guessed or migrated silently. Operator-local records are not portable workspace state. |
+
+Configuration reference documents and generated templates define the detailed
+fields and allowed values. Tracker and workspace APIs remain the mutation
+boundary; direct edits that violate required fields or enum values are
+unsupported even when the underlying TOML or Markdown is syntactically valid.
+
+Unknown versions of authoritative state must fail before mutation with the path,
+found version, supported version, and an actionable upgrade, migration, or
+restore instruction. Reporting must not silently rewrite old state. Append-only
+diagnostic evidence may skip a malformed record when the report clearly remains
+non-authoritative, but continuation may not infer workflow control state from it.
+
+### Python package API
+
+DevLab 1.x exposes no supported Python library API. The installed `devlab`
+console script and packaged resources used by that command are public; modules,
+classes, functions, dataclasses, and constants under `devlab.*` are internal
+implementation details even when they can be imported. Tests and integrations
+that import them must track DevLab internals. A future public Python API must be
+named and documented explicitly and can then be added compatibly in a minor
+release.
+
+Packaged prompts are part of DevLab behavior, but their filenames, prose, and
+exact assembled text are not stable APIs. Prompt changes still require review
+because they affect generated workflow output. The semantic session contract is
+enforced by the versioned envelope and result validation rather than prompt
+wording.
+
+### Deprecation and migration
+
+An ordinary 1.x deprecation must remain functional for at least one later minor
+release, emit an actionable warning where practical, and appear in release notes
+with its replacement. Removal waits for the next major release. A security or
+data-integrity defect may require immediate refusal, but the release must explain
+the affected state and provide safe recovery guidance.
+
+Format evolution follows reader-before-writer sequencing: release a reader that
+accepts the old and new representation before DevLab begins writing the new one.
+Additive optional fields do not require a schema-version increase. A change that
+cannot be read without ambiguity requires a new format version and an explicit,
+operator-invoked migration or regeneration procedure. DevLab does not silently
+rewrite authoritative state merely because a newer package opened it.
+
+Migration documentation must identify the source and destination versions,
+preconditions, files changed, backup or Git recovery point, validation command,
+and whether rollback is supported. Unsupported state must remain untouched and
+produce repair guidance rather than best-effort mutation.
 
 ## Breaking Changes Before 1.0
 
