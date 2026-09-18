@@ -13,8 +13,9 @@ from devlab.version_control import (
 )
 from devlab.workflow_events import WORKFLOW_EVENTS, append_workflow_event
 from devlab.workflow_state import WORKFLOW_STATE, initial_workflow_state_text
+from devlab.workspace import WORKSPACE_LAYOUT_VERSION, validate_workspace_compatibility
 
-LAYOUT_VERSION = 1
+LAYOUT_VERSION = WORKSPACE_LAYOUT_VERSION
 _TEMPLATE_PACKAGE = "devlab.resources.init"
 DEFAULT_TEMPLATE = "neutral"
 INIT_TEMPLATES = ("neutral", "python", "rust", "go", "c", "cpp")
@@ -67,6 +68,7 @@ def init_workspace(
         choices = ", ".join(INIT_TEMPLATES)
         raise ValueError(f"unknown init template {template!r}; choose one of: {choices}")
     root = root.resolve()
+    validate_workspace_compatibility(root)
     created: list[Path] = []
     skipped: list[Path] = []
     overwritten: list[Path] = []

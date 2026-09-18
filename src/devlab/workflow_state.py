@@ -234,7 +234,11 @@ def parse_workflow_state(data: object) -> WorkflowState:
     config = cast("dict[str, Any]", data)
     version = config.get("version")
     if version != WORKFLOW_STATE_VERSION:
-        raise ValueError(f"{WORKFLOW_STATE}.version must be {WORKFLOW_STATE_VERSION}")
+        raise ValueError(
+            f"{WORKFLOW_STATE} has unsupported version {version!r}; supported version is "
+            f"{WORKFLOW_STATE_VERSION}. Use a compatible DevLab release to migrate the "
+            "workspace, or restore a supported workflow file before retrying"
+        )
     planning = config.get("planning")
     if not isinstance(planning, dict):
         raise ValueError(f"{WORKFLOW_STATE}.planning must be a TOML table")

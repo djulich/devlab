@@ -8,14 +8,24 @@ builders (text generation).
 from __future__ import annotations
 
 import dataclasses
+import tomllib
 from pathlib import Path
 from typing import Any
 
 from devlab.clarifications import Clarification, FileClarificationTracker
 from devlab.environment import FileTestServiceTracker, TestService
 from devlab.findings import FileFindingTracker, Finding, FindingStatus
-from devlab.generations import active_generation
-from devlab.milestones import FileMilestoneTracker, Milestone, MilestoneVerification
+from devlab.generations import (
+    GENERATION_MANIFEST,
+    GENERATIONS_DIR,
+    active_generation,
+    load_generation_manifest,
+)
+from devlab.milestones import (
+    FileMilestoneTracker,
+    Milestone,
+    MilestoneVerification,
+)
 from devlab.prerequisites import (
     FilePrerequisiteTracker,
     PrerequisiteOperation,
@@ -42,6 +52,8 @@ FINDINGS_DIR = ".devlab/findings"
 CLARIFICATIONS_DIR = ".devlab/clarifications"
 ARTIFACTS_DIR = ".devlab/session-artifacts"
 AGENT_LOG_DIR = ".devlab/logs/agents"
+WORKSPACE_MANIFEST = ".devlab/manifest.toml"
+WORKSPACE_LAYOUT_VERSION = 1
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +66,47 @@ def read_file(path: Path) -> str:
         return path.read_text()
     except (FileNotFoundError, OSError):
         return ""
+
+
+class WorkspaceCompatibilityError(ValueError):
+    """A durable workspace representation cannot be safely read or mutated."""
+
+
+def validate_workspace_compatibility(root: Path) -> None:
+    """Reject unsupported authoritative state before a workspace operation."""
+    manifest_path = root / WORKSPACE_MANIFEST
+    if manifest_path.exists():
+        try:
+            with manifest_path.open("rb") as handle:
+                manifest = tomllib.load(handle)
+        except tomllib.TOMLDecodeError as exc:
+            raise WorkspaceCompatibilityError(
+                f"{WORKSPACE_MANIFEST} is invalid TOML; restore it from version control "
+                "or migrate the workspace with a compatible DevLab release"
+            ) from exc
+        layout_version = manifest.get("layout_version")
+        if layout_version != WORKSPACE_LAYOUT_VERSION:
+            raise WorkspaceCompatibilityError(
+                f"{WORKSPACE_MANIFEST} has unsupported layout_version "
+                f"{layout_version!r}; supported version is {WORKSPACE_LAYOUT_VERSION}. "
+                "Use a compatible DevLab release to migrate the workspace, or restore "
+                "a supported manifest before retrying"
+            )
+
+    workflow_path = root / WORKFLOW_STATE
+    if workflow_path.exists():
+        try:
+            load_workflow_state(root)
+        except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+            raise WorkspaceCompatibilityError(str(exc)) from exc
+
+    milestone_tracker = FileMilestoneTracker(root)
+    try:
+        milestone_tracker.list_milestones()
+        for path in sorted((root / GENERATIONS_DIR).glob(f"*/{GENERATION_MANIFEST}")):
+            load_generation_manifest(path)
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        raise WorkspaceCompatibilityError(str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +138,9 @@ class Workspace:
     _prerequisites: FilePrerequisiteTracker | None = dataclasses.field(
         default=None, init=False, repr=False
     )
+
+    def __post_init__(self) -> None:
+        validate_workspace_compatibility(self.root)
 
     def _task_tracker(self) -> FileTaskTracker:
         if self._tasks is None:

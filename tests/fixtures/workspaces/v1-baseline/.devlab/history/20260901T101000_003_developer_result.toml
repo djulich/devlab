@@ -1,0 +1,15 @@
+schema_version = 1
+session_id = "20260901T101000_003_developer"
+role = "developer"
+task = "T0001"
+milestone = "M1"
+protected_active_tasks = ["T0001"]
+incremental_planning_required = false
+allow_active_task_replacement = false
+outcome = "completed"
+commit_message = "Preserve greeting"
+done = ["Preserved the greeting."]
+changed_artifacts = ["src/greeting.py"]
+open_issues = []
+addressed_findings = []
+next_session_hint = "Review the greeting change."

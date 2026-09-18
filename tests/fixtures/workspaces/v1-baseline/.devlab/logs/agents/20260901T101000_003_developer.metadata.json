@@ -1,0 +1,12 @@
+{
+  "invocation_id": "20260901T101000_003_developer",
+  "session_number": 3,
+  "role_name": "developer",
+  "provider": "fixture",
+  "model": "fixture-model",
+  "return_code": 0,
+  "failure_kind": "none",
+  "duration_seconds": 12.5,
+  "task_id": "T0001",
+  "provider_version": "fixture 1.0"
+}

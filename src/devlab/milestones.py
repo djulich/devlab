@@ -14,6 +14,8 @@ from devlab.task_tracker import Task
 
 MILESTONES_DIR = ".devlab/milestones"
 MILESTONE_VERIFICATION_DIR = ".devlab/verification/milestones"
+MILESTONE_VERSION = 1
+MILESTONE_VERIFICATION_SCHEMA_VERSION = 1
 MILESTONE_ID_RE = re.compile(r"(?<![A-Z0-9])M\d{1,5}(?!\d)")
 _PROJECT_PLAN_HEADING_RE = re.compile(r"^##\s+(M\d{1,5})(?::\s*(.+?))?\s*$", re.MULTILINE)
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|[@-_])")
@@ -201,6 +203,13 @@ class FileMilestoneTracker:
 
     def _read_milestone(self, path: Path) -> Milestone:
         metadata = tomllib.loads(path.read_text())
+        version = metadata.get("version", MILESTONE_VERSION)
+        if version != MILESTONE_VERSION:
+            raise ValueError(
+                f"{path} has unsupported milestone version {version!r}; supported version "
+                f"is {MILESTONE_VERSION}. Use a compatible DevLab release to migrate the "
+                "workspace, or restore a supported milestone before retrying"
+            )
         milestone_id = str(metadata.get("id") or path.stem)
         title = str(metadata.get("title") or milestone_id)
         status = _parse_status(metadata.get("status"))
@@ -240,7 +249,7 @@ def _default_milestone_metadata(
     milestone_id: str, title: str, task_ids: list[str]
 ) -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": MILESTONE_VERSION,
         "id": milestone_id,
         "title": title,
         "status": MilestoneStatus.PLANNED.value,
@@ -329,8 +338,13 @@ def _sanitize_output_summary(value: str) -> str:
 def _read_verification(path: Path) -> MilestoneVerification:
     data = tomllib.loads(path.read_text())
     version = data.get("schema_version")
-    if version != 1:
-        raise ValueError(f"unsupported milestone verification schema version {version!r}")
+    if version != MILESTONE_VERIFICATION_SCHEMA_VERSION:
+        raise ValueError(
+            f"{path} has unsupported milestone verification schema_version {version!r}; "
+            f"supported version is {MILESTONE_VERIFICATION_SCHEMA_VERSION}. Use a compatible "
+            "DevLab release to migrate the workspace, or restore supported verification "
+            "evidence before retrying"
+        )
     milestone_id = str(data.get("milestone_id") or "")
     if not milestone_id:
         raise ValueError(f"milestone verification has no milestone_id: {path}")
@@ -357,7 +371,7 @@ def _read_verification(path: Path) -> MilestoneVerification:
             )
         )
     return MilestoneVerification(
-        schema_version=1,
+        schema_version=MILESTONE_VERIFICATION_SCHEMA_VERSION,
         milestone_id=milestone_id,
         state=str(data.get("state") or ""),
         repository_revision=str(data.get("repository_revision") or ""),

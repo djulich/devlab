@@ -84,7 +84,7 @@ from devlab.workflow_state_report import (
     format_workflow_state_digest,
     format_workflow_state_report,
 )
-from devlab.workspace import Workspace
+from devlab.workspace import Workspace, WorkspaceCompatibilityError
 
 IMPLEMENT_MAX_SESSIONS = 20
 PLAN_MAX_SESSIONS = 2
@@ -194,7 +194,7 @@ def _add_executable_config_authorization_options(
     )
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(
         prog="devlab",
         description="Orchestrate agentic development sessions.",
@@ -1356,10 +1356,6 @@ def _format_agent_smoke_progress_roles(role_names: tuple[str, ...]) -> str:
     return " roles=" + ",".join(role_names)
 
 
-if __name__ == "__main__":
-    main()
-
-
 def _run_test_service_command(args: argparse.Namespace, root: Path) -> None:
     try:
         if args.service_action == "init":
@@ -1415,3 +1411,16 @@ def _run_test_service_command(args: argparse.Namespace, root: Path) -> None:
     except (OSError, ValueError, VersionControlError) as exc:
         print(f"DevLab test service: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
+
+
+def main() -> None:
+    """Run the CLI with concise recovery guidance for incompatible workspaces."""
+    try:
+        _main()
+    except WorkspaceCompatibilityError as exc:
+        print(f"DevLab: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
+if __name__ == "__main__":
+    main()

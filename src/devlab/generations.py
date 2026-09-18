@@ -162,7 +162,11 @@ def parse_generation_manifest(data: object) -> GenerationManifest:
     config = cast(dict[str, Any], data)
     version = config.get("version")
     if version != 1:
-        raise ValueError("generation manifest version must be 1")
+        raise ValueError(
+            f"generation manifest has unsupported version {version!r}; supported version "
+            "is 1. Use a compatible DevLab release to migrate the workspace, or restore "
+            "a supported generation manifest before retrying"
+        )
     generation = config.get("generation")
     if not isinstance(generation, int) or generation < 1:
         raise ValueError("generation manifest generation must be a positive integer")
@@ -179,8 +183,11 @@ def parse_generation_manifest(data: object) -> GenerationManifest:
 
 
 def load_generation_manifest(path: Path) -> GenerationManifest:
-    with path.open("rb") as handle:
-        return parse_generation_manifest(tomllib.load(handle))
+    try:
+        with path.open("rb") as handle:
+            return parse_generation_manifest(tomllib.load(handle))
+    except ValueError as exc:
+        raise ValueError(f"{path}: {exc}") from exc
 
 
 def _string_field(data: dict[str, Any], key: str, *, default: str | None = None) -> str:

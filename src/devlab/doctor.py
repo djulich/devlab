@@ -15,6 +15,7 @@ from devlab.doctor_workflow_state import (
     check_task_contracts,
     check_task_domains,
     check_workflow_state,
+    check_workspace_compatibility,
 )
 from devlab.prerequisites import (
     MAX_PREREQUISITE_GUIDE_CHARS,
@@ -29,8 +30,14 @@ from devlab.workspace import Workspace, WorkspaceSnapshot
 def check_workspace(root: Path) -> list[DoctorProblem]:
     problems: list[DoctorProblem] = []
     problems.extend(check_git_worktree(root))
+    compatibility_problems = check_workspace_compatibility(root)
+    problems.extend(compatibility_problems)
+    if compatibility_problems:
+        return problems
     workflow_problems = check_workflow_state(root)
     problems.extend(workflow_problems)
+    if workflow_problems:
+        return problems
     agent_problems = check_agents_config(root)
     problems.extend(agent_problems)
     snapshot = Workspace(root).snapshot

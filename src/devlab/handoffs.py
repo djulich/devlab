@@ -258,7 +258,10 @@ def load_session_envelope(path: Path) -> SessionEnvelope:
     )
     if envelope.schema_version != SESSION_RESULT_SCHEMA_VERSION:
         raise HandoffError(
-            f"unsupported session envelope schema version {envelope.schema_version}",
+            f"{path} has unsupported session envelope schema_version "
+            f"{envelope.schema_version}; supported version is {SESSION_RESULT_SCHEMA_VERSION}. "
+            "Use a compatible DevLab release to finish the session, or discard the "
+            "interrupted session before retrying",
             reason=HandoffFailureReason.SESSION_PROTOCOL,
         )
     return envelope
@@ -361,6 +364,15 @@ def submission_attempt_count(envelope_path: Path) -> int:
 
 def load_session_result(path: Path) -> SessionResult:
     data = _load_toml_file(path, "session result")
+    schema_version = _required_int(data, "schema_version", "session result")
+    if schema_version != SESSION_RESULT_SCHEMA_VERSION:
+        raise HandoffError(
+            f"{path} has unsupported session result schema_version {schema_version}; "
+            f"supported version is {SESSION_RESULT_SCHEMA_VERSION}. Use a compatible "
+            "DevLab release to read the result, or restore supported session evidence "
+            "before retrying",
+            reason=HandoffFailureReason.SESSION_PROTOCOL,
+        )
     identity_keys = {
         "session_id",
         "role",
@@ -377,7 +389,7 @@ def load_session_result(path: Path) -> SessionResult:
             reason=HandoffFailureReason.SESSION_PROTOCOL,
         )
     envelope = SessionEnvelope(
-        schema_version=_required_int(data, "schema_version", "session result"),
+        schema_version=schema_version,
         session_id=_required_string(data, "session_id", "session result"),
         role=_required_string(data, "role", "session result"),
         task=_optional_string(data, "task", "session result"),

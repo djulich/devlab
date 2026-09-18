@@ -70,6 +70,11 @@ compatibility fixture names that representation explicitly. The minimum
 supported representation is therefore the committed 1.0 compatibility fixture,
 not every intermediate development format.
 
+The frozen baseline lives at
+`tests/fixtures/workspaces/v1-baseline/`. It is hand-authored rather than
+regenerated from current writers so reader regressions fail independently. No
+earlier 0.x workspace representation is currently named as supported.
+
 Compatibility means that read-only commands can inspect the workspace without
 changing it and that eligible workflows can continue without regenerating valid
 state. It does not guarantee identical prose, prompts, agent decisions, session

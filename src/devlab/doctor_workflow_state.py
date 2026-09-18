@@ -23,9 +23,24 @@ from devlab.research import (
 )
 from devlab.task_tracker import DEFAULT_TASK_DOMAIN
 from devlab.workflow_state import WORKFLOW_STATE, load_workflow_state
-from devlab.workspace import ARTIFACTS_DIR, WorkspaceSnapshot
+from devlab.workspace import (
+    ARTIFACTS_DIR,
+    WORKSPACE_MANIFEST,
+    WorkspaceCompatibilityError,
+    WorkspaceSnapshot,
+    validate_workspace_compatibility,
+)
 
 KNOWN_TASK_DOMAINS = {DEFAULT_TASK_DOMAIN, "deployment"}
+
+
+def check_workspace_compatibility(root: Path) -> list[DoctorProblem]:
+    try:
+        validate_workspace_compatibility(root)
+    except WorkspaceCompatibilityError as exc:
+        path = WORKFLOW_STATE if WORKFLOW_STATE in str(exc) else WORKSPACE_MANIFEST
+        return [DoctorProblem(path, str(exc))]
+    return []
 
 
 def check_workflow_state(root: Path) -> list[DoctorProblem]:
@@ -259,12 +274,14 @@ def check_clarifications(root: Path) -> list[DoctorProblem]:
         return []
     problems: list[DoctorProblem] = []
     tracker = FileClarificationTracker(root)
+    clarification_ids: set[str] = set()
     for path in sorted(clarifications_dir.glob("CL*.md")):
         try:
             clarification = tracker.read_path(path)
         except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
             problems.append(DoctorProblem(display_path(path, root), str(exc)))
             continue
+        clarification_ids.add(clarification.id)
         if clarification.status.value == "pending":
             if "## Context" not in clarification.body:
                 problems.append(
@@ -284,6 +301,22 @@ def check_clarifications(root: Path) -> list[DoctorProblem]:
             validation = validate_clarification_answer(root, clarification.id)
             if not validation.valid:
                 problems.append(DoctorProblem(display_path(path, root), validation.message))
+    try:
+        resume = load_workflow_state(root).resume
+    except (OSError, ValueError, tomllib.TOMLDecodeError):
+        return problems
+    if (
+        resume is not None
+        and resume.blocked_kind == "clarification"
+        and resume.blocked_by not in clarification_ids
+    ):
+        problems.append(
+            DoctorProblem(
+                WORKFLOW_STATE,
+                f"clarification resume references missing {resume.blocked_by}; restore the "
+                "clarification or remove the stale resume pointer before continuing",
+            )
+        )
     return problems
 
 

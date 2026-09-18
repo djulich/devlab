@@ -1,0 +1,19 @@
+version = 1
+id = "default"
+title = "Compatibility fixture"
+fixture_extension = "preserved"
+
+[tooling]
+summary = "Deterministic compatibility fixture."
+default_validation = []
+
+[environment]
+managed_roles = ["developer", "reviewer", "integrator"]
+pre_session = []
+setup = []
+post_session = []
+
+[timeouts]
+pre_session = 30
+setup = 30
+post_session = 30
