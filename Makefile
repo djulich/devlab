@@ -1,4 +1,4 @@
-.PHONY: help setup sync hooks format check test install install-editable reinstall reinstall-editable uninstall
+.PHONY: help setup sync hooks format check test release-check install install-editable reinstall reinstall-editable uninstall
 
 UV ?= uv
 PACKAGE ?= devlab
@@ -43,6 +43,9 @@ check: ## Run formatting, lint, type checks, and the test suite.
 
 test: ## Run the test suite.
 	$(UV) run pytest -q
+
+release-check: ## Build, inspect, install, and smoke-test release artifacts.
+	$(UV) run python scripts/release_check.py
 
 install: ## Install DevLab as a regular uv tool from this checkout.
 	$(UV) tool install .

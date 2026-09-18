@@ -30,7 +30,7 @@ requires = ["uv_build>=0.11.6,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-source-include = ["Makefile", "tests/**", "uv.lock"]
+source-include = ["Makefile", "scripts/release_check.py", "tests/**", "uv.lock"]
 source-exclude = ["/demos"]
 
 [tool.ruff]

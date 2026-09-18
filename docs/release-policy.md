@@ -224,33 +224,29 @@ the tag for package version `0.2.0` is `v0.2.0`.
 
 6. Run relevant scripted workflow evaluations and any live-agent baseline
    evaluations justified by the release risk.
-7. Build both package formats:
+7. Run the repository-owned release verification:
 
    ```bash
-   uv build
+   make release-check
    ```
 
-8. Verify that the source distribution and wheel contain the expected package
-   metadata, license, resources, and documentation. The wheel contains only the
-   installed product. The source distribution additionally contains `Makefile`,
-   `uv.lock`, and the product tests so `make check` can validate the unpacked
-   release source. Repository-only `demos/` content appears in neither artifact.
-9. Install the built wheel into a clean environment and smoke-test the installed
-   command:
-
-   ```bash
-   devlab --version
-   devlab --help
-   ```
-
-   The reported version must match `pyproject.toml`.
-10. Commit the release preparation, then create an annotated tag:
+   The command builds the source distribution and wheel in a temporary
+   directory; verifies project metadata, version agreement, license, project
+   URLs, package resources, and the source/wheel content boundary; installs the
+   wheel in a clean temporary environment; and runs `devlab --version` and
+   `devlab --help`. It fails if the repository worktree changes. The wheel
+   contains only the installed product. The source distribution additionally
+   contains `Makefile`, `scripts/release_check.py`, `uv.lock`, and the product
+   tests so the verification can be inspected and the unpacked release source
+   can run `make check`. Repository-only `demos/` content appears in neither
+   artifact.
+8. Commit the release preparation, then create an annotated tag:
 
     ```bash
     git tag -a vX.Y.Z -m "DevLab X.Y.Z"
     ```
 
-11. Verify that the tagged commit is clean and that installation from the tag
+9. Verify that the tagged commit is clean and that installation from the tag
     succeeds. Push the commit and tag only when the release is ready to share.
 
 Before considering the release complete:

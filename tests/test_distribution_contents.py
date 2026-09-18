@@ -44,6 +44,7 @@ def test_distribution_development_content_boundary(tmp_path: Path) -> None:
     assert _contains(source_names, f"{source_root}/src/devlab")
     assert _contains(source_names, f"{source_root}/tests")
     assert f"{source_root}/Makefile" in source_names
+    assert f"{source_root}/scripts/release_check.py" in source_names
     assert f"{source_root}/uv.lock" in source_names
     assert not _contains(source_names, f"{source_root}/demos")
 

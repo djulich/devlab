@@ -36,3 +36,6 @@ jobs:
 
       - name: Run complete validation
         run: make check
+
+      - name: Verify release artifacts
+        run: make release-check
