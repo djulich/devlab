@@ -257,11 +257,14 @@ def test_cli_status_reports_next_role_for_initialized_workspace(
 
     _run_cli(monkeypatch, "status", "--root", str(tmp_path))
 
-    assert capsys.readouterr().out.strip() == (
-        "Next role: architect\n"
-        "Active generation: 1\n"
-        "Archived generations: none"
-    )  # fmt: skip
+    output = capsys.readouterr().out
+    assert output.startswith("Workspace status:\n")
+    assert "Project mode: unknown" in output
+    assert "Lifecycle phase: awaiting design" in output
+    assert "Next role: architect" in output
+    assert "Design plan: absent" in output
+    assert "Project plan: absent" in output
+    assert "Next action: Run `devlab continue` to continue design or planning." in output
 
 
 def test_cli_status_verbose_reports_agent_configuration(
@@ -278,7 +281,7 @@ def test_cli_status_verbose_reports_agent_configuration(
     assert "Source: .devlab/config/agents.toml" in output
 
 
-def test_cli_help_includes_workflow_state(
+def test_cli_help_exposes_status_as_the_only_lifecycle_report(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr("sys.argv", ["devlab", "--help"])
@@ -287,7 +290,9 @@ def test_cli_help_includes_workflow_state(
         main()
 
     assert exc.value.code == 0
-    assert "workflow-state" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "status" in output
+    assert "workflow-state" not in output
 
 
 def test_cli_clarify_list_shows_pending_clarifications(
@@ -384,7 +389,7 @@ def test_cli_resume_without_pointer_prints_next_inspection_command(
     assert exc.value.code == 1
     output = capsys.readouterr().out
     assert "No active clarification resume pointer" in output
-    assert "devlab workflow-state" in output
+    assert "devlab status" in output
 
 
 def test_cli_resume_pending_clarification_prints_answer_command(
@@ -408,13 +413,13 @@ def test_cli_resume_pending_clarification_prints_answer_command(
     assert "devlab resume" in output
 
 
-def test_cli_workflow_state_json_reports_lifecycle_state(
+def test_cli_status_json_reports_lifecycle_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
 
-    _run_cli(monkeypatch, "workflow-state", "--json", "--root", str(tmp_path))
+    _run_cli(monkeypatch, "status", "--json", "--root", str(tmp_path))
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["project_mode"] == "unknown"
@@ -422,21 +427,21 @@ def test_cli_workflow_state_json_reports_lifecycle_state(
     assert payload["next_role"] == "architect"
 
 
-def test_cli_workflow_state_digest_reports_markdown_digest(
+def test_cli_status_digest_reports_markdown_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
 
-    _run_cli(monkeypatch, "workflow-state", "--digest", "--root", str(tmp_path))
+    _run_cli(monkeypatch, "status", "--digest", "--root", str(tmp_path))
 
     output = capsys.readouterr().out
-    assert output.startswith("# Workflow State")
+    assert output.startswith("# DevLab Status")
     assert "## Next Action" in output
     assert "Run `devlab continue` to continue design or planning." in output
 
 
-def test_cli_workflow_state_digest_json_reports_structured_digest(
+def test_cli_status_digest_json_reports_structured_digest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -444,7 +449,7 @@ def test_cli_workflow_state_digest_json_reports_structured_digest(
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
 
-    _run_cli(monkeypatch, "workflow-state", "--digest", "--json", "--root", str(tmp_path))
+    _run_cli(monkeypatch, "status", "--digest", "--json", "--root", str(tmp_path))
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["summary"]["lifecycle_phase"] == "awaiting design"
@@ -452,7 +457,7 @@ def test_cli_workflow_state_digest_json_reports_structured_digest(
     assert payload["validation"]["state"] == "not_reported"
 
 
-def test_cli_workflow_state_next_command_prints_only_command(
+def test_cli_status_next_command_prints_only_command(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -460,12 +465,12 @@ def test_cli_workflow_state_next_command_prints_only_command(
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
 
-    _run_cli(monkeypatch, "workflow-state", "--next-command", "--root", str(tmp_path))
+    _run_cli(monkeypatch, "status", "--next-command", "--root", str(tmp_path))
 
     assert capsys.readouterr().out == "devlab continue\n"
 
 
-def test_cli_workflow_state_next_command_json_is_structured(
+def test_cli_status_next_command_json_is_structured(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -475,7 +480,7 @@ def test_cli_workflow_state_next_command_json_is_structured(
 
     _run_cli(
         monkeypatch,
-        "workflow-state",
+        "status",
         "--next-command",
         "--json",
         "--root",
@@ -492,16 +497,33 @@ def test_cli_workflow_state_next_command_json_is_structured(
     }
 
 
-def test_cli_workflow_state_rejects_multiple_views(
+def test_cli_status_rejects_multiple_views(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with pytest.raises(SystemExit) as exc:
         _run_cli(
             monkeypatch,
-            "workflow-state",
+            "status",
             "--digest",
             "--next-command",
+            "--root",
+            str(tmp_path),
+        )
+
+    assert exc.value.code == 2
+
+
+def test_cli_status_rejects_verbose_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(
+            monkeypatch,
+            "status",
+            "--verbose",
+            "--json",
             "--root",
             str(tmp_path),
         )

@@ -9,9 +9,8 @@ conversation history.
 Start with the previous command's final summary. Then run read-only diagnostics:
 
 ```bash
-devlab workflow-state
-devlab workflow-state --next-command
 devlab status --verbose
+devlab status --next-command
 devlab doctor
 ```
 

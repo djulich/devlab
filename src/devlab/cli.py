@@ -82,7 +82,6 @@ from devlab.workflow_state_report import (
     build_workflow_state_report,
     format_next_command,
     format_workflow_state_digest,
-    format_workflow_state_report,
 )
 from devlab.workspace import Workspace, WorkspaceCompatibilityError
 
@@ -299,36 +298,26 @@ def _main() -> None:
         default=DEFAULT_PROJECT_ROOT,
         help="Project root to inspect (default: current working directory).",
     )
-    status_parser.add_argument(
+    status_view = status_parser.add_mutually_exclusive_group()
+    status_view.add_argument(
         "--verbose",
         action="store_true",
-        help="Show resolved agent configuration details.",
+        help="Show lifecycle provenance and detailed workspace state.",
     )
-
-    workflow_state_parser = subparsers.add_parser(
-        "workflow-state", help="Show workflow lifecycle state."
-    )
-    workflow_state_parser.add_argument(
-        "--root",
-        type=Path,
-        default=DEFAULT_PROJECT_ROOT,
-        help="Project root to inspect (default: current working directory).",
-    )
-    workflow_state_view = workflow_state_parser.add_mutually_exclusive_group()
-    workflow_state_view.add_argument(
+    status_view.add_argument(
         "--digest",
         action="store_true",
-        help="Emit a compact operator digest instead of the full workflow report.",
+        help="Emit a Markdown operator digest.",
     )
-    workflow_state_view.add_argument(
+    status_view.add_argument(
         "--next-command",
         action="store_true",
         help="Emit one safe command for the next workflow action.",
     )
-    workflow_state_parser.add_argument(
+    status_parser.add_argument(
         "--json",
         action="store_true",
-        help="Emit the selected workflow-state view as JSON.",
+        help="Emit the selected status view as JSON.",
     )
 
     diagnostics_parser = subparsers.add_parser(
@@ -752,10 +741,10 @@ def _main() -> None:
         if result.exit_code != 0:
             raise SystemExit(result.exit_code)
     elif args.command == "status":
-        print(format_status(root, verbose=args.verbose))
-    elif args.command == "workflow-state":
-        report = build_workflow_state_report(root)
+        if args.verbose and args.json:
+            parser.error("--verbose cannot be combined with --json")
         if args.next_command:
+            report = build_workflow_state_report(root)
             advice = build_next_command_advice(report)
             if args.json:
                 print(advice.to_json())
@@ -764,15 +753,17 @@ def _main() -> None:
                 if command:
                     print(command)
         elif args.digest:
+            report = build_workflow_state_report(root)
             digest = build_workflow_state_digest(report)
             if args.json:
                 print(digest.to_json())
             else:
                 print(format_workflow_state_digest(digest))
         elif args.json:
+            report = build_workflow_state_report(root)
             print(report.to_json())
         else:
-            print(format_workflow_state_report(report))
+            print(format_status(root, verbose=args.verbose))
     elif args.command == "diagnostics":
         if args.json:
             print(build_workflow_diagnostics(root).to_json())

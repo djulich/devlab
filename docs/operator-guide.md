@@ -18,25 +18,31 @@ milestones, findings, clarifications, research, handoffs, logs, and configuratio
 are ordinary files so they can be reviewed, committed, diffed, and recovered
 after interrupted runs.
 
-The usual operator loop is:
+Four commands cover the normal operator loop:
 
-1. Edit `.devlab/specs/` and `.devlab/config/`.
-2. Commit those operator-authored changes.
-3. Run `devlab doctor`, `devlab status --verbose`, and optionally
+- `devlab status`: Where am I?
+- `devlab doctor`: Is the workspace healthy?
+- `devlab diagnostics`: How is the workflow performing?
+- `devlab continue`: Advance it.
+
+A typical run applies those commands as follows:
+
+1. Edit `.devlab/specs/` and `.devlab/config/`, then commit those
+   operator-authored changes.
+2. Run `devlab doctor` and optionally
    `devlab agent-smoke-test`.
-4. Run `devlab continue --max-sessions N`.
-5. Inspect generated plans, tasks, and summaries at bounded checkpoints.
-6. Resolve any explicitly reported external condition, then run the same
-   continuation command again.
-7. Use `devlab status`, `devlab diagnostics`, and Git history to inspect results.
+3. Run `devlab continue --max-sessions N`.
+4. At a bounded checkpoint, inspect generated work with `devlab status`, Git
+   history, and `devlab diagnostics` when quality history is useful.
+5. Resolve any explicitly reported external condition, then run the same
+   `devlab continue` command again.
 
-`devlab continue` is the normal entry point and derives planning,
-implementation, clarification resume, validation retry, or supported recovery
-from durable state. `devlab plan`, `devlab implement`, and `devlab resume` remain
-phase-restricted interfaces for explicit planning modes, automation, and expert
-use. Mutating workflow commands require a clean working tree before agent
-sessions so operator-authored changes remain separate from DevLab-authored
-session commits.
+Continuation derives planning, implementation, clarification resume, validation
+retry, or supported recovery from durable state. `devlab plan`, `devlab
+implement`, and `devlab resume` remain phase-restricted interfaces for explicit
+planning modes, automation, and expert use. Mutating workflow commands require a
+clean working tree before agent sessions so operator-authored changes remain
+separate from DevLab-authored session commits.
 
 ## Workflow Termination Summaries
 
@@ -500,16 +506,14 @@ to those logs.
 Treat logs and retained prompts as sensitive. They may contain target-project
 details, command output, file paths, and prompt context.
 
-Useful inspection commands:
+Inspection command reference:
 
-- `devlab status --verbose`: current workflow state, resolved providers, and
-  approximate prompt sizes.
-- `devlab workflow-state`: lifecycle/provenance summary, planning generation
-  counts, spec reconciliation state, and current work counts. Use
-  `devlab workflow-state --json` for the full report as JSON,
-  `devlab workflow-state --digest` for a compact operator digest, or
-  `devlab workflow-state --digest --json` for the digest as JSON. Use
-  `devlab workflow-state --next-command` to print only one safe command for the
+- `devlab status`: project mode, lifecycle phase, design and planning state,
+  current work, blockers, and the next action. Add `--verbose` for planning
+  provenance, resolved providers, prompt sizes, milestones, findings, and
+  clarifications. Use `--json` for the full lifecycle report,
+  `--digest` for a Markdown operator digest, or `--digest --json` for its
+  structured form. Use `--next-command` to print only one safe command for the
   next continuation or inspection step; add `--json` for its action, argument
   vector, reason, and mutation classification. A complete workflow produces no
   plain command and reports `command: null` in JSON.

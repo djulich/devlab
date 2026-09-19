@@ -237,13 +237,26 @@ def build_workflow_state_report(root: Path) -> WorkflowStateReport:
 
 
 def format_workflow_state_report(report: WorkflowStateReport) -> str:
-    lines = ["Workflow state:"]
+    lines = ["Workspace status:"]
     lines.append(f"Project mode: {report.project_mode}")
     lines.append(f"Lifecycle phase: {report.lifecycle_phase}")
     lines.append(f"Next role: {report.next_role or 'none'}")
-    lines.append(f"Planning: {_bool_text(report.planning.complete)}")
+    lines.append(f"Planning: {'complete' if report.planning.complete else 'incomplete'}")
     lines.append(f"Design plan: {_present_text(report.planning.design_plan_present)}")
     lines.append(f"Project plan: {_present_text(report.planning.project_plan_present)}")
+    lines.append(
+        "Tasks: "
+        f"{report.current_work.tasks_total} total, "
+        f"{report.current_work.tasks_closed} closed, "
+        f"{report.current_work.tasks_active} active"
+    )
+    lines.append(f"Milestones: {report.current_work.milestones_total} total")
+    lines.append(
+        "Findings: "
+        f"{report.current_work.findings_open} open, "
+        f"{report.current_work.findings_planned} planned, "
+        f"{report.current_work.findings_resolved} resolved"
+    )
     if report.clarifications.pending_blockers:
         lines.append(
             "Pending clarification blockers: " + str(len(report.clarifications.pending_blockers))
@@ -269,8 +282,13 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     lines.extend(_format_research_report(report.research))
     lines.append(f"Active generation: {report.generations.active}")
     lines.append(f"Archived generations: {len(report.generations.archived)}")
-    lines.append("")
-    lines.append("Spec reconciliation:")
+    lines.append(f"Next action: {_next_action(report)}")
+    return "\n".join(lines)
+
+
+def format_workflow_state_provenance(report: WorkflowStateReport) -> str:
+    """Format lifecycle history and specification reconciliation details."""
+    lines = ["Spec reconciliation:"]
     lines.append(f"Baseline commit: {report.specs.baseline_commit or 'none'}")
     lines.append(
         "Specs changed since baseline: "
@@ -293,21 +311,6 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     lines.append(f"Plan revisions: {_unknown_int_text(report.history.plan_revisions)}")
     lines.append(f"Reconciliations: {report.history.reconciliations}")
     lines.append(f"Plan replacements: {report.history.plan_replacements}")
-    lines.append("")
-    lines.append("Current work:")
-    lines.append(
-        "Tasks: "
-        f"{report.current_work.tasks_total} total, "
-        f"{report.current_work.tasks_closed} closed, "
-        f"{report.current_work.tasks_active} active"
-    )
-    lines.append(f"Milestones: {report.current_work.milestones_total} total")
-    lines.append(
-        "Findings: "
-        f"{report.current_work.findings_open} open, "
-        f"{report.current_work.findings_planned} planned, "
-        f"{report.current_work.findings_resolved} resolved"
-    )
     return "\n".join(lines)
 
 
@@ -399,7 +402,7 @@ def format_next_command(advice: NextCommandAdvice) -> str:
 
 
 def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
-    lines = ["# Workflow State", ""]
+    lines = ["# DevLab Status", ""]
     lines.append(f"- Lifecycle phase: {digest.summary.lifecycle_phase}")
     lines.append(f"- Project mode: {digest.summary.project_mode}")
     lines.append(f"- Next role: {digest.summary.next_role or 'none'}")

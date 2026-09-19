@@ -38,7 +38,7 @@ Run at most two role sessions at a time:
 ```bash
 devlab continue --max-sessions 2
 devlab status
-devlab workflow-state --next-command
+devlab status --next-command
 devlab diagnostics
 ```
 

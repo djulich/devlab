@@ -3,7 +3,41 @@ from __future__ import annotations
 from pathlib import Path
 
 from devlab.clarifications import FileClarificationTracker
+from devlab.init import init_workspace
 from devlab.status import format_status
+from devlab.workflow_events import append_workflow_event
+from devlab.workflow_state import update_workflow_state
+
+
+def test_status_summarizes_lifecycle_and_next_action(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+
+    text = format_status(tmp_path)
+
+    assert text.startswith("Workspace status:\n")
+    assert "Project mode: unknown" in text
+    assert "Lifecycle phase: awaiting design" in text
+    assert "Next role: architect" in text
+    assert "Planning: incomplete" in text
+    assert "Design plan: absent" in text
+    assert "Project plan: absent" in text
+    assert "Tasks: 0 total, 0 closed, 0 active" in text
+    assert "Next action: Run `devlab continue` to continue design or planning." in text
+
+
+def test_status_reports_adopted_project_with_completed_plans(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    append_workflow_event(tmp_path, "plan_started", mode="adopt_existing", generation=1)
+    (tmp_path / ".devlab/plans/design-plan.md").write_text("# Design\n")
+    (tmp_path / ".devlab/plans/project-plan.md").write_text("# Plan\n")
+    update_workflow_state(tmp_path, planning_complete=True)
+
+    text = format_status(tmp_path)
+
+    assert "Project mode: adopted existing project" in text
+    assert "Planning: complete" in text
+    assert "Design plan: present" in text
+    assert "Project plan: present" in text
 
 
 def test_status_verbose_includes_agent_configuration_without_prompts(tmp_path: Path) -> None:
@@ -35,6 +69,7 @@ def test_status_verbose_includes_agent_configuration_without_prompts(tmp_path: P
 
 def test_status_verbose_reports_fallback_source(tmp_path: Path) -> None:
     _setup_minimal_workspace(tmp_path)
+    (tmp_path / ".devlab/config/agents.toml").unlink()
 
     text = format_status(tmp_path, verbose=True)
 
@@ -166,15 +201,7 @@ def test_status_verbose_reports_missing_milestone_without_creating_it(tmp_path: 
 
 
 def _setup_minimal_workspace(root: Path) -> None:
-    (root / ".devlab/plans").mkdir(parents=True)
-    (root / ".devlab/config/profiles").mkdir(parents=True)
-    (root / ".devlab/tasks").mkdir(parents=True)
-    (root / ".devlab/findings").mkdir(parents=True)
-    (root / ".devlab/history").mkdir(parents=True)
-    (root / ".devlab/config/tooling.md").write_text("# Tooling\n")
-    (root / ".devlab/config/profiles/default.toml").write_text(
-        'version = 1\nid = "default"\ntitle = "Default"\n'
-    )
+    init_workspace(root)
 
 
 def _write_task(

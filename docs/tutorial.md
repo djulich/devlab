@@ -316,7 +316,7 @@ summary and running the same command until DevLab reports that the workflow is
 complete. You can ask for the safe next command at any time:
 
 ```bash
-devlab workflow-state --next-command
+devlab status --next-command
 ```
 
 If DevLab stops for an untrusted configuration, a clarification, a failed
@@ -360,6 +360,5 @@ Git.
   reasoning effort, use another provider, or use a separate reviewer.
 - Follow [Adopt an Existing Project](how-to/adopt-existing-project.md) when you
   are ready to use DevLab in a repository that already contains software.
-- Keep using `devlab continue` as the normal entry point. Use `devlab status`,
-  `devlab doctor`, and `devlab workflow-state` whenever you want a read-only
-  view of the current state.
+- Keep using `devlab continue` as the normal entry point. Use `devlab status`
+  and `devlab doctor` whenever you want a read-only view of the current state.

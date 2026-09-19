@@ -208,7 +208,7 @@ def resume_workflow(
     if state.resume is None:
         return ResumeDispatchResult(
             False,
-            "No active clarification resume pointer. Run `devlab workflow-state` "
+            "No active clarification resume pointer. Run `devlab status` "
             "to inspect the next workflow action.",
         )
     validation = validate_clarification_answer(root, state.resume.blocked_by)

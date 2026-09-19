@@ -11,6 +11,13 @@ kernel and domain-specific workflow packages.
 
 DevLab provides the orchestrator and packaged worker prompts. The target repository stores product-specific specs, plans, tasks, milestones, findings, handoffs, configuration, and logs under `.devlab/`.
 
+Four commands cover the normal operator loop:
+
+- `devlab status`: Where am I?
+- `devlab doctor`: Is the workspace healthy?
+- `devlab diagnostics`: How is the workflow performing?
+- `devlab continue`: Advance it.
+
 ## Maturity
 
 DevLab is pre-1.0 software with a tested end-to-end workflow and evolving live-agent baselines.
@@ -174,6 +181,18 @@ git add .devlab/specs .devlab/config
 git commit -m "Configure DevLab project"
 ```
 
+Before the first provider session, inspect and authorize the executable
+configuration, then smoke-test the provider:
+
+```bash
+devlab trust executable-config --show
+devlab trust executable-config
+devlab agent-smoke-test
+```
+
+Authorization changes operator-local trust, and the smoke test starts the
+configured provider.
+
 Run the workflow through its single normal operator entry point:
 
 ```bash
@@ -189,17 +208,8 @@ committed boundary; ignored files and external effects are never claimed to be
 restored. See the [operator guide](docs/operator-guide.md) for recovery and
 phase-restricted automation commands.
 
-Inspect the workspace:
-
-```bash
-devlab doctor
-devlab status --verbose
-devlab workflow-state
-devlab trust executable-config --show
-devlab trust executable-config
-devlab agent-smoke-test
-devlab diagnostics
-```
+Use `status`, `doctor`, and `diagnostics` for read-only inspection at any
+checkpoint.
 
 Bounded commands finish with a summary explaining why they stopped and what to
 do next. DevLab commits accepted session results so later invocations resume
@@ -214,8 +224,9 @@ from repository state rather than conversation memory.
   explicit planning modes, expert use, and automation.
 - `devlab clarify [--root PATH] list|show|answer|supersede ...` — inspect and answer durable operator clarifications.
 - `devlab resume [--root PATH] [--max-sessions N]` — resume the workflow blocked by an answered clarification.
-- `devlab status`, `devlab workflow-state`, `devlab diagnostics`, `devlab
-  history`, and `devlab doctor` — inspect workflow state without mutating it.
+- `devlab status`, `devlab diagnostics`, `devlab history`, and `devlab doctor` —
+  inspect workflow state without mutating it. `status` also provides JSON,
+  digest, and next-command views.
 - `devlab agent-smoke-test` — verify configured provider invocation with a tiny
   prompt.
 - `devlab trust executable-config` — inspect or manage workspace-scoped

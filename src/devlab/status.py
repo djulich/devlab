@@ -6,34 +6,25 @@ from pathlib import Path
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
 from devlab.clarifications import Clarification
 from devlab.findings import Finding
-from devlab.generations import active_generation, archived_generation_numbers
 from devlab.milestones import Milestone, MilestoneVerification
 from devlab.prerequisites import FilePrerequisiteTracker
 from devlab.prompt_context import PromptContextReport, build_prompt_context_report
 from devlab.task_tracker import Task, TaskStatus
+from devlab.workflow_state_report import (
+    build_workflow_state_report,
+    format_workflow_state_provenance,
+    format_workflow_state_report,
+)
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
 
 def format_status(root: Path, *, verbose: bool = False) -> str:
-    lines: list[str] = []
+    report = build_workflow_state_report(root)
+    lines = format_workflow_state_report(report).splitlines()
+    if report.lifecycle_phase == "uninitialized":
+        return "\n".join(lines)
+
     snapshot = Workspace(root).snapshot
-    role_name = snapshot.assess_state()
-    if role_name is None:
-        lines.append("No role selected; workflow is complete or blocked.")
-    else:
-        lines.append(f"Next role: {role_name}")
-    lines.append(f"Active generation: {active_generation(root)}")
-    archived = archived_generation_numbers(root)
-    lines.append(
-        "Archived generations: "
-        + (", ".join(str(number) for number in archived) if archived else "none")
-    )
-    blockers = snapshot.blocking_clarifications()
-    if blockers:
-        lines.append(f"Pending clarification blockers: {len(blockers)}")
-        for clarification in blockers[:3]:
-            lines.append(f"- {clarification.id}: {clarification.title}")
-    lines.extend(_format_active_research(snapshot))
     prerequisite_blocker = FilePrerequisiteTracker(root).read_blocker()
     if prerequisite_blocker is not None:
         references = ", ".join(
@@ -48,6 +39,7 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
         lines.append(f"Test service {record['service']}: {record['state']} (last observed)")
 
     if verbose:
+        lines.extend(["", *format_workflow_state_provenance(report).splitlines()])
         lines.extend(["", *_format_agent_configuration(root)])
         lines.extend(["", *_format_prompt_context(snapshot)])
         lines.extend(["", *_format_clarification_status(snapshot)])
@@ -204,28 +196,6 @@ def _format_clarification(clarification: Clarification) -> list[str]:
         f"  blocks: {clarification.blocks}",
         f"  scope: {clarification.scope}",
         f"  asking_role: {clarification.asking_role}",
-    ]
-
-
-def _format_active_research(snapshot: WorkspaceSnapshot) -> list[str]:
-    resume = snapshot.workflow_state().resume
-    if resume is None or resume.blocked_kind != "research":
-        return []
-    try:
-        research = snapshot.get_research(resume.blocked_by)
-    except KeyError:
-        return [f"Research resume: missing {resume.blocked_by} (run devlab doctor)"]
-    action = (
-        "researcher invocation"
-        if research.status.value == "requested"
-        else "resumed-role execution"
-    )
-    return [
-        f"Research: {research.id}: {research.title}",
-        f"- state: {research.status.value}",
-        f"- route: devlab {resume.command}; role={resume.role}; "
-        f"task={resume.task or 'none'}; milestone={resume.milestone or 'none'}",
-        f"- next: {action} via devlab {resume.command}",
     ]
 
 

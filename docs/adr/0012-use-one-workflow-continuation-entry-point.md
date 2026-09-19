@@ -44,10 +44,9 @@ retry command. DevLab restores only Git-controlled repository state. Ignored
 files and external effects are neither reverted nor claimed to be repeatable;
 the operator decides whether restarting the bounded session is appropriate.
 
-`devlab status`, `devlab workflow-state`, `devlab doctor`, and `devlab
-diagnostics` remain read-only. `devlab plan`, `devlab implement`, and targeted
-resume commands remain available as phase-restricted expert and automation
-interfaces.
+`devlab status`, `devlab doctor`, and `devlab diagnostics` remain read-only.
+`devlab plan`, `devlab implement`, and targeted resume commands remain
+available as phase-restricted expert and automation interfaces.
 
 ## Consequences
 

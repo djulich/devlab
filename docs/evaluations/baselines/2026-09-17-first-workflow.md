@@ -43,8 +43,9 @@ provider calls. A normal run of the corrected path would use seven calls when no
 review rework is needed.
 
 After the first two sessions, DevLab stopped cleanly with `developer` and
-`T0001` as the durable next action. `status`, `workflow-state`, and `diagnostics`
-read that state without changing the worktree. Re-running `devlab continue`
+`T0001` as the durable next action. `status`, the then-separate
+`workflow-state` report, and `diagnostics` read that state without changing the
+worktree. Re-running `devlab continue`
 resumed from the committed planning state.
 
 ## Outcome

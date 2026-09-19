@@ -19,6 +19,7 @@ from devlab.workflow_state_report import (
     build_workflow_state_report,
     format_next_command,
     format_workflow_state_digest,
+    format_workflow_state_provenance,
     format_workflow_state_report,
 )
 from devlab.workspace import Workspace
@@ -40,7 +41,7 @@ def test_initialized_workspace_reports_awaiting_design(tmp_path: Path) -> None:
     assert report.history.plan_revisions == 0
 
 
-def test_workflow_state_report_json_has_stable_sections(tmp_path: Path) -> None:
+def test_workflow_state_report_json_has_structured_sections(tmp_path: Path) -> None:
     init_workspace(tmp_path)
 
     payload = json.loads(build_workflow_state_report(tmp_path).to_json())
@@ -135,17 +136,28 @@ def test_old_workspace_infers_generation_counts_from_manifests(tmp_path: Path) -
     assert report.history.plan_revisions is None
 
 
-def test_format_workflow_state_report_is_compact(tmp_path: Path) -> None:
+def test_format_workflow_state_report_is_an_operator_summary(tmp_path: Path) -> None:
     init_workspace(tmp_path)
 
     output = format_workflow_state_report(build_workflow_state_report(tmp_path))
 
-    assert "Workflow state:" in output
+    assert "Workspace status:" in output
     assert "Project mode: unknown" in output
     assert "Lifecycle phase: awaiting design" in output
     assert "Pending clarification blockers: 0" in output
     assert "Resume pointer: none" in output
-    assert "Current work:" in output
+    assert "Tasks: 0 total, 0 closed, 0 active" in output
+    assert "Next action: Run `devlab continue` to continue design or planning." in output
+
+
+def test_format_workflow_state_provenance_reports_history(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+
+    output = format_workflow_state_provenance(build_workflow_state_report(tmp_path))
+
+    assert output.startswith("Spec reconciliation:\n")
+    assert "Planning history:" in output
+    assert "Architect sessions: 0" in output
 
 
 def test_format_workflow_state_digest_includes_digest_sections(tmp_path: Path) -> None:
@@ -154,7 +166,7 @@ def test_format_workflow_state_digest_includes_digest_sections(tmp_path: Path) -
 
     output = format_workflow_state_digest(digest)
 
-    assert output.startswith("# Workflow State")
+    assert output.startswith("# DevLab Status")
     assert "- Lifecycle phase: awaiting design" in output
     assert "## Next Action" in output
     assert "Run `devlab continue` to continue design or planning." in output
