@@ -96,15 +96,32 @@ The following are useful directions but do not block 1.0 without concrete
 evidence:
 
 - multi-session architecture planning for unusually large specifications;
-- workflow attention notifications;
+- optional workflow attention notifications, including best-effort webhook
+  delivery that does not control workflow outcomes;
 - narrower clarification blocking and additional clarification adapters;
-- a server or web operator interface;
+- broader research lifecycle support, such as cancellation and additional
+  requesting roles, when live use justifies it;
+- a server-backed operator interface with a REST API over workflow operations
+  and a GUI for status, continuation, bounded stop requests, and validated
+  recovery or restart;
 - administrator-managed trust policy or optional OS sandboxing;
 - broader dependency, manifest, and toolchain diagnostics;
 - prompt-context reduction beyond current monitoring;
+- external task-tracker adapters that preserve the task-tracker boundary and
+  current workflow semantics;
 - concurrent role sessions; and
 - extraction of a domain-neutral workflow kernel after a second workflow proves
   genuinely shared semantics.
+
+The server direction is deliberately not current implementation work. If a
+concrete remote-operation use case promotes it, the server, webhook delivery,
+and GUI should be adapters over the same repository-backed state and structured
+operations as the CLI, not a second workflow authority. A request to stop should
+take effect at a safe bounded-session boundary; recovery or restart must preserve
+the existing authorization, clarification, reconciliation, and interruption
+contracts rather than bypassing them or relying on hidden server state. Introduce
+an internal event-observer abstraction only when multiple concrete consumers
+justify it.
 
 ## Maintenance
 
