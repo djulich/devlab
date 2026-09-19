@@ -318,17 +318,28 @@ Services](runtime-prerequisites.md).
 
 Commands that start agents, profile commands, prerequisite checks/preparation,
 or managed test services require authorization of a canonical
-executable-configuration snapshot. The normal workstation flow is:
+executable-configuration snapshot. Choose the authorization method for the
+environment:
+
+- **Interactive workstation:** run `devlab trust executable-config`, which
+  displays the current snapshot and fingerprint before asking to persist
+  workspace-scoped trust in operator-local state.
+- **Controlled CI:** pass `--require-exec-config-digest DIGEST` with an
+  independently approved value.
+- **Disposable or externally contained environment:** pass
+  `--accept-current-exec-config` to accept the snapshot for that invocation
+  without creating persistent trust.
+
+After authorizing on a normal workstation, smoke-test the provider and continue
+the workflow:
 
 ```bash
-devlab trust executable-config
 devlab agent-smoke-test
 devlab continue --unattended
 ```
 
-The trust command displays the effective configuration and fingerprint before
-asking for approval. Use `devlab trust executable-config --show` when you only
-want to inspect the snapshot and trust status without changing them.
+Use `devlab trust executable-config --show` to inspect the snapshot and trust
+status without changing them.
 
 The parsed provider, profile, prerequisite, and managed-service snapshot is
 frozen for each command. Changes made during a run do not affect later sessions
@@ -338,11 +349,7 @@ configuration.
 
 `devlab doctor` reports the current fingerprint and whether it has matching
 operator-local trust. An untrusted fingerprint is not malformed repository
-state, but commands that execute it require one of:
-
-- matching workspace-scoped user-local trust;
-- `--require-exec-config-digest DIGEST` with an independently approved value;
-- `--accept-current-exec-config` for one externally contained invocation.
+state.
 
 Provider-native permissions and sandboxing remain operator-owned. DevLab does
 not classify provider flags. A matching digest authorizes configured entry
