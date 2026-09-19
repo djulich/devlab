@@ -120,15 +120,22 @@ merely because it was committed or carried a format version.
 ## Release Procedure
 
 Until DevLab is published to PyPI, a release consists of an immutable Git tag
-and installable source distribution and wheel. Use tags of the form `vX.Y.Z`;
-the tag for package version `0.2.0` is `v0.2.0`.
+and installable source distribution and wheel. The package version is `X.Y.Z`,
+while its Git tag is `vX.Y.Z`; for example, package version `0.2.0` uses tag
+`v0.2.0`. The `v` distinguishes a repository tag from the package version and
+is not part of the version recorded in package metadata.
+
+The annotated Git tag message is the canonical release note. It starts with the
+subject `DevLab X.Y.Z`, followed by a concise summary of notable changes and any
+scoped recovery guidance. Read it with `git show --no-patch vX.Y.Z`. A GitHub
+Release, when created, mirrors that note for easier browsing; a separate
+changelog is not required.
 
 1. Review changes since the previous release and choose the next version using
    the rules above.
 2. Update `[project].version` in `pyproject.toml`.
 3. Refresh `uv.lock` so the root package entry records the same version.
-4. Document notable changes and any scoped recovery guidance justified for
-   known development workspaces.
+4. Draft the annotated-tag release note described above.
 5. Run the complete development validation:
 
    ```bash
@@ -153,14 +160,38 @@ the tag for package version `0.2.0` is `v0.2.0`.
    tests so the verification can be inspected and the unpacked release source
    can run `make check`. Repository-only `demos/` content appears in neither
    artifact.
-8. Commit the release preparation, then create an annotated tag:
+8. Commit the release preparation. With that clean commit checked out, create
+   an annotated tag. Use `vX.Y.Z` for the tag and `DevLab X.Y.Z` for its subject;
+   add the release notes in the tag-message editor below the subject:
 
    ```bash
-   git tag -a vX.Y.Z -m "DevLab X.Y.Z"
+   git tag -a vX.Y.Z
    ```
 
-9. Verify that the tagged commit is clean and that installation from the tag
-   succeeds. Push the commit and tag only when the release is ready to share.
+   Annotated tags are required; cryptographic tag signing is optional until the
+   project adopts a signing policy. When signing, use `git tag -s vX.Y.Z`
+   instead.
+9. Verify that the worktree is clean, the tag resolves to the checked-out
+   commit, and installation from that commit succeeds. Push the release commit
+   first and the specific tag second, only when the release is ready to share:
+
+   ```bash
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+
+   Never move or replace a shared release tag. Correct a released artifact with
+   a new version and tag.
+10. Smoke-test installation through the shared tag and confirm the reported
+    version:
+
+    ```bash
+    uv tool install --force "git+https://github.com/djulich/devlab.git@vX.Y.Z"
+    devlab --version
+    ```
+
+    A GitHub Release is optional. If one is created, target the existing tag and
+    reuse its release notes; creating the GitHub Release must not move the tag.
 
 Before considering the release complete:
 
