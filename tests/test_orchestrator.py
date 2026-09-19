@@ -2102,7 +2102,7 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment / Planner" in prompt
 
-    def test_planner_base_prompt_ignores_placeholder_deployment_spec(self, tmp_path: Path) -> None:
+    def test_planner_base_prompt_ignores_inactive_deployment_overlay(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
         deployment_spec.parent.mkdir(parents=True)
@@ -2142,9 +2142,7 @@ class TestBuildSystemPrompt:
 
         assert "Domain: Deployment / Planner" in prompt
 
-    def test_deployment_spec_with_sentinel_removed_activates_deployment(
-        self, tmp_path: Path
-    ) -> None:
+    def test_removing_template_marker_activates_deployment(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         deployment_spec = tmp_path / ".devlab/specs/deployment/README.md"
         deployment_spec.parent.mkdir(parents=True)
@@ -2155,8 +2153,9 @@ class TestBuildSystemPrompt:
             / "src/devlab/resources/init/specs/deployment/README.md"
         ).read_text()
         assert DEPLOYMENT_PLACEHOLDER_SENTINEL in init_template
-        without_sentinel = init_template.replace(DEPLOYMENT_PLACEHOLDER_SENTINEL + "\n", "")
-        deployment_spec.write_text(without_sentinel)
+        deployment_spec.write_text(
+            init_template.replace(DEPLOYMENT_PLACEHOLDER_SENTINEL + "\n", "")
+        )
         role = ROLES["planner"]
 
         prompt = build_base_prompt(

@@ -24,15 +24,22 @@ other particular platform.
 Production deployment is outside the default workflow boundary. A human,
 CI/CD pipeline, GitOps system, or platform-owned release tool normally performs
 that action. Production execution must never be inferred merely because a
-deployment specification or validation command exists.
+deployment requirements overlay or validation command exists.
 
 ## Specification and Verification
 
-Deployment requirements live under:
+Deployment requirements are an optional overlay on the primary system
+specification. Initialization provides an inactive checklist under:
 
 ```text
 .devlab/specs/deployment/
 ```
+
+Remove the checklist's `<!-- devlab:placeholder -->` marker after adding
+project-specific requirements. That, or adding another non-empty Markdown file
+in the directory, activates deployment-specific planning guidance and
+diagnostics. Projects where deployment is out of scope can leave the scaffolded
+checklist inactive.
 
 Specifications should distinguish:
 

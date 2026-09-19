@@ -153,7 +153,13 @@ Edit the target project's system spec. The starter file is:
 .devlab/specs/system/README.md
 ```
 
-For larger projects, split the system or deployment specification across additional Markdown files under `.devlab/specs/system/` or `.devlab/specs/deployment/`; DevLab reads all `*.md` files in those directories.
+For larger projects, split the system specification across additional Markdown
+files under `.devlab/specs/system/`; DevLab reads all `*.md` files in that
+directory. The scaffolded `.devlab/specs/deployment/README.md` is an optional,
+inactive deployment-requirements overlay and a checklist for packaging,
+runtime, verification, configuration, and production boundaries. Remove its
+placeholder marker when deployment is in scope; that activates
+deployment-specific planning guidance and diagnostics.
 
 Configure the target project's agent command. The configured executable must be installed and available on `PATH` before running agent sessions:
 

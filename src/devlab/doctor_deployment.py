@@ -67,8 +67,8 @@ def check_deployment_spec(root: Path) -> list[DoctorProblem]:
         return [
             DoctorProblem(
                 display_path(path, root),
-                "deployment spec is empty; keep the placeholder template or describe "
-                "deployment requirements",
+                "deployment overlay is empty; describe deployment requirements or "
+                "restore the inactive placeholder template",
             )
             for path in empty_specs
         ]

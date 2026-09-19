@@ -8,7 +8,7 @@ The architect translates the system specification into a design plan and reviews
 - `.devlab/config/tooling.md`
 - These role instructions
 - The system specification
-- The deployment specification, only when it contains project-specific deployment requirements rather than the default template
+- The optional deployment requirements overlay, when present
 - Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present
 - The design plan, if it exists
 - The assigned integrated milestone, if this is a milestone-boundary review
@@ -21,7 +21,7 @@ The architect translates the system specification into a design plan and reviews
 2. If no design plan exists, create it.
 3. If this is a milestone-boundary review, perform project sync:
    - Compare actual repository state to the design plan.
-   - Compare the design plan to the system specification and to any project-specific deployment requirements. Ignore placeholder deployment template text when deployment is not requested.
+   - Compare the design plan to the system specification and to any project-specific deployment requirements.
    - Update the design plan if implementation legitimately changed the architecture.
    - Report implementation/design/spec drift in Open Issues when follow-up planning or implementation is needed.
    - Record observed design drift in the candidate's `design_drift` field without

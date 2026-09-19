@@ -349,16 +349,23 @@ DEPLOYMENT_PLACEHOLDER_SENTINEL = "<!-- devlab:placeholder -->"
 
 
 def _deployment_spec_has_requirements(root: Path) -> bool:
+    return bool(_active_deployment_spec_paths(root))
+
+
+def _active_deployment_spec_paths(root: Path) -> tuple[Path, ...]:
+    """Return deployment overlay files that contain active requirements."""
+
     spec_root = root / ".devlab/specs/deployment"
     if not spec_root.exists():
-        return False
+        return ()
+    active: list[Path] = []
     for path in sorted(spec_root.rglob("*.md")):
         text = read_file(path)
         if not text.strip():
             continue
         if DEPLOYMENT_PLACEHOLDER_SENTINEL not in text:
-            return True
-    return False
+            active.append(path)
+    return tuple(active)
 
 
 def _format_project_knowledge(knowledge: ProjectKnowledge) -> str:
@@ -441,7 +448,8 @@ def _architecture_review_prompt_sections(
         "## Assigned Integrated Milestone for Architecture Review\n\n"
         f"{milestone.id}: {milestone.title}\n\n"
         "Review whether the design plan still matches the implemented system, "
-        "the system/deployment specifications, and the future project direction. "
+        "the system specification, optional deployment requirements, and the future "
+        "project direction. "
         "Update the design plan if needed. If follow-up implementation or planning "
         "is required, report it in the handoff's Open Issues section."
     ]
@@ -489,7 +497,10 @@ def _format_spec_sections(root: Path) -> str:
     for spec_dir in (specs_root / "system", specs_root / "deployment"):
         if not spec_dir.exists():
             continue
-        files = sorted(path for path in spec_dir.rglob("*.md") if path.is_file())
+        if spec_dir.name == "deployment":
+            files = list(_active_deployment_spec_paths(root))
+        else:
+            files = sorted(path for path in spec_dir.rglob("*.md") if path.is_file())
         if files:
             file_sections = [
                 f"### {path.relative_to(root)}\n\n{read_file(path)}" for path in files

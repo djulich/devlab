@@ -445,7 +445,7 @@ def test_doctor_allows_known_task_domains(tmp_path: Path) -> None:
     assert not any("unknown task domain" in message for message in messages)
 
 
-def test_doctor_ignores_placeholder_deployment_spec_tools(tmp_path: Path, monkeypatch) -> None:
+def test_doctor_ignores_inactive_deployment_overlay(tmp_path: Path, monkeypatch) -> None:
     init_workspace(tmp_path)
     monkeypatch.setattr("devlab.doctor_deployment.shutil.which", lambda _name: None)
 
@@ -462,7 +462,7 @@ def test_doctor_reports_empty_active_deployment_spec(tmp_path: Path) -> None:
     messages = _messages(tmp_path)
 
     assert any(
-        message.startswith("deployment spec is empty; keep the placeholder template")
+        message.startswith("deployment overlay is empty; describe deployment requirements")
         for message in messages
     )
 

@@ -173,8 +173,9 @@ def format_init_next_steps() -> str:
   1. Edit the system spec:
        .devlab/specs/system/README.md
 
-  2. Optionally add deployment specs under:
-       .devlab/specs/deployment/
+  2. Review the optional deployment overlay:
+       .devlab/specs/deployment/README.md
+     Remove its placeholder marker when deployment is in scope.
 
   3. Configure an installed agent command:
        .devlab/config/agents.toml

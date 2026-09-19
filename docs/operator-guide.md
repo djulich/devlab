@@ -128,9 +128,11 @@ not be used as an upgrade mechanism for an established workspace.
 
 Operators normally edit:
 
-- `.devlab/specs/system/*.md`: system requirements and feature intent.
-- `.devlab/specs/deployment/*.md`: deployment, packaging, runtime, and
-  operations requirements.
+- `.devlab/specs/system/*.md`: the primary system requirements and feature
+  intent.
+- `.devlab/specs/deployment/*.md`: an optional overlay for deployment,
+  packaging, runtime, and operations requirements when those concerns are in
+  scope.
 - `.devlab/config/agents.toml`: provider commands, role mappings, models,
   efforts, timeouts, and prompt transport.
 - `.devlab/config/tooling.md`: target-local tooling policy.
@@ -214,8 +216,22 @@ DevLab reads all Markdown files under:
 
 ```text
 .devlab/specs/system/
+```
+
+The system specification is the primary desired-state input. Deployment
+requirements are an optional domain overlay rather than a second specification
+that every project must maintain. Initialization creates an inactive checklist
+at:
+
+```text
 .devlab/specs/deployment/
 ```
+
+The checklist covers deployment targets, environments, project commands,
+verification, configuration, secrets, and the production boundary. Remove its
+`<!-- devlab:placeholder -->` marker when it contains project-specific
+requirements. Other non-empty Markdown files in the directory also activate
+deployment-specific role guidance and diagnostics.
 
 After editing specs, commit the changes and run `devlab continue`. Continuation
 derives the required planning reconciliation and records the latest committed

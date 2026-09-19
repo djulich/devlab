@@ -1,19 +1,26 @@
 <!-- devlab:placeholder -->
-<!-- Remove the line above to activate deployment planning. While it is
-     present, DevLab treats this file as a template and does not include
-     deployment domain prompts in agent sessions. -->
+<!-- This optional overlay is inactive while the marker above is present.
+     Remove the marker when this file contains project-specific deployment
+     requirements. -->
 
-# Deployment Specification
+# Optional Deployment Requirements Overlay
 
-Describe how this project should become deployment-ready when deployment support is in scope. DevLab should generate and verify deployment artifacts, but it should not deploy to production by default. For larger projects, keep this as an overview and add more Markdown files in this directory; DevLab reads all `*.md` files under `.devlab/specs/deployment/`.
+Use this file when the project must produce or verify deployment, packaging,
+runtime, or operations artifacts. DevLab adds deployment-specific planning
+guidance and diagnostics after the placeholder marker is removed. For larger
+projects, keep this file as an overview and add more Markdown files in this
+directory.
+
+DevLab can generate and verify deployment artifacts, but it does not deploy to
+production by default.
 
 ## Deployment Targets
 
-List required artifact/runtime families, for example:
+List required artifact or runtime families, for example:
 
 - RPM package plus systemd service
 - Container image runnable with Docker or Podman
-- Compose stack for local/demo use
+- Compose stack for local or demo use
 - Kubernetes manifests verified with kind
 
 ## Deployment Environments
@@ -43,14 +50,17 @@ Describe what DevLab must be able to verify during the workflow:
 
 - artifact builds succeed
 - manifests or package metadata validate
-- local/disposable deployment starts successfully
+- local or disposable deployment starts successfully
 - smoke tests pass
 - teardown works
 
 ## Configuration and Secrets
 
-Describe required runtime configuration and secret sources. Do not commit real secrets. Provide example files or templates instead.
+Describe required runtime configuration and secret sources. Do not commit real
+secrets. Provide example files or templates instead.
 
 ## Production Scope
 
-State whether production deployment is out of scope, documentation-only, or requires explicit future configuration. DevLab should not execute production deployment by default.
+State whether production deployment is out of scope, documentation-only, or
+requires explicit future configuration. DevLab should not execute production
+deployment by default.

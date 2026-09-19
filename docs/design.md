@@ -117,7 +117,8 @@ Important workflow state is stored in files, for example:
 
 - `.devlab/workflow.toml` — small orchestrator-owned workflow-control state, including planning completeness and one typed clarification or research resume pointer.
 - `.devlab/workflow-events.jsonl` — append-only orchestrator-owned lifecycle events used for provenance reporting, not workflow control.
-- `.devlab/specs/` — target-workspace system and deployment specifications.
+- `.devlab/specs/` — the target-workspace system specification and, when in
+  scope, an optional deployment-requirements overlay.
 - `.devlab/config/` — target-workspace tooling, agent, profile, and environment lifecycle configuration.
 - `.devlab/plans/` — design and project plans.
 - `.devlab/tasks/` — task files, including each task's status.

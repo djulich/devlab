@@ -40,6 +40,10 @@ def test_init_workspace_creates_devlab_layout(tmp_path: Path) -> None:
     assert "complete = false" in (tmp_path / ".devlab/workflow.toml").read_text()
     assert 'id = "default"' in (tmp_path / ".devlab/config/profiles/default.toml").read_text()
     assert "[providers.default]" in (tmp_path / ".devlab/config/agents.toml").read_text()
+    assert (
+        "<!-- devlab:placeholder -->"
+        in (tmp_path / ".devlab/specs/deployment/README.md").read_text()
+    )
     assert result.created
     assert not result.overwritten
 
@@ -133,7 +137,9 @@ def test_format_init_next_steps_mentions_specs_config_commit_and_plan() -> None:
     text = format_init_next_steps()
 
     assert ".devlab/specs/system/README.md" in text
-    assert ".devlab/specs/deployment/" in text
+    assert "optional deployment overlay" in text
+    assert ".devlab/specs/deployment/README.md" in text
+    assert "placeholder marker" in text
     assert ".devlab/config/agents.toml" in text
     assert "git add .devlab/specs .devlab/config" in text
     assert "devlab doctor" in text
