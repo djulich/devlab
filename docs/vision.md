@@ -49,6 +49,24 @@ artifact contracts can be implemented and tested in code instead of being left
 to prompts. DevLab should not weaken those guarantees in pursuit of premature
 generality.
 
+## Positioning among related projects
+
+DevLab is adjacent to spec-driven development projects such as
+[Spec Kit](https://github.com/github/spec-kit) and
+[GSD](https://github.com/open-gsd/gsd-core), but it makes a different
+architectural trade-off. Those projects integrate structured processes,
+templates, and context management into supported coding-agent environments.
+DevLab instead runs as an external orchestrator: it invokes configured agent
+providers for bounded roles and owns the validated workflow transitions,
+review state, recovery semantics, and durable control records in the target
+repository.
+
+This model suits work that benefits from an opinionated, inspectable lifecycle
+and explicit separation between creation, review, and integration. Its stronger
+workflow boundary also brings more setup and process overhead than a lightweight
+agent-native workflow, so the approaches are complementary rather than
+interchangeable.
+
 ## Possible future evolution
 
 The same motivation may support other artifact-producing domains. A book
