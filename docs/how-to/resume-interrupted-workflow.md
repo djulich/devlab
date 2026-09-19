@@ -38,9 +38,11 @@ If executable configuration changed, inspect and authorize the current snapshot
 before continuing:
 
 ```bash
-devlab trust executable-config --show
 devlab trust executable-config
 ```
+
+The command displays the effective configuration and fingerprint before asking
+for approval.
 
 ## 3. Answer an operator clarification
 

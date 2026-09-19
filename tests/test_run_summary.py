@@ -64,7 +64,8 @@ def test_summary_reports_requested_changes_and_new_untrusted_configuration(
     assert "Task status: changes requested" in text
     assert "Operator clarification: none" in text
     assert "Executable configuration changed during this run and is not trusted" in text
-    assert "devlab trust executable-config --show" in text
+    assert "devlab trust executable-config --show" not in text
+    assert "devlab trust executable-config" in text
     assert text.rstrip().endswith("devlab continue")
 
 
@@ -140,7 +141,8 @@ def test_summary_reports_executable_configuration_boundary(
 
     assert "fresh authorized run is required" in text
     assert "changed during this run and is not trusted" in text
-    assert "devlab trust executable-config --show" in text
+    assert "devlab trust executable-config --show" not in text
+    assert "devlab trust executable-config" in text
     assert text.rstrip().endswith("devlab continue")
 
 

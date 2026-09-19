@@ -249,18 +249,15 @@ devlab status --verbose
 each workflow role should resolve to the `codex` provider.
 
 DevLab requires you to review and approve executable configuration before it
-runs it. First display the exact configuration fingerprint:
-
-```bash
-devlab trust executable-config --show
-```
-
-The configuration should refer to the `codex` command you just wrote. Approve
-that snapshot in your user-local DevLab state:
+runs it. The trust command displays the effective configuration and exact
+fingerprint before asking for approval:
 
 ```bash
 devlab trust executable-config
 ```
+
+The configuration should refer to the `codex` command you just wrote. Approving
+the prompt records trust for that snapshot in your user-local DevLab state.
 
 Now run one tiny provider session to check authentication, prompt transport, and
 the configured command:

@@ -185,13 +185,13 @@ Before the first provider session, inspect and authorize the executable
 configuration, then smoke-test the provider:
 
 ```bash
-devlab trust executable-config --show
 devlab trust executable-config
 devlab agent-smoke-test
 ```
 
-Authorization changes operator-local trust, and the smoke test starts the
-configured provider.
+The trust command displays the effective configuration and fingerprint before
+asking for approval. Authorization changes operator-local trust, and the smoke
+test starts the configured provider.
 
 Run the workflow through its single normal operator entry point:
 

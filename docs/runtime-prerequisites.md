@@ -146,13 +146,14 @@ definitions are part of the executable-configuration snapshot. Review and
 authorize changes before continuation:
 
 ```bash
-devlab trust executable-config --show
 devlab trust executable-config
 devlab continue
 ```
+
+The trust command displays the effective configuration and fingerprint before
+asking for approval.
 
 Trust authorizes configured entry points; it does not sandbox scripts, certify
 their transitive behavior, or prove that a target command correctly enforces
 resource ownership. Host tools, images, credentials, attestations, and shared
 infrastructure remain operator or CI responsibilities.
-

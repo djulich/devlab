@@ -314,7 +314,6 @@ def _next_commands(
         return ("devlab doctor",)
     if executable_config.state == "untrusted":
         return (
-            "devlab trust executable-config --show",
             "devlab trust executable-config",
             "devlab continue",
         )

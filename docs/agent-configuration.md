@@ -257,9 +257,12 @@ provider/model/effort overrides do.
 Inspect and approve the current snapshot:
 
 ```bash
-devlab trust executable-config --show
 devlab trust executable-config
 ```
+
+The command displays the effective configuration and fingerprint before asking
+for approval. Use `devlab trust executable-config --show` to inspect the same
+snapshot and its trust status without changing operator-local state.
 
 Trust is stored outside the target repository in user-local DevLab state and is
 scoped to the canonical workspace, agent-config source, and digest. A target

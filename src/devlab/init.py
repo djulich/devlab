@@ -188,7 +188,6 @@ def format_init_next_steps() -> str:
        devlab doctor
 
   6. Review, trust, and smoke-test executable configuration:
-       devlab trust executable-config --show
        devlab trust executable-config
        devlab agent-smoke-test
 

@@ -26,10 +26,12 @@ Review the inputs and authorize their executable configuration:
 ```bash
 devlab doctor
 devlab status --verbose
-devlab trust executable-config --show
 devlab trust executable-config
 devlab agent-smoke-test
 ```
+
+The trust command displays the effective configuration and fingerprint before
+asking for approval.
 
 ## Run Bounded Checkpoints
 

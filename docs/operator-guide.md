@@ -76,10 +76,12 @@ repository's current digest. Review and authorize an untrusted current snapshot
 before continuation:
 
 ```bash
-devlab trust executable-config --show
 devlab trust executable-config
 devlab continue
 ```
+
+The trust command displays the effective configuration and fingerprint before
+asking for approval.
 
 DevLab does not execute the changed configuration or create the next session's
 artifacts in the original invocation. Invalid changed configuration is reported
@@ -319,11 +321,14 @@ or managed test services require authorization of a canonical
 executable-configuration snapshot. The normal workstation flow is:
 
 ```bash
-devlab trust executable-config --show
 devlab trust executable-config
 devlab agent-smoke-test
 devlab continue --unattended
 ```
+
+The trust command displays the effective configuration and fingerprint before
+asking for approval. Use `devlab trust executable-config --show` when you only
+want to inspect the snapshot and trust status without changing them.
 
 The parsed provider, profile, prerequisite, and managed-service snapshot is
 frozen for each command. Changes made during a run do not affect later sessions

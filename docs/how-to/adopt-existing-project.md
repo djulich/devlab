@@ -60,13 +60,13 @@ git commit -m "Configure DevLab for existing project"
 ```bash
 devlab doctor
 devlab status --verbose
-devlab trust executable-config --show
 devlab trust executable-config
 devlab agent-smoke-test
 ```
 
 Executable configuration includes agent configuration, executable profile
-fields, and managed-test-service definitions. Inspect it before trusting it.
+fields, and managed-test-service definitions. The trust command displays it and
+its fingerprint before asking for approval.
 
 ## 6. Create the adoption plan
 
