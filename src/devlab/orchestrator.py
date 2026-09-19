@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import time
 import tomllib
-from collections.abc import Callable
 from contextlib import ExitStack
 from enum import StrEnum
 from pathlib import Path
@@ -158,8 +157,6 @@ DEFAULT_PROJECT_ROOT = Path.cwd()
 CLARIFICATION_RESOLVER_ROLE = "clarification-resolver"
 RESEARCHER_ROLE = "researcher"
 CLARIFICATION_MODES = {"operator", "agent"}
-
-SessionProgressCallback = Callable[[str, int, str], None]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2025,7 +2022,6 @@ def _invoke_clarification_resolver(
     role_agent_providers: dict[str, str] | None,
     blocked_role: str,
     retain_prompts: bool,
-    session_progress: SessionProgressCallback | None,
 ) -> tuple[SessionError | None, bool]:
     workflow_state = load_workflow_state(root)
     if workflow_state.resume is None:
@@ -2074,9 +2070,6 @@ def _invoke_clarification_resolver(
         ), False
 
     logger.info("Starting session %s: %s", ctx.session_number, CLARIFICATION_RESOLVER_ROLE)
-    _notify_session_progress(
-        session_progress, "start", ctx.session_number, CLARIFICATION_RESOLVER_ROLE
-    )
     try:
         agent_result = invoke_session(invocation, agent_provider=agent_provider)
     except ProviderError as exc:
@@ -2120,9 +2113,6 @@ def _invoke_clarification_resolver(
         message = _resolver_repair_guidance(clarification_id, workflow_state.resume.command)
         return SessionError("clarification_resolver", f"{exc}. {message}", 1), True
 
-    _notify_session_progress(
-        session_progress, "finish", ctx.session_number, CLARIFICATION_RESOLVER_ROLE
-    )
     logger.info("Finished session %s: %s", ctx.session_number, CLARIFICATION_RESOLVER_ROLE)
     return None, True
 
@@ -2193,7 +2183,6 @@ def _invoke_researcher(
     role_agent_providers: dict[str, str] | None,
     resolved_agent_configs: dict[str, ResolvedAgentConfig] | None,
     retain_prompts: bool,
-    session_progress: SessionProgressCallback | None,
     executable_config: ExecutableConfigSnapshot | None,
 ) -> SessionError | None:
     workspace = Workspace(root)
@@ -2239,7 +2228,6 @@ def _invoke_researcher(
         return SessionError("researcher", f"Cannot snapshot workspace before researcher: {exc}", 1)
 
     logger.info("Starting session %s: %s", ctx.session_number, RESEARCHER_ROLE)
-    _notify_session_progress(session_progress, "start", ctx.session_number, RESEARCHER_ROLE)
     try:
         agent_result = invoke_session(invocation, agent_provider=agent_provider)
     except ProviderError as exc:
@@ -2294,7 +2282,6 @@ def _invoke_researcher(
         )
     except (OSError, ValueError) as exc:
         return SessionError("researcher", str(exc), 1)
-    _notify_session_progress(session_progress, "finish", ctx.session_number, RESEARCHER_ROLE)
     logger.info("Finished session %s: %s", ctx.session_number, RESEARCHER_ROLE)
     return None
 
@@ -2574,20 +2561,6 @@ def _planning_event_mode(
     return "greenfield"
 
 
-def _notify_session_progress(
-    callback: SessionProgressCallback | None,
-    event: str,
-    session_number: int,
-    role_name: str,
-) -> None:
-    if callback is None:
-        return
-    try:
-        callback(event, session_number, role_name)
-    except Exception as exc:  # pragma: no cover - defensive observability path
-        logger.warning("Session progress callback failed: %s", exc)
-
-
 @dataclasses.dataclass(frozen=True)
 class AgentLifecycleResult:
     """Provider result plus lifecycle errors for one role session."""
@@ -2767,7 +2740,6 @@ def run_loop(
     mark_specs_planned: bool = False,
     clarification_mode: str = "operator",
     handoff_correction: bool = False,
-    session_progress: SessionProgressCallback | None = None,
     executable_config: ExecutableConfigSnapshot | None = None,
 ) -> RunResult:
     """Keep owned test services locked across preparation and dependent execution."""
@@ -2791,7 +2763,6 @@ def run_loop(
                 mark_specs_planned=mark_specs_planned,
                 clarification_mode=clarification_mode,
                 handoff_correction=handoff_correction,
-                session_progress=session_progress,
                 executable_config=executable_config,
             )
         except TestServiceError as exc:
@@ -2821,7 +2792,6 @@ def _run_loop(
     mark_specs_planned: bool = False,
     clarification_mode: str = "operator",
     handoff_correction: bool = False,
-    session_progress: SessionProgressCallback | None = None,
     executable_config: ExecutableConfigSnapshot | None = None,
 ) -> RunResult:
     """Run the Git-backed orchestrator loop, returning a structured result."""
@@ -2989,7 +2959,6 @@ def _run_loop(
                 role_agent_providers=role_agent_providers,
                 resolved_agent_configs=resolved_agent_configs,
                 retain_prompts=retain_prompts,
-                session_progress=session_progress,
                 executable_config=executable_config,
             )
             if researcher_error is not None:
@@ -3462,7 +3431,6 @@ def _run_loop(
             role_name,
             session_start_context(start_snapshot, role_name, route.task),
         )
-        _notify_session_progress(session_progress, "start", ctx.session_number, role_name)
         if resolved_agent_configs is not None:
             config_log = ctx.log_resolved_config(resolved_agent_configs[role_name])
             logger.debug("Resolved agent config written to %s", config_log)
@@ -3974,7 +3942,6 @@ def _run_loop(
             finish_context,
             duration_info,
         )
-        _notify_session_progress(session_progress, "finish", ctx.session_number, role_name)
         sessions_run += 1
         last_completed_task_id = route.task_id
         if process_result.research_id is not None:
@@ -3988,7 +3955,6 @@ def _run_loop(
                 role_agent_providers=role_agent_providers,
                 resolved_agent_configs=resolved_agent_configs,
                 retain_prompts=retain_prompts,
-                session_progress=session_progress,
                 executable_config=executable_config,
             )
             sessions_run += 1
@@ -4040,7 +4006,6 @@ def _run_loop(
                 role_agent_providers=role_agent_providers,
                 blocked_role=role_name,
                 retain_prompts=retain_prompts,
-                session_progress=session_progress,
             )
             if counted:
                 sessions_run += 1

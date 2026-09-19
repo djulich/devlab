@@ -2862,22 +2862,6 @@ class TestRunLoop:
         assert 'status = "in_review"' in task.read_text()
         assert _find_metadata(tmp_path)["progress"] == "workflow_advance"
 
-    def test_session_progress_callback_reports_start_and_finish(self, tmp_path: Path) -> None:
-        _setup_tree(tmp_path)
-        (tmp_path / DESIGN_PLAN).write_text("# Design\nSome content\n")
-        _write_task(tmp_path, "T0001", "First")
-        provider = MockProvider()
-        events: list[tuple[str, int, str]] = []
-
-        run_loop(
-            tmp_path,
-            max_sessions=1,
-            agent_providers={"default": provider},
-            session_progress=lambda event, number, role: events.append((event, number, role)),
-        )
-
-        assert events == [("start", 1, "developer"), ("finish", 1, "developer")]
-
     def test_run_logs_session_context(
         self,
         tmp_path: Path,
