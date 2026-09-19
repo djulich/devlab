@@ -1,18 +1,17 @@
-# Roadmap to DevLab 1.0
+# DevLab Roadmap
+
+This document is authoritative for DevLab's strategic direction and release
+gates. The [DevLab roadmap project](https://github.com/users/djulich/projects/1)
+tracks actionable work across releases and product-lifecycle milestones. Linked
+GitHub Issues hold concrete scope, acceptance criteria, and implementation work;
+GitHub milestones group that work by release or another significant lifecycle
+event.
+
+## Current Release Focus: DevLab 1.0
 
 DevLab is pre-1.0 software with a working end-to-end workflow. The route to 1.0
 focuses on stabilizing and demonstrating the existing product rather than adding
 broad feature surface.
-
-This document records strategic outcomes and release gates. GitHub Issues and
-milestones should hold owners, priorities, implementation checklists, and other
-actionable work.
-
-Actionable 1.0 work is tracked in the
-[DevLab roadmap project](https://github.com/users/djulich/projects/1) and the
-[DevLab 1.0 stabilization milestone](https://github.com/djulich/devlab/milestone/1).
-
-## Current Direction
 
 The core software workflow is implemented and exercised by deterministic tests,
 scripted evaluations, and a growing set of live-agent baselines. Before 1.0,
@@ -24,9 +23,13 @@ after a release candidate has exercised the resulting interfaces.
 New capabilities should become 1.0 requirements only when evidence shows that
 the current workflow cannot satisfy the intended public contract without them.
 
-## Release Outcomes
+## 1.0 Outcomes
 
-### Compatibility freeze — deferred to the 1.0 candidate
+The [DevLab 1.0 stabilization milestone](https://github.com/djulich/devlab/milestone/1)
+groups the actionable work for these outcomes. The roadmap project reflects the
+current status of the linked issues.
+
+### Freeze compatibility from an exercised candidate
 
 Issues [#1](https://github.com/djulich/devlab/issues/1) and
 [#2](https://github.com/djulich/devlab/issues/2) established useful format-safety
@@ -40,14 +43,15 @@ created from the exercised 1.0 release candidate. Until then, current-format
 validation and refusal before unsafe mutation remain required, but historical
 development representations are not supported interfaces.
 
-### Issue #3 — [Add repeatable package and release verification](https://github.com/djulich/devlab/issues/3)
+### Make public use understandable and reproducible
 
-Provide one repository-owned command that builds the source distribution and
-wheel, inspects their contents and metadata, installs the wheel in a clean
-environment, and smoke-tests the installed CLI. Publication and tag creation
-remain deliberate operator actions.
+Public documentation, command help, configuration guidance, and release policy
+should agree with implemented behavior. Installation must work from a clean
+clone, and a bounded, repeatable demonstration should show planning, reviewed
+implementation, durable state, interruption recovery, diagnostics, and final
+verification without depending on private infrastructure.
 
-### Issue #5 — [Complete and calibrate the representative live baseline](https://github.com/djulich/devlab/issues/5)
+### Back product claims with representative evidence
 
 Use existing live scenarios to cover materially different workflow families,
 providers, toolchains, and deployment behavior. Calibrate diagnostic thresholds
@@ -57,21 +61,13 @@ evaluated workflow as required by ADR 0011.
 Required evidence should be bounded by distinct risk, not by every possible
 provider and tool combination.
 
-### Issue #4 — [Prepare the public repository and colleague demo](https://github.com/djulich/devlab/issues/4)
+### Verify releases independently of the development checkout
 
-Reconcile the README, operator guide, design, command help, configuration
-reference, and release policy with implemented behavior. Provide a short,
-repeatable demonstration that starts from a clean target repository and shows
-planning, reviewed implementation, durable state, interruption recovery, and
-diagnostics without requiring private infrastructure.
-
-### Issue #6 — [Rehearse an immutable pre-1.0 release](https://github.com/djulich/devlab/issues/6)
-
-Publish at least one pre-1.0 tag, install it outside an editable checkout, and use
-it against a representative existing workspace. Once candidate use exposes no
-unresolved issue requiring an interface or format break, define the 1.x contract,
-capture its immutable fixture, and verify that the candidate satisfies it before
-releasing 1.0.
+Repository-owned verification should build and inspect release artifacts,
+install them in a clean environment, and smoke-test the installed CLI. A tagged
+pre-1.0 candidate must be installed outside an editable checkout and exercised
+against representative new and existing workspaces before the 1.x contract is
+frozen. Publication remains a deliberate operator action.
 
 ## 1.0 Release Gates
 
@@ -90,7 +86,7 @@ DevLab 1.0 is ready when:
 - no known correctness or safety issue requires changing the candidate 1.x
   contract.
 
-## Post-1.0 or Evidence-Driven Work
+## Future or Evidence-Driven Directions
 
 The following are useful directions but do not block 1.0 without concrete
 evidence:
@@ -146,6 +142,7 @@ needs, or release planning supplies a concrete trigger.
 ## Maintenance
 
 Update this roadmap when evidence changes a release gate or strategic outcome.
-Put concrete work in GitHub Issues, dated evaluation evidence under
-`docs/evaluations/baselines/`, durable decisions in ADRs, and temporary unresolved
-designs under `docs/proposals/`.
+Put concrete work in GitHub Issues and track it in the roadmap project. Use
+milestones to group work by release or another significant product-lifecycle
+event. Put dated evaluation evidence under `docs/evaluations/baselines/`, durable
+decisions in ADRs, and temporary unresolved designs under `docs/proposals/`.

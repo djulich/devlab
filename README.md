@@ -270,4 +270,4 @@ cleanup. Their configuration and safety boundaries are documented in
 - [`docs/evaluations/`](docs/evaluations/README.md) — scripted and live workflow evaluations.
 - [`demos/`](demos/README.md) — repository-only demonstrations and external graders.
 - [`docs/release-policy.md`](docs/release-policy.md) — versioning, compatibility, and release expectations.
-- [`docs/roadmap.md`](docs/roadmap.md) — strategic outcomes and 1.0 release gates.
+- [`docs/roadmap.md`](docs/roadmap.md) — long-term strategic direction and release gates.

@@ -22,8 +22,10 @@ documentation.
 
 ## Project Direction and Decisions
 
-- [Roadmap](roadmap.md) records strategic outcomes and release gates. GitHub
-  Issues and milestones are the source of truth for actionable work.
+- [Roadmap](roadmap.md) is authoritative for strategic direction and release
+  gates. The GitHub roadmap project and linked repository issues track
+  actionable work across releases; milestones group that work by release or
+  another significant product-lifecycle event.
 - [Architecture decision records](adr/) preserve decisions that are surprising,
   difficult to reverse, or based on important trade-offs.
 - [Proposals](proposals/README.md) are temporary documents for substantial
@@ -52,7 +54,8 @@ Each kind of information has one durable owner:
 | Configuration contracts | Focused reference documents |
 | Durable architectural decisions | `docs/adr/` |
 | Strategic direction and release gates | `docs/roadmap.md` |
-| Actionable work | GitHub Issues and milestones |
+| Actionable work | GitHub roadmap project and linked repository issues |
+| Release and lifecycle grouping | GitHub milestones |
 | Substantial unresolved designs | `docs/proposals/` |
 | Historical implementation detail | Git history |
 
