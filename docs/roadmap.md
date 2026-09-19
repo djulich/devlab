@@ -16,34 +16,29 @@ Actionable 1.0 work is tracked in the
 
 The core software workflow is implemented and exercised by deterministic tests,
 scripted evaluations, and a growing set of live-agent baselines. Before 1.0,
-DevLab should make its compatibility promises explicit, prove supported upgrades,
-make release verification repeatable, and present a concise public demo.
+DevLab should refine the operator model without premature compatibility
+constraints, make release verification repeatable, and present a concise public
+demo. The public compatibility contract and immutable baseline are frozen only
+after a release candidate has exercised the resulting interfaces.
 
 New capabilities should become 1.0 requirements only when evidence shows that
 the current workflow cannot satisfy the intended public contract without them.
 
 ## Release Outcomes
 
-### Issue #1 — [Define the DevLab 1.x compatibility contract](https://github.com/djulich/devlab/issues/1)
+### Compatibility freeze — deferred to the 1.0 candidate
 
-Document what remains stable throughout 1.x for:
+Issues [#1](https://github.com/djulich/devlab/issues/1) and
+[#2](https://github.com/djulich/devlab/issues/2) established useful format-safety
+and release-policy groundwork, but their proposed baseline was deliberately
+withdrawn before release. There are no external users or deployed workspaces to
+support, and preserving an imagined baseline would constrain necessary operator
+and format changes during `0.x`.
 
-- CLI commands, options, exit behavior, and structured output;
-- agent, profile, prerequisite, and managed-test-service configuration;
-- durable workspace formats and schema evolution;
-- workspace layout, Git mutations, workflow-owned commits, and milestone tags;
-- supported Python package APIs, if any; and
-- installation, migration, deprecation, and unsupported-state behavior.
-
-Correctness-critical policy must remain enforced in code and tests. Record
-surprising or hard-to-reverse compatibility decisions in ADRs.
-
-### Issue #2 — [Add compatibility and unsupported-state fixtures](https://github.com/djulich/devlab/issues/2)
-
-Add small fixtures for each historical workspace representation that 1.0 promises
-to support. Verify that reporting remains non-mutating, supported interrupted
-workflows resume correctly, and unsupported formats fail with actionable
-diagnostics instead of silent best-effort migration.
+The immutable baseline and executable compatibility suite must instead be
+created from the exercised 1.0 release candidate. Until then, current-format
+validation and refusal before unsafe mutation remain required, but historical
+development representations are not supported interfaces.
 
 ### Issue #3 — [Add repeatable package and release verification](https://github.com/djulich/devlab/issues/3)
 
@@ -73,22 +68,26 @@ diagnostics without requiring private infrastructure.
 ### Issue #6 — [Rehearse an immutable pre-1.0 release](https://github.com/djulich/devlab/issues/6)
 
 Publish at least one pre-1.0 tag, install it outside an editable checkout, and use
-it against a representative existing workspace. Release 1.0 only after candidate
-use exposes no unresolved issue that requires breaking the proposed 1.x contract.
+it against a representative existing workspace. Once candidate use exposes no
+unresolved issue requiring an interface or format break, define the 1.x contract,
+capture its immutable fixture, and verify that the candidate satisfies it before
+releasing 1.0.
 
 ## 1.0 Release Gates
 
 DevLab 1.0 is ready when:
 
-- public compatibility surfaces and evolution rules are explicit;
-- supported historical workspaces have executable compatibility evidence;
+- public compatibility surfaces and evolution rules have been frozen from an
+  exercised release candidate;
+- the candidate workspace representation has an independently authored,
+  executable compatibility baseline;
 - unsupported durable formats fail safely with repair guidance;
 - representative scripted and live workflows pass with calibrated diagnostics;
 - reporting and validation paths remain demonstrably non-mutating;
 - package artifacts build, contain required resources, and install cleanly;
 - an immutable candidate has been used outside an editable checkout;
 - public documentation and command help agree with implemented behavior; and
-- no known correctness or safety issue requires changing a promised 1.x
+- no known correctness or safety issue requires changing the candidate 1.x
   contract.
 
 ## Post-1.0 or Evidence-Driven Work

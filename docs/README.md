@@ -34,8 +34,8 @@ documentation.
 
 - [Evaluations](evaluations/README.md) documents deterministic and live workflow
   evaluations. Dated results live under `evaluations/baselines/`.
-- [Release policy](release-policy.md) defines versioning, compatibility, and
-  release expectations.
+- [Release policy](release-policy.md) defines versioning, pre-1.0 evolution,
+  the 1.0 compatibility freeze, and release expectations.
 - [Deployment feature overview](deployment-feature-overview.md) describes the
   current deployment-support promise and boundaries.
 

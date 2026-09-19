@@ -240,6 +240,18 @@ def test_mark_architecture_reviewed_records_state_and_handoff(tmp_path: Path) ->
     assert milestone.architecture_review_handoff == "20260101T000000_architect_handoff.md"
 
 
+def test_unknown_milestone_version_is_rejected_without_mutation(tmp_path: Path) -> None:
+    _write_milestone(tmp_path, "M1")
+    path = tmp_path / ".devlab/milestones/M1.toml"
+    path.write_text(path.read_text().replace("version = 1", "version = 2", 1))
+    before = path.read_bytes()
+
+    with pytest.raises(ValueError, match=r"unsupported milestone version 2"):
+        FileMilestoneTracker(tmp_path).get("M1")
+
+    assert path.read_bytes() == before
+
+
 def test_invalid_milestone_status_raises_clear_error(tmp_path: Path) -> None:
     path = tmp_path / ".devlab/milestones/M1.toml"
     path.parent.mkdir(parents=True)

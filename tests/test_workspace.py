@@ -7,6 +7,7 @@ from typing import TypedDict
 import pytest
 
 from devlab.findings import FileFindingTracker
+from devlab.init import init_workspace
 from devlab.milestones import FileMilestoneTracker
 from devlab.research import (
     FileResearchTracker,
@@ -16,7 +17,52 @@ from devlab.research import (
     ResearchSource,
 )
 from devlab.task_tracker import FileTaskTracker
-from devlab.workspace import Workspace
+from devlab.workspace import Workspace, WorkspaceCompatibilityError
+
+
+@pytest.mark.parametrize(
+    ("relative", "old", "new", "expected"),
+    [
+        (
+            ".devlab/manifest.toml",
+            "layout_version = 1",
+            "layout_version = 2",
+            "unsupported layout_version 2; supported version is 1",
+        ),
+        (
+            ".devlab/workflow.toml",
+            "version = 1",
+            "version = 2",
+            "unsupported version 2; supported version is 1",
+        ),
+    ],
+)
+def test_unknown_authoritative_versions_block_before_mutation(
+    tmp_path: Path,
+    relative: str,
+    old: str,
+    new: str,
+    expected: str,
+) -> None:
+    init_workspace(tmp_path)
+    _write_task(tmp_path, "T0001")
+    path = tmp_path / relative
+    path.write_text(path.read_text().replace(old, new, 1))
+    before = {
+        item.relative_to(tmp_path): item.read_bytes()
+        for item in sorted((tmp_path / ".devlab").rglob("*"))
+        if item.is_file()
+    }
+
+    with pytest.raises(WorkspaceCompatibilityError, match=expected):
+        Workspace(tmp_path).tasks().get("T0001").mark_in_review()
+
+    after = {
+        item.relative_to(tmp_path): item.read_bytes()
+        for item in sorted((tmp_path / ".devlab").rglob("*"))
+        if item.is_file()
+    }
+    assert after == before
 
 
 def test_workspace_snapshot_caches_task_listing(

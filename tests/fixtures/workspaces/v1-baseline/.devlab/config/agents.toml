@@ -1,9 +1,0 @@
-[defaults]
-provider = "fixture"
-model = "fixture-model"
-effort = "medium"
-max_session_duration_seconds = 60
-
-[providers.fixture]
-command = "true"
-args = ["{system_prompt}", "{session_prompt}"]

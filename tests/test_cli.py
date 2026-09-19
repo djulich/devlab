@@ -17,6 +17,7 @@ from devlab.executable_config import (
     build_executable_config_snapshot,
 )
 from devlab.handoffs import SessionEnvelope, write_session_envelope
+from devlab.init import init_workspace
 from devlab.workflow_state import ResumeState, set_resume_state
 
 
@@ -76,6 +77,25 @@ def test_cli_reports_installed_version(
 
     assert exc.value.code == 0
     assert capsys.readouterr().out.strip() == f"devlab {version('devlab')}"
+
+
+def test_cli_reports_unsupported_workspace_version_without_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    init_workspace(tmp_path)
+    manifest = tmp_path / ".devlab/manifest.toml"
+    manifest.write_text(manifest.read_text().replace("layout_version = 1", "layout_version = 2"))
+    monkeypatch.setattr("sys.argv", ["devlab", "status", "--root", str(tmp_path)])
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 1
+    error = capsys.readouterr().err
+    assert "unsupported layout_version 2" in error
+    assert "Traceback" not in error
 
 
 @pytest.mark.parametrize(

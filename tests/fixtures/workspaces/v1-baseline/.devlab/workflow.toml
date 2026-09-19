@@ -1,6 +1,0 @@
-version = 1
-fixture_extension = "preserve-on-write"
-
-[planning]
-complete = true
-fixture_extension = true

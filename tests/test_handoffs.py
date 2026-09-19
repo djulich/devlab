@@ -134,6 +134,32 @@ def test_publish_and_load_session_result_round_trip(tmp_path: Path) -> None:
     assert "## Done\n- Implemented behavior" in envelope_path.with_name("handoff.md").read_text()
 
 
+def test_session_result_rejects_unknown_schema_without_mutation(tmp_path: Path) -> None:
+    envelope_path = tmp_path / "developer" / "session.toml"
+    envelope = SessionEnvelope(1, "s1", "developer", task="T0001")
+    write_session_envelope(envelope_path, envelope)
+    candidate_path = envelope_path.with_name(HANDOFF_CANDIDATE_FILE)
+    candidate_path.write_text(
+        'schema_version = 1\noutcome = "completed"\n'
+        'commit_message = "Implement behavior"\n'
+        'done = ["Implemented behavior"]\nchanged_artifacts = ["src/app.py"]\n'
+        "open_issues = []\naddressed_findings = []\n"
+        'next_session_hint = "Review the behavior."\n'
+    )
+    candidate = parse_handoff_candidate(candidate_path, "developer")
+    publish_session_result(envelope_path, envelope, candidate)
+    result_path = envelope_path.with_name(SESSION_RESULT_FILE)
+    result_path.write_text(
+        result_path.read_text().replace("schema_version = 1", "schema_version = 2", 1)
+    )
+    before = result_path.read_bytes()
+
+    with pytest.raises(HandoffError, match="unsupported session result schema_version 2"):
+        load_session_result(result_path)
+
+    assert result_path.read_bytes() == before
+
+
 def test_research_candidate_publish_and_handoff_round_trip(tmp_path: Path) -> None:
     envelope_path = tmp_path / "developer" / "session.toml"
     envelope = SessionEnvelope(1, "s1", "developer", task="T0001", milestone="M1")

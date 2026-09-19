@@ -1,12 +1,13 @@
 # Contributing to DevLab
 
-DevLab is approaching its 1.0 compatibility boundary. Contributions are
-welcome, but changes should strengthen the existing workflow before expanding
-its feature surface.
+DevLab is unpublished pre-1.0 software. Contributions are welcome, but changes
+should strengthen the existing workflow before expanding its feature surface.
+Its CLI and durable formats remain provisional until the 1.0 release-candidate
+freeze.
 
 ## Before You Start
 
-- Use a GitHub issue to discuss substantial behavior or compatibility changes
+- Use a GitHub issue to discuss substantial behavior or durable-format changes
   before implementation.
 - Report security problems privately as described in [SECURITY.md](SECURITY.md).
 - Read [AGENTS.md](AGENTS.md) for the repository's architecture, ownership
@@ -58,8 +59,8 @@ make -C demos check
 ## Pull Requests
 
 Describe the user-visible outcome, important design choices, and validation you
-ran. Call out compatibility or migration effects explicitly. Keep each pull
-request focused enough that its workflow and state implications can be reviewed
-as one coherent change.
+ran. Call out durable-state replacement or migration effects when relevant.
+Keep each pull request focused enough that its workflow and state implications
+can be reviewed as one coherent change.
 
 Contributions are accepted under the repository's Apache License 2.0.

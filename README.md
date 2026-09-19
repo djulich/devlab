@@ -117,7 +117,7 @@ devlab --version
 ```
 
 DevLab is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).
-Pre-1.0 compatibility and release expectations are documented in
+Pre-1.0 evolution and release expectations are documented in
 [`docs/release-policy.md`](docs/release-policy.md).
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) to contribute and
 [`SECURITY.md`](SECURITY.md) to report vulnerabilities privately.

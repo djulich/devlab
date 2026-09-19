@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from devlab.generations import (
     ACTIVE_GENERATION_SKELETON_DIRS,
     active_generation,
@@ -25,6 +27,26 @@ def test_active_generation_is_derived_from_archive_directories(tmp_path: Path) -
     assert archived_generation_numbers(tmp_path) == (1, 3)
     assert previous_generation(tmp_path) == 3
     assert active_generation(tmp_path) == 4
+
+
+def test_unknown_generation_manifest_version_is_rejected_without_mutation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / ".devlab/generations/0001/generation.toml"
+    _write(
+        path,
+        "version = 2\n"
+        "generation = 1\n"
+        'archived_at = "2026-09-01T10:00:00+00:00"\n'
+        'reason = "spec_reconciliation"\n'
+        'spec_baseline = "abc123"\n',
+    )
+    before = path.read_bytes()
+
+    with pytest.raises(ValueError, match="unsupported version 2"):
+        load_generation_manifest(path)
+
+    assert path.read_bytes() == before
 
 
 def test_archive_active_generation_moves_workflow_bundle_and_keeps_specs(
