@@ -23,11 +23,10 @@ def test_prepare_dist_dir_rejects_existing_content(tmp_path: Path) -> None:
         release_check._prepare_dist_dir(dist)
 
 
-def test_verify_release_tag_requires_version_annotated_tag_and_head(
+def test_verify_release_tag_requires_version_tag_and_head(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     responses: dict[tuple[str, ...], str] = {
-        ("git", "cat-file", "-t", "refs/tags/v0.1.0"): "tag",
         ("git", "rev-list", "-n", "1", "refs/tags/v0.1.0"): "abc123",
         ("git", "rev-parse", "HEAD"): "abc123",
     }
@@ -57,17 +56,10 @@ def test_verify_release_tag_rejects_mismatch_before_git(
         release_check._verify_release_tag("v0.2.0", "0.1.0")
 
 
-def test_verify_release_tag_rejects_lightweight_tag(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(release_check, "_run", lambda *_args, **_kwargs: "commit")
-
-    with pytest.raises(release_check.ReleaseCheckError, match="must be annotated"):
-        release_check._verify_release_tag("v0.1.0", "0.1.0")
-
-
 def test_verify_release_tag_rejects_tag_for_another_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    responses = iter(("tag", "tagged-commit", "head-commit"))
+    responses = iter(("tagged-commit", "head-commit"))
     monkeypatch.setattr(release_check, "_run", lambda *_args, **_kwargs: next(responses))
 
     with pytest.raises(release_check.ReleaseCheckError, match="does not resolve to HEAD"):

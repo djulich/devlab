@@ -117,8 +117,6 @@ def _verify_release_tag(tag: str, version: str) -> None:
     expected = f"v{version}"
     _require(tag == expected, f"release tag {tag!r} must match package version as {expected!r}")
     reference = f"refs/tags/{tag}"
-    object_type = _run(["git", "cat-file", "-t", reference], capture=True)
-    _require(object_type == "tag", f"release tag {tag!r} must be annotated")
     tagged_commit = _run(["git", "rev-list", "-n", "1", reference], capture=True)
     head = _run(["git", "rev-parse", "HEAD"], capture=True)
     _require(tagged_commit == head, f"release tag {tag!r} does not resolve to HEAD")
@@ -260,7 +258,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--expected-tag",
-        help="require this annotated vX.Y.Z tag to match the package version and HEAD",
+        help="require this vX.Y.Z tag to match the package version and HEAD",
     )
     return parser.parse_args(argv)
 

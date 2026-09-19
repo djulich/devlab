@@ -126,17 +126,18 @@ example, package version `0.2.0` uses tag `v0.2.0`. The `v` distinguishes a
 repository tag from the package version and is not part of the version recorded
 in package metadata.
 
-The annotated Git tag message is the canonical release note. It starts with the
-subject `DevLab X.Y.Z`, followed by a concise summary of notable changes and any
-scoped recovery guidance. Read it with `git show --no-patch vX.Y.Z`. A GitHub
-Release mirrors that note for easier browsing; a separate changelog is not
-required.
+The GitHub Release is the canonical release note; a separate changelog is not
+required. An annotated tag message can seed the draft release note, while a
+lightweight tag uses the release commit message. In either case, review and
+expand the draft with a concise summary of notable changes and any scoped
+recovery guidance before publishing it.
 
 1. Review changes since the previous release and choose the next version using
    the rules above.
 2. Update `[project].version` in `pyproject.toml`.
 3. Refresh `uv.lock` so the root package entry records the same version.
-4. Draft the annotated-tag release note described above.
+4. Draft a concise summary of notable changes and any scoped recovery guidance
+   for the GitHub Release.
 5. Run the complete development validation:
 
    ```bash
@@ -164,16 +165,16 @@ required.
    retain the exact verified artifacts and a `SHA256SUMS` file in an empty
    output directory.
 8. Commit the release preparation. With that clean commit checked out, create
-   an annotated tag. Use `vX.Y.Z` for the tag and `DevLab X.Y.Z` for its subject;
-   add the release notes in the tag-message editor below the subject:
+   a `vX.Y.Z` tag. A lightweight tag is sufficient:
 
    ```bash
-   git tag -a vX.Y.Z
+   git tag vX.Y.Z
    ```
 
-   Annotated tags are required; cryptographic tag signing is optional until the
-   project adopts a signing policy. When signing, use `git tag -s vX.Y.Z`
-   instead.
+   To record the release note in Git as well as GitHub, use an annotated tag
+   (`git tag -a vX.Y.Z`) and enter the note in the tag-message editor.
+   Cryptographic tag signing is optional until the project adopts a signing
+   policy; use `git tag -s vX.Y.Z` when signing.
 9. Verify that the worktree is clean, the tag resolves to the checked-out
    commit, and installation from that commit succeeds. Push the release commit
    first and the specific tag second, only when the release is ready to share:
@@ -186,12 +187,13 @@ required.
    Never move or replace a shared release tag. Correct a released artifact with
    a new version and tag.
 10. The tag push starts the `Prepare release` workflow. It verifies that the
-    annotated tag matches the package version and tagged commit, reruns the
-    complete validation, builds and verifies the release artifacts, generates
-    checksums, and creates a draft GitHub Release from the tag message. Review
-    the draft and its assets, mark a `0.x` release as a pre-release, and publish
-    it deliberately. Published releases are immutable; a failed preparation is
-    corrected with a new version and tag rather than by moving the shared tag.
+    tag matches the package version and tagged commit, reruns the complete
+    validation, builds and verifies the release artifacts, generates checksums,
+    and creates a draft GitHub Release from the annotated tag message or release
+    commit message. Add the drafted release summary, review the note and assets,
+    mark a `0.x` release as a pre-release, and publish it deliberately. Published
+    releases are immutable; a failed preparation is corrected with a new version
+    and tag rather than by moving the shared tag.
 11. Smoke-test installation through the shared tag and confirm the reported
     version:
 
