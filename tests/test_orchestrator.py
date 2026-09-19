@@ -21,6 +21,8 @@ from devlab.handoffs import (
     HandoffError,
     HandoffSubmissionError,
     SessionEnvelope,
+    SessionResult,
+    candidate_from_handoff,
     parse_handoff,
     write_session_envelope,
 )
@@ -29,9 +31,9 @@ from devlab.orchestrator import (
     RunStopReason,
     _timestamp,
     close_task,
-    process_handoff,
+    process_session_result,
     submit_session_handoff,
-    validate_handoff,
+    validate_session_result,
 )
 from devlab.orchestrator import (
     run_loop as _production_run_loop,
@@ -62,6 +64,17 @@ from devlab.workspace import (
     Workspace,
 )
 from tests.helpers import complete_acceptance, handoff
+
+
+def _result_from_handoff(handoff: Handoff) -> SessionResult:
+    return SessionResult(
+        envelope=SessionEnvelope(
+            schema_version=1,
+            session_id="fixture",
+            role=handoff.role_name,
+        ),
+        candidate=candidate_from_handoff(handoff),
+    )
 
 
 def run_loop(root: Path, **kwargs: Any) -> Any:
@@ -320,7 +333,7 @@ def _clarification_handoff(
     )
 
 
-def test_process_handoff_creates_clarification_without_developer_transition(
+def test_process_session_result_creates_clarification_without_developer_transition(
     tmp_path: Path,
 ) -> None:
     _setup_tree(tmp_path)
@@ -337,8 +350,8 @@ def test_process_handoff_creates_clarification_without_developer_transition(
     path = _write_session_handoff(tmp_path, "developer", _clarification_handoff())
     handoff = parse_handoff(path, "developer")
 
-    result = process_handoff(
-        handoff,
+    result = process_session_result(
+        _result_from_handoff(handoff),
         Workspace(tmp_path),
         command="implement",
         session_id="20260707T101500_001_developer",
@@ -360,7 +373,7 @@ def test_process_handoff_creates_clarification_without_developer_transition(
     assert resume.task == "T0001"
 
 
-def test_process_handoff_records_research_and_exact_resume_route(
+def test_process_session_result_records_research_and_exact_resume_route(
     tmp_path: Path,
 ) -> None:
     _setup_tree(tmp_path)
@@ -386,8 +399,8 @@ def test_process_handoff_records_research_and_exact_resume_route(
     )
     handoff = parse_handoff(path, "developer")
 
-    result = process_handoff(
-        handoff,
+    result = process_session_result(
+        _result_from_handoff(handoff),
         Workspace(tmp_path),
         command="implement",
         session_id="20260707T101500_001_developer",
@@ -409,7 +422,7 @@ def test_process_handoff_records_research_and_exact_resume_route(
     assert len(list((tmp_path / HISTORY_DIR).iterdir())) == 1
 
 
-def test_process_handoff_rejects_research_scope_route_mismatch(tmp_path: Path) -> None:
+def test_process_session_result_rejects_research_scope_route_mismatch(tmp_path: Path) -> None:
     _setup_tree(tmp_path)
     path = _write_session_handoff(
         tmp_path,
@@ -426,8 +439,8 @@ def test_process_handoff_rejects_research_scope_route_mismatch(tmp_path: Path) -
     )
 
     with pytest.raises(HandoffError, match="does not match the active route"):
-        process_handoff(
-            parse_handoff(path, "developer"),
+        process_session_result(
+            _result_from_handoff(parse_handoff(path, "developer")),
             Workspace(tmp_path),
             command="implement",
             task_id="T0001",
@@ -1131,7 +1144,7 @@ def test_researcher_waits_when_requester_consumes_session_limit(tmp_path: Path) 
     assert Workspace(tmp_path).snapshot.get_research("RS0001").status.value == "requested"
 
 
-def test_process_handoff_creates_clarification_without_planner_state_update(
+def test_process_session_result_creates_clarification_without_planner_state_update(
     tmp_path: Path,
 ) -> None:
     _setup_tree(tmp_path)
@@ -1144,8 +1157,8 @@ def test_process_handoff_creates_clarification_without_planner_state_update(
     path = _write_session_handoff(tmp_path, "planner", handoff_text)
     handoff = parse_handoff(path, "planner")
 
-    result = process_handoff(
-        handoff,
+    result = process_session_result(
+        _result_from_handoff(handoff),
         Workspace(tmp_path),
         command="plan",
         session_id="20260707T101500_001_planner",
@@ -1410,10 +1423,22 @@ def test_run_loop_agent_mode_rejects_invalid_recommendation_before_resolver(
     _write_workflow_state(tmp_path)
     (tmp_path / DESIGN_PLAN).write_text("# Design\n")
     _write_task(tmp_path, "T0001", "Auth")
-    invalid_handoff = _clarification_handoff("developer").replace(
-        'recommended_option = "A"', 'recommended_option = "C"'
-    )
-    provider = MockProvider(handoff_text=invalid_handoff)
+
+    def write_invalid_candidate(call: AgentCall) -> None:
+        envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
+        envelope_path.with_name("handoff-candidate.toml").write_text(
+            'schema_version = 1\noutcome = "needs_clarification"\n'
+            'commit_message = ""\ndone = ["Identified a policy question."]\n'
+            'changed_artifacts = []\nopen_issues = ["Operator decision required."]\n'
+            'addressed_findings = []\nnext_session_hint = "Wait for an answer."\n\n'
+            '[clarification]\ntitle = "Auth policy"\nscope = "task:T0001"\n'
+            'blocks = "task:T0001"\nanswer_shape = "choice"\n'
+            'recommended_option = "C"\n'
+            'details = """### Context\nC\n\n### Question\nQ\n\n### Options\n'
+            '- A: 24-hour idle timeout.\n- B: No expiry for MVP.\n"""\n'
+        )
+
+    provider = MockProvider(write_handoff=False, on_invoke=write_invalid_candidate)
 
     result = run_loop(
         tmp_path,
@@ -4215,7 +4240,7 @@ class TestValidateHandoff:
             "## Next Session Hint\nContinue\n"
         )
         handoff = parse_handoff(path, "developer")
-        validate_handoff(handoff, Workspace(tmp_path).snapshot)
+        validate_session_result(_result_from_handoff(handoff), Workspace(tmp_path).snapshot)
 
 
 class TestValidateReviewerOutcome:
@@ -4244,7 +4269,7 @@ class TestValidateReviewerOutcome:
         handoff = self._handoff(tmp_path)
 
         with pytest.raises(HandoffError, match="no task awaiting review"):
-            validate_handoff(handoff, Workspace(tmp_path).snapshot)
+            validate_session_result(_result_from_handoff(handoff), Workspace(tmp_path).snapshot)
 
     def test_accepts_open_issues_with_approved_task(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -4257,21 +4282,21 @@ class TestValidateReviewerOutcome:
         )
         handoff = self._handoff(tmp_path, open_issues="- Code needs refactoring.")
 
-        validate_handoff(handoff, Workspace(tmp_path).snapshot)
+        validate_session_result(_result_from_handoff(handoff), Workspace(tmp_path).snapshot)
 
     def test_accepts_no_open_issues_without_approval(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", status="in_review")
         handoff = self._handoff(tmp_path)
 
-        validate_handoff(handoff, Workspace(tmp_path).snapshot)
+        validate_session_result(_result_from_handoff(handoff), Workspace(tmp_path).snapshot)
 
     def test_accepts_rejection_with_open_issues(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
         _write_task(tmp_path, "T0001", "First", status="in_review")
         handoff = self._handoff(tmp_path, open_issues="- Code needs refactoring.")
 
-        validate_handoff(handoff, Workspace(tmp_path).snapshot)
+        validate_session_result(_result_from_handoff(handoff), Workspace(tmp_path).snapshot)
 
     def test_accepts_approval_without_open_issues(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -4284,7 +4309,7 @@ class TestValidateReviewerOutcome:
         )
         handoff = self._handoff(tmp_path)
 
-        validate_handoff(handoff, Workspace(tmp_path).snapshot)
+        validate_session_result(_result_from_handoff(handoff), Workspace(tmp_path).snapshot)
 
 
 class TestProcessHandoffReviewerDefaults:
@@ -4317,7 +4342,7 @@ class TestProcessHandoffReviewerDefaults:
         _write_task(tmp_path, "T0001", "First", status="in_review")
         handoff = self._write_handoff(tmp_path)
 
-        process_handoff(handoff, Workspace(tmp_path))
+        process_session_result(_result_from_handoff(handoff), Workspace(tmp_path))
 
         task = FileTaskTracker(tmp_path).get("T0001")
         assert task.status == TaskStatus.CHANGES_REQUESTED
@@ -4336,7 +4361,7 @@ class TestProcessHandoffReviewerDefaults:
         )
         handoff = self._write_handoff(tmp_path, open_issues="- Code needs refactoring.")
 
-        process_handoff(handoff, Workspace(tmp_path))
+        process_session_result(_result_from_handoff(handoff), Workspace(tmp_path))
 
         task = FileTaskTracker(tmp_path).get("T0001")
         assert task.status == TaskStatus.CHANGES_REQUESTED
@@ -4551,6 +4576,37 @@ def test_completed_developer_submission_requires_complete_acceptance(
 
     assert result.role_name == "developer"
     assert result.result_path.exists()
+
+
+def test_submission_does_not_parse_rendered_handoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_tree(tmp_path)
+    artifacts = tmp_path / ARTIFACTS_DIR / "architect"
+    artifacts.mkdir(parents=True)
+    envelope_path = artifacts / "session.toml"
+    write_session_envelope(
+        envelope_path,
+        SessionEnvelope(schema_version=1, session_id="session-1", role="architect"),
+    )
+    (artifacts / "handoff-candidate.toml").write_text(
+        'schema_version = 1\noutcome = "completed"\n'
+        'commit_message = "Describe architecture"\n'
+        'done = ["Described the architecture"]\nchanged_artifacts = []\n'
+        "open_issues = []\naddressed_findings = []\n"
+        'next_session_hint = "Create the project plan."\n'
+        "design_drift = []\n"
+    )
+
+    def reject_markdown_parsing(_text: str, _role_name: str) -> dict[str, str]:
+        raise AssertionError("current-session submission parsed rendered Markdown")
+
+    monkeypatch.setattr("devlab.handoffs._parse_sections", reject_markdown_parsing)
+
+    result = submit_session_handoff(tmp_path, envelope_path=envelope_path)
+
+    assert result.result_path.exists()
+    assert result.handoff_path.exists()
 
 
 def test_handoff_correction_rejects_product_file_changes(tmp_path: Path) -> None:

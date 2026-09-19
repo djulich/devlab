@@ -1,7 +1,7 @@
-"""Workflow history derivation from handoff files.
+"""Workflow history derivation from structured session results.
 
 Derives session records, task cycles, rework metrics, and review
-rejections from archived handoff files in .devlab/history/.
+rejections from archived results in .devlab/history/.
 """
 
 from __future__ import annotations
@@ -13,10 +13,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from devlab.findings import Finding, FindingStatus
-from devlab.handoffs import HandoffError, load_session_result, parse_handoff
+from devlab.handoffs import HandoffError, SessionResult, load_session_result
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
-_HANDOFF_FILENAME_RE = re.compile(r"^(\d{8}T\d{6})(?:_(\d+))?_([a-z_]+)_handoff\.md$")
+_RESULT_FILENAME_RE = re.compile(r"^(\d{8}T\d{6})(?:_(\d+))?_([a-z_]+)_result\.toml$")
 _TASK_ARTIFACT_RE = re.compile(r"\.devlab/tasks/(T\d{3,5})[^\s`)]*\.md")
 
 
@@ -70,8 +70,8 @@ def derive_role_sequence(root: Path) -> list[str]:
 
 def derive_session_records(root: Path) -> list[SessionRecord]:
     parsed: list[tuple[str, int, str, Path]] = []
-    for path in (root / ".devlab/history").glob("*_handoff.md"):
-        match = _HANDOFF_FILENAME_RE.match(path.name)
+    for path in (root / ".devlab/history").glob("*_result.toml"):
+        match = _RESULT_FILENAME_RE.match(path.name)
         if match:
             counter = int(match.group(2) or "1")
             parsed.append((match.group(1), counter, match.group(3), path))
@@ -79,13 +79,14 @@ def derive_session_records(root: Path) -> list[SessionRecord]:
     sessions: list[SessionRecord] = []
     for index, (timestamp, counter, role, path) in enumerate(sorted(parsed), start=1):
         task_id, task_id_source = _task_id_for_session(path, role)
+        handoff_path = path.with_name(path.name.removesuffix("_result.toml") + "_handoff.md")
         sessions.append(
             SessionRecord(
                 index=index,
                 timestamp=timestamp,
                 counter=counter,
                 role=role,
-                handoff=path.relative_to(root).as_posix(),
+                handoff=handoff_path.relative_to(root).as_posix(),
                 task_id=task_id,
                 task_id_source=task_id_source,
             )
@@ -93,37 +94,28 @@ def derive_session_records(root: Path) -> list[SessionRecord]:
     return sessions
 
 
-def _task_id_for_session(path: Path, role: str) -> tuple[str, str]:
+def _task_id_for_session(result_path: Path, role: str) -> tuple[str, str]:
     if role not in {"developer", "reviewer"}:
         return "", "not_task_role"
-    artifact_task_ids = _task_ids_from_changed_artifacts(path, role)
-    result_path = path.with_name(path.name.removesuffix("_handoff.md") + "_result.toml")
-    if result_path.exists():
-        try:
-            result = load_session_result(result_path)
-        except HandoffError:
-            return "", "unparseable_structured_result"
-        if result.envelope.role != role or not result.envelope.task:
-            return "", "invalid_structured_result_identity"
-        result_task_id = result.envelope.task
-        if artifact_task_ids and artifact_task_ids != {result_task_id}:
-            return "", "conflicting_task_sources"
-        return result_task_id, "structured_result"
-
-    if len(artifact_task_ids) == 1:
-        return next(iter(artifact_task_ids)), "changed_task_artifact_fallback"
-    if len(artifact_task_ids) > 1:
-        return "", "ambiguous_changed_task_artifacts"
-    return "", "missing_structured_result"
-
-
-def _task_ids_from_changed_artifacts(path: Path, role: str) -> set[str]:
     try:
-        handoff = parse_handoff(path, role)
+        result = load_session_result(result_path)
     except HandoffError:
-        return set()
-    changed_artifacts = handoff.section("Changed Artifacts")
-    return set(_TASK_ARTIFACT_RE.findall(changed_artifacts))
+        return "", "unparseable_structured_result"
+    if result.envelope.role != role or not result.envelope.task:
+        return "", "invalid_structured_result_identity"
+    result_task_id = result.envelope.task
+    artifact_task_ids = _task_ids_from_changed_artifacts(result)
+    if artifact_task_ids and artifact_task_ids != {result_task_id}:
+        return "", "conflicting_task_sources"
+    return result_task_id, "structured_result"
+
+
+def _task_ids_from_changed_artifacts(result: SessionResult) -> set[str]:
+    return {
+        task_id
+        for artifact in result.candidate.changed_artifacts
+        for task_id in _TASK_ARTIFACT_RE.findall(artifact)
+    }
 
 
 def derive_task_cycle_metrics(
@@ -207,11 +199,11 @@ def derive_task_rework_summary(task_cycles: TaskCycleMetrics) -> TaskReworkSumma
 
 def derive_review_rejections(root: Path) -> int:
     rejections = 0
-    for path in (root / ".devlab/history").glob("*_reviewer_handoff.md"):
+    for path in (root / ".devlab/history").glob("*_reviewer_result.toml"):
         try:
-            handoff = parse_handoff(path, "reviewer")
+            result = load_session_result(path)
         except HandoffError:
             continue
-        if handoff.has_open_issues:
+        if result.envelope.role == "reviewer" and result.candidate.open_issues:
             rejections += 1
     return rejections

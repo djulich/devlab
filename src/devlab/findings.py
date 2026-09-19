@@ -99,12 +99,30 @@ class FileFindingTracker:
     ) -> Finding:
         handoff_text = handoff_path.read_text()
         open_issues = _extract_section(handoff_text, "Open Issues") or handoff_text
-        issue_title = _title_from_open_issues(open_issues) or f"{source.title()} finding"
+        return self.create_from_handoff_issues(
+            source=source,
+            milestone=milestone,
+            handoff_name=handoff_path.name,
+            open_issues=tuple(_issue_entries(open_issues)),
+        )
+
+    def create_from_handoff_issues(
+        self,
+        *,
+        source: str,
+        milestone: str | None,
+        handoff_name: str,
+        open_issues: tuple[str, ...],
+    ) -> Finding:
+        """Create a finding from validated structured handoff issues."""
+
+        rendered_issues = "\n".join(f"- {issue}" for issue in open_issues) or "- None"
+        issue_title = _title_from_open_issues(rendered_issues) or f"{source.title()} finding"
         title = f"{milestone} {issue_title}" if milestone else issue_title
         body = (
             f"# {title}\n\n"
             "## Finding\n"
-            f"{open_issues.strip()}\n\n"
+            f"{rendered_issues}\n\n"
             "## Requested Planning\n"
             "Create all required follow-up task(s) for this finding. Each task must list "
             "this finding in `addresses_findings`.\n"
@@ -114,7 +132,7 @@ class FileFindingTracker:
             source=source,
             milestone=milestone,
             body=body,
-            handoff=handoff_path.name,
+            handoff=handoff_name,
         )
 
     def mark_planned(self, finding_id: str) -> None:
@@ -207,6 +225,15 @@ def _extract_section(text: str, heading: str) -> str:
         flags=re.MULTILINE,
     )
     return match.group(1).strip() if match else ""
+
+
+def _issue_entries(text: str) -> list[str]:
+    entries: list[str] = []
+    for line in text.splitlines():
+        entry = re.sub(r"^[-*]\s+", "", line).strip()
+        if entry and entry.lower() != "none":
+            entries.append(entry)
+    return entries
 
 
 def _finding_id_from_path(path: Path) -> str | None:

@@ -88,22 +88,11 @@ class HandoffCandidate:
     clarification: ClarificationRequest | None = None
     research: ResearchRequest | None = None
 
-    def as_handoff(self, path: Path, role_name: str) -> Handoff:
-        text = render_handoff(self, role_name)
-        return Handoff(
-            path=path,
-            role_name=role_name,
-            sections=_parse_sections(text, role_name),
-        )
-
 
 @dataclasses.dataclass(frozen=True)
 class SessionResult:
     envelope: SessionEnvelope
     candidate: HandoffCandidate
-
-    def as_handoff(self, path: Path) -> Handoff:
-        return self.candidate.as_handoff(path, self.envelope.role)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -362,6 +351,34 @@ def submission_attempt_count(envelope_path: Path) -> int:
         ) from exc
 
 
+def latest_rejected_submission_issues(envelope_path: Path) -> tuple[str, ...]:
+    """Return the latest durable rejection details for an unfinished session."""
+
+    path = envelope_path.with_name("submission-attempts.jsonl")
+    if not path.exists():
+        return ()
+    try:
+        lines = path.read_text().splitlines()
+    except OSError as exc:
+        raise HandoffError(
+            f"cannot read submission attempt history: {exc}",
+            reason=HandoffFailureReason.SESSION_PROTOCOL,
+        ) from exc
+    for line in reversed(lines):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict) or record.get("accepted") is not False:
+            continue
+        issues = record.get("issues")
+        if isinstance(issues, list) and all(isinstance(issue, str) for issue in issues):
+            return tuple(issue for issue in issues if issue)
+    return ()
+
+
 def load_session_result(path: Path) -> SessionResult:
     data = _load_toml_file(path, "session result")
     schema_version = _required_int(data, "schema_version", "session result")
@@ -485,7 +502,7 @@ def render_handoff(candidate: HandoffCandidate, role_name: str) -> str:
 
 
 def candidate_from_handoff(handoff: Handoff) -> HandoffCandidate:
-    """Adapt a parsed legacy handoff for test providers and migration tooling."""
+    """Adapt Markdown handoff fixtures used by test providers."""
     clarification = handoff.clarification_request
     research = handoff.research_request
     return HandoffCandidate(
@@ -921,6 +938,16 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
     )
     untested_claims = _candidate_optional_string_list(data, "untested_claims", issues)
     design_drift = _candidate_optional_string_list(data, "design_drift", issues)
+    for key, entries in (
+        ("done", done),
+        ("changed_artifacts", changed_artifacts),
+        ("open_issues", open_issues),
+        ("semantic_integration_concerns", semantic_concerns),
+        ("untested_claims", untested_claims),
+        ("design_drift", design_drift),
+    ):
+        _validate_markdown_list_entries(key, entries, issues)
+    _validate_no_level_two_heading("next_session_hint", next_session_hint, issues)
 
     planning_complete: bool | None = None
     if role_name == "planner":
@@ -951,10 +978,19 @@ def _candidate_from_data(data: dict[str, object], role_name: str) -> HandoffCand
     if outcome == "failed" and not open_issues:
         issues.append("outcome failed requires at least one open_issues entry")
 
+    seen_findings: set[str] = set()
     for entry in addressed_findings:
-        if _ADDRESSED_FINDING_LINE_RE.fullmatch(f"- {entry}") is None:
+        match = _ADDRESSED_FINDING_LINE_RE.fullmatch(f"- {entry}")
+        if match is None:
             issues.append("addressed_findings entries must use 'FXXXX: TXXXX[, TXXXX]'")
             break
+        finding_id = match.group("finding")
+        if finding_id in seen_findings:
+            issues.append(f"addressed_findings lists {finding_id} more than once")
+        seen_findings.add(finding_id)
+        task_ids = tuple(task.strip() for task in match.group("tasks").split(","))
+        if len(task_ids) != len(set(task_ids)):
+            issues.append(f"addressed_findings lists duplicate task for {finding_id}")
     if issues:
         raise HandoffSubmissionError(tuple(issues))
     return HandoffCandidate(
@@ -1000,6 +1036,7 @@ def _candidate_clarification(value: object, issues: list[str]) -> ClarificationR
     answer_shape = _candidate_string(value, "answer_shape", local)
     recommended = _candidate_string(value, "recommended_option", local, allow_empty=True)
     details = _candidate_string(value, "details", local)
+    _validate_no_level_two_heading("details", details, local)
     if local:
         issues.extend(f"clarification.{issue}" for issue in local)
         return None
@@ -1147,6 +1184,18 @@ def _candidate_optional_string_list(
     if key not in data:
         return ()
     return _candidate_string_list(data, key, issues, allow_empty=True)
+
+
+def _validate_markdown_list_entries(key: str, entries: tuple[str, ...], issues: list[str]) -> None:
+    if any("\n" in entry or "\r" in entry for entry in entries):
+        issues.append(f"{key} entries must be single lines")
+    if any(entry.lower() in _NONE_LINES for entry in entries):
+        issues.append(f"{key} entries must not use the reserved None marker")
+
+
+def _validate_no_level_two_heading(key: str, value: str, issues: list[str]) -> None:
+    if re.search(r"^##(?:\s|$)", value, flags=re.MULTILINE):
+        issues.append(f"{key} must not contain a level-two Markdown heading")
 
 
 def _load_toml_file(path: Path, label: str) -> dict[str, object]:

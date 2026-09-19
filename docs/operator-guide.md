@@ -464,8 +464,9 @@ detectable issues and records the attempt. After acceptance DevLab publishes:
 
 `result.toml` is the authoritative control result. `handoff.md` is rendered by
 DevLab as the human-readable audit trail. New sessions cannot substitute directly
-authored Markdown for an accepted structured result. Legacy Markdown history
-remains readable.
+authored Markdown for an accepted structured result, and workflow transitions do
+not parse the rendered handoff. The handoff remains the human-readable audit and
+prompt-continuity artifact.
 
 After processing an accepted result, DevLab archives the structured result,
 rendered handoff, and submission-attempt evidence under:

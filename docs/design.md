@@ -551,8 +551,10 @@ the structured result, rendered handoff, and submission evidence under:
 
 Rendered handoffs remain the human-readable continuity and audit artifact.
 Structured results are the control artifact, so new sessions do not depend on
-recovering transition facts from agent-authored Markdown. Legacy Markdown history
-remains readable.
+recovering transition facts from agent-authored Markdown. Contract validation,
+workflow transitions, and history metrics consume the structured result directly;
+the rendered Markdown is not a workflow-control input, but remains the
+human-readable audit and prompt-continuity artifact.
 
 ## Why Markdown and simple files?
 

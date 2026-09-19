@@ -1384,21 +1384,25 @@ def test_task_cycle_metrics_distinguish_planned_tasks_from_rework(tmp_path: Path
         "developer",
         ".devlab/tasks/T0001_first.md",
     )
+    _write_session_result(history / "20260519T091112_developer_handoff.md", "developer", "T0001")
     _write_handoff(
         history / "20260519T091113_reviewer_handoff.md",
         "reviewer",
         ".devlab/tasks/T0001_first.md",
     )
+    _write_session_result(history / "20260519T091113_reviewer_handoff.md", "reviewer", "T0001")
     _write_handoff(
         history / "20260519T091114_developer_handoff.md",
         "developer",
         ".devlab/tasks/T0002_second.md",
     )
+    _write_session_result(history / "20260519T091114_developer_handoff.md", "developer", "T0002")
     _write_handoff(
         history / "20260519T091115_reviewer_handoff.md",
         "reviewer",
         ".devlab/tasks/T0002_second.md",
     )
+    _write_session_result(history / "20260519T091115_reviewer_handoff.md", "reviewer", "T0002")
 
     sessions = derive_session_records(tmp_path)
     task_cycles = derive_task_cycle_metrics(tmp_path, sessions)
@@ -1435,21 +1439,25 @@ def test_task_cycle_metrics_detect_repeated_same_task_cycles(tmp_path: Path) -> 
         "developer",
         ".devlab/tasks/T0001_first.md",
     )
+    _write_session_result(history / "20260519T091112_developer_handoff.md", "developer", "T0001")
     _write_handoff(
         history / "20260519T091113_reviewer_handoff.md",
         "reviewer",
         ".devlab/tasks/T0001_first.md",
     )
+    _write_session_result(history / "20260519T091113_reviewer_handoff.md", "reviewer", "T0001")
     _write_handoff(
         history / "20260519T091114_developer_handoff.md",
         "developer",
         ".devlab/tasks/T0001_first.md",
     )
+    _write_session_result(history / "20260519T091114_developer_handoff.md", "developer", "T0001")
     _write_handoff(
         history / "20260519T091115_reviewer_handoff.md",
         "reviewer",
         ".devlab/tasks/T0001_first.md",
     )
+    _write_session_result(history / "20260519T091115_reviewer_handoff.md", "reviewer", "T0001")
 
     task_cycles = derive_task_cycle_metrics(tmp_path)
     rework = derive_task_rework_summary(task_cycles)
@@ -1468,7 +1476,9 @@ def test_task_cycle_metrics_detect_repeated_same_task_cycles(tmp_path: Path) -> 
 def test_task_cycle_metrics_count_unattributed_task_sessions(tmp_path: Path) -> None:
     history = tmp_path / ".devlab/history"
     history.mkdir(parents=True)
-    _write_handoff(history / "20260519T091112_developer_handoff.md", "developer", "README.md")
+    handoff = history / "20260519T091112_developer_handoff.md"
+    _write_handoff(handoff, "developer", "README.md")
+    _write_session_result(handoff, "developer", "")
 
     task_cycles = derive_task_cycle_metrics(tmp_path)
 
@@ -1507,7 +1517,12 @@ def test_task_cycle_metrics_reject_conflicting_structured_and_artifact_tasks(
     _write_minimal_task(tasks_dir / "T0002_second.md", "T0002", "Second")
     handoff = history / "20260519T091112_reviewer_handoff.md"
     _write_handoff(handoff, "reviewer", ".devlab/tasks/T0002_second.md")
-    _write_session_result(handoff, "reviewer", "T0001")
+    _write_session_result(
+        handoff,
+        "reviewer",
+        "T0001",
+        changed_artifacts=(".devlab/tasks/T0002_second.md",),
+    )
 
     sessions = derive_session_records(tmp_path)
     task_cycles = derive_task_cycle_metrics(tmp_path, sessions)
@@ -1518,7 +1533,7 @@ def test_task_cycle_metrics_reject_conflicting_structured_and_artifact_tasks(
     assert task_cycles.attribution_sources == {"conflicting_task_sources": 1}
 
 
-def test_live_review_rejections_count_reviewer_handoffs_with_open_issues(
+def test_live_review_rejections_count_structured_reviewer_results_with_open_issues(
     tmp_path: Path,
 ) -> None:
     history = tmp_path / ".devlab/history"
@@ -1539,6 +1554,13 @@ def test_live_review_rejections_count_reviewer_handoffs_with_open_issues(
         "## Addressed Findings\n- None\n"
         "## Next Session Hint\nContinue.\n"
     )
+    _write_session_result(
+        history / "20260519T091112_reviewer_handoff.md",
+        "reviewer",
+        "T0001",
+        outcome="failed",
+    )
+    _write_session_result(history / "20260519T091113_reviewer_handoff.md", "reviewer", "T0001")
 
     assert derive_review_rejections(tmp_path) == 1
 
@@ -1548,6 +1570,8 @@ def test_live_role_sequence_handles_archive_collision_filenames(tmp_path: Path) 
     history.mkdir(parents=True)
     (history / "20260519T091112_reviewer_handoff.md").write_text("reviewer")
     (history / "20260519T091112_2_developer_handoff.md").write_text("developer")
+    _write_session_result(history / "20260519T091112_reviewer_handoff.md", "reviewer", "T0001")
+    _write_session_result(history / "20260519T091112_2_developer_handoff.md", "developer", "T0001")
 
     assert derive_role_sequence(tmp_path) == ["reviewer", "developer"]
 
@@ -1987,11 +2011,13 @@ def _write_session_result(
     task_id: str,
     *,
     outcome: str = "completed",
+    changed_artifacts: tuple[str, ...] = (),
 ) -> None:
     result_path = handoff_path.with_name(
         handoff_path.name.removesuffix("_handoff.md") + "_result.toml"
     )
     open_issues = '["More work remains."]' if outcome == "failed" else "[]"
+    changed = "[" + ", ".join(f'"{artifact}"' for artifact in changed_artifacts) + "]"
     result_path.write_text(
         "schema_version = 1\n"
         'session_id = "session-1"\n'
@@ -2004,7 +2030,7 @@ def _write_session_result(
         f'outcome = "{outcome}"\n'
         'commit_message = "Test result"\n'
         'done = ["Done."]\n'
-        "changed_artifacts = []\n"
+        f"changed_artifacts = {changed}\n"
         f"open_issues = {open_issues}\n"
         "addressed_findings = []\n"
         'next_session_hint = "Continue."\n'

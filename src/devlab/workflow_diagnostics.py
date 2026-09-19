@@ -679,7 +679,6 @@ def _format_task_attribution_summary(task_cycles: TaskCycleMetrics) -> str:
     return (
         "Task attribution: "
         f"{sources.get('structured_result', 0)} structured, "
-        f"{sources.get('changed_task_artifact_fallback', 0)} legacy fallback, "
         f"{sources.get('conflicting_task_sources', 0)} conflicting, "
         f"{task_cycles.unattributed_developer_reviewer_sessions} unattributed"
     )

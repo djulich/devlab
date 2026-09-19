@@ -50,6 +50,67 @@ def test_candidate_validation_reports_all_independent_errors(tmp_path: Path) -> 
     assert any("next_session_hint must be non-empty" in issue for issue in exc.value.issues)
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("open_issues", '["None"]', "reserved None marker"),
+        (
+            "open_issues",
+            '["First issue\\n## Done\\nInjected section"]',
+            "entries must be single lines",
+        ),
+        (
+            "next_session_hint",
+            '"Continue.\\n## Open Issues\\nInjected section"',
+            "must not contain a level-two Markdown heading",
+        ),
+    ],
+)
+def test_candidate_rejects_values_that_render_ambiguous_markdown(
+    tmp_path: Path, field: str, value: str, message: str
+) -> None:
+    path = tmp_path / HANDOFF_CANDIDATE_FILE
+    values = {
+        "open_issues": "[]",
+        "next_session_hint": '"Continue."',
+    }
+    values[field] = value
+    path.write_text(
+        'schema_version = 1\noutcome = "completed"\ncommit_message = "ok"\n'
+        'done = ["Completed work."]\nchanged_artifacts = []\n'
+        f"open_issues = {values['open_issues']}\naddressed_findings = []\n"
+        f"next_session_hint = {values['next_session_hint']}\n"
+    )
+
+    with pytest.raises(HandoffSubmissionError, match=message):
+        parse_handoff_candidate(path, "reviewer")
+
+
+@pytest.mark.parametrize(
+    ("addressed_findings", "message"),
+    [
+        (
+            '["F0001: T0001", "F0001: T0002"]',
+            "lists F0001 more than once",
+        ),
+        ('["F0001: T0001, T0001"]', "lists duplicate task for F0001"),
+    ],
+)
+def test_candidate_rejects_duplicate_addressed_finding_mappings(
+    tmp_path: Path, addressed_findings: str, message: str
+) -> None:
+    path = tmp_path / HANDOFF_CANDIDATE_FILE
+    path.write_text(
+        'schema_version = 1\noutcome = "completed"\ncommit_message = "Plan"\n'
+        'done = ["Planned work."]\nchanged_artifacts = []\nopen_issues = []\n'
+        f"addressed_findings = {addressed_findings}\n"
+        'next_session_hint = "Continue."\nplanning_complete = false\n'
+    )
+
+    with pytest.raises(HandoffSubmissionError, match=message):
+        parse_handoff_candidate(path, "planner")
+
+
 def test_publish_and_load_session_result_round_trip(tmp_path: Path) -> None:
     envelope_path = tmp_path / "developer" / "session.toml"
     envelope = SessionEnvelope(1, "s1", "developer", task="T0001")
@@ -66,12 +127,11 @@ def test_publish_and_load_session_result_round_trip(tmp_path: Path) -> None:
 
     publish_session_result(envelope_path, envelope, candidate)
     result = load_session_result(envelope_path.with_name(SESSION_RESULT_FILE))
-    handoff = result.as_handoff(envelope_path.with_name("handoff.md"))
 
     assert result.envelope.task == "T0001"
-    assert handoff.commit_message == "Implement behavior"
-    assert handoff.has_open_issues is False
-    assert "## Done\n- Implemented behavior" in handoff.path.read_text()
+    assert result.candidate.commit_message == "Implement behavior"
+    assert result.candidate.open_issues == ()
+    assert "## Done\n- Implemented behavior" in envelope_path.with_name("handoff.md").read_text()
 
 
 def test_research_candidate_publish_and_handoff_round_trip(tmp_path: Path) -> None:
@@ -93,11 +153,12 @@ def test_research_candidate_publish_and_handoff_round_trip(tmp_path: Path) -> No
 
     publish_session_result(envelope_path, envelope, candidate)
     result = load_session_result(envelope_path.with_name(SESSION_RESULT_FILE))
-    handoff = result.as_handoff(envelope_path.with_name("handoff.md"))
 
     assert result.candidate.research == candidate.research
-    assert handoff.research_request == candidate.research
-    assert "## Research Request\nresearch_required = true" in handoff.path.read_text()
+    assert (
+        "## Research Request\nresearch_required = true"
+        in envelope_path.with_name("handoff.md").read_text()
+    )
     assert "[research]\n" in envelope_path.with_name(SESSION_RESULT_FILE).read_text()
 
 

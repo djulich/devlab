@@ -279,6 +279,23 @@ class WorkspaceFindings:
         self.workspace.did_mutate()
         return finding
 
+    def create_from_handoff_issues(
+        self,
+        *,
+        source: str,
+        milestone: str | None,
+        handoff_name: str,
+        open_issues: tuple[str, ...],
+    ) -> Finding:
+        finding = self.workspace._finding_tracker().create_from_handoff_issues(
+            source=source,
+            milestone=milestone,
+            handoff_name=handoff_name,
+            open_issues=open_issues,
+        )
+        self.workspace.did_mutate()
+        return finding
+
     def create(
         self,
         *,
