@@ -120,16 +120,17 @@ merely because it was committed or carried a format version.
 ## Release Procedure
 
 Until DevLab is published to PyPI, a release consists of an immutable Git tag
-and installable source distribution and wheel. The package version is `X.Y.Z`,
-while its Git tag is `vX.Y.Z`; for example, package version `0.2.0` uses tag
-`v0.2.0`. The `v` distinguishes a repository tag from the package version and
-is not part of the version recorded in package metadata.
+and GitHub Release containing the verified source distribution, wheel, and
+checksums. The package version is `X.Y.Z`, while its Git tag is `vX.Y.Z`; for
+example, package version `0.2.0` uses tag `v0.2.0`. The `v` distinguishes a
+repository tag from the package version and is not part of the version recorded
+in package metadata.
 
 The annotated Git tag message is the canonical release note. It starts with the
 subject `DevLab X.Y.Z`, followed by a concise summary of notable changes and any
 scoped recovery guidance. Read it with `git show --no-patch vX.Y.Z`. A GitHub
-Release, when created, mirrors that note for easier browsing; a separate
-changelog is not required.
+Release mirrors that note for easier browsing; a separate changelog is not
+required.
 
 1. Review changes since the previous release and choose the next version using
    the rules above.
@@ -159,7 +160,9 @@ changelog is not required.
    contains `Makefile`, `scripts/release_check.py`, `uv.lock`, and the product
    tests so the verification can be inspected and the unpacked release source
    can run `make check`. Repository-only `demos/` content appears in neither
-   artifact.
+   artifact. Pass `--dist-dir PATH` directly to `scripts/release_check.py` to
+   retain the exact verified artifacts and a `SHA256SUMS` file in an empty
+   output directory.
 8. Commit the release preparation. With that clean commit checked out, create
    an annotated tag. Use `vX.Y.Z` for the tag and `DevLab X.Y.Z` for its subject;
    add the release notes in the tag-message editor below the subject:
@@ -182,16 +185,20 @@ changelog is not required.
 
    Never move or replace a shared release tag. Correct a released artifact with
    a new version and tag.
-10. Smoke-test installation through the shared tag and confirm the reported
+10. The tag push starts the `Prepare release` workflow. It verifies that the
+    annotated tag matches the package version and tagged commit, reruns the
+    complete validation, builds and verifies the release artifacts, generates
+    checksums, and creates a draft GitHub Release from the tag message. Review
+    the draft and its assets, mark a `0.x` release as a pre-release, and publish
+    it deliberately. Published releases are immutable; a failed preparation is
+    corrected with a new version and tag rather than by moving the shared tag.
+11. Smoke-test installation through the shared tag and confirm the reported
     version:
 
     ```bash
     uv tool install --force "git+https://github.com/djulich/devlab.git@vX.Y.Z"
     devlab --version
     ```
-
-    A GitHub Release is optional. If one is created, target the existing tag and
-    reuse its release notes; creating the GitHub Release must not move the tag.
 
 Before considering the release complete:
 

@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import argparse
 import email.parser
+import hashlib
 import os
 import shutil
 import subprocess
@@ -101,6 +103,27 @@ def _artifact_paths(dist: Path) -> tuple[Path, Path]:
     return wheels[0], sources[0]
 
 
+def _prepare_dist_dir(dist: Path) -> Path:
+    dist = dist.resolve()
+    if dist.exists():
+        _require(dist.is_dir(), f"artifact output path is not a directory: {dist}")
+        _require(not any(dist.iterdir()), f"artifact output directory is not empty: {dist}")
+    else:
+        dist.mkdir(parents=True)
+    return dist
+
+
+def _verify_release_tag(tag: str, version: str) -> None:
+    expected = f"v{version}"
+    _require(tag == expected, f"release tag {tag!r} must match package version as {expected!r}")
+    reference = f"refs/tags/{tag}"
+    object_type = _run(["git", "cat-file", "-t", reference], capture=True)
+    _require(object_type == "tag", f"release tag {tag!r} must be annotated")
+    tagged_commit = _run(["git", "rev-list", "-n", "1", reference], capture=True)
+    head = _run(["git", "rev-parse", "HEAD"], capture=True)
+    _require(tagged_commit == head, f"release tag {tag!r} does not resolve to HEAD")
+
+
 def _metadata_urls(message: email.message.Message) -> dict[str, str]:
     urls: dict[str, str] = {}
     for value in message.get_all("Project-URL", []):
@@ -193,28 +216,61 @@ def _verify_clean_install(
     _require("usage: devlab" in help_text, "installed CLI help is unavailable")
 
 
-def check_release() -> None:
+def _write_checksums(paths: tuple[Path, ...], dist: Path) -> Path:
+    checksum_path = dist / "SHA256SUMS"
+    lines = []
+    for path in sorted(paths, key=lambda item: item.name):
+        with path.open("rb") as artifact:
+            digest = hashlib.file_digest(artifact, "sha256").hexdigest()
+        lines.append(f"{digest}  {path.name}\n")
+    checksum_path.write_text("".join(lines))
+    return checksum_path
+
+
+def check_release(*, dist_dir: Path | None = None, expected_tag: str | None = None) -> None:
     uv = shutil.which("uv")
     if uv is None:
         raise ReleaseCheckError("uv is required for release verification")
     project, version = _project_metadata()
+    if expected_tag is not None:
+        _verify_release_tag(expected_tag, version)
     with tempfile.TemporaryDirectory(prefix="devlab-release-check-") as directory:
         temporary = Path(directory)
-        dist = temporary / "dist"
+        dist = _prepare_dist_dir(dist_dir if dist_dir is not None else temporary / "dist")
         env = {**os.environ, "UV_CACHE_DIR": str(temporary / "uv-cache")}
         _run([uv, "build", "--out-dir", str(dist)], env=env)
         wheel, source = _artifact_paths(dist)
         _verify_wheel(wheel, project, version)
         _verify_source(source)
         _verify_clean_install(uv, wheel, temporary, version, env)
-    print(f"Release artifacts verified for {EXPECTED_NAME} {version}.")
+        if dist_dir is not None:
+            _write_checksums((wheel, source), dist)
+    suffix = f" in {dist}" if dist_dir is not None else ""
+    print(f"Release artifacts verified for {EXPECTED_NAME} {version}{suffix}.")
 
 
-def main() -> int:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--dist-dir",
+        type=Path,
+        help=(
+            "retain the verified wheel, source distribution, and checksums in this empty directory"
+        ),
+    )
+    parser.add_argument(
+        "--expected-tag",
+        help="require this annotated vX.Y.Z tag to match the package version and HEAD",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
     before = _git_status()
     error: Exception | None = None
     try:
-        check_release()
+        check_release(dist_dir=args.dist_dir, expected_tag=args.expected_tag)
     except Exception as exc:  # report worktree mutation alongside the primary failure
         error = exc
     after = _git_status()
