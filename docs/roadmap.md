@@ -123,6 +123,26 @@ contracts rather than bypassing them or relying on hidden server state. Introduc
 an internal event-observer abstraction only when multiple concrete consumers
 justify it.
 
+## Promoting Directions to Issues
+
+Promote a roadmap direction to an actionable GitHub Issue only when:
+
+- concrete evidence or a real use case justifies the work;
+- the outcome can be bounded as an implementation, evaluation spike, or design
+  decision;
+- objective acceptance criteria can show when it is complete;
+- prerequisites and correctness-critical constraints are understood; and
+- the work is plausible to prioritize in an upcoming development cycle.
+
+When uncertainty itself can be tested, open a bounded evaluation issue rather
+than an implementation issue. For a cross-cutting design, open the issue first,
+add a temporary proposal only when meaningful alternatives require review, and
+record accepted hard-to-reverse decisions in an ADR. Add promoted issues to the
+project as `Todo`; assign a release milestone only when the outcome is genuinely
+required for that release. Do not use issues as a parking lot for every deferred
+direction. Revisit unpromoted directions when new evaluation evidence, operator
+needs, or release planning supplies a concrete trigger.
+
 ## Maintenance
 
 Update this roadmap when evidence changes a release gate or strategic outcome.
