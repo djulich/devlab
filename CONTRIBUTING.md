@@ -56,6 +56,23 @@ If the change affects a repository demonstration, also run:
 make -C demos check
 ```
 
+## GitHub Actions Dependencies
+
+Reference every external GitHub Action by its full-length commit SHA and put the
+corresponding exact release tag in a same-line comment. This keeps workflow code
+immutable while preserving a human-readable version, for example:
+
+```yaml
+uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+```
+
+Dependabot checks GitHub Actions dependencies monthly and proposes updated SHAs
+and version comments through pull requests. Review the upstream release notes
+and workflow diff, then require the normal validation and owner approval; do not
+auto-merge these updates. Apply security and runner-compatibility updates
+promptly. Treat major-version updates as deliberate maintenance because action
+inputs, defaults, or runtime behavior may change.
+
 ## Pull Requests
 
 Describe the user-visible outcome, important design choices, and validation you

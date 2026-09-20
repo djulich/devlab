@@ -94,5 +94,6 @@ CLI and shared infrastructure:
 - Prefer precise names from the owning domain. Within DevLab's software workflow, prefer task, milestone, finding, profile, handoff, provider, and workspace. Use domain-neutral names only for contracts whose semantics are genuinely independent of software development.
 - Add concise docstrings only when they clarify purpose, contracts, invariants, or tradeoffs.
 - Add focused tests for behavior changes, especially state transitions, file formats, CLI output, and validation errors.
+- Pin external GitHub Actions to full-length commit SHAs with exact release-tag comments; follow the dependency-update policy in `CONTRIBUTING.md`.
 - Run the complete development validation (`make check`, including Ruff, ty, and pytest) for code changes.
 - Only split a module when the extracted piece is a self-contained domain with minimal coupling back. If the extracted code needs types or functions from multiple other modules, it increases the import graph agents must navigate — keep it together instead.
