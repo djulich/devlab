@@ -10,6 +10,11 @@ Evaluation checks are independent graders, not inputs to DevLab's regular
 self-correction loop. They run after the evaluated workflow stops and must not
 create findings or corrective tasks, reopen milestones, resume the workflow, or
 invoke additional role sessions. A failed check leaves the evaluated run failed.
+Configured product checks run only after a successful terminal workflow result.
+If the workflow errors, blocks, or reaches a nonterminal session limit, product
+checks do not run; diagnostics record external grading as `unverified` with the
+workflow stop reason instead of reporting failures for a product that never
+reached the grading boundary.
 
 This boundary does not disable normal workflow correction. Task acceptance
 criteria, target-owned validation commands, reviewer outcomes, and integrator or

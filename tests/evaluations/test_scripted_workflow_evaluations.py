@@ -18,7 +18,7 @@ from devlab.generations import (
 )
 from devlab.git import run_git
 from devlab.milestones import FileMilestoneTracker, MilestoneStatus
-from devlab.orchestrator import run_loop
+from devlab.orchestrator import RunResult, RunStopReason, SessionError, run_loop
 from devlab.task_tracker import FileTaskTracker, TaskStatus
 from devlab.workflow_diagnostics import (
     TaskMetrics,
@@ -66,6 +66,7 @@ from tests.evaluations.harness import (
     EvaluationError,
     EvaluationScenario,
     _evaluation_quality_summary,
+    _run_external_checks,
     copy_live_agent_config,
     init_target_workspace,
     run_scripted_evaluation,
@@ -164,6 +165,62 @@ def test_built_executable_output_check_reports_command_failure(
     assert result.passed is False
     assert "exit=2" in result.message
     assert "invalid input" in result.message
+
+
+def test_external_checks_are_unverified_without_successful_workflow_completion(
+    tmp_path: Path,
+) -> None:
+    called = False
+
+    def product_check(_root: Path) -> CheckResult:
+        nonlocal called
+        called = True
+        return CheckResult("product", False, "missing product")
+
+    result = RunResult(
+        sessions_run=0,
+        completed=False,
+        exit_code=1,
+        errors=(SessionError("agent_invocation", "provider failed", 1),),
+        stop_reason=RunStopReason.ERROR,
+    )
+
+    checks = _run_external_checks(tmp_path, (product_check,), result)
+
+    assert called is False
+    assert checks == [
+        CheckResult(
+            "external grading",
+            True,
+            "workflow did not complete successfully; configured product checks were not run: "
+            "stop_reason=error exit_code=1 configured_checks=1 "
+            "error_phases=agent_invocation",
+            "unverified",
+        )
+    ]
+
+
+def test_external_checks_run_after_successful_workflow_completion(tmp_path: Path) -> None:
+    called = False
+
+    def product_check(root: Path) -> CheckResult:
+        nonlocal called
+        called = True
+        assert root == tmp_path
+        return CheckResult("product", True)
+
+    result = RunResult(
+        sessions_run=1,
+        completed=True,
+        exit_code=0,
+        errors=(),
+        stop_reason=RunStopReason.WORKFLOW_COMPLETE,
+    )
+
+    checks = _run_external_checks(tmp_path, (product_check,), result)
+
+    assert called is True
+    assert checks == [CheckResult("product", True)]
 
 
 def _compiled_language_scenario(

@@ -242,7 +242,7 @@ def run_scripted_evaluation(root: Path, scenario: EvaluationScenario) -> Evaluat
         agent_providers={"default": provider},
         clarification_mode=scenario.clarification_mode,
     )
-    checks = [check(root) for check in scenario.checks]
+    checks = _run_external_checks(root, scenario.checks, result)
     diagnostics = diagnostics_for(
         root,
         scenario,
@@ -284,7 +284,7 @@ def run_live_evaluation(
         retain_prompts=os.environ.get("DEVLAB_LIVE_RETAIN_PROMPTS") == "1",
         clarification_mode=scenario.clarification_mode,
     )
-    checks = [check(root) for check in scenario.checks]
+    checks = _run_external_checks(root, scenario.checks, result)
     diagnostics = diagnostics_for(
         root,
         scenario,
@@ -303,6 +303,29 @@ def run_live_evaluation(
     path = diagnostics.write(root)
     assert path.exists()
     return diagnostics
+
+
+def _run_external_checks(
+    root: Path,
+    checks: tuple[BlackBoxCheck, ...],
+    result: RunResult,
+) -> list[CheckResult]:
+    if result.completed and result.exit_code == 0:
+        return [check(root) for check in checks]
+    if not checks:
+        return []
+    phases = sorted({error.phase for error in result.errors})
+    error_context = f" error_phases={','.join(phases)}" if phases else ""
+    return [
+        CheckResult(
+            "external grading",
+            True,
+            "workflow did not complete successfully; configured product checks were not run: "
+            f"stop_reason={result.stop_reason.value} exit_code={result.exit_code} "
+            f"configured_checks={len(checks)}{error_context}",
+            "unverified",
+        )
+    ]
 
 
 def copy_live_agent_config(root: Path, agent_config: Path) -> None:
