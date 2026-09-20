@@ -188,12 +188,14 @@ recovery guidance before publishing it.
    a new version and tag.
 10. The tag push starts the `Prepare release` workflow. It verifies that the
     tag matches the package version and tagged commit, reruns the complete
-    validation, builds and verifies the release artifacts, generates checksums,
-    and creates a draft GitHub Release from the annotated tag message or release
-    commit message. Add the drafted release summary, review the note and assets,
-    mark a `0.x` release as a pre-release, and publish it deliberately. Published
-    releases are immutable; a failed preparation is corrected with a new version
-    and tag rather than by moving the shared tag.
+    validation, then builds and verifies the release artifacts and generates
+    checksums exactly once. A separate, least-privilege job downloads those
+    verified artifacts and creates a draft GitHub Release from the annotated tag
+    message or release commit message; it does not rebuild them. Add the drafted
+    release summary, review the note and assets, mark a `0.x` release as a
+    pre-release, and publish it deliberately. Published releases are immutable;
+    a failed preparation is corrected with a new version and tag rather than by
+    moving the shared tag.
 11. Smoke-test installation through the shared tag and confirm the reported
     version:
 

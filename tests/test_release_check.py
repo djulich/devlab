@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from scripts import release_check
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_prepare_dist_dir_creates_empty_directory(tmp_path: Path) -> None:
     dist = tmp_path / "nested" / "dist"
@@ -79,3 +81,21 @@ def test_write_checksums_uses_sorted_artifact_names(tmp_path: Path) -> None:
         for path in sorted((wheel, source), key=lambda item: item.name)
     )
     assert checksum_path.read_text() == expected
+
+
+def test_release_workflow_hands_verified_artifacts_to_draft_job() -> None:
+    workflow = (ROOT / ".github/workflows/release.yml").read_text()
+
+    build = workflow.index("  build-release:")
+    verify = workflow.index("      - name: Build and verify release artifacts", build)
+    upload = workflow.index("      - name: Store verified release artifacts", verify)
+    draft = workflow.index("  draft-release:", upload)
+    download = workflow.index("      - name: Download verified release artifacts", draft)
+    create = workflow.index("      - name: Create draft GitHub Release", download)
+
+    assert verify < upload < draft < download < create
+    assert workflow.count("scripts/release_check.py") == 1
+    assert "    needs: build-release\n" in workflow[draft:download]
+    assert "    permissions:\n      contents: write\n" in workflow[draft:download]
+    assert "          name: release-artifacts\n" in workflow[upload:draft]
+    assert "          name: release-artifacts\n" in workflow[download:create]
