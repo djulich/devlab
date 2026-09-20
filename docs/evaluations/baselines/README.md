@@ -8,6 +8,7 @@ substitute for automated tests.
 - [2026-06-24 stateful web API baseline](2026-06-24-stateful-web-api.md)
 - [2026-08-20 compiled-language baseline](2026-08-20-compiled-languages.md)
 - [2026-09-17 first-workflow demonstration baseline](2026-09-17-first-workflow.md)
+- [2026-09-20 representative workflow baseline](2026-09-20-representative-workflows.md)
 
 Add a baseline only when it records materially new provider, toolchain, workflow,
 or deployment evidence. Routine reruns belong in CI artifacts or an external
