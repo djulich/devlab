@@ -3068,9 +3068,17 @@ def _run_loop(
             logger.error("%s. Stopping.", exc)
             return _error_result(sessions_run, SessionError("version_control", str(exc), 1))
         if not planning_only:
-            retry_profiles = (
-                frozen_profiles if frozen_profiles is not None else load_profiles(root)
-            )
+            try:
+                retry_profiles = (
+                    frozen_profiles if frozen_profiles is not None else load_profiles(root)
+                )
+            except (OSError, ValueError) as exc:
+                message = f"executable configuration changed and is now invalid: {exc}"
+                logger.error("%s. Stopping before another session.", message)
+                return _error_result(
+                    sessions_run,
+                    SessionError("executable_configuration", message, 1),
+                )
             retry_stop = _retry_unverified_task_validation(workspace, retry_profiles, services)
             if retry_stop is not None:
                 reason, message = retry_stop

@@ -2344,6 +2344,45 @@ class TestRunLoop:
         assert 'task = "T0001"' in session.read_text()
         assert status == ""
 
+    def test_invalid_profile_created_by_session_stops_with_structured_error(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_tree(tmp_path)
+
+        def on_invoke(call: AgentCall) -> None:
+            assert call.role_name == "architect"
+            (call.root / DESIGN_PLAN).write_text("# Design\n")
+            profile = _write_profile(call.root, "python-cli")
+            profile.write_text(
+                profile.read_text()
+                + "\n[[prerequisites]]\n"
+                + 'required_for = ["validation"]\n'
+                + 'check = "python --version"\n'
+            )
+
+        provider = MockProvider(on_invoke=on_invoke)
+
+        result = run_loop(
+            tmp_path,
+            max_sessions=2,
+            agent_providers={"default": provider},
+        )
+
+        status = subprocess.run(
+            ["git", "-C", tmp_path.as_posix(), "status", "--porcelain"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+
+        assert result.stop_reason == RunStopReason.ERROR
+        assert result.exit_code == 1
+        assert result.sessions_run == 1
+        assert result.errors[0].phase == "executable_configuration"
+        assert "invalid or duplicate prerequisite id ''" in result.errors[0].message
+        assert [call.role_name for call in provider.calls] == ["architect"]
+        assert status == ""
+
     def test_missing_frozen_profile_fails_before_session_artifacts_change(
         self, tmp_path: Path
     ) -> None:
