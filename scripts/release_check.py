@@ -33,6 +33,7 @@ EXPECTED_URLS = {
     "Issues": "https://github.com/djulich/devlab/issues",
     "Source": "https://github.com/djulich/devlab",
 }
+TWINE_VERSION = "7.0.0"
 
 
 class ReleaseCheckError(RuntimeError):
@@ -62,7 +63,7 @@ def _run(
     )
     if result.returncode != 0:
         details = "\n".join(
-            part.strip() for part in (result.stdout, result.stderr) if part.strip()
+            part.strip() for part in (result.stdout, result.stderr) if part and part.strip()
         )
         suffix = f"\n{details}" if details else ""
         raise ReleaseCheckError(
@@ -200,6 +201,26 @@ def _contains(names: set[str], path: str) -> bool:
     return path in names or any(name.startswith(f"{path}/") for name in names)
 
 
+def _verify_index_metadata(uv: str, wheel: Path, source: Path, env: dict[str, str]) -> None:
+    # Twine's upload-oriented dependency tree does not belong in DevLab's lean
+    # development environment; run a pinned release verifier in isolation instead.
+    _run(
+        [
+            uv,
+            "tool",
+            "run",
+            "--from",
+            f"twine=={TWINE_VERSION}",
+            "twine",
+            "check",
+            "--strict",
+            str(wheel),
+            str(source),
+        ],
+        env=env,
+    )
+
+
 def _verify_clean_install(
     uv: str, wheel: Path, temporary: Path, version: str, env: dict[str, str]
 ) -> None:
@@ -235,11 +256,17 @@ def check_release(*, dist_dir: Path | None = None, expected_tag: str | None = No
     with tempfile.TemporaryDirectory(prefix="devlab-release-check-") as directory:
         temporary = Path(directory)
         dist = _prepare_dist_dir(dist_dir if dist_dir is not None else temporary / "dist")
-        env = {**os.environ, "UV_CACHE_DIR": str(temporary / "uv-cache")}
+        env = {
+            **os.environ,
+            "UV_CACHE_DIR": str(temporary / "uv-cache"),
+            "UV_TOOL_BIN_DIR": str(temporary / "uv-tool-bin"),
+            "UV_TOOL_DIR": str(temporary / "uv-tools"),
+        }
         _run([uv, "build", "--out-dir", str(dist)], env=env)
         wheel, source = _artifact_paths(dist)
         _verify_wheel(wheel, project, version)
         _verify_source(source)
+        _verify_index_metadata(uv, wheel, source, env)
         _verify_clean_install(uv, wheel, temporary, version, env)
         if dist_dir is not None:
             _write_checksums((wheel, source), dist)

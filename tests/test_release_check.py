@@ -1,12 +1,29 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from pathlib import Path
 
 import pytest
 from scripts import release_check
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_run_reports_failure_without_captured_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        release_check.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 1),
+    )
+
+    with pytest.raises(
+        release_check.ReleaseCheckError,
+        match="command failed with exit code 1: failing-command",
+    ):
+        release_check._run(["failing-command"])
 
 
 def test_prepare_dist_dir_creates_empty_directory(tmp_path: Path) -> None:
@@ -81,6 +98,40 @@ def test_write_checksums_uses_sorted_artifact_names(tmp_path: Path) -> None:
         for path in sorted((wheel, source), key=lambda item: item.name)
     )
     assert checksum_path.read_text() == expected
+
+
+def test_verify_index_metadata_uses_strict_twine_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wheel = tmp_path / "devlab-0.1.0-py3-none-any.whl"
+    source = tmp_path / "devlab-0.1.0.tar.gz"
+    commands: list[list[str]] = []
+    environments: list[dict[str, str] | None] = []
+
+    def fake_run(command: list[str], *, env: dict[str, str] | None = None) -> str:
+        commands.append(command)
+        environments.append(env)
+        return ""
+
+    monkeypatch.setattr(release_check, "_run", fake_run)
+
+    release_check._verify_index_metadata("/usr/bin/uv", wheel, source, {"RELEASE_CHECK": "1"})
+
+    assert commands == [
+        [
+            "/usr/bin/uv",
+            "tool",
+            "run",
+            "--from",
+            f"twine=={release_check.TWINE_VERSION}",
+            "twine",
+            "check",
+            "--strict",
+            str(wheel),
+            str(source),
+        ]
+    ]
+    assert environments == [{"RELEASE_CHECK": "1"}]
 
 
 def test_release_workflow_hands_verified_artifacts_to_draft_job() -> None:

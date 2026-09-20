@@ -154,13 +154,18 @@ recovery guidance before publishing it.
 
    The command builds the source distribution and wheel in a temporary
    directory; verifies project metadata, version agreement, license, project
-   URLs, package resources, and the source/wheel content boundary; installs the
-   wheel in a clean temporary environment; and runs `devlab --version` and
-   `devlab --help`. It fails if the repository worktree changes. The wheel
-   contains only the installed product. The source distribution additionally
-   contains `Makefile`, `scripts/release_check.py`, `uv.lock`, and the product
-   tests so the verification can be inspected and the unpacked release source
-   can run `make check`. Repository-only `demos/` content appears in neither
+   URLs, package resources, and the source/wheel content boundary; runs strict
+   Twine checks through a pinned, isolated `uv tool run` invocation against both
+   distributions so their metadata and long descriptions are suitable for a
+   package index; installs the wheel in a clean temporary environment; and runs
+   `devlab --version` and `devlab --help`. Twine remains outside DevLab's normal
+   development and runtime dependency sets because its upload-oriented
+   dependency tree is needed only for this release check. The command fails if
+   the repository worktree changes. The wheel contains only the installed
+   product. The source distribution additionally contains `Makefile`,
+   `scripts/release_check.py`, `uv.lock`, and the product tests so the
+   verification can be inspected and the unpacked release source can run the
+   complete `make check`. Repository-only `demos/` content appears in neither
    artifact. Pass `--dist-dir PATH` directly to `scripts/release_check.py` to
    retain the exact verified artifacts and a `SHA256SUMS` file in an empty
    output directory.
