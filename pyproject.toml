@@ -1,6 +1,6 @@
 [project]
 name = "devlab"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI that turns repository-stored specifications, plans, and tasks into reviewed software changes through bounded, role-based agent sessions."
 readme = "README.md"
 requires-python = ">=3.12"
