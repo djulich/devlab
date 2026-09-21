@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 from scripts import release_check
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -135,38 +136,71 @@ def test_verify_index_metadata_uses_strict_twine_check(
 
 
 def test_release_workflow_hands_verified_artifacts_to_consumers() -> None:
-    workflow = (ROOT / ".github/workflows/release.yml").read_text()
-
-    build = workflow.index("  build-release:")
-    verify = workflow.index("      - name: Build and verify release artifacts", build)
-    distributions = workflow.index("      - name: Store verified Python distributions", verify)
-    checksums = workflow.index("      - name: Store release checksums", distributions)
-    draft = workflow.index("  draft-release:", checksums)
-    create = workflow.index("      - name: Create draft GitHub Release", draft)
-    testpypi = workflow.index("  publish-testpypi:", create)
-
-    assert verify < distributions < checksums < draft < create < testpypi
-    assert workflow.count("scripts/release_check.py") == 1
-    assert "          name: python-distributions\n" in workflow[distributions:checksums]
-    assert "            dist/SHA256SUMS\n" not in workflow[distributions:checksums]
-    assert "          name: release-checksums\n" in workflow[checksums:draft]
-
-    draft_job = workflow[draft:testpypi]
-    assert "    needs: build-release\n" in draft_job
-    assert "    permissions:\n      contents: write\n" in draft_job
-    assert "          name: python-distributions\n" in draft_job
-    assert "          name: release-checksums\n" in draft_job
-
-    testpypi_job = workflow[testpypi:]
-    assert "    needs: build-release\n" in testpypi_job
-    assert "      name: testpypi\n" in testpypi_job
-    assert "    permissions:\n      id-token: write\n" in testpypi_job
-    assert "          name: python-distributions\n" in testpypi_job
-    assert "release-checksums" not in testpypi_job
-    assert (
-        "        uses: pypa/gh-action-pypi-publish@"
-        "dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2\n" in testpypi_job
+    workflow = yaml.load(
+        (ROOT / ".github/workflows/release.yml").read_text(),
+        Loader=yaml.BaseLoader,
     )
-    assert "          attestations: true\n" in testpypi_job
-    assert "          packages-dir: dist\n" in testpypi_job
-    assert "          repository-url: https://test.pypi.org/legacy/\n" in testpypi_job
+    assert workflow["permissions"] == {"contents": "read"}
+
+    jobs = workflow["jobs"]
+    assert set(jobs) == {"build-release", "draft-release", "publish-testpypi"}
+
+    build = jobs["build-release"]
+    build_steps = {step["name"]: step for step in build["steps"]}
+    verify = build_steps["Build and verify release artifacts"]
+    assert "scripts/release_check.py" in verify["run"]
+
+    distributions = build_steps["Store verified Python distributions"]
+    assert distributions["with"]["name"] == "python-distributions"
+    assert set(distributions["with"]["path"].splitlines()) == {
+        "dist/*.whl",
+        "dist/*.tar.gz",
+    }
+    assert distributions["with"]["if-no-files-found"] == "error"
+
+    checksums = build_steps["Store release checksums"]
+    assert checksums["with"] == {
+        "name": "release-checksums",
+        "path": "dist/SHA256SUMS",
+        "if-no-files-found": "error",
+    }
+
+    draft = jobs["draft-release"]
+    assert draft["needs"] == "build-release"
+    assert draft["permissions"] == {"contents": "write"}
+    draft_steps = {step["name"]: step for step in draft["steps"]}
+    assert draft_steps["Download verified Python distributions"]["with"] == {
+        "name": "python-distributions",
+        "path": "dist",
+    }
+    assert draft_steps["Download release checksums"]["with"] == {
+        "name": "release-checksums",
+        "path": "dist",
+    }
+    assert "gh release create" in draft_steps["Create draft GitHub Release"]["run"]
+
+    testpypi = jobs["publish-testpypi"]
+    assert testpypi["needs"] == "build-release"
+    assert testpypi["environment"] == {
+        "name": "testpypi",
+        "url": "https://test.pypi.org/p/devlab",
+    }
+    assert testpypi["permissions"] == {"id-token": "write"}
+    testpypi_steps = {step["name"]: step for step in testpypi["steps"]}
+    assert set(testpypi_steps) == {
+        "Download verified Python distributions",
+        "Publish distributions to TestPyPI",
+    }
+    assert testpypi_steps["Download verified Python distributions"]["with"] == {
+        "name": "python-distributions",
+        "path": "dist",
+    }
+    publish = testpypi_steps["Publish distributions to TestPyPI"]
+    assert publish["uses"] == (
+        "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
+    )
+    assert publish["with"] == {
+        "attestations": "true",
+        "packages-dir": "dist",
+        "repository-url": "https://test.pypi.org/legacy/",
+    }
