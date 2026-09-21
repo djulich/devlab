@@ -209,11 +209,13 @@ must match project `devlab`, GitHub repository `djulich/devlab`, workflow
     checksums exactly once. Separate, least-privilege jobs consume the resulting
     artifacts without rebuilding: one creates a draft GitHub Release containing
     the distributions and checksums, while the other publishes only the
-    distributions to TestPyPI through trusted publishing. Confirm that TestPyPI
-    shows the expected version, metadata, description, wheel, source
-    distribution, and provenance. Add the drafted release summary, review the
-    note and assets, mark a `0.x` release as a pre-release, and publish it
-    deliberately. Published files are immutable; a failed preparation is
+    distributions to TestPyPI through trusted publishing. The draft-release job
+    checks out the tagged commit solely so GitHub CLI can resolve the repository
+    and annotated tag notes; it still uses the artifacts from the build job.
+    Confirm that TestPyPI shows the expected version, metadata, description,
+    wheel, source distribution, and provenance. Add the drafted release summary,
+    review the note and assets, mark a `0.x` release as a pre-release, and publish
+    it deliberately. Published files are immutable; a failed preparation is
     corrected with a new version and tag rather than by moving the shared tag.
 11. Smoke-test installation from TestPyPI and through the shared tag, confirming
     the reported version for each source:

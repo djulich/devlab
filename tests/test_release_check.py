@@ -169,6 +169,18 @@ def test_release_workflow_hands_verified_artifacts_to_consumers() -> None:
     assert draft["needs"] == "build-release"
     assert draft["permissions"] == {"contents": "write"}
     draft_steps = {step["name"]: step for step in draft["steps"]}
+    assert set(draft_steps) == {
+        "Check out tagged commit for release metadata",
+        "Download verified Python distributions",
+        "Download release checksums",
+        "Create draft GitHub Release",
+    }
+    checkout = draft_steps["Check out tagged commit for release metadata"]
+    assert checkout["uses"] == ("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1")
+    assert checkout["with"] == {
+        "fetch-depth": "0",
+        "persist-credentials": "false",
+    }
     assert draft_steps["Download verified Python distributions"]["with"] == {
         "name": "python-distributions",
         "path": "dist",
@@ -177,7 +189,11 @@ def test_release_workflow_hands_verified_artifacts_to_consumers() -> None:
         "name": "release-checksums",
         "path": "dist",
     }
-    assert "gh release create" in draft_steps["Create draft GitHub Release"]["run"]
+    create_release = draft_steps["Create draft GitHub Release"]["run"]
+    assert "gh release create" in create_release
+    assert "--verify-tag" in create_release
+    assert "--notes-from-tag" in create_release
+    assert "--repo" not in create_release
 
     testpypi = jobs["publish-testpypi"]
     assert testpypi["needs"] == "build-release"
