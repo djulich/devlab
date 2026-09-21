@@ -132,6 +132,18 @@ lightweight tag uses the release commit message. In either case, review and
 expand the draft with a concise summary of notable changes and any scoped
 recovery guidance before publishing it.
 
+Until production PyPI publication is adopted, the tag workflow also publishes
+the verified wheel and source distribution to TestPyPI as a release-pipeline
+rehearsal. The TestPyPI job uses trusted publishing through the protected
+`testpypi` GitHub environment, receives only an OIDC identity-token permission,
+and consumes the distributions produced by the build job without rebuilding
+them. It does not receive or upload `SHA256SUMS`, which remains a GitHub Release
+asset. TestPyPI is validation infrastructure, not a supported distribution
+channel. Its release files cannot be replaced; correct a failed rehearsal with
+a new version and immutable tag. The TestPyPI trusted publisher configuration
+must match project `devlab`, GitHub repository `djulich/devlab`, workflow
+`release.yml`, and environment `testpypi`; no API token is stored in GitHub.
+
 1. Review changes since the previous release and choose the next version using
    the rules above.
 2. Update `[project].version` in `pyproject.toml`.
@@ -194,17 +206,24 @@ recovery guidance before publishing it.
 10. The tag push starts the `Prepare release` workflow. It verifies that the
     tag matches the package version and tagged commit, reruns the complete
     validation, then builds and verifies the release artifacts and generates
-    checksums exactly once. A separate, least-privilege job downloads those
-    verified artifacts and creates a draft GitHub Release from the annotated tag
-    message or release commit message; it does not rebuild them. Add the drafted
-    release summary, review the note and assets, mark a `0.x` release as a
-    pre-release, and publish it deliberately. Published releases are immutable;
-    a failed preparation is corrected with a new version and tag rather than by
-    moving the shared tag.
-11. Smoke-test installation through the shared tag and confirm the reported
-    version:
+    checksums exactly once. Separate, least-privilege jobs consume the resulting
+    artifacts without rebuilding: one creates a draft GitHub Release containing
+    the distributions and checksums, while the other publishes only the
+    distributions to TestPyPI through trusted publishing. Confirm that TestPyPI
+    shows the expected version, metadata, description, wheel, source
+    distribution, and provenance. Add the drafted release summary, review the
+    note and assets, mark a `0.x` release as a pre-release, and publish it
+    deliberately. Published files are immutable; a failed preparation is
+    corrected with a new version and tag rather than by moving the shared tag.
+11. Smoke-test installation from TestPyPI and through the shared tag, confirming
+    the reported version for each source:
 
     ```bash
+    uv tool install --force \
+      --default-index https://test.pypi.org/simple/ \
+      "devlab==X.Y.Z"
+    devlab --version
+
     uv tool install --force "git+https://github.com/djulich/devlab.git@vX.Y.Z"
     devlab --version
     ```

@@ -134,19 +134,39 @@ def test_verify_index_metadata_uses_strict_twine_check(
     assert environments == [{"RELEASE_CHECK": "1"}]
 
 
-def test_release_workflow_hands_verified_artifacts_to_draft_job() -> None:
+def test_release_workflow_hands_verified_artifacts_to_consumers() -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text()
 
     build = workflow.index("  build-release:")
     verify = workflow.index("      - name: Build and verify release artifacts", build)
-    upload = workflow.index("      - name: Store verified release artifacts", verify)
-    draft = workflow.index("  draft-release:", upload)
-    download = workflow.index("      - name: Download verified release artifacts", draft)
-    create = workflow.index("      - name: Create draft GitHub Release", download)
+    distributions = workflow.index("      - name: Store verified Python distributions", verify)
+    checksums = workflow.index("      - name: Store release checksums", distributions)
+    draft = workflow.index("  draft-release:", checksums)
+    create = workflow.index("      - name: Create draft GitHub Release", draft)
+    testpypi = workflow.index("  publish-testpypi:", create)
 
-    assert verify < upload < draft < download < create
+    assert verify < distributions < checksums < draft < create < testpypi
     assert workflow.count("scripts/release_check.py") == 1
-    assert "    needs: build-release\n" in workflow[draft:download]
-    assert "    permissions:\n      contents: write\n" in workflow[draft:download]
-    assert "          name: release-artifacts\n" in workflow[upload:draft]
-    assert "          name: release-artifacts\n" in workflow[download:create]
+    assert "          name: python-distributions\n" in workflow[distributions:checksums]
+    assert "            dist/SHA256SUMS\n" not in workflow[distributions:checksums]
+    assert "          name: release-checksums\n" in workflow[checksums:draft]
+
+    draft_job = workflow[draft:testpypi]
+    assert "    needs: build-release\n" in draft_job
+    assert "    permissions:\n      contents: write\n" in draft_job
+    assert "          name: python-distributions\n" in draft_job
+    assert "          name: release-checksums\n" in draft_job
+
+    testpypi_job = workflow[testpypi:]
+    assert "    needs: build-release\n" in testpypi_job
+    assert "      name: testpypi\n" in testpypi_job
+    assert "    permissions:\n      id-token: write\n" in testpypi_job
+    assert "          name: python-distributions\n" in testpypi_job
+    assert "release-checksums" not in testpypi_job
+    assert (
+        "        uses: pypa/gh-action-pypi-publish@"
+        "dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2\n" in testpypi_job
+    )
+    assert "          attestations: true\n" in testpypi_job
+    assert "          packages-dir: dist\n" in testpypi_job
+    assert "          repository-url: https://test.pypi.org/legacy/\n" in testpypi_job
