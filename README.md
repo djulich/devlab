@@ -15,7 +15,7 @@ coding-agent sessions.
 DevLab exists because substantial projects cannot be created reliably in a
 single agent session. It decomposes software development into bounded sessions
 whose intent, decisions, progress, and feedback survive as durable project
-state. See the [project vision](docs/vision.md) for the motivation, suitable
+state. See the [project vision](https://github.com/djulich/devlab/blob/main/docs/vision.md) for the motivation, suitable
 target projects, and a possible future separation between a reusable workflow
 kernel and domain-specific workflow packages.
 
@@ -139,16 +139,16 @@ Confirm the installed release with:
 devlab --version
 ```
 
-DevLab is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).
+DevLab is licensed under the Apache License 2.0. See [`LICENSE`](https://github.com/djulich/devlab/blob/main/LICENSE).
 Pre-1.0 evolution and release expectations are documented in
-[`docs/release-policy.md`](docs/release-policy.md).
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) to contribute and
-[`SECURITY.md`](SECURITY.md) to report vulnerabilities privately.
+[`docs/release-policy.md`](https://github.com/djulich/devlab/blob/main/docs/release-policy.md).
+See [`CONTRIBUTING.md`](https://github.com/djulich/devlab/blob/main/CONTRIBUTING.md) to contribute and
+[`SECURITY.md`](https://github.com/djulich/devlab/blob/main/SECURITY.md) to report vulnerabilities privately.
 
-New to DevLab? Follow [Your First DevLab Workflow](docs/tutorial.md) for a
+New to DevLab? Follow [Your First DevLab Workflow](https://github.com/djulich/devlab/blob/main/docs/tutorial.md) for a
 step-by-step installation, configuration, and small example project.
 For a resettable live presentation, use the
-[reproducible first-workflow demo](demos/first-workflow/).
+[reproducible first-workflow demo](https://github.com/djulich/devlab/tree/main/demos/first-workflow/).
 
 ## Quickstart inside a target project
 
@@ -221,7 +221,7 @@ validation retry as needed. After a bounded stop, resolve any explicitly
 reported external condition and run the same command again. On an interrupted
 dirty worktree it can offer an exact, operator-confirmed discard back to the
 committed boundary; ignored files and external effects are never claimed to be
-restored. See the [operator guide](docs/operator-guide.md) for recovery and
+restored. See the [operator guide](https://github.com/djulich/devlab/blob/main/docs/operator-guide.md) for recovery and
 phase-restricted automation commands.
 
 Use `status`, `doctor`, and `diagnostics` for read-only inspection at any
@@ -265,18 +265,18 @@ supporting evidence, while operator choices and authority use clarification.
 Profile prerequisites and managed test services provide declared readiness
 checks, bounded runtime preparation, durable service ownership, and explicit
 cleanup. Their configuration and safety boundaries are documented in
-[Runtime Prerequisites and Managed Test Services](docs/runtime-prerequisites.md).
+[Runtime Prerequisites and Managed Test Services](https://github.com/djulich/devlab/blob/main/docs/runtime-prerequisites.md).
 
 ## More documentation
 
-- [`docs/README.md`](docs/README.md) — documentation map and ownership.
-- [`docs/design.md`](docs/design.md) — architecture and workflow overview.
-- [`docs/operator-guide.md`](docs/operator-guide.md) — operating DevLab in a target workspace.
-- [`docs/how-to/`](docs/how-to/README.md) — step-by-step procedures for common DevLab use cases.
-- [`docs/agent-configuration.md`](docs/agent-configuration.md) — target-owned agent command configuration.
-- [`docs/runtime-prerequisites.md`](docs/runtime-prerequisites.md) — prerequisite
+- [`docs/README.md`](https://github.com/djulich/devlab/blob/main/docs/README.md) — documentation map and ownership.
+- [`docs/design.md`](https://github.com/djulich/devlab/blob/main/docs/design.md) — architecture and workflow overview.
+- [`docs/operator-guide.md`](https://github.com/djulich/devlab/blob/main/docs/operator-guide.md) — operating DevLab in a target workspace.
+- [`docs/how-to/`](https://github.com/djulich/devlab/blob/main/docs/how-to/README.md) — step-by-step procedures for common DevLab use cases.
+- [`docs/agent-configuration.md`](https://github.com/djulich/devlab/blob/main/docs/agent-configuration.md) — target-owned agent command configuration.
+- [`docs/runtime-prerequisites.md`](https://github.com/djulich/devlab/blob/main/docs/runtime-prerequisites.md) — prerequisite
   checks/preparation and workspace-owned test services.
-- [`docs/evaluations/`](docs/evaluations/README.md) — scripted and live workflow evaluations.
-- [`demos/`](demos/README.md) — repository-only demonstrations and external graders.
-- [`docs/release-policy.md`](docs/release-policy.md) — versioning, compatibility, and release expectations.
-- [`docs/roadmap.md`](docs/roadmap.md) — long-term strategic direction and release gates.
+- [`docs/evaluations/`](https://github.com/djulich/devlab/blob/main/docs/evaluations/README.md) — scripted and live workflow evaluations.
+- [`demos/`](https://github.com/djulich/devlab/blob/main/demos/README.md) — repository-only demonstrations and external graders.
+- [`docs/release-policy.md`](https://github.com/djulich/devlab/blob/main/docs/release-policy.md) — versioning, compatibility, and release expectations.
+- [`docs/roadmap.md`](https://github.com/djulich/devlab/blob/main/docs/roadmap.md) — long-term strategic direction and release gates.

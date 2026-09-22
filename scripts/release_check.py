@@ -7,6 +7,7 @@ import argparse
 import email.parser
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,7 @@ import tomllib
 import zipfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_NAME = "devlab"
@@ -30,6 +32,7 @@ EXPECTED_CLASSIFIERS = {
     "Topic :: Software Development",
 }
 EXPECTED_URLS = {
+    "Documentation": "https://github.com/djulich/devlab/blob/main/docs/README.md",
     "Issues": "https://github.com/djulich/devlab/issues",
     "Source": "https://github.com/djulich/devlab",
 }
@@ -94,6 +97,20 @@ def _project_metadata() -> tuple[dict[str, Any], str]:
     _require(len(locked) == 1, "uv.lock must contain exactly one devlab package")
     _require(locked[0].get("version") == version, "pyproject.toml and uv.lock versions disagree")
     return project, version
+
+
+def _verify_readme_links(project: dict[str, Any]) -> None:
+    _require(project["readme"] == "README.md", "project description must use README.md")
+    readme = (ROOT / "README.md").read_text()
+    for match in re.finditer(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", readme):
+        target = match.group(1)
+        if target.startswith("#"):
+            continue
+        parsed = urlsplit(target)
+        _require(
+            bool(parsed.scheme and parsed.netloc),
+            f"README link must use an absolute URL for PyPI: {target}",
+        )
 
 
 def _artifact_paths(dist: Path) -> tuple[Path, Path]:
@@ -251,6 +268,7 @@ def check_release(*, dist_dir: Path | None = None, expected_tag: str | None = No
     if uv is None:
         raise ReleaseCheckError("uv is required for release verification")
     project, version = _project_metadata()
+    _verify_readme_links(project)
     if expected_tag is not None:
         _verify_release_tag(expected_tag, version)
     with tempfile.TemporaryDirectory(prefix="devlab-release-check-") as directory:

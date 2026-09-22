@@ -43,6 +43,27 @@ def test_prepare_dist_dir_rejects_existing_content(tmp_path: Path) -> None:
         release_check._prepare_dist_dir(dist)
 
 
+def test_verify_readme_links_rejects_repository_relative_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "README.md").write_text(
+        "[guide](docs/guide.md) [site](https://example.com/guide) [section](#usage)"
+    )
+    monkeypatch.setattr(release_check, "ROOT", tmp_path)
+
+    with pytest.raises(release_check.ReleaseCheckError, match=r"docs/guide\.md"):
+        release_check._verify_readme_links({"readme": "README.md"})
+
+
+def test_verify_readme_links_accepts_absolute_urls_and_anchors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "README.md").write_text("[guide](https://example.com/guide) [section](#usage)")
+    monkeypatch.setattr(release_check, "ROOT", tmp_path)
+
+    release_check._verify_readme_links({"readme": "README.md"})
+
+
 def test_verify_release_tag_requires_version_tag_and_head(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
