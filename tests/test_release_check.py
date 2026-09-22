@@ -164,7 +164,8 @@ def test_release_workflow_hands_verified_artifacts_to_consumers() -> None:
     assert workflow["permissions"] == {"contents": "read"}
 
     jobs = workflow["jobs"]
-    assert set(jobs) == {"build-release", "draft-release", "publish-testpypi"}
+    assert workflow["on"] == {"push": {"tags": ["v*"]}}
+    assert set(jobs) == {"build-release", "draft-release", "publish-testpypi", "publish-pypi"}
 
     build = jobs["build-release"]
     build_steps = {step["name"]: step for step in build["steps"]}
@@ -241,3 +242,25 @@ def test_release_workflow_hands_verified_artifacts_to_consumers() -> None:
         "packages-dir": "dist",
         "repository-url": "https://test.pypi.org/legacy/",
     }
+
+    pypi = jobs["publish-pypi"]
+    assert set(pypi["needs"]) == {"build-release", "draft-release", "publish-testpypi"}
+    assert "if" not in pypi  # Preserve the default success gate for prerequisite jobs.
+    assert pypi["environment"] == {
+        "name": "pypi",
+        "url": "https://pypi.org/p/devlab",
+    }
+    assert pypi["permissions"] == {"id-token": "write"}
+    pypi_steps = pypi["steps"]
+    assert pypi_steps == [
+        {
+            "name": "Download verified Python distributions",
+            "uses": "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+            "with": {"name": "python-distributions", "path": "dist"},
+        },
+        {
+            "name": "Publish distributions to PyPI",
+            "uses": "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
+            "with": {"attestations": "true", "packages-dir": "dist"},
+        },
+    ]
