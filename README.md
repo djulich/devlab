@@ -1,282 +1,196 @@
 # DevLab
 
-DevLab is a CLI that turns repository-stored specifications, plans, and tasks
-into reviewed software changes through bounded, role-based agent sessions. It
-stores workflow state as repository files, so progress is auditable,
-recoverable, and independent of any single agent session. DevLab itself runs on
-Python, but target projects may use Python, Rust, Go, C, C++, or mixed
-toolchains.
+DevLab is a command-line tool that turns written software requirements into
+reviewed changes through a sequence of bounded agent sessions. It coordinates
+planning, implementation, review, and integration, keeping the work and its
+history in your project's Git repository.
 
-DevLab is intended for substantial projects that justify a structured,
-repository-backed workflow with bounded role sessions, explicit review and
-integration, and durable recovery. It is not a lightweight wrapper for ordinary
-coding-agent sessions.
+DevLab is intended for projects whose scope spans many agent sessions and needs
+consistent decisions, explicit review, and a way to recover after interruptions.
+It works with new and existing repositories. DevLab itself runs on Python;
+target projects can use Python, Rust, Go, C, C++, or mixed toolchains.
 
-DevLab exists because substantial projects cannot be created reliably in a
-single agent session. It decomposes software development into bounded sessions
-whose intent, decisions, progress, and feedback survive as durable project
-state. See the [project vision](https://github.com/djulich/devlab/blob/main/docs/vision.md) for the motivation, suitable
-target projects, and a possible future separation between a reusable workflow
-kernel and domain-specific workflow packages.
+[First-workflow tutorial](https://github.com/djulich/devlab/blob/main/docs/tutorial.md)
+· [Documentation](https://github.com/djulich/devlab/blob/main/docs/README.md)
+· [Project vision](https://github.com/djulich/devlab/blob/main/docs/vision.md)
 
-DevLab provides the orchestrator and packaged worker prompts. The target repository stores product-specific specs, plans, tasks, milestones, findings, handoffs, configuration, and logs under `.devlab/`.
+## How it works
 
-Four commands cover the normal operator loop:
+You supply the requirements, configure the coding agents and project tools, and
+review the results. DevLab manages the workflow:
 
-- `devlab status`: Where am I?
-- `devlab doctor`: Is the workspace healthy?
-- `devlab diagnostics`: How is the workflow performing?
-- `devlab continue`: Advance it.
+1. **Plan:** an architect develops the design; a planner breaks the work into
+   tasks and milestones.
+2. **Implement and review:** a developer works on one task. DevLab runs its
+   configured validation, then a separate reviewer session checks the work.
+   Requested changes return to a developer.
+3. **Integrate:** an integrator checks completed milestones. Architecture review
+   records remaining gaps for corrective work.
 
-## Maturity
+Each agent session has one role. Specifications, plans, tasks, findings,
+and handoffs live under `.devlab/` in the target repository, alongside the
+software being built. DevLab commits accepted session results and uses the
+recorded progress to choose the next action. Sessions can request research or
+stop for a decision from you when needed.
 
-DevLab is pre-1.0 software with a tested end-to-end workflow and evolving live-agent baselines.
-Its CLI, configuration, and durable formats remain provisional until the 1.0
-release-candidate freeze.
+You can inspect the files and Git history between runs and continue from the
+recorded state after a stop. Progress does not depend on retaining a conversation
+with an agent.
 
-DevLab is packaged as a Python distribution primarily to provide the `devlab`
-CLI. Before the 1.0 compatibility freeze, modules under `devlab.*` are internal
-implementation details, not a supported library API.
+You choose the coding-agent CLI and can configure different providers or models
+for different roles. DevLab supplies the workflow and role prompts; the target
+project supplies its tooling and validation commands.
 
-Current confidence:
+## Project status
 
-- deterministic unit/integration tests cover the core workflow mechanics;
-- scripted workflow evaluations exercise temporary target repositories;
-- opt-in live-agent evaluations exist for representative workflows, with baseline
-  collection still ongoing;
-- existing-project adoption, spec reconciliation, prompt-size monitoring, and
-  agent invocation diagnostics are implemented;
-- provider sessions support an opt-in output-inactivity limit and an independent
-  optional maximum duration, with structured timeout reporting and bounded local
-  process-tree cleanup;
-- role sessions use same-session structured handoff submission with trusted
-  session identity, aggregate validation feedback, and DevLab-owned publication;
-- durable operator clarifications support explicit answer/resume flows and an
-  opt-in bounded unattended resolver.
-- durable research sessions store cited evidence and resume the exact requesting route.
+DevLab is **pre-1.0**. Its CLI, configuration, and workspace formats remain
+provisional until the 1.0 compatibility freeze. It is distributed as a Python
+package to provide the CLI; its Python modules are not a supported library API.
+See the [release policy](https://github.com/djulich/devlab/blob/main/docs/release-policy.md)
+for compatibility expectations.
 
-Current limits:
+Automated tests and scripted workflow evaluations cover the core workflow.
+Live-agent evaluation coverage is still developing; see the
+[evaluation evidence](https://github.com/djulich/devlab/blob/main/docs/evaluations/README.md).
+Start with a disposable project and review the generated changes before relying
+on them.
 
-- broad live-agent baseline results are not collected yet;
-- configured task and milestone validation is executed and recorded by the
-  orchestrator, while missing host tools remain explicit unverified prerequisites;
-- DevLab does not supply its own operating-system sandbox or approval layer;
-  those controls belong to the configured provider and execution environment.
+## Install
 
-Use DevLab on disposable or version-controlled workspaces until you have reviewed the generated changes and trust your local configuration.
+You need:
 
-## Trust and safety warning
+- Python 3.12 or newer and [`uv`](https://docs.astral.sh/uv/).
+- Git on `PATH`, with a name and email configured for commits.
+- An installed coding-agent CLI with access to its provider to run the workflow.
+- The build and test tools required by your target project. DevLab does not
+  install missing host tools.
 
-DevLab executes target-owned configuration.
-
-In particular:
-
-- `.devlab/config/agents.toml` defines the agent CLI commands DevLab runs;
-- `.devlab/config/profiles/*.toml` may define validation, lifecycle,
-  prerequisite checks, and preparation commands;
-- `.devlab/config/test-services.toml` may define workspace-owned service
-  lifecycle commands;
-- agent permission and approval behavior is provider-specific and controlled through `.devlab/config/agents.toml`.
-
-DevLab does **not** sandbox these commands. Only run DevLab in repositories and configurations you trust. Review `.devlab/config/agents.toml` and profile files before running `devlab continue`, especially in cloned or agent-modified workspaces.
-
-Before starting configured processes, DevLab fingerprints the effective provider
-invocation, profile validation/lifecycle/prerequisite configuration, and managed
-test services. Operators can approve that fingerprint in user-local state with
-`devlab trust executable-config`, require an independently approved digest in CI,
-or explicitly accept the current snapshot for one externally contained
-invocation. DevLab treats provider permission and sandbox options as opaque
-operator-owned policy. Trusting configured process entry points does not certify
-the commands or their transitive behavior as safe.
-
-If a reviewed task changes executable configuration, DevLab stops cleanly before
-preparing a session outside that task cycle. The running command never adopts the
-changed snapshot; inspect and authorize its new digest, then start a fresh command.
-
-## Prerequisites
-
-To install and run DevLab, you need:
-
-- Python 3.12 or newer.
-- [`uv`](https://docs.astral.sh/uv/) for the supported installation and
-  development workflow.
-- Git on `PATH`; DevLab initializes target repositories when needed and commits workflow changes after valid sessions.
-- At least one configured agent CLI/provider, such as a local coding-agent
-  command, declared in the target project's `.devlab/config/agents.toml` before
-  running `devlab continue`, `devlab plan`, or `devlab implement`.
-
-Target projects may define their own validation, build, environment lifecycle, or deployment commands. DevLab may invoke those target-owned commands when configured, but it does not install missing project tools for you.
-
-## Installation from a source checkout
-
-DevLab is not published to PyPI yet. Install it as a `uv` tool from a local checkout or a Git URL.
-
-For DevLab development, install the checkout in editable mode so code changes are reflected immediately:
-
-```bash
-cd /path/to/devlab-checkout
-uv tool install --editable .
-# or: make install-editable
-```
-
-For a normal (non-development) installation from a checkout, install a regular tool copy:
-
-```bash
-uv tool install /path/to/devlab-checkout
-# or, from inside the checkout: make install
-```
-
-If the repository is available over Git, install directly from a branch, tag, or commit:
+DevLab is not yet distributed through production PyPI. Install the current
+development version from Git:
 
 ```bash
 uv tool install "git+https://github.com/djulich/devlab.git@main"
-```
-
-After installation, the `devlab` command can be run from inside any target project repository.
-Confirm the installed release with:
-
-```bash
 devlab --version
 ```
 
-DevLab is licensed under the Apache License 2.0. See [`LICENSE`](https://github.com/djulich/devlab/blob/main/LICENSE).
-Pre-1.0 evolution and release expectations are documented in
-[`docs/release-policy.md`](https://github.com/djulich/devlab/blob/main/docs/release-policy.md).
-See [`CONTRIBUTING.md`](https://github.com/djulich/devlab/blob/main/CONTRIBUTING.md) to contribute and
-[`SECURITY.md`](https://github.com/djulich/devlab/blob/main/SECURITY.md) to report vulnerabilities privately.
+To pin an installation, replace `main` with an immutable tag or commit. You can
+also install a local checkout with `uv tool install /path/to/devlab-checkout`.
+TestPyPI uploads are release-pipeline rehearsals; Git and local checkouts are the
+supported installation paths. For an editable development installation, see
+[Contributing](https://github.com/djulich/devlab/blob/main/CONTRIBUTING.md).
 
-New to DevLab? Follow [Your First DevLab Workflow](https://github.com/djulich/devlab/blob/main/docs/tutorial.md) for a
-step-by-step installation, configuration, and small example project.
-For a resettable live presentation, use the
-[reproducible first-workflow demo](https://github.com/djulich/devlab/tree/main/demos/first-workflow/).
+## Run your first workflow
 
-## Quickstart inside a target project
+The [first-workflow tutorial](https://github.com/djulich/devlab/blob/main/docs/tutorial.md)
+provides a complete specification, agent configuration, and commands for building
+a small Python CLI. The outline below shows the same setup process for a new
+project. For an existing repository, follow
+[Adopt an existing project](https://github.com/djulich/devlab/blob/main/docs/how-to/adopt-existing-project.md).
+
+### 1. Initialize a target workspace
+
+Create a directory for the software you want to build, then initialize DevLab
+inside it:
 
 ```bash
-mkdir -p /path/to/target-project
-cd /path/to/target-project
+mkdir my-project
+cd my-project
 devlab init
 ```
 
-Initialization is language-neutral by default. To start a greenfield project
-with conventional tooling guidance, select an explicit starter:
+Initialization is language-neutral. For a new project with conventional tooling
+preferences, use `devlab init --template python` instead; starters also exist
+for Rust, Go, C, and C++. Templates provide initial tooling configuration, not
+the application itself.
 
-```bash
-devlab init --template python  # or rust, go, c, cpp
-```
+`devlab init` initializes Git when needed and commits non-ignored files. Before
+using it in a populated directory, make sure `.gitignore` excludes secrets,
+local configuration, caches, and generated artifacts.
 
-Templates only generate initial tooling policy and profile files. They do not
-enable a hidden language mode, and DevLab does not install their host tools.
+### 2. Describe the work and configure the tools
 
-`devlab init` initializes Git when needed and creates an initial commit containing all non-ignored files. In existing directories, add secrets, local configuration, caches, and generated artifacts to `.gitignore` before running it.
+Edit these files in the target workspace:
 
-Edit the target project's system spec. The starter file is:
+- `.devlab/specs/system/README.md`: the required behavior and acceptance criteria.
+- `.devlab/config/agents.toml`: how DevLab starts your installed coding agent.
+- `.devlab/config/tooling.md` and `.devlab/config/profiles/`: the project's
+  tooling policy, validation commands, and any environment setup.
 
-```text
-.devlab/specs/system/README.md
-```
+The tutorial supplies a working example. For other providers or role overrides,
+see [Agent configuration](https://github.com/djulich/devlab/blob/main/docs/agent-configuration.md).
 
-For larger projects, split the system specification across additional Markdown
-files under `.devlab/specs/system/`; DevLab reads all `*.md` files in that
-directory. The scaffolded `.devlab/specs/deployment/README.md` is an optional,
-inactive deployment-requirements overlay and a checklist for packaging,
-runtime, verification, configuration, and production boundaries. Remove its
-placeholder marker when deployment is in scope; that activates
-deployment-specific planning guidance and diagnostics.
+**Review executable configuration before running it.** DevLab executes agent,
+validation, and environment commands from the target repository. It does not
+sandbox these commands; permissions and isolation come from your agent provider
+and execution environment. Only authorize configuration you trust.
 
-Configure the target project's agent command. The configured executable must be installed and available on `PATH` before running agent sessions:
-
-```text
-.devlab/config/agents.toml
-```
-
-Commit your user-authored setup changes before continuing. Workflow execution requires a clean Git working tree so agent-authored changes can be isolated and committed safely:
+Commit your setup changes. DevLab requires a clean working tree before starting
+agent sessions:
 
 ```bash
 git add .devlab/specs .devlab/config
 git commit -m "Configure DevLab project"
 ```
 
-Before the first provider session, inspect and authorize the executable
-configuration, then smoke-test the provider:
+### 3. Check the setup and start a bounded run
 
 ```bash
+devlab doctor
 devlab trust executable-config
 devlab agent-smoke-test
+devlab continue --max-sessions 2
 ```
 
-The trust command displays the effective configuration and fingerprint before
-asking for approval. Authorization changes operator-local trust, and the smoke
-test starts the configured provider.
+`doctor` checks configuration and workflow state without changing them. The
+trust command shows the executable configuration and asks for approval; the
+smoke test invokes the provider to check that it works. Resolve any reported
+setup problems before continuing.
 
-Run the workflow through its single normal operator entry point:
+The continuation command runs at most two role sessions. A complete workflow
+usually needs several such runs. Both the smoke test and workflow sessions
+consume usage from your configured provider; a session limit does not cap
+provider billing.
 
-```bash
-devlab continue
-```
+## Inspect and continue
 
-`devlab continue` derives the next valid action from durable state. It runs
-planning, implementation, review, integration, clarification resume, or a
-validation retry as needed. After a bounded stop, resolve any explicitly
-reported external condition and run the same command again. On an interrupted
-dirty worktree it can offer an exact, operator-confirmed discard back to the
-committed boundary; ignored files and external effects are never claimed to be
-restored. See the [operator guide](https://github.com/djulich/devlab/blob/main/docs/operator-guide.md) for recovery and
-phase-restricted automation commands.
+After a run, read its summary and inspect the generated files and Git commits.
+These four commands cover routine operation:
 
-Use `status`, `doctor`, and `diagnostics` for read-only inspection at any
-checkpoint.
+| Question | Command | Purpose |
+| --- | --- | --- |
+| Where am I? | `devlab status` | Show progress, blockers, and the next action. |
+| Is the workspace healthy? | `devlab doctor` | Validate configuration and workflow state. |
+| How is the workflow performing? | `devlab diagnostics` | Inspect workflow history and quality indicators. |
+| What happens next? | `devlab continue --max-sessions 2` | Run the next sessions from recorded state. |
 
-Bounded commands finish with a summary explaining why they stopped and what to
-do next. DevLab commits accepted session results so later invocations resume
-from repository state rather than conversation memory.
+The first three commands are read-only. `continue` selects planning,
+implementation, review, integration, or recovery as needed. Reaching the session
+limit is a checkpoint, not completion. Resolve any reported blockers or requests
+for your decision, then run the same continuation command again.
 
-## Core commands
+See the [operator guide](https://github.com/djulich/devlab/blob/main/docs/operator-guide.md)
+for clarification, recovery, unattended operation, and advanced commands. Use
+`devlab --help` and `devlab COMMAND --help` for the full command reference.
 
-- `devlab init [--root PATH] [--force] [--template neutral|python|rust|go|c|cpp] [--git-user-name NAME --git-user-email EMAIL]` — create starter `.devlab/` files.
-- `devlab continue` — perform the next valid lifecycle action; this is the
-  normal operator entry point.
-- `devlab plan` and `devlab implement` — phase-restricted interfaces for
-  explicit planning modes, expert use, and automation.
-- `devlab clarify [--root PATH] list|show|answer|supersede ...` — inspect and answer durable operator clarifications.
-- `devlab resume [--root PATH] [--max-sessions N]` — resume the workflow blocked by an answered clarification.
-- `devlab status`, `devlab diagnostics`, `devlab history`, and `devlab doctor` —
-  inspect workflow state without mutating it. `status` also provides JSON,
-  digest, and next-command views.
-- `devlab agent-smoke-test` — verify configured provider invocation with a tiny
-  prompt.
-- `devlab trust executable-config` — inspect or manage workspace-scoped
-  executable-configuration trust.
-- `devlab prerequisite ...` and `devlab test-service ...` — inspect runtime
-  requirements, manage attestations, and explicitly clean up owned services.
-- `devlab clean-failed-session [--root PATH]` — remove untracked agent/environment logs and artifacts from failed sessions while leaving target source changes untouched.
+## Documentation and examples
 
-Run `devlab COMMAND --help` for the authoritative option list.
+- [Documentation index](https://github.com/djulich/devlab/blob/main/docs/README.md):
+  guides, architecture, evaluations, and project direction.
+- [How-to guides](https://github.com/djulich/devlab/blob/main/docs/how-to/README.md):
+  adopt an existing project, fix a bug, revise a specification, or recover an
+  interrupted workflow.
+- [Runtime prerequisites and managed test services](https://github.com/djulich/devlab/blob/main/docs/runtime-prerequisites.md):
+  configure validation environments and workspace-owned services.
+- [First-workflow demo](https://github.com/djulich/devlab/tree/main/demos/first-workflow/):
+  a resettable presentation of the tutorial with independent result checks.
 
-Research has no standalone command. Architect, planner, and developer may
-return `needs_research`; run `devlab continue` to invoke one bounded researcher
-and then resume the requester. Results
-are strict staged JSON and canonical `.devlab/research/` records with evidence,
-sources, confidence, unresolved questions, and provenance. Configure an
-optional `[roles.researcher]`; otherwise it inherits the requesting role's
-provider. Invalid output or provider failure remains retryable. Research is
-supporting evidence, while operator choices and authority use clarification.
+## Contributing and license
 
-Profile prerequisites and managed test services provide declared readiness
-checks, bounded runtime preparation, durable service ownership, and explicit
-cleanup. Their configuration and safety boundaries are documented in
-[Runtime Prerequisites and Managed Test Services](https://github.com/djulich/devlab/blob/main/docs/runtime-prerequisites.md).
+See [Contributing](https://github.com/djulich/devlab/blob/main/CONTRIBUTING.md)
+for development setup and contribution guidelines. Report bugs through
+[GitHub issues](https://github.com/djulich/devlab/issues) and security
+vulnerabilities privately through the
+[security policy](https://github.com/djulich/devlab/blob/main/SECURITY.md).
 
-## More documentation
-
-- [`docs/README.md`](https://github.com/djulich/devlab/blob/main/docs/README.md) — documentation map and ownership.
-- [`docs/design.md`](https://github.com/djulich/devlab/blob/main/docs/design.md) — architecture and workflow overview.
-- [`docs/operator-guide.md`](https://github.com/djulich/devlab/blob/main/docs/operator-guide.md) — operating DevLab in a target workspace.
-- [`docs/how-to/`](https://github.com/djulich/devlab/blob/main/docs/how-to/README.md) — step-by-step procedures for common DevLab use cases.
-- [`docs/agent-configuration.md`](https://github.com/djulich/devlab/blob/main/docs/agent-configuration.md) — target-owned agent command configuration.
-- [`docs/runtime-prerequisites.md`](https://github.com/djulich/devlab/blob/main/docs/runtime-prerequisites.md) — prerequisite
-  checks/preparation and workspace-owned test services.
-- [`docs/evaluations/`](https://github.com/djulich/devlab/blob/main/docs/evaluations/README.md) — scripted and live workflow evaluations.
-- [`demos/`](https://github.com/djulich/devlab/blob/main/demos/README.md) — repository-only demonstrations and external graders.
-- [`docs/release-policy.md`](https://github.com/djulich/devlab/blob/main/docs/release-policy.md) — versioning, compatibility, and release expectations.
-- [`docs/roadmap.md`](https://github.com/djulich/devlab/blob/main/docs/roadmap.md) — long-term strategic direction and release gates.
+DevLab is licensed under the
+[Apache License 2.0](https://github.com/djulich/devlab/blob/main/LICENSE).

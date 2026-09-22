@@ -31,6 +31,16 @@ it globally:
 uv run devlab --help
 ```
 
+To make the `devlab` command available from other target workspaces while
+developing DevLab, install the checkout as an editable tool:
+
+```bash
+uv tool install --editable .
+# or: make install-editable
+```
+
+Code changes in the checkout are then reflected in the installed command.
+
 ## Making Changes
 
 - Keep workflow policy in the owning module rather than in packaged prompts.
