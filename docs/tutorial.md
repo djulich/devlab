@@ -111,14 +111,13 @@ codex --version
 
 ### Install DevLab
 
-DevLab is not yet published to production PyPI. Install the current development
-version from Git (TestPyPI uploads are publication rehearsals):
+Install DevLab from PyPI:
 
 ```bash
-uv tool install --python 3.12 "git+https://github.com/djulich/devlab.git@main"
+uv tool install --python 3.12 devlab
 ```
 
-For a reproducible run, replace `main` with an immutable tag or commit.
+For a reproducible run, use `"devlab==0.1.2"` instead of `devlab`.
 Confirm the installation:
 
 ```bash

@@ -65,18 +65,18 @@ You need:
 - The build and test tools required by your target project. DevLab does not
   install missing host tools.
 
-DevLab is not yet distributed through production PyPI. Install the current
-development version from Git:
+Install DevLab from PyPI:
 
 ```bash
-uv tool install "git+https://github.com/djulich/devlab.git@main"
+uv tool install devlab
 devlab --version
 ```
 
-To pin an installation, replace `main` with an immutable tag or commit. You can
-also install a local checkout with `uv tool install /path/to/devlab-checkout`.
-TestPyPI uploads are release-pipeline rehearsals; Git and local checkouts are the
-supported installation paths. For an editable development installation, see
+For a reproducible installation, pin a version with `uv tool install "devlab==0.1.2"`.
+You can also install an immutable Git tag or commit with
+`uv tool install "git+https://github.com/djulich/devlab.git@v0.1.2"`, or a local
+checkout with `uv tool install /path/to/devlab-checkout`. TestPyPI is used only
+for publication rehearsals. For an editable development installation, see
 [Contributing](https://github.com/djulich/devlab/blob/main/CONTRIBUTING.md).
 
 ## Run your first workflow

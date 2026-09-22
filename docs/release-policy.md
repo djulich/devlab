@@ -6,9 +6,10 @@ not been frozen.
 
 ## Current Distribution
 
-DevLab is not published to production PyPI. Install from a source checkout or
-Git URL with `uv tool install`, as described in the [README](../README.md#install).
-Use an immutable tag or commit for a reproducible installation. TestPyPI is used
+Production PyPI is the supported package distribution channel. Install with
+`uv tool install devlab`, as described in the [README](../README.md#install).
+Pin a package version, or install from an immutable Git tag or commit, for a
+reproducible installation. Source checkouts remain supported. TestPyPI is used
 only to rehearse publication; it is not a supported distribution channel.
 
 Before a public release, the project verifies package metadata, license
@@ -121,8 +122,8 @@ merely because it was committed or carried a format version.
 
 ## Release Procedure
 
-Until DevLab is published to PyPI, a release consists of an immutable Git tag
-and GitHub Release containing the verified source distribution, wheel, and
+A release consists of an immutable Git tag, verified source distribution and
+wheel on PyPI, and a GitHub Release containing the same distributions and their
 checksums. The package version is `X.Y.Z`, while its Git tag is `vX.Y.Z`; for
 example, package version `0.2.0` uses tag `v0.2.0`. The `v` distinguishes a
 repository tag from the package version and is not part of the version recorded
@@ -134,17 +135,24 @@ lightweight tag uses the release commit message. In either case, review and
 expand the draft with a concise summary of notable changes and any scoped
 recovery guidance before publishing it.
 
-Until production PyPI publication is adopted, the tag workflow also publishes
-the verified wheel and source distribution to TestPyPI as a release-pipeline
-rehearsal. The TestPyPI job uses trusted publishing through the protected
-`testpypi` GitHub environment, receives only an OIDC identity-token permission,
-and consumes the distributions produced by the build job without rebuilding
-them. It does not receive or upload `SHA256SUMS`, which remains a GitHub Release
-asset. TestPyPI is validation infrastructure, not a supported distribution
-channel. Its release files cannot be replaced; correct a failed rehearsal with
-a new version and immutable tag. The TestPyPI trusted publisher configuration
-must match project `devlab`, GitHub repository `djulich/devlab`, workflow
-`release.yml`, and environment `testpypi`; no API token is stored in GitHub.
+The tag workflow builds once and publishes the verified distributions to
+TestPyPI before production PyPI. Both publishing jobs use trusted publishing,
+with job-scoped OIDC identity-token permission and attestations. They consume
+the same build artifacts without rebuilding; `SHA256SUMS` remains a GitHub
+Release asset and is not uploaded to either index.
+
+Each index has its own trusted publisher for project `devlab`, GitHub repository
+`djulich/devlab`, and workflow `release.yml`. The environment must match
+`testpypi` or `pypi` respectively; no API token is stored in GitHub. Configure
+the production `pypi` environment with required reviewer `djulich`, self-review
+allowed, administrator bypass disabled, and a selected-tag rule for `v*`.
+Environment protection rules are configured in GitHub settings, not in YAML.
+
+Production publishing waits for the build, draft GitHub Release, and TestPyPI
+upload to succeed, then requires environment approval. Inspect the candidate
+before approving production. A `0.x` release remains provisional even when
+distributed through production PyPI; publication does not freeze the 1.x
+compatibility contract.
 
 1. Review changes since the previous release and choose the next version using
    the rules above.
@@ -211,36 +219,56 @@ must match project `devlab`, GitHub repository `djulich/devlab`, workflow
     validation, then builds and verifies the release artifacts and generates
     checksums exactly once. Separate, least-privilege jobs consume the resulting
     artifacts without rebuilding: one creates a draft GitHub Release containing
-    the distributions and checksums, while the other publishes only the
-    distributions to TestPyPI through trusted publishing. The draft-release job
-    checks out the tagged commit solely so GitHub CLI can resolve the repository
+    the distributions and checksums, while another publishes only the
+    distributions to TestPyPI through trusted publishing. Approve the `testpypi`
+    deployment in the workflow run's **Review deployments** dialog. The
+    draft-release job checks out the tagged commit solely so GitHub CLI can resolve the repository
     and annotated tag notes; it still uses the artifacts from the build job.
     Confirm that TestPyPI shows the expected version, metadata, description,
     wheel, source distribution, and provenance. Open the description links and
     the Documentation sidebar link; rendering checks alone do not prove that
-    destinations work. Add the drafted release summary,
-    review the note and assets, mark a `0.x` release as a pre-release, and publish
-    it deliberately. Published files are immutable; a failed preparation is
-    corrected with a new version and tag rather than by moving the shared tag.
-11. Smoke-test installation from TestPyPI and through the shared tag, confirming
-    the reported version for each source:
+    destinations work. Add the drafted release summary, review the note and
+    assets, and mark a `0.x` GitHub Release as a pre-release. This GitHub label
+    does not change the package version or how PyPI installers select it.
+11. Before approving production, smoke-test installation from TestPyPI and
+    through the shared tag in an isolated environment, confirming the reported
+    version and command help for each source:
 
     ```bash
     uv tool install --force \
       --default-index https://test.pypi.org/simple/ \
       "devlab==X.Y.Z"
     devlab --version
+    devlab --help
 
     uv tool install --force "git+https://github.com/djulich/devlab.git@vX.Y.Z"
     devlab --version
+    devlab --help
     ```
+
+12. In **Actions → Prepare release → the release run → Review deployments**,
+    select `pypi` and choose **Approve and deploy**. This uploads the same
+    verified distributions to production PyPI. Approval starts publication;
+    publishing the draft GitHub Release is a separate action.
+13. Verify the production project description, links, version, files, and
+    provenance. Compare the published distribution SHA-256 hashes with the
+    GitHub Release's `SHA256SUMS`. Smoke-test the production installation in an
+    isolated environment:
+
+    ```bash
+    uv tool install --force --default-index https://pypi.org/simple/ "devlab==X.Y.Z"
+    devlab --version
+    devlab --help
+    ```
+
+    Publish the reviewed GitHub Release after these checks succeed. Uploaded
+    files and shared tags are immutable. If a correction changes the artifacts,
+    prepare a new version and tag; do not replace files or move the old tag.
 
 Before considering the release complete:
 
 - update README maturity guidance if evaluation confidence changed;
 - retain the validation and evaluation results needed to support release
   claims; and
-- ensure users can install by immutable tag rather than relying on `main`.
-
-PyPI publication remains a future decision. Until then, release tags and Git
-URLs are the expected installation path for non-development users.
+- ensure users can install the exact version from production PyPI and the
+  immutable tag.
