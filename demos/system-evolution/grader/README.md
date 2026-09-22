@@ -92,7 +92,7 @@ make -C demos check
 ```
 
 The complete fixed grading contract and deferred checks are documented in
-`../grading-design.md`.
+[Grading design](../grading-design.md).
 
 ### Evaluation corrections after the first Generation 2 run
 

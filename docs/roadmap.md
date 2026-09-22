@@ -34,9 +34,9 @@ current status of the linked issues.
 Issues [#1](https://github.com/djulich/devlab/issues/1) and
 [#2](https://github.com/djulich/devlab/issues/2) established useful format-safety
 and release-policy groundwork, but their proposed baseline was deliberately
-withdrawn before release. There are no external users or deployed workspaces to
-support, and preserving an imagined baseline would constrain necessary operator
-and format changes during `0.x`.
+withdrawn before release. Those development representations were not adopted
+as a public compatibility contract; treating them as a frozen baseline would
+constrain necessary operator and format changes during `0.x`.
 
 The immutable baseline and executable compatibility suite must instead be
 created from the exercised 1.0 release candidate. Until then, current-format

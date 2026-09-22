@@ -1,65 +1,69 @@
 # DevLab Documentation
 
-This directory documents the current DevLab product. Historical implementation
-plans are available through Git history rather than being retained as current
-documentation.
+Start with the guide for what you want to do. The
+[project README](../README.md) introduces DevLab and its current maturity.
 
-## Start Here
+## Learn and run DevLab
 
-- [Tutorial: Your First Workflow](tutorial.md) takes a new user from installing
-  DevLab to completing a small planned and reviewed Python project.
-- [Reproducible first-workflow demo](../demos/first-workflow/) provides
-  versioned preparation and reset procedures for presenting that tutorial.
-- [Vision](vision.md) explains why DevLab exists and which projects it targets.
-- [Design](design.md) describes the current architecture and workflow model.
-- [Operator guide](operator-guide.md) explains how to run and inspect DevLab.
-- [How-to guides](how-to/README.md) provide task-oriented procedures.
-- [Agent configuration](agent-configuration.md) is the provider and role
-  configuration reference.
-- [Runtime prerequisites and managed test services](runtime-prerequisites.md)
-  documents readiness checks, bounded preparation, service ownership, and
-  cleanup.
-
-## Project Direction and Decisions
-
-- [Roadmap](roadmap.md) is authoritative for strategic direction and release
-  gates. The GitHub roadmap project and linked repository issues track
-  actionable work across releases; milestones group that work by release or
-  another significant product-lifecycle event.
-- [Architecture decision records](adr/) preserve decisions that are surprising,
-  difficult to reverse, or based on important trade-offs.
-- [Proposals](proposals/README.md) are temporary documents for substantial
-  unresolved designs. Accepted decisions move into ADRs and current
-  documentation; implementation work moves into issues.
-
-## Evidence and Policy
-
-- [Evaluations](evaluations/README.md) documents deterministic and live workflow
-  evaluations. Dated results live under `evaluations/baselines/`.
-- [Release policy](release-policy.md) defines versioning, pre-1.0 evolution,
-  the 1.0 compatibility freeze, and release expectations.
-- [Deployment feature overview](deployment-feature-overview.md) describes the
-  current deployment-support promise and boundaries.
-
-## Documentation Ownership
-
-Each kind of information has one durable owner:
-
-| Information | Owner |
+| Goal | Guide |
 | --- | --- |
-| Agent-critical terminology | `CONTEXT.md` |
-| Product motivation and scope | `docs/vision.md` |
-| Current architecture and behavior | `docs/design.md` |
-| Operator procedures | `docs/operator-guide.md` and `docs/how-to/` |
-| Configuration contracts | Focused reference documents |
-| Durable architectural decisions | `docs/adr/` |
-| Strategic direction and release gates | `docs/roadmap.md` |
-| Actionable work | GitHub roadmap project and linked repository issues |
-| Release and lifecycle grouping | GitHub milestones |
-| Substantial unresolved designs | `docs/proposals/` |
-| Historical implementation detail | Git history |
+| Complete a first workflow | [Tutorial: Your First Workflow](tutorial.md) |
+| Bring an existing repository into DevLab | [Adopt an existing project](how-to/adopt-existing-project.md) |
+| Understand routine operation and workspace files | [Operator guide](operator-guide.md) |
+| Fix a bug or change requirements | [How-to guides](how-to/README.md) |
+| Continue after a stop or failed session | [Interruption and recovery](how-to/resume-interrupted-workflow.md) |
+| Present a repeatable demonstration | [First-workflow demo](../demos/first-workflow/) |
 
-Documentation should describe implemented behavior in the present tense. Do not
-keep a completed proposal or implementation plan merely as a status record.
-Promote durable information to its owning document, then remove the temporary
-document.
+The tutorial supplies a complete example. How-to guides address individual tasks;
+the operator guide explains the lifecycle and serves as the workspace reference.
+
+## Configure a target workspace
+
+- [Agent configuration](agent-configuration.md): provider invocation, role
+  overrides, timeouts, prompt size, and smoke tests.
+- [Profiles and validation](operator-guide.md#profiles): tooling, session
+  environments, command selection, and validation outcomes.
+- [Executable configuration authorization](operator-guide.md#executable-configuration-authorization):
+  workstation trust, CI digests, and configuration changes.
+- [Runtime prerequisites and managed test services](runtime-prerequisites.md):
+  readiness checks, bounded preparation, resource ownership, and cleanup.
+- [Deployment support](deployment-feature-overview.md): deployment requirements,
+  verification, and the operator/CI boundary.
+
+## Understand and contribute to DevLab
+
+- [Vision](vision.md): motivation, suitable projects, and potential evolution.
+- [Design overview](design.md): current workflow mechanics and architecture.
+- [Terminology](../CONTEXT.md) and [development constraints](../AGENTS.md):
+  shared language, module ownership, and invariants for maintainers.
+- [Contributing](../CONTRIBUTING.md): development setup and validation.
+- [Roadmap](roadmap.md): strategic direction and release gates. Concrete work is
+  tracked in linked GitHub Issues and the roadmap project.
+- [Architecture decisions](adr/): durable decisions and their tradeoffs.
+- [Release policy](release-policy.md): versioning, compatibility, and publication.
+- [Workflow evaluations](evaluations/README.md): how to run and interpret
+  evaluations, with [dated baselines](evaluations/baselines/README.md).
+- [Demonstrations and experiments](../demos/README.md): repository-only fixtures,
+  demos, and independent graders.
+
+## Maintaining the documentation
+
+Each document has a specific job. Keep commands and field semantics in the
+operator/configuration references; link to them from the design overview and
+procedures. Keep agent-critical terms in `CONTEXT.md`, architectural constraints
+in `AGENTS.md` and ADRs, and current behavior in the relevant guide.
+
+Describe implemented behavior in the present tense. Proposed changes belong in
+issues or temporary [design proposals](proposals/README.md), with accepted
+tradeoffs promoted to ADRs. Remove completed proposals after their contracts
+have moved into current documentation; Git history retains implementation plans.
+
+Dated baselines record the versions, environments, and outcomes actually tested.
+They are historical evidence, not instructions for the latest release or a
+promise that every current version has the same coverage. Keep them distinct
+from current evaluation instructions.
+
+Use repository-relative links in the guides. The root README also renders on
+PyPI and uses absolute URLs. Check incoming links and heading anchors when
+moving or renaming content, and verify command/configuration examples against
+the owning implementation before publishing changes.

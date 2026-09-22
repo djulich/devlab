@@ -30,5 +30,5 @@ Treat target repositories and their executable configuration as code. Review
 them before granting trust or running a mutating workflow command. DevLab's
 executable-configuration fingerprint detects relevant changes, but approving a
 fingerprint does not make the underlying commands safe. See the
-[trust and safety warning](README.md#trust-and-safety-warning) for the operator
+[executable configuration authorization guide](docs/operator-guide.md#executable-configuration-authorization) for the operator
 model and current limitations.

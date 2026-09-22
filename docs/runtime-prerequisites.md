@@ -5,7 +5,13 @@ sessions, environment setup, or validation. DevLab may check or prepare only
 what the target declares; it does not install host tools, obtain credentials,
 pull missing images, or infer repairs from arbitrary command failures.
 
-All commands in this document run from the target workspace.
+All commands in this document run from the target workspace. Start with the
+[profile reference](operator-guide.md#profiles) to configure validation and
+session environments, then add prerequisites or services when required.
+
+- [Profile prerequisites](#profile-prerequisites) describe readiness.
+- [Declared runtime preparation](#declared-runtime-preparation) describes bounded setup.
+- [Managed test services](#managed-test-services) describes persistent workspace resources.
 
 ## Profile Prerequisites
 
@@ -51,7 +57,10 @@ devlab prerequisite approve PROFILE PREREQUISITE
 devlab prerequisite revoke PROFILE PREREQUISITE
 ```
 
-The explicit `check` command observes only; it never prepares a prerequisite.
+`list`, `blocked`, and `show` inspect stored configuration/state. `check` may
+execute the declared check command after executable-configuration authorization,
+but never prepares a prerequisite. `approve` and `revoke` manage operator
+attestations; they do not turn a failed automatic check into a passing one.
 
 ### Resolution guides
 
@@ -61,8 +70,11 @@ section through the next heading of equal or higher level. A guide should state
 the required capability, installation or provisioning boundary, configuration,
 exact readiness check, common failures, and security or cleanup constraints.
 
-`devlab doctor` reports missing files/headings and selected guide content over
-8,000 characters. Guides are operator instructions and are never executed.
+`devlab doctor` reports missing files/headings, selected guide content over
+8,000 characters, and whole-file references outside the dedicated prerequisite
+guide directory. Use a focused heading for a general document. Guide-quality
+findings affect global health but do not block planning or sessions. Guides are
+operator instructions and are never executed.
 
 ## Declared Runtime Preparation
 
@@ -97,7 +109,24 @@ Targets declare workspace-lifetime local test resources in:
 .devlab/config/test-services.toml
 ```
 
-Profiles reference each service where it is needed:
+For example, the [PostgreSQL demonstration](../demos/managed-test-services/)
+uses this service definition with its supplied `scripts/test-postgres.py`:
+
+```toml
+[services.postgres]
+summary = "Disposable local PostgreSQL test database"
+host_checks = ["docker info >/dev/null 2>&1", "docker image inspect postgres:16 >/dev/null 2>&1"]
+ensure = "python3 scripts/test-postgres.py ensure"
+check = "python3 scripts/test-postgres.py check"
+destroy = "python3 scripts/test-postgres.py destroy"
+exports = ["TEST_DATABASE_URL"]
+ensure_timeout_seconds = 180
+check_timeout_seconds = 40
+destroy_timeout_seconds = 40
+```
+
+The example requires Docker and the image to be available already. Profiles
+reference each service where it is needed:
 
 ```toml
 [[test_services]]
@@ -110,6 +139,24 @@ A service defines host checks, repeatable `ensure`, readiness `check`, explicit
 supplies a durable random instance identity and private result path. The ensure
 command atomically publishes a JSON result containing schema version 1, the
 matching instance identity, and string values for exactly the declared exports.
+
+For a custom service, DevLab supplies `DEVLAB_TEST_SERVICE_ID`,
+`DEVLAB_TEST_SERVICE_INSTANCE`, `DEVLAB_TEST_SERVICE_STATE_DIR`, and
+`DEVLAB_TEST_SERVICE_RESULT`. Write the result atomically to the supplied result
+path with owner-only permissions. Its exact shape is:
+
+```json
+{
+  "schema": 1,
+  "instance": "the supplied DEVLAB_TEST_SERVICE_INSTANCE value",
+  "environment": {"TEST_DATABASE_URL": "the private connection URL"}
+}
+```
+
+The result file must be a regular file no larger than 65,536 bytes, with no group
+or other permissions; its directory is private. DevLab passes validated exports
+to dependent commands as environment data, never as shell code. Target commands
+must enforce ownership and must not print secret exports into ordinary logs.
 
 Non-secret ownership state is committed under `.devlab/test-services/`. Private
 exports and raw logs live under ignored `.devlab/local/test-services/`. New

@@ -67,7 +67,7 @@ tools, external grader, and prohibition on manual repair.
 ## Status
 
 The documentary protocol and specifications are ready. The first-version grader
-choices are fixed in `grading-design.md`: Docker Compose v2, evaluator-owned
+choices are fixed in [Grading design](grading-design.md): Docker Compose v2, evaluator-owned
 Playwright without axe-core, eight synchronized concurrency repetitions,
 lightweight image/runtime inspection, dimensional results without a weighted
 score, and isolated target-owned deployment checks.
@@ -76,7 +76,11 @@ The grader implements the versioned result model, scoped Compose lifecycle,
 structural/topology checks, core generation 1 API checks, evaluator-owned
 Playwright browser/accessibility checks, restart persistence checks, and
 Generation 1 evolution-fixture seeding with immutable digested evidence.
-Generation 2 preserved-volume, data/default migration, Alembic-current, and
-restart-idempotence grading is also implemented. Archive, concurrency, and stale
-browser-conflict grading remain subsequent slices. See `grader/README.md` for the
-current interface and boundaries.
+Generation 2 grading covers preserved-volume migration, data/default preservation,
+Alembic state, restart idempotence, next actions, archive/restore behavior,
+versioned mutations, concurrent writers, and stale browser-conflict recovery.
+It also runs isolated target-owned validation, clean-install migration, and
+runtime/image checks. See the [grader reference](grader/README.md) for the
+implemented interface and boundaries, and the
+[experiment guide](experiment-guide.md) for running both arms. Implementation
+coverage is not a claim that either arm has passed the complete comparison.

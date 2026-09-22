@@ -111,12 +111,14 @@ codex --version
 
 ### Install DevLab
 
-DevLab is not yet published to PyPI. Install it from its Git repository:
+DevLab is not yet published to production PyPI. Install the current development
+version from Git (TestPyPI uploads are publication rehearsals):
 
 ```bash
 uv tool install --python 3.12 "git+https://github.com/djulich/devlab.git@main"
 ```
 
+For a reproducible run, replace `main` with an immutable tag or commit.
 Confirm the installation:
 
 ```bash
@@ -302,9 +304,10 @@ Continue with the same bounded command:
 devlab continue --max-sessions 2
 ```
 
-The process ending at this checkpoint demonstrates interruption and
-continuation: DevLab is no longer running, but its plans, tasks, events,
-handoffs, and resume position remain in files and Git. Starting the same command
+The process ending at this checkpoint demonstrates stopping between sessions
+and continuing later: DevLab is no longer running, but its plans, tasks, events,
+and handoffs remain in files and Git. This is a clean checkpoint, distinct from
+a crash during an unfinished session. Starting the same command
 continues from that durable state rather than relying on conversational memory.
 
 Later sessions implement and review the planned tasks. A reviewer may request

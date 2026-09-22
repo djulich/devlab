@@ -39,20 +39,20 @@ git commit -m "Specify bug fix"
 
 ## 4. Plan the fix
 
-For the first DevLab planning run in an already-started project:
+If executable configuration changed, review it and run
+`devlab trust executable-config` before starting agents.
+
+Reconcile the newly committed specification with the existing plan:
 
 ```bash
 devlab doctor
-devlab plan --adopt-existing
+devlab plan
 ```
 
-If the project already has an active DevLab plan, reconcile the newly committed
-specification instead:
-
-```bash
-devlab doctor
-devlab continue
-```
+`plan` is used here deliberately to stop before implementation so you can
+inspect the proposed work. If its session limit is reached, follow its summary
+and finish planning before proceeding. For routine continuation without this
+inspection boundary, use `devlab continue`.
 
 Inspect the generated task acceptance criteria and profile assignment under
 `.devlab/tasks/`. Do not manually rewrite generated state merely to bypass a

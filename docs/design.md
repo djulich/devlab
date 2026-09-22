@@ -1,650 +1,302 @@
 # DevLab Design Overview
 
-This document explains the design of DevLab for human readers. It is intentionally broader than the role-specific packaged prompt resources in `src/devlab/resources/prompts/`: those files tell agents what to do in a session, while this document explains why the system is shaped this way.
-
-**Motivation:** Substantial projects cannot be delivered reliably in a single agent session: their relevant context and decisions exceed what one bounded interaction can manage consistently, while iteration and review require continuity across sessions.
-
-**Core concept:** Turn durable intent into reviewed artifacts through bounded, role-based sessions connected by explicit workflow state.
-
-The [project vision](vision.md) expands on this motivation, identifies the characteristics of suitable target projects, and describes a possible future separation between a domain-neutral workflow kernel and domain-specific workflow packages. This document describes DevLab’s current, software-specific design.
-
-## Purpose
-
-DevLab is a small orchestration system for agentic software development. Its long-term goal is to take a system specification as input and drive a software development lifecycle toward a usable product or release.
-
-DevLab does not try to make one large agent session do all work. Instead, it turns development into a sequence of small, bounded sessions. Each session has a role, a narrow objective, explicit inputs, and explicit outputs.
-
-At a high level, DevLab should be able to:
-
-1. create a design plan from the system specification,
-2. create a project plan and milestones from the design plan,
-3. create implementation tasks,
-4. invoke agents to implement tasks,
-5. invoke agents to review completed work,
-6. preserve enough state in repository files to resume or audit the workflow.
+DevLab coordinates bounded agent sessions to turn repository-stored software
+requirements into reviewed changes. This overview explains the workflow and its
+implementation boundaries. For motivation and possible future directions, see
+[Project vision](vision.md); for commands and file formats, see the
+[operator guide](operator-guide.md). [CONTEXT.md](../CONTEXT.md) defines the
+project's terminology, and [AGENTS.md](../AGENTS.md) maps behavior to its owning
+modules.
 
 ## DevLab and target workspace
 
-DevLab should be understood as a reusable development tool, not as the product being developed. It operates on a target workspace: a repository that contains the system specification, plans, tasks, history, source code, and tests for the product under development.
+DevLab is installed separately from the repository it operates on. The target
+workspace owns its specifications, configuration, source code, tests, and
+workflow records. Its stack can differ from DevLab's Python implementation.
 
-This repository does not keep checked-in `.devlab/` workflow state for DevLab
-itself. DevLab's starter target files live under `src/devlab/resources/init/`
-and are copied into target repositories by `devlab init`. DevLab should continue
-to work when invoked against another repository, for example:
+DevLab's repository contains the reusable package, tests, documentation, and
+repository-only demonstrations. It does not keep root `.devlab/` workflow state
+for its own development. Initialization copies starter files from
+`src/devlab/resources/init/` into a target; standing role instructions remain
+packaged under `src/devlab/resources/prompts/`.
 
-```bash
-cd /path/to/target-project
-devlab init
-devlab status
-devlab continue
-```
-
-### Why separate the responsibilities?
-
-Keeping DevLab conceptually separate from the target product has several benefits:
-
-- DevLab can be reused across multiple projects,
-- generated or target-product code does not become mixed with DevLab implementation code,
-- a target workspace can use any appropriate technology stack,
-- DevLab releases can evolve independently from the products they help create,
-- `.devlab/specs/system/` can describe the target product instead of DevLab itself.
-
-### Recommended model
-
-A DevLab repository contains the reusable tool and default worker instructions:
-
-```text
-devlab-repo/
-├── src/devlab/
-├── tests/
-├── demos/
-├── docs/
-├── src/devlab/resources/init/
-├── src/devlab/resources/prompts/
-└── Makefile
-```
-
-`tests/` validates the installable product and is included in the source
-distribution, but not the wheel. `demos/` contains repository-only demonstration
-packages and external graders; it is excluded from both distribution formats.
-
-A target workspace contains product-specific DevLab workflow artifacts under `.devlab/`:
-
-```text
-target-project/
-├── .devlab/
-│   ├── config/
-│   ├── specs/
-│   │   ├── system/
-│   │   └── deployment/
-│   ├── plans/
-│   ├── tasks/
-│   ├── milestones/
-│   ├── findings/
-│   ├── clarifications/
-│   ├── research/
-│   ├── generations/
-│   ├── history/
-│   ├── logs/
-│   └── session-artifacts/
-└── <product source, tests, and deployment files>
-```
-
-The packaged prompt files under `src/devlab/resources/prompts/` are DevLab-owned role and convention sources. They are installed with DevLab and should not become target-project workflow state.
-
-### Design implications
-
-DevLab code should avoid assuming that the target workspace is DevLab repository. In particular, avoid hard-coded assumptions that:
-
-- the target project is Python-only,
-- target source code lives under `src/devlab/`,
-- target validation is always `uv run pytest`,
-- `.devlab/specs/system/` describes DevLab itself,
-- `AGENTS.md` and packaged DevLab prompt resources serve the same audience.
-
-The guiding principle is: DevLab is a reusable tool that operates on a target
-workspace. DevLab may be tested against temporary target repositories, but this
-repository's durable maintenance state should remain in normal project files
-such as `docs/`, `docs/adr/`, `docs/roadmap.md`, `CONTEXT.md`, and `AGENTS.md`.
+Language templates provide initial tooling policy and profiles. They do not
+create a persistent language mode in orchestration. Mixed-language work uses
+ordinary task profiles and a target-owned integration command.
 
 ## Core design principles
 
-### Repository state is authoritative
+- **Repository state is authoritative.** Durable progress, decisions, and
+  recovery pointers live in files that can be inspected and versioned.
+- **Sessions are bounded.** Each invocation has one role; developer and reviewer
+  sessions each handle one task. Task scope should be independently implementable
+  and reviewable without splitting tightly coupled work into unnecessary sessions.
+- **Workflow policy is enforced in code.** Prompts explain the role, while
+  validated results and explicit task/milestone transitions control progress.
+- **Inspection does not mutate state.** Status, doctor, diagnostics, prompt
+  assembly, and prompt-size reporting neither repair nor advance the workflow.
+- **Target commands remain target-owned.** Providers define agent invocation;
+  profiles define tooling, validation, and environment commands. DevLab does not
+  install missing host tools or supply an operating-system sandbox.
 
-The repository is the system of record. Agents should not depend on conversational memory or hidden process state.
-
-Important workflow state is stored in files, for example:
-
-- `.devlab/workflow.toml` — small orchestrator-owned workflow-control state, including planning completeness and one typed clarification or research resume pointer.
-- `.devlab/workflow-events.jsonl` — append-only orchestrator-owned lifecycle events used for provenance reporting, not workflow control.
-- `.devlab/specs/` — the target-workspace system specification and, when in
-  scope, an optional deployment-requirements overlay.
-- `.devlab/config/` — target-workspace tooling, agent, profile, and environment lifecycle configuration.
-- `.devlab/plans/` — design and project plans.
-- `.devlab/tasks/` — task files, including each task's status.
-- `.devlab/milestones/` — milestone workflow state.
-- `.devlab/findings/` — file-backed integration and workflow findings.
-- `.devlab/clarifications/` — operator decision requests and answers for bounded workflow stops.
-- `.devlab/research/` — discoverable-fact requests and canonical cited results.
-- `.devlab/generations/` — archived planning-generation bundles and manifests.
-- `.devlab/history/` — archived session handoffs and workflow markers.
-- `.devlab/logs/` — committed workflow logs.
-- `.devlab/session-artifacts/<role>/` — output from the current session before it is archived.
-
-This makes the workflow restartable. If an agent session fails or the process stops, the next run can reconstruct the state from the repository.
-
-Clarifications are distinct from findings. A finding means repository work is
-needed; a clarification means operator intent is needed. A valid role handoff
-may request one clarification instead of making its normal workflow transition.
-DevLab archives the handoff, writes
-`.devlab/clarifications/CLXXXX_*.md`, and stores the interrupted route in a
-`[resume]` pointer in `.devlab/workflow.toml`. In the default operator mode,
-DevLab stops until the operator records a valid answer and resumes the stored
-route. With `--clarification-mode=agent` or its `--unattended` alias, DevLab
-instead invokes a separate bounded clarification-resolver session, validates
-and records its answer with agent provenance, and continues through that same
-stored route. Both modes preserve the clarification record and resume semantics
-as durable workflow state.
-
-Research is a separate bounded auxiliary lifecycle. Architect, planner, and
-developer may request one discoverable fact. DevLab stores the request and exact
-command/role/task/milestone route before invocation. A researcher may write only
-staged `result.json`; forbidden edits are restored, cited evidence is strictly
-validated, and the completed record is supplied only to the stored resumed
-route. Low confidence and unresolved questions remain valid. The resumed role,
-not the researcher, owns any design, plan, task, dependency, or code decision.
-
-### Sessions are small and bounded
-
-Development is performed as a sequence of independent sessions. In each session, one role performs one bounded piece of work.
-
-This is deliberate. Long-running agent conversations tend to accumulate implicit assumptions, context drift, and unrelated changes. Short sessions force the workflow to repeatedly re-ground itself in repository artifacts.
-
-The most important example is the developer role: a developer session implements exactly one task. Because each task also incurs review overhead, planner task scope should favor the fewest tasks that remain independently implementable, reviewable, and safe to hand to one developer session; work should not be split merely because files, functions, or commands are separate when they share the same acceptance context.
-
-### Context should be minimal
-
-Agent input files should be concise. DevLab should not pre-fill the context window with every design decision, every historical handoff, or every possible instruction.
-
-Instead:
-
-- worker-agent conventions stay in packaged DevLab prompt resources,
-- target-workspace tooling decisions stay in `.devlab/config/tooling.md`,
-- role-specific procedures stay in the matching `role-*.md` file,
-- current work is supplied through the selected task and recent relevant handoff.
-
-This keeps agents focused and reduces duplicated instructions across Markdown files.
-
-New workspaces receive a language-neutral tooling policy and profile by default.
-Explicit Python, Rust, Go, C, and C++ initialization templates are convenience
-starters only: the generated files remain authoritative, and orchestration does
-not retain or branch on a target-language mode. Mixed-language work uses normal
-task-specific profiles plus a repository-owned aggregate integration command.
-
-### State transitions should be explicit
-
-The workflow is designed around explicit state transitions rather than implicit progress.
-
-For example, task files have statuses such as:
-
-- `open`
-- `in_review`
-- `changes_requested`
-- `closed`
-
-The orchestrator changes these statuses after validating the relevant session output. Task files are not moved between folders to represent state.
-
-Reporting paths are intentionally non-mutating. `devlab status`, `devlab doctor`, prompt assembly, and prompt context reporting should report the workflow state that exists; they should not create, repair, sync, or transition durable workflow state. Domain-owned validators produce workspace health findings once; `devlab doctor` is the authoritative global aggregation and returns unhealthy for every finding. Each finding also declares the workflow operations it blocks, allowing mutation paths to reuse the same invariant without treating an unrelated finding as a second warning/error severity. `devlab continue` is the normal mutation entry point: it derives and performs the next lifecycle action. `devlab status` is the corresponding unified inspection entry point: it reports lifecycle state, operational blockers, detailed provenance, structured output, and next-command advice through explicit views. Continuation can offer an exact operator-approved discard back to the committed boundary when plain uncommitted state prevents progress, then blocks on health findings applicable to the derived action before delegating to existing planning, implementation, resume, or validation mechanics. It reports known non-blocking findings, refuses conflicts, in-progress Git operations, and nested repository dirt. Declining or refusing an action produces condition-specific operator guidance. `devlab plan` and `devlab implement` remain explicit phase-restricted commands for automation and expert use.
-
-`devlab plan` is the spec/workflow reconciliation command. It creates missing design/project planning state, records the latest committed revision that touched `.devlab/specs/system/` or `.devlab/specs/deployment/`, and stops before implementation roles. If those committed specs change later, `devlab plan` archives the active DevLab workflow bundle under `.devlab/generations/NNNN/`, starts a fresh active planning graph, and runs architect and planner again. `devlab plan --revise` explicitly asks architect and planner to review existing active plans even when the committed spec baseline has not changed. `devlab plan --replace-plan` forces the same archive-and-plan replacement when an active DevLab plan exists. `devlab plan --adopt-existing` tells first planning to treat repository files as an already-started project; the architect records a current-state design baseline in `.devlab/plans/design-plan.md` before the planner creates new work. `devlab plan --mark-specs-planned` is an explicit operator bypass for typo-only, format-only, or otherwise plan-neutral committed spec changes; it updates the recorded spec baseline without running architect or planner sessions and warns that it bypasses reconciliation. During adoption, DevLab prompts agents to preserve the existing development stack and use target-owned validation paths. If the project lacks reliable validation, planner work should add explicit tooling/profile support instead of silently relying on globally installed or DevLab-harness tools. `devlab implement` is implementation continuation: it reads durable reconciled state and stops before selecting developer, reviewer, integrator, or architecture-review sessions if committed specs no longer match the recorded planning baseline.
-
-### Human review remains possible
-
-Even though DevLab aims at autonomous development, it is designed to remain inspectable by humans. A human should be able to read the repo and understand:
-
-- what the system is supposed to become,
-- what tasks exist,
-- which tasks are open, in review, or closed,
-- what each agent session did,
-- why a task was rejected or approved.
-
-This is why the design favors Markdown files and simple metadata over opaque databases.
-
-## Durable project knowledge
-
-DevLab treats target-owned project knowledge as durable context for future sessions. If present, role prompts include:
-
-- `CONTEXT.md` for single-context project language,
-- `CONTEXT-MAP.md` and its linked context-specific `CONTEXT.md` files for multi-context projects,
-- `docs/adr/*.md` Architecture Decision Records.
-
-These files live in conventional project locations rather than `.devlab/` because they are useful outside DevLab. Discovery is read-only: prompt assembly, prompt context reporting, and `doctor` must not create or rewrite knowledge files.
-
-`CONTEXT.md` is for project-specific language: terms, relationships, example dialogue, and flagged ambiguities. It should not become an implementation spec or scratchpad. ADRs are for durable architectural rationale and should stay sparse: create one only when a decision is hard to reverse, surprising without context, and the result of a real trade-off.
-
-The architect co-owns `CONTEXT.md` for initial domain framing, context boundaries, and architecture-significant terminology, and owns ADR creation/update. The planner co-owns `CONTEXT.md` when domain language is clarified during planning. Developer, reviewer, and integrator sessions consume the files and flag contradictions rather than broadly rewriting them.
+These tradeoffs favor auditability and restartability over the convenience of a
+long conversation or an external workflow database. The original decisions are
+recorded in [ADR 0001](adr/0001-store-workflow-state-in-repository-files.md),
+[ADR 0003](adr/0003-keep-reporting-commands-non-mutating.md), and
+[ADR 0005](adr/0005-enforce-workflow-rules-in-code.md).
 
 ## Main workflow
 
-The orchestrator repeatedly syncs explicit workflow state, assesses the repository, and selects the next role. Sync is a mutating operation performed by the workflow path, not by reporting or prompt-building code.
+`devlab continue` is the normal mutation entry point. It derives planning,
+implementation, clarification/research resume, validation retry, or supported
+recovery from durable state. `plan` and `implement` expose phase boundaries for
+operators and automation that deliberately need them.
 
-Typical flow:
-
-1. If no design plan exists, invoke the architect.
-2. If tasks are waiting for review, invoke the reviewer.
-3. If open findings exist, invoke the planner to plan corrective work.
-4. If an integrated milestone is waiting for architecture review, invoke the architect.
-5. If a completed milestone needs integration, invoke the integrator.
-6. If an eligible development task exists, invoke the developer.
-7. If no active tasks exist but planning is incomplete, invoke the planner.
-8. If all tasks are closed and completed milestones are integrated and architecture-reviewed, stop.
-9. If remaining tasks are blocked by dependencies, stop and report the blockage.
-
-The active roles are:
+The workflow uses these agent roles:
 
 | Role | Responsibility |
-|---|---|
-| Architect | Convert system-level intent into a design plan. |
-| Planner | Convert design/project plans into concrete tasks. |
+| --- | --- |
+| Architect | Create the design and review integrated milestones for drift. |
+| Planner | Create tasks/milestones and plan corrective work for findings. |
 | Developer | Implement one eligible task. |
-| Reviewer | Validate one task that is in review. |
-| Integrator | Validate the whole repository state at a completed milestone boundary. |
-| Orchestrator | Select roles, invoke sessions, validate handoffs, and update task status. |
+| Reviewer | Review one task and request changes or approve it. |
+| Integrator | Assess the repository at a completed milestone boundary. |
+| Researcher | Resolve a requested fact with cited evidence. |
+
+The orchestrator is program logic, not another worker-agent session. It selects
+roles, assembles context, invokes providers, validates results, applies domain
+transitions, and commits accepted work.
+
+Within an implementation run, selection gives priority to missing design,
+pending task reviews, open findings, architecture review, milestone integration,
+and eligible development work, in that order. A task is eligible when its status
+is `open` or `changes_requested` and every dependency is `closed`. Dependency
+blocking is computed from tasks rather than stored as another status.
+
+An exhausted backlog is complete only when planning is complete and the required
+milestone work is finished. Otherwise the planner supplies more work. Blocked
+dependencies and external prerequisites stop the run with operator guidance.
+
+`devlab doctor` aggregates all workspace health findings and returns nonzero
+when any exist. Each finding identifies which operations it blocks. Continuation
+uses the same validators but stops only for findings applicable to its next
+operation; this avoids duplicating invariant checks or treating every global
+health issue as a blocker for every role.
+
+## Durable state and ownership
+
+The target's `.devlab/` directory separates operator inputs from generated
+workflow state:
+
+| Records | Owner and purpose |
+| --- | --- |
+| `specs/`, `config/` | Operator-owned requirements and executable/tooling configuration. |
+| `plans/`, `tasks/`, `milestones/` | Plans and the active implementation graph. |
+| `findings/` | Corrective work raised by integration or architecture review. |
+| `clarifications/`, `research/` | Decision requests and discoverable-fact requests. |
+| `workflow.toml` | Orchestrator-owned planning completeness and typed resume pointer. |
+| `workflow-events.jsonl` | Append-only lifecycle evidence for reporting. |
+| `session-artifacts/`, `history/`, `logs/` | Current session artifacts and archived results/logs. |
+| `verification/` | Orchestrator-owned task and milestone validation evidence. |
+| `generations/` | Archived planning generations. |
+| `test-services/` | Non-secret ownership records for workspace services. |
+| `local/` | Ignored private runtime artifacts, exports, and smoke-test logs. |
+
+Git records accepted session work, including non-ignored logs. Ignored runtime
+files and external resources have separate lifetimes; a clean worktree does not
+mean that every external effect has been undone. Operators must configure ignore
+rules before initialization and treat logs and retained prompts as sensitive.
+The [operator guide](operator-guide.md#what-operators-own) lists the concrete
+paths and edit boundaries.
 
 ## Workspace access and cached snapshots
 
-DevLab uses a workspace access boundary to keep cross-tracker reads efficient and read/write responsibilities clear.
-
-`Workspace` represents the target workspace as a mutation boundary. It owns explicit workspace-level mutations such as syncing milestone files from task metadata. A sync reconciles derived durable workflow state with source-of-truth files: for example, tasks reference milestone IDs, and `.devlab/milestones/` stores milestone workflow state such as integration and architecture review.
-
-Workspace mutations are exposed through first-class handles such as `WorkspaceTask`, `WorkspaceMilestone`, and `WorkspaceFinding`. These handles express atomic domain transitions: a task can be closed, a milestone can be marked integrated, and a finding can be marked resolved. Multi-step workflow policy remains visible in the orchestrator instead of being hidden behind broad convenience methods.
-
-`WorkspaceSnapshot` is a disposable, read-only, cached view of workspace files. It caches task, finding, and milestone listings for the lifetime of the snapshot and exposes cross-tracker queries such as selecting the next role, selecting the next development/review task, selecting integration or architecture-review milestones, and listing open findings.
-
-The cache lifecycle is deliberately simple: `Workspace.snapshot` is lazily created and reused until a mutating `Workspace` or workspace-handle method invalidates it. External file changes are observed by creating a new `Workspace` instance. There is no process-global cache and no fine-grained cache invalidation. This preserves the repository as the durable source of truth while avoiding repeated reparsing during a single workflow decision or prompt-reporting pass.
-
-Prompt builders, prompt context reporting, `status`, and `doctor` consume snapshots so they remain read-only. The orchestrator uses `Workspace` for explicit mutations and the `Workspace.snapshot` property for decisions and prompt construction.
-
-## Task tracking design
-
-Tasks are file-backed issues. They live in:
-
-```text
-.devlab/tasks/
-```
-
-Each task is a Markdown file with TOML front matter:
-
-```md
-+++
-id = "T0001"
-title = "Example task"
-status = "open"
-milestone = "M1"
-profile = "default"
-depends_on = []
-+++
-
-# T0001: Example task
-
-## Goal
-...
-
-## Acceptance Criteria
-- [ ] ...
-```
-
-This gives the project a lightweight issue-tracking model without requiring Jira or another external system.
-
-### Why not use folders for status?
-
-Earlier designs represented state by moving task files between folders such as `work/backlog/` and `work/review/`. That is simple, but it does not scale well as the workflow becomes more issue-tracker-like.
-
-A status field has advantages:
-
-- all tasks are visible in one place,
-- state changes are small diffs,
-- more statuses can be added later,
-- filtering can be implemented in code,
-- the file remains the stable identity of the task.
-
-### FileTaskTracker
-
-The code encapsulates file-based task handling in `FileTaskTracker`.
-
-This name is intentional: it makes the backend explicit. The orchestrator should depend on task-tracker behavior, not on the details of how tasks are stored. Today the backend is files; later another implementation could use Jira, GitHub Issues, Linear, or another system.
-
-`FileTaskTracker` is responsible for operations such as:
-
-- listing tasks,
-- selecting the next development task,
-- selecting the next review task,
-- checking dependency blocking,
-- changing task status.
-
-The orchestrator should not manually scan task folders or edit task metadata outside this abstraction.
-
-## Dependency handling
-
-Task dependencies are stored in the `depends_on` metadata array.
-
-A task is eligible for development when:
-
-- its status is `open` or `changes_requested`, and
-- all tasks listed in `depends_on` are `closed`.
-
-Dependency blocking is computed rather than stored as a separate persistent status. This avoids stale state: if a dependency closes, dependent tasks automatically become eligible.
-
-## Task-specific validation
-
-Task files may specify concrete validation commands in the `validation` metadata array. These commands are instructions for the developer/reviewer agents and are run from the target workspace root after the orchestrator-managed environment lifecycle has established the development environment.
-
-If `validation` is omitted, agents use default validation commands from the task's resolved profile. This is the normal and safest choice. A non-empty task `validation` list deliberately replaces the profile defaults with task-specific commands. Explicit `validation = []` suppresses mechanical validation and produces a diagnostic warning when the resolved profile defines defaults. DevLab resolves the same contract for prompt assembly and orchestrator-owned verification after completed developer sessions. Explicit task validation failures return the task to development for one bounded correction attempt; repeated failure stops the workflow. Profile-default failures are recorded as soft task-level warnings because a profile command may intentionally cover a repository increment that is incomplete until later tasks. Missing host tools are recorded as unverified prerequisites and are never installed by DevLab. Agents may run useful additional checks, but only configured validation is recorded as the durable workflow gate. Broader tooling policy remains documented in `.devlab/config/tooling.md`.
-
-Deployment work uses the same task/profile validation model as other domains. DevLab does not currently define separate structured deployment validation metadata; target projects own deployment verification commands and document host prerequisites. See `docs/adr/0009-defer-structured-deployment-validation-metadata.md`.
-
-Prerequisite summaries name required capabilities; they are not remediation
-instructions. When resolution is not obvious, the profile references either a
-dedicated guide under `.devlab/config/prerequisites/` or a focused Markdown
-section using `path.md#heading-slug`. DevLab renders only that selected content
-alongside the exact check, environment variable, or attestation mechanism. The
-doctor reports missing files or headings, oversized selected content, and broad
-whole-file references outside the dedicated guide directory. These guide-quality
-findings keep global workspace health nonzero but do not block planning or agent
-sessions; guides are operator information and are never executed by DevLab.
-
-A command-check prerequisite may also declare narrowly scoped runtime
-preparation:
-
-```toml
-[[prerequisites]]
-id = "test-config"
-required_for = ["session", "validation"]
-check = "test -f .local/test.toml"
-prepare = "./scripts/prepare-test-config"
-prepare_kind = "workspace_local"
-prepare_outputs = [".local/test.toml"]
-prepare_timeout = 120
-```
-
-During a mutating operation DevLab checks first, runs preparation once only when
-unsatisfied, then checks again. `workspace_local` outputs must be relative,
-ignored, and untracked. `owned_service` preparation instead requires an
-applicable managed test service and is intended for schema or fixture setup
-inside that owned resource. Managed service connection settings are passed to
-the check and preparation. Preparation that fails, times out, changes visible
-Git state, or leaves its check unsatisfied blocks before the dependent operation.
-Attempts and duration are recorded as workflow events; sensitive output is
-redacted from preparation logs.
-
-Exit 127 means the check lacks a host executable and remains an unverified
-operator prerequisite. DevLab does not prepare environment-variable or
-attestation prerequisites, install host programs or images, obtain credentials,
-or generate tracked product artifacts. `devlab prerequisite check` and all
-reporting paths never prepare. See ADR 0014.
-
-This supports mixed-toolchain workspaces without making every worker-agent role file list every possible stack.
-
-## Environment lifecycle
-
-For roles that need the development environment, the orchestrator enforces an environment lifecycle around each session:
-
-1. `pre_session` cleanup/reset,
-2. `setup`,
-3. agent invocation,
-4. `post_session` teardown.
-
-Post-session teardown is attempted even when the agent session fails. Pre-session cleanup exists because a prior `devlab implement` invocation may have crashed before teardown completed.
-
-Executable lifecycle commands live in task profiles under `.devlab/config/profiles/`. Each task resolves to exactly one profile; if task metadata omits `profile`, DevLab uses `default`. Planner and architect sessions do not run inside a task profile environment by default.
-
-The planner owns recognizing when upcoming work requires tooling or environment changes, but executable profile changes should be planned as explicit tasks and reviewed through the normal developer/reviewer workflow rather than silently edited during planning.
-
-Target-specific DevLab workflow artifacts live in the committed, project-local `.devlab/` directory. Role and convention prompt files remain DevLab-owned package resources under `src/devlab/resources/prompts/`.
-
-### Runtime prerequisites and managed test services
-
-Profiles may declare operation-scoped readiness checks, operator attestations,
-and narrowly bounded runtime preparation. Targets may also declare local test
-services whose identity and lifetime belong to the workspace rather than one
-session or planning generation. DevLab owns durable identity, authorization,
-locking, private export transport, and explicit cleanup mechanics; target
-commands own service creation, readiness, and destruction.
-
-Missing host tools, images, credentials, and authority remain operator or CI
-prerequisites. Reporting and explicit prerequisite checks never provision
-resources. See [Runtime Prerequisites and Managed Test
-Services](runtime-prerequisites.md), [ADR 0013](adr/0013-use-workspace-owned-test-services.md),
-and [ADR 0014](adr/0014-prepare-only-declared-runtime-prerequisites.md).
-
-## Milestone integration
-
-When all tasks for a milestone are closed, the integrator validates the current repository state at that milestone boundary. The goal is to confirm that the milestone's changes work correctly with the previously implemented system, not merely that tasks from the milestone work with each other.
-
-DevLab resolves validation from every closed milestone task using the same task/profile precedence as developer validation, deduplicates commands in stable order, and runs configured commands after the integrator submission but before integration. A known command failure blocks integration and creates an integration finding for corrective planning. Missing tools and execution infrastructure failures block without being misclassified as product defects; DevLab never installs the prerequisite. If no command is configured, integration may proceed with an explicit unverified warning.
-
-Every integration attempt writes `.devlab/verification/milestones/<milestone-id>.toml`. This orchestrator-owned record separates observed commands, outcomes, task/finding state, and repository revision from narrow integrator judgments about semantic concerns and untested claims. If integration passes, the orchestrator marks the milestone integrated in `.devlab/milestones/` and records the archived integration handoff. The architect then reviews the integrated milestone to sync actual project state against the design plan, system/deployment specs, and future direction, adding design-drift judgment to the same verification record. Architecture review is not an approval gate: if review reports Open Issues, the orchestrator creates a file-backed finding and still marks the milestone architecture-reviewed.
-
-Findings are active workflow issues stored in `.devlab/findings/`. The planner converts open findings into corrective task files with `addresses_findings` metadata and lists the complete follow-up task set in its handoff. The orchestrator marks those findings as planned only after validating that relation. A planned finding is resolved when all tasks addressing it are closed; those tasks may belong to later milestones.
-
-## Incremental planning state
-
-DevLab supports incremental milestone planning through `.devlab/workflow.toml`:
-
-```toml
-version = 1
-
-[planning]
-complete = false
-```
-
-`planning.complete = false` means backlog exhaustion is not workflow completion. When all known tasks/milestones are closed and planning is still incomplete, the orchestrator routes back to the planner so the next milestone can be planned. `planning.complete = true` means the planner asserts all required in-scope specification work is represented by durable tasks/milestones or explicitly out of scope; once all known work is closed, the workflow may stop.
-
-This avoids treating prose such as "future milestone candidates" as hidden workflow state. The planner may plan only the next milestone, but a follow-up planner session invoked on an exhausted backlog must either create new durable work or submit `planning_complete = true` in its structured result candidate.
-
-Agents do not edit `.devlab/workflow.toml` or `.devlab/workflow-events.jsonl` directly. The orchestrator supplies the current planning state in planner prompt context, validates the planner candidate's typed `planning_complete` field, updates `.devlab/workflow.toml` programmatically, and appends lifecycle events for reporting. Before each role invocation DevLab creates a trusted session envelope and role-aware TOML candidate; same-session submission publishes authoritative `result.toml` plus a rendered Markdown handoff only after contract and semantic validation. Planning generation is represented by directory scope: active `.devlab/tasks/`, `.devlab/milestones/`, `.devlab/findings/`, `.devlab/history/`, `.devlab/session-artifacts/`, `.devlab/logs/agents/`, and `.devlab/plans/` describe the current generation, while archived generations live under `.devlab/generations/NNNN/`. Task and milestone front matter does not carry `planning_generation`.
-
-## Agent providers
-
-The orchestrator invokes agents through an agent-provider abstraction. The workflow decides which role to run; the provider owns how a concrete agent is called.
-
-Target workspaces configure concrete invocation in `.devlab/config/agents.toml`. The committed target config owns command shapes, provider definitions, role overrides, timeouts, and prompt transport. CLI options may override provider, model, and effort for a run, but command templates live in target configuration rather than orchestration code.
-
-Provider invocations can have two independent limits: an opt-in output-
-inactivity timeout, reset by bytes on either stdout or stderr, and an optional
-maximum duration that never resets. Providers stream both output channels to
-separate logs while DevLab monitors monotonic deadlines and performs bounded
-cleanup of the owned local process group. Timeout subtype and stop metrics are
-retained in session metadata without changing handoff or recovery policy.
-
-This keeps the orchestrator independent from a specific CLI shape. For example, Claude- and Pi-style CLIs can be represented with provider-specific `args` entries containing prompt placeholders, while Codex CLI can be represented with stdin-based `codex exec -` invocation. Configurations can map different roles to different providers or models.
-
-A useful pattern is to run the developer and reviewer with different providers to reduce shared blind spots, while keeping the default single-provider setup simple.
-
-## Executable configuration authorization
-
-Provider command options are opaque to DevLab; provider-native permission and
-sandbox policy belongs to the operator. Before an operator-facing CLI command
-starts configured processes, DevLab canonically fingerprints effective provider
-invocation, profile validation/lifecycle/prerequisite configuration, and managed
-test services, then freezes the parsed snapshot for that command.
-
-Authorization comes from workspace/config/digest-scoped user-local trust, an
-independently supplied expected digest, or explicit acceptance of the current
-snapshot for one invocation. The target workspace cannot store its own operator
-trust. This protects the transition from unreviewed executable configuration to
-execution, but does not certify transitive command behavior or contain the
-resulting process. See ADR 0010.
-
-The snapshot includes provider invocation, profile validation/lifecycle and
-prerequisite/preparation configuration, profile test-service references, and
-managed-test-service definitions. A task may author and review
-executable-configuration changes while the orchestrator continues to use the
-original frozen snapshot. Once that task cycle closes, DevLab stops successfully
-before preparing another session. A fresh invocation must authorize the new
-digest; the running command never adopts it.
-
-## Prompt context monitoring
-
-DevLab estimates prompt context size per role using the same prompt builders used for sessions. The report separates base prompt, session prompt, and total estimated tokens, and compares totals against configurable warning and critical thresholds from `.devlab/config/agents.toml`.
-
-`devlab status --verbose` shows prompt context sizes without printing prompt contents. `devlab doctor` validates prompt context threshold configuration and reports live prompts whose estimated sizes exceed configured thresholds. Prompt sizing is read-only and uses `WorkspaceSnapshot`; it must not sync milestones or otherwise mutate workflow state.
-
-## Target-project DevLab directory
-
-Target-project DevLab workflow artifacts are collected under `.devlab/` in the target repository:
-
-```text
-.devlab/
-  manifest.toml
-  config/
-    README.md
-    tooling.md
-    agents.toml
-    profiles/
-      default.toml
-
-  specs/
-    system/
-    deployment/
-
-  plans/
-  tasks/
-  milestones/
-  verification/
-  findings/
-  clarifications/
-  research/
-  test-services/
-  prerequisite-blocker.json
-  generations/
-  history/
-  logs/
-  session-artifacts/
-  local/
-```
-
-This directory should be committed by default, including history and logs, so the workflow is auditable and reproducible. `devlab init` initializes Git when needed and creates an initial commit containing all non-ignored files; existing projects should ignore secrets and local/generated files first. Workflow execution has no non-Git mode: `devlab plan`, `devlab implement`, and resume operations require a Git repository with a clean working tree and commit all non-ignored changes after every valid session. Sensitive projects may need redaction, size limits, or opt-out policies for logs.
-
-Reusable DevLab role definitions and conventions should not live in target `.devlab/`; they belong to the DevLab package alongside the orchestrator code.
+`Workspace` and its task, milestone, finding, clarification, and research handles
+are the mutation boundary. Handles expose domain transitions; multi-step policy
+remains in the orchestrator. File-backed trackers own parsing and storage.
+Orchestration must not scan task files or rewrite tracker formats directly.
+
+`WorkspaceSnapshot` is a disposable, cached, read-only view of repository state.
+It supports cross-domain selection and reporting without repeatedly parsing
+files. `Workspace.snapshot` is created lazily and invalidated by workspace
+mutations. A new `Workspace` observes external changes; there is no process-wide
+state cache. See [ADR 0004](adr/0004-split-workspace-mutations-from-snapshots.md).
+
+Task status lives in TOML front matter in one stable Markdown file. Status
+changes are small diffs, not file moves. The current backend is `FileTaskTracker`;
+a future backend must preserve the workspace and tracker contracts rather than
+expose different storage behavior to orchestration.
 
 ## Handoffs and continuity
 
-Before each ordinary role session, DevLab creates a trusted envelope and a
-role-aware candidate:
+Before an ordinary role session, DevLab creates a trusted `session.toml` envelope
+and a role-aware `handoff-candidate.toml` under
+`.devlab/session-artifacts/<role>/`. The role submits its candidate during that
+session. Submission checks the schema and workflow meaning, records all
+independently detectable errors, and allows bounded correction attempts.
 
-```text
-.devlab/session-artifacts/<role>/session.toml
-.devlab/session-artifacts/<role>/handoff-candidate.toml
-```
+After acceptance DevLab publishes `result.toml` and renders `handoff.md`. The
+orchestrator verifies the session, role, task, and milestone identity before
+applying transitions, then archives the result and submission evidence. The
+structured result controls the workflow; rendered Markdown supplies readable
+history and prompt context. Invalid structured output does not become accepted
+merely because the accompanying prose looks plausible.
 
-The role submits the candidate during the same session. DevLab aggregates
-contract and semantic diagnostics, records each attempt, and publishes
-authoritative `result.toml` plus rendered `handoff.md` only after acceptance. The
-outer orchestrator verifies that the result belongs to the selected session,
-role, task, and milestone before applying workflow transitions. It then archives
-the structured result, rendered handoff, and submission evidence under:
+Within a valid reviewer result, the task closes only when the task's approval
+checkbox is checked and the structured `open_issues` list is empty. A disagreement
+requests changes and emits a diagnostic. This conservative handling of reviewer
+signals is distinct from rejecting a malformed handoff. See
+[ADR 0007](adr/0007-reviewer-mismatch-defaults-to-changes-requested.md).
 
-```text
-.devlab/history/
-```
+A clarification records required operator intent and the interrupted route.
+The default mode stops for an answer. Unattended mode invokes a separate bounded
+resolver and records its answer with agent provenance before resuming that same
+route. Research similarly preserves the exact requesting route, but supplies
+cited evidence rather than authority to decide. Only architect, planner, and
+developer roles can request research; the requesting role owns the subsequent
+design or code decision. The researcher can write only its staged result.
 
-Rendered handoffs remain the human-readable continuity and audit artifact.
-Structured results are the control artifact, so new sessions do not depend on
-recovering transition facts from agent-authored Markdown. Contract validation,
-workflow transitions, and history metrics consume the structured result directly;
-the rendered Markdown is not a workflow-control input, but remains the
-human-readable audit and prompt-continuity artifact.
+## Task-specific validation
 
-## Why Markdown and simple files?
+After completed developer work, DevLab runs configured validation before the
+reviewer session. A task's non-empty `validation` list replaces profile defaults;
+omitting it inherits them, and an explicit empty list disables mechanical task
+validation with a diagnostic when defaults exist.
 
-DevLab is intentionally file-based because files are:
+Explicit task-command failures return work for one bounded correction attempt;
+repeated failure stops. Profile-default command failures are recorded as soft
+task-level warnings because a repository-wide check may depend on later tasks.
+Missing tools, timeouts, and execution infrastructure failures remain unverified
+or errored checks and stop before review. Agents may run additional checks, but
+configured validation is the durable workflow gate.
 
-- visible to humans,
-- easy for agents to read and edit,
-- versioned by Git,
-- easy to diff and review,
-- portable across tools,
-- robust after crashes or interrupted runs.
+The [profile and validation reference](operator-guide.md#profiles) explains the
+configuration and operator consequences. Target-owned acceptance tests remain
+inside the workflow. Independent evaluation graders run afterward and cannot
+feed repairs back into the scored run; see
+[ADR 0011](adr/0011-keep-workflow-evaluation-grading-outside-the-workflow.md).
 
-This design trades some database convenience for transparency and restartability, which are more important for the current project.
+## Milestone integration
 
-## Tooling philosophy
+When a milestone's tasks close, the integrator assesses their interaction with
+the existing system. DevLab resolves validation from the closed milestone tasks,
+deduplicates command/service bindings in stable order, and executes the checks
+before marking integration complete. Command failure creates corrective findings;
+unavailable tools or infrastructure block without being mislabeled as product
+defects. An absence of configured commands is explicitly unverified.
 
-The project prefers fewer tools and simple defaults.
+`.devlab/verification/milestones/<id>.toml` separates command observations from
+the integrator's semantic concerns and untested claims. After integration, the
+architect compares the result with the design and specifications. This is an
+architecture review, not an approval gate: the milestone is marked reviewed even
+when remaining drift creates findings. See
+[ADR 0006](adr/0006-use-architecture-review-rather-than-approval-gate.md).
 
-Current Python tooling is declared in `pyproject.toml`, `uv.lock`, the
-`Makefile`, and agent-facing maintenance guidance in `AGENTS.md`. Target
-workspaces may still document their own tooling policy in
-`.devlab/config/tooling.md` and profile validation commands in
-`.devlab/config/profiles/default.toml`.
+The planner maps findings to tasks using `addresses_findings` metadata and a
+complete mapping in its submitted result. DevLab validates that relation before
+marking a finding planned. It resolves the finding when all addressing tasks
+close; corrective tasks can belong to later milestones.
 
-In short:
+## Planning and specification changes
 
-- `uv` manages dependencies, lockfiles, environments, and command execution,
-- `uv_build` builds the package,
-- `ruff` handles linting and formatting,
-- `ty` handles static type checking,
-- `pytest` handles tests.
+The planner reports a typed `planning_complete` value. The orchestrator writes
+`[planning].complete` in `.devlab/workflow.toml`; agents do not edit that file or
+the workflow event log directly. A planner can produce only the next milestone,
+but must eventually represent all in-scope work or explicitly finish planning.
+Prose about possible future milestones is not hidden control state.
 
-Operational details such as exact validation commands belong in task metadata or target-specific profiles, not in reusable role files. Stable environment lifecycle commands belong in target-specific profiles so developer, reviewer, and integrator sessions start from a controlled baseline.
+Planning records the committed specification revision. A later specification
+change requires reconciliation before implementation. Reconciliation archives
+the active plans, tasks, milestones, findings, handoffs, agent logs, and workflow
+control state under `.devlab/generations/NNNN/`, then creates a fresh planning
+graph. Operator inputs, project knowledge, cross-generation events, and service
+ownership remain active. Directory scope identifies the generation; tasks do not
+carry a redundant generation field.
 
-## Design tradeoffs
+Explicit adoption planning records the existing system and preserves its stack
+and validation approach. Operators can also request plan revision or replacement.
+The narrow plan-neutral-spec bypass requires an explicit operator decision; see
+[Specs and planning](operator-guide.md#specs-and-planning).
 
-### Strict workflow vs. flexibility
+## Agent providers and prompt context
 
-DevLab is intentionally strict: one role, one task, one handoff, explicit status transitions. This can feel slower than asking an agent to do many things at once, but it improves control, auditability, and recovery.
+The orchestrator decides what to do; providers decide how to invoke an agent.
+Target `agents.toml` owns command templates, role mappings, models, timeouts, and
+prompt transport. Provider-specific invocation stays in `agents.py`.
 
-### Ambiguous agent output: assume the work isn't done
+Providers capture stdout/stderr separately and enforce independent elapsed-time
+and output-inactivity limits. Cleanup is bounded and cannot undo detached,
+container, or remote effects. Configuration and platform details belong in
+[Agent configuration](agent-configuration.md).
 
-When an agent produces conflicting or incomplete structured output, the orchestrator defaults to the least damaging assumption rather than halting with a validation error. Because the workflow is a loop, an unnecessary extra cycle costs time but is self-correcting, while prematurely advancing lets problems through that may never get caught.
+Prompt assembly combines packaged conventions and role instructions with the
+target's tooling policy, selected work, and relevant recent handoffs. Project
+knowledge can include `CONTEXT.md`, a `CONTEXT-MAP.md` with linked contexts, and
+`docs/adr/*.md`. Discovery is read-only and respects workspace boundaries.
 
-For example, the reviewer produces two independent signals: a prose "Open Issues" section in the handoff and a structured `- [x] Approved` checkbox in the task file. A task is only closed when both signals agree. Any mismatch — checkbox missing, stale approval with new issues, ambiguous prose — defaults to "changes requested," sending the task back for another review cycle. The same principle applies across roles: missing acceptance criteria means the developer is re-invoked, ambiguous integration output means a finding is created.
+The same prompt builders provide size estimates for status and doctor. Thresholds
+warn about excessive context without printing prompt contents. Agents can search
+for additional detail instead of receiving every historical document by default.
 
-This is bounded by `max_sessions`, so a consistently broken agent causes a clean stop rather than an infinite loop. Mismatch cases are logged as warnings so they surface in diagnostics, signaling a prompt or agent issue to investigate without blocking the workflow.
+## Executable configuration and environments
 
-### File-backed issues vs. external issue tracker
+Commands that start configured processes authorize a canonical executable-
+configuration snapshot and freeze it for the invocation. Authorization comes
+from workspace-scoped operator-local trust, an independently supplied digest,
+or explicit acceptance for one invocation. A target cannot authorize itself.
 
-A real issue tracker could provide search, dashboards, permissions, comments, and integrations. The file-backed tracker provides the features needed now with much less operational overhead.
+A task may change executable configuration and complete its review under the
+original snapshot. DevLab then stops before preparing work outside that task
+cycle; a fresh invocation must authorize the current configuration. Trust covers
+entry points, not script contents, transitive commands, or sandboxing. See
+[ADR 0010](adr/0010-authorize-frozen-executable-configuration.md).
 
-The `FileTaskTracker` abstraction keeps the door open for a future external backend without forcing that complexity into the current design.
+Profiles select validation and an optional environment lifecycle around managed
+roles: pre-session cleanup, setup, agent work, and post-session teardown.
+Teardown is attempted after failure as well. Planner and architect sessions do
+not use task environments by default. Profile changes that affect planned work
+should be explicit implementation tasks with review.
 
-### Minimal context vs. full context
+Operation-scoped prerequisites observe required conditions. Declared preparation
+may create ignored workspace-local runtime files or initialize an owned test
+service, then recheck readiness. It cannot install host tools, obtain credentials,
+or generate tracked product artifacts. Reporting and explicit prerequisite
+checks never prepare resources.
 
-Agents may sometimes need to search the repository to find missing detail. That is acceptable. The alternative—loading too much context by default—risks distracting the agent and consuming the context window with irrelevant information.
+Managed test services belong to the workspace and survive session and generation
+boundaries. DevLab owns identity, locking, private exports, and explicit cleanup;
+target commands own ensure/check/destroy behavior. See the
+[runtime reference](runtime-prerequisites.md),
+[ADR 0013](adr/0013-use-workspace-owned-test-services.md), and
+[ADR 0014](adr/0014-prepare-only-declared-runtime-prerequisites.md).
 
-## Current non-goals
+Deployment uses these same mechanics and an optional specification overlay.
+The [deployment contract](deployment-feature-overview.md) defines the boundary
+between producing and verifying deployment artifacts and executing a production
+release.
 
-DevLab is not currently trying to be:
+## Interruption and recovery
 
-- a full replacement for Jira,
-- a general CI/CD system,
-- a multi-agent runtime with concurrent sessions,
-- a database-backed project management platform,
-- a fully self-modifying autonomous product factory without human inspectability.
+Continuation reconstructs the next action from durable state. If uncommitted
+changes prevent progress, it may offer an operator-confirmed discard to the
+observed committed boundary. The proposal is tied to HEAD, affected paths, Git
+status classifications, and session identity. Conflicts, in-progress Git
+operations, and nested repository dirt require explicit remediation.
 
-Those capabilities may become relevant later, but the current design focuses on a small, reliable, inspectable development loop.
+Discard restores only the described Git scope. Ignored runtime files and
+external effects remain the operator's responsibility. If discard is declined
+or refused, DevLab provides inspection and preservation guidance. It does not
+infer how to finish arbitrary partially applied changes. See
+[ADR 0012](adr/0012-use-one-workflow-continuation-entry-point.md) and the
+[interruption guide](how-to/resume-interrupted-workflow.md).
 
-## Summary
+## Scope and evolution
 
-DevLab is designed to make long-running agentic development practical by reducing reliance on fragile conversational context.
+DevLab currently runs sequential software-workflow sessions. It is not a general
+CI/CD service, a concurrent agent runtime, or an external issue-tracker system.
 
-It does this by combining:
-
-- small role-based sessions,
-- repository-backed state,
-- explicit task and milestone transitions,
-- structured handoffs,
-- minimal and monitored agent context,
-- profile-based tooling,
-- target-owned agent configuration,
-- cached read-only workspace snapshots,
-- storage-specific trackers behind workspace read and mutation boundaries.
-
-The result should be a workflow that can run incrementally, recover from failures, remain understandable to humans, and evolve toward more capable development automation over time.
-
-## References
-
-- <https://www.anthropic.com/engineering/harness-design-long-running-apps>
-- <https://openai.com/index/harness-engineering>
-- <https://ghuntley.com/ralph>
+Bounded invocation, durable state, provenance, and validated handoffs may support
+a future domain-neutral kernel. Task transitions, eligible requesting roles,
+planning effects, and deployment policy are software-specific contracts. A
+concrete second workflow must demonstrate shared semantics before an interface
+is extracted; see the [vision](vision.md) and [roadmap](roadmap.md).

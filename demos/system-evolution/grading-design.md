@@ -46,10 +46,11 @@ grader tooling. Do not rely on search-path precedence such as `PATH`,
 loading, setup, launch, action, and cleanup in structured diagnostics so a
 `grader_error` cannot be mislabeled as a product failure.
 
-## Proposed program
+## Grading program
 
-Implement a Python grading CLI in DevLab's evaluation code, with a thin demo
-runner selecting generation 1 or 2. A possible operator interface is:
+The repository-only Python grader selects generation 1 or 2. Run it from the
+DevLab checkout; its [reference](grader/README.md) describes required artifacts,
+implemented checks, and cleanup. The operator interface is:
 
 ```text
 uv run python demos/system-evolution/grader/system_evolution_grader.py \
@@ -71,9 +72,8 @@ The fixture contains shareable digested evidence. The mode-`0600` resume state
 contains the randomized local database configuration needed to reconnect to the
 preserved volume and must not be committed or exposed to target agents.
 
-The exact module name may be chosen during implementation. Reuse small
-evaluation utilities where their contracts fit, but keep this grader independent
-of the generated target's project commands and DevLab workflow state.
+The grader resolves its own dependencies and keeps external judgments separate
+from the generated target's project commands and DevLab workflow state.
 
 ## First-version decisions
 
@@ -248,7 +248,8 @@ a failed independent check.
 
 ## Result model
 
-Produce versioned JSON with at least:
+The grader emits versioned JSON. This illustrative excerpt shows the dimensions;
+counts are examples, not observed evaluation results:
 
 ```json
 {
@@ -259,21 +260,25 @@ Produce versioned JSON with at least:
   "valid_run": true,
   "invalid_reasons": [],
   "dimensions": {
-    "api": {"passed": 20, "failed": 0, "unverified": 0},
-    "browser": {"passed": 8, "failed": 0, "unverified": 0},
-    "deployment": {"passed": 10, "failed": 0, "unverified": 0},
-    "migration": {"passed": 8, "failed": 0, "unverified": 0},
-    "concurrency": {"passed": 8, "failed": 0, "unverified": 0},
-    "target_validation": {"passed": 5, "failed": 0, "unverified": 0},
-    "hygiene": {"passed": 5, "failed": 0, "unverified": 0}
+    "api": {"passed": 20, "failed": 0, "unverified": 0, "grader_error": 0},
+    "browser": {"passed": 8, "failed": 0, "unverified": 0, "grader_error": 0},
+    "deployment": {"passed": 10, "failed": 0, "unverified": 0, "grader_error": 0},
+    "migration": {"passed": 8, "failed": 0, "unverified": 0, "grader_error": 0},
+    "concurrency": {"passed": 8, "failed": 0, "unverified": 0, "grader_error": 0},
+    "target_validation": {"passed": 5, "failed": 0, "unverified": 0, "grader_error": 0},
+    "hygiene": {"passed": 5, "failed": 0, "unverified": 0, "grader_error": 0}
   },
   "checks": []
 }
 ```
 
-Each check should have a stable ID tied to specification requirement IDs,
-status (`passed`, `failed`, or `unverified`), duration, concise evidence, and
-diagnostic artifact references.
+Each check has a stable ID tied to specification requirements, a status
+(`passed`, `failed`, `unverified`, or `grader_error`), duration, evidence, and
+artifact references. `unverified` means the check did not establish the claim;
+`grader_error` means evaluator setup, execution, or cleanup failed. Neither is
+a product pass. A failed hard gate or any grader error makes `valid_run` false.
+Reports also retain start/finish timestamps and the unweighted pass rate over
+decided checks.
 
 Keep dimensional results visible. Report an unweighted pass rate only as a
 convenience alongside the underlying counts; do not compute a weighted aggregate

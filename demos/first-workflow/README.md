@@ -12,7 +12,8 @@ consume provider usage. Plan for seven to twelve provider calls and allow up to
 
 ## Prepare a Disposable Target
 
-Choose an absolute path that does not exist. The preparation script initializes
+Run preparation from the DevLab repository root. Choose an absolute target path
+that does not exist. The preparation script initializes
 the Python starter, installs this demo's specification and agent configuration,
 and commits those operator-owned inputs:
 
@@ -44,9 +45,9 @@ devlab status --next-command
 devlab diagnostics
 ```
 
-Stopping after the first command is the interruption demonstration: the shell
-process has ended, while plans, tasks, events, handoffs, and the resume pointer
-remain in the repository. Inspect them and the Git history, then run the same
+Stopping after the first command demonstrates a clean checkpoint between
+sessions: the process has ended, while plans, tasks, events, and handoffs remain
+in the repository. This does not simulate a crash with uncommitted changes. Inspect them and the Git history, then run the same
 four commands again. Continue until DevLab reports that the workflow is
 complete, without exceeding 12 total provider calls or 80 elapsed minutes.
 

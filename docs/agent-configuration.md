@@ -2,7 +2,14 @@
 
 DevLab target repositories configure worker agent invocation in `.devlab/config/agents.toml`.
 
-This file is target-owned and intended to be edited by the human operator. It controls which provider, command, model, effort level, timeout, and prompt transport are used for each DevLab role.
+The operator owns this file. It controls command invocation, role mappings,
+models, effort, timeouts, and prompt transport. For a complete first run, use the
+[tutorial](tutorial.md); this document is the configuration reference.
+
+Jump to [provider definitions](#provider-definitions),
+[precedence](#precedence), [session limits](#session-limits),
+[prompt thresholds](#prompt-context-thresholds), or
+[smoke tests](#provider-smoke-tests).
 
 ## Minimal Example
 
@@ -17,9 +24,15 @@ command = "claude"
 args = ["-p", "--system-prompt", "{system_prompt}", "{session_prompt}"]
 ```
 
+The `claude` command must already be installed, authenticated, and configured
+with the permissions needed by the target workflow. This example leaves model
+selection to that CLI. Review executable configuration and smoke-test it before
+starting a workflow.
+
 ## Role Overrides
 
-Values in `[defaults]` apply to every role. Values in `[roles.<role>]` override defaults for one role.
+Values in `[defaults]` apply to every role. Values in `[roles.<role>]` override
+defaults for one role.
 
 Supported roles are:
 
@@ -36,24 +49,24 @@ planner, or developer configuration unless `[roles.researcher]` is present.
 The clarification resolver always inherits the role that requested the
 clarification and is not independently configurable.
 
-Example:
+For example, extend the minimal configuration to give the architect more time
+and use a separate provider for review:
 
 ```toml
-[defaults]
-provider = "pi"
-model = "gpt-5-codex"
-effort = "medium"
-max_session_duration_seconds = 3600
-
 [roles.architect]
-model = "gpt-5"
-effort = "high"
+max_session_duration_seconds = 5400
 
 [roles.reviewer]
-provider = "claude"
-model = "claude-sonnet-4.5"
-effort = "high"
+provider = "review"
+
+[providers.review]
+command = "codex"
+args = ["--sandbox", "workspace-write", "--ask-for-approval", "never", "exec", "-"]
+stdin_template = "{system_prompt}\n\n---\n\n{session_prompt}"
 ```
+
+This example uses the installed CLIs' model defaults. A different reviewer can
+provide another perspective, but does not guarantee independent judgments.
 
 ## Provider Definitions
 
@@ -112,7 +125,7 @@ when the provider is assigned to roles.
 
 ```toml
 [providers.codex.defaults]
-model = "gpt-5.5"
+model = "YOUR_MODEL_ID"
 effort = "medium"
 max_session_duration_seconds = 1200
 ```
@@ -125,7 +138,15 @@ or provider-local defaults.
 
 ## Provider Examples
 
-Prefer stdin prompt transport when your agent CLI supports it. Stdin avoids command-line length limits and keeps prompt text out of process listings.
+Prefer stdin prompt transport when the CLI supports it: it avoids command-line
+length limits and keeps prompt text out of process listings. The command shapes
+below illustrate transport; select models available to your account and check
+your installed CLI's permission and authentication options before use.
+
+When a template uses `{model}` or `{effort}`, set those values in `[defaults]`
+or the applicable `[roles.<role>]` table. Replace `YOUR_MODEL_ID` in examples
+with an actual provider model identifier. To use a CLI's native defaults, omit
+its model/effort flags, as in the role-override example above.
 
 ### Codex-style stdin prompt
 
@@ -162,26 +183,17 @@ command = "claude"
 args = ["-p", "--model", "{model}", "--system-prompt", "{system_prompt}", "{session_prompt}"]
 ```
 
-## Suggested Split-Brain Review Setup
+## Model and effort selection
 
-To reduce shared blind spots, use a different reviewer provider or model from the developer.
+DevLab passes configured strings through the provider's argument or stdin
+template. Setting `model` or `effort` alone does not add a provider flag. For
+example, `effort` has no effect in the Claude command above because that command
+does not reference `{effort}`. Use the provider's own supported syntax rather
+than assuming every CLI accepts the same flags or values.
 
-```toml
-[defaults]
-provider = "pi"
-model = "gpt-5-codex"
-effort = "medium"
-max_session_duration_seconds = 3600
-
-[roles.developer]
-provider = "codex"
-model = "gpt-5-codex"
-
-[roles.reviewer]
-provider = "claude"
-model = "claude-sonnet-4.5"
-effort = "high"
-```
+Keep provider-specific values on the relevant roles when combining providers;
+global defaults otherwise apply to every role, including a role that overrides
+only `provider`.
 
 ## Precedence
 
@@ -214,7 +226,9 @@ effects may remain and are handled by the existing recovery workflow.
 
 ## Prompt Context Thresholds
 
-`devlab status --verbose` reports approximate prompt context sizes for each role. The estimate is intentionally dependency-free and uses roughly four characters per token.
+`devlab status --verbose` reports approximate prompt context sizes for each
+role. The estimate is intentionally dependency-free and uses roughly four
+characters per token.
 
 Configure warning thresholds in `.devlab/config/agents.toml`:
 
@@ -228,7 +242,9 @@ warning_tokens = 50000
 critical_tokens = 90000
 ```
 
-Role-specific thresholds inherit the global values when omitted. If the section is omitted entirely, DevLab uses `60000` warning tokens and `100000` critical tokens.
+Role-specific thresholds inherit the global values when omitted. If the section
+is omitted entirely, DevLab uses `60000` warning tokens and `100000` critical
+tokens.
 `prompt_context.roles.researcher` is valid and applies while requested research
 is awaiting its bounded researcher session.
 
@@ -238,69 +254,44 @@ Use `devlab status --verbose` to inspect the resolved provider, model, effort,
 inactivity timeout, maximum duration, command shape, stdin mode, and approximate
 prompt context size for each role. Prompt contents are not printed.
 
-Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace configuration without running agent sessions.
+Use `devlab doctor` to validate `.devlab/config/agents.toml` and other workspace
+configuration without running agent sessions.
 
 ## Executable Configuration Trust
 
-DevLab does not interpret provider permission, approval, authentication,
-network, or sandbox options. Those policies are provider-native and
-operator-owned.
+Provider permissions, approval behavior, authentication, network access, and
+sandboxing are controlled by the provider and operator. DevLab authorizes the
+configured process entry points and freezes their configuration for each run.
+See the [authorization reference](operator-guide.md#executable-configuration-authorization)
+for digest scope, persistent trust, revocation, CI, and changes during a run.
 
-Before an operator-facing command starts configured processes, DevLab builds a
-canonical snapshot of effective provider configuration, role mappings,
-invocation overrides, profile validation/lifecycle/prerequisite configuration,
-profile test-service references, and managed-test-service definitions. It
-fingerprints and freezes that parsed snapshot for the command. Formatting and
-comment-only TOML changes do not change the digest; executable values and
-provider/model/effort overrides do.
-
-Inspect and approve the current snapshot:
+After reviewing and committing a configuration change:
 
 ```bash
 devlab trust executable-config
+devlab agent-smoke-test
+devlab continue --max-sessions 2
 ```
 
-The command displays the effective configuration and fingerprint before asking
-for approval. Use `devlab trust executable-config --show` to inspect the same
-snapshot and its trust status without changing operator-local state.
+For a config selected with `--config`, use the same path when authorizing and
+smoke-testing it. The trust command displays the effective configuration before
+asking for approval. `--show` inspects it without granting trust.
 
-Trust is stored outside the target repository in user-local DevLab state and is
-scoped to the canonical workspace, agent-config source, and digest. A target
-repository cannot carry its own operator trust record. Editing executable
-configuration produces a new digest and requires another approval. A profile-changing
-task may finish review with the command's frozen snapshot, but DevLab then stops
-before preparing a session outside that task cycle. Review and authorize the new
-snapshot, then start a fresh command; DevLab never adopts it in place:
+## Provider smoke tests
 
-```bash
-devlab trust executable-config --revoke
-```
+`devlab agent-smoke-test` starts providers with a tiny prompt to verify command
+invocation and prompt transport. It consumes provider usage. By default it tests
+the distinct resolved configurations assigned to workflow roles and reports
+which roles each check covers.
 
-Profile default-validation commands are executable configuration alongside lifecycle
-commands. Changes to either alter the fingerprint.
+Use `--role` for one role, `--provider` for one provider, or `--all-providers` to
+include unassigned providers that define provider-local defaults. With
+`--provider` or `--all-providers`, `--use-provider-defaults` tests those defaults
+instead of role-derived policy.
 
-Unattended CI can require an independently approved full digest:
-
-```bash
-devlab implement --unattended \
-  --require-exec-config-digest "$APPROVED_DEVLAB_EXEC_DIGEST"
-```
-
-The expected value should come from protected CI or runner configuration, not an
-ordinary target-repository file. An externally contained or disposable
-environment may explicitly accept the current snapshot for one invocation:
-
-```bash
-devlab implement --unattended --accept-current-exec-config
-```
-
-This does not create persistent trust. DevLab records the digest and
-authorization source and still freezes the snapshot. Trust covers configured
-process entry points only; it does not cover the implementation or transitive
-behavior of commands such as `make setup`, nor does it contain a process after
-launch.
-
-Use `devlab agent-smoke-test` to start configured providers with a tiny prompt and verify that commands, templated arguments, and prompt transport work. By default, it tests the distinct provider configurations assigned to workflow roles, reports which roles use each checked provider, prints progress as each check starts and finishes, and writes stdout/stderr logs under the ignored `.devlab/local/agent-smoke/` directory so the diagnostic does not dirty the target worktree. Use `--provider <name>` to select one provider, or `--all-providers` to also test unassigned provider entries that have provider-local defaults. Add `--use-provider-defaults` with `--provider` or `--all-providers` to test `[providers.<name>.defaults]` directly instead of role-derived policy.
+Progress is printed as each check starts and finishes. Logs go under ignored
+`.devlab/local/agent-smoke/`, so successful diagnostics do not dirty the target
+worktree.
 
 ```bash
 devlab agent-smoke-test
@@ -312,7 +303,9 @@ devlab agent-smoke-test --all-providers --use-provider-defaults
 devlab agent-smoke-test --config .local/live-eval/agents.toml
 ```
 
-`--root` defaults to the current directory and controls the provider working directory and log location. `--config` only selects the agent TOML file; it does not change the workspace root.
+`--root` defaults to the current directory and controls the provider working
+directory and log location. `--config` only selects the agent TOML file; it does
+not change the workspace root.
 
 ## Logging and Failure Diagnostics
 
@@ -322,11 +315,18 @@ DevLab writes per-session agent diagnostics under `.devlab/logs/agents/`:
 - `<timestamp>_<session>_<role>.stdout.log`: agent stdout.
 - `<timestamp>_<session>_<role>.stderr.log`: agent stderr plus DevLab diagnostics for failures that happen before the child process can write output.
 
-Failure reports include the role, failure kind, exit code, timeout when present, command shape, and log paths. The config log resolves operational placeholders such as `{model}` and `{effort}`, but leaves `{system_prompt}` and `{session_prompt}` unexpanded so prompt contents are not written there.
+Failure reports include the role, failure kind, exit code, timeout when present,
+command shape, and log paths. The config log resolves operational placeholders
+such as `{model}` and `{effort}`, but leaves `{system_prompt}` and
+`{session_prompt}` unexpanded so prompt contents are not written there.
 
-By default, DevLab does not retain full prompts. For debugging, run with `devlab implement --retain-prompts` to write split prompt logs next to the agent invocation logs:
+By default, DevLab does not retain full prompts. For debugging, run with `devlab
+continue --retain-prompts` to write split prompt logs next to the agent
+invocation logs:
 
 - `<timestamp>_<session>_<role>.base-prompt.md`
 - `<timestamp>_<session>_<role>.session-prompt.md`
 
-The matching `.config.toml` includes `base_prompt_log` and `session_prompt_log` paths when prompt retention is enabled. Treat `.devlab/logs/agents/` as sensitive: agent output and retained prompts may contain target project details.
+The matching `.config.toml` includes `base_prompt_log` and `session_prompt_log`
+paths when prompt retention is enabled. Treat `.devlab/logs/agents/` as
+sensitive: agent output and retained prompts may contain target project details.

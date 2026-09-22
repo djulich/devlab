@@ -12,6 +12,9 @@ Update the relevant Markdown files under:
 .devlab/specs/deployment/
 ```
 
+Deployment requirements are optional. Leave the scaffolded deployment checklist
+inactive when deployment is out of scope. See [Deployment support](../deployment-feature-overview.md).
+
 Keep the change focused and state the new acceptance criteria and constraints.
 These files are operator-owned; generated plans and tasks are downstream state,
 so do not edit them as a substitute for changing the specification.
@@ -28,6 +31,10 @@ tree.
 
 ## 3. Reconcile planning state
 
+This procedure uses `plan` to give you an inspection boundary before
+implementation. Normal `devlab continue` also reconciles changed specifications,
+then advances into implementation when ready.
+
 ```bash
 devlab doctor
 devlab plan
@@ -38,7 +45,8 @@ archives the previous active generation under `.devlab/generations/` and asks
 the architect and planner to create a fresh active planning graph. Previous
 state remains historical evidence; still-valid work may be carried forward.
 
-Inspect the new plans, tasks, and milestones, then continue:
+If the planning session limit is reached, follow its summary and finish
+planning. Inspect the new plans, tasks, and milestones, then continue:
 
 ```bash
 devlab doctor

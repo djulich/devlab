@@ -18,8 +18,7 @@ Install these outside the target repositories:
 
 - Git;
 - DevLab and its configured agent providers;
-- Docker Engine with Compose v2, or a deliberately selected compatible Compose
-  implementation;
+- Docker Engine with Compose v2 (the current grader requires Docker);
 - a coding-agent CLI for the single-agent arm;
 - host tools required by the independent grader; and
 - a timing and usage-recording method appropriate to the chosen providers.
@@ -76,7 +75,9 @@ COMPOSE_PROJECT_NAME=idea-greenhouse-<run-id>-devlab
 COMPOSE_PROJECT_NAME=idea-greenhouse-<run-id>-single
 ```
 
-Do not commit real credentials or provider configuration.
+Do not commit credentials or private provider settings to shared evidence.
+The DevLab target still needs committed, non-secret agent and profile
+configuration; keep account secrets in the provider's own authentication store.
 
 ## 5. Run generation 1: DevLab arm
 
@@ -89,11 +90,14 @@ Do not commit real credentials or provider configuration.
    they contain machine-specific or secret values.
 5. Commit the specifications and safe configuration.
 6. Record the starting revision and start time.
-7. Run `devlab plan` until planning stops successfully.
+7. Run `devlab doctor`, review executable configuration with
+   `devlab trust executable-config`, and run `devlab agent-smoke-test`. Record
+   smoke calls in the resource totals. Then run bounded `devlab plan` commands
+   until planning completes, within the declared total budget.
 8. Inspect only for experiment validity: confirm the workflow did not stop for a
    missing external prerequisite or unresolved clarification. Do not repair its
    plans or product manually.
-9. Run `devlab implement` until the workflow completes or reaches the declared
+9. Run `devlab continue` until the workflow completes or reaches the declared
    experiment limit. Continue bounded runs after a normal session-limit stop;
    record each command.
 10. Record final workflow state, diagnostics JSON, run summaries, session count,
@@ -102,6 +106,11 @@ Do not commit real credentials or provider configuration.
 12. Run the generation 1 independent grader and retain its machine-readable and
     human-readable reports plus the generated evolution-fixture JSON and private
     evaluator resume state. Keep the resume state outside Git with mode `0600`.
+
+The explicit planning command provides an evidence checkpoint before
+implementation. It is a deliberate experiment boundary; normal continuation
+can perform planning and implementation in one run. Apply the predeclared
+session cap to every invocation and count all invocations toward the total.
 
 If the workflow requests clarification, answer only from the specification or
 the experiment's predeclared policy. Record the question and answer. Do not use
@@ -194,7 +203,7 @@ target script. Do not seed one arm from a database dump produced by the other.
 4. Run `devlab plan` without bypassing reconciliation.
 5. Verify from DevLab's durable reporting that the old generation was archived
    and the architect/planner produced current generation 2 design and task state.
-6. Run `devlab implement` to completion or the declared limit, using the same
+6. Run `devlab continue` to completion or the declared limit, using the same
    continuation policy as generation 1.
 7. Record workflow state, diagnostics, summaries, sessions, commits, tags, logs,
    resource usage, and the archived/current planning evidence.

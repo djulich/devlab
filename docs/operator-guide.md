@@ -4,12 +4,27 @@ This guide is for the person running DevLab in a target workspace. It explains
 how to inspect the file-backed workflow state under `.devlab/`, what is safe to
 edit by hand, and which files DevLab expects to own during normal workflow runs.
 
-For architecture rationale, see `docs/design.md`. For agent command setup, see
-`docs/agent-configuration.md`.
+For a complete first run, start with the [tutorial](tutorial.md). See the
+[design overview](design.md) for architecture and
+[agent configuration](agent-configuration.md) for provider setup.
 
 For task-oriented procedures, see the [how-to guides](how-to/README.md),
 including existing-project adoption, bug fixes, specification revisions, and
 interrupted-workflow recovery.
+
+## Find the relevant reference
+
+- [Operating model](#operating-model) and [stop summaries](#workflow-termination-summaries).
+- [Workspace ownership](#what-operators-own), [specs and planning](#specs-and-planning),
+  and [generations](#generations).
+- [Profiles and validation](#profiles) and [configuration authorization](#executable-configuration-authorization).
+- [Clarifications](#clarifications) and [research](#durable-research).
+- [Tasks](#tasks), [milestones](#milestones), and [findings](#findings).
+- [Handoffs](#session-results-and-handoffs), [diagnostics](#logs-and-diagnostics),
+  and [unattended runs](#before-running-unattended).
+
+All command examples run from the target workspace. Reporting commands inspect
+state; they do not execute target-owned validation or prerequisite checks.
 
 ## Operating Model
 
@@ -90,23 +105,6 @@ before another session is prepared.
 The summary is read-only. It does not trust configuration, answer
 clarifications, repair state, or alter role selection and exit behavior.
 
-### Durable research
-
-Research resolves discoverable facts; clarification obtains operator intent.
-When status shows requested or completed research, run `devlab continue` to
-invoke the researcher or resume the requesting role. There is no standalone
-research command. Provider failure or invalid output leaves the record
-requested: inspect logs and staged output, run `devlab doctor`, fix the
-provider/configuration issue, and retry continuation.
-
-An optional `[roles.researcher]` in `agents.toml` selects its provider/model;
-otherwise the requesting role's resolved provider is used. Result JSON schema
-version 1 contains `research_id`, `summary`, cited `evidence`, `sources`,
-`recommendation`, `confidence`, and `unresolved_questions`. Canonical request
-records also retain question, context, desired outcome, acceptance criteria,
-route, and requester provenance. Treat results as untrusted supporting evidence:
-the researcher cannot mutate product or authoritative workflow artifacts.
-
 ## Initialization Templates
 
 `devlab init` generates a neutral tooling policy and an empty-validation default
@@ -151,6 +149,7 @@ Operators normally edit:
 
 DevLab and worker agents normally write:
 
+- `.devlab/manifest.toml`
 - `.devlab/plans/`
 - `.devlab/tasks/`
 - `.devlab/milestones/`
@@ -217,6 +216,23 @@ For a file-edit clarification, inspect the requested paths in the clarification
 record, make and commit those durable edits, then record a concise text answer
 summarizing the edits and run `devlab resume`. DevLab validates the answer and
 stored route before invoking another role.
+
+## Durable research
+
+Research resolves discoverable facts; clarification obtains operator intent.
+When status shows requested or completed research, run `devlab continue` to
+invoke the researcher or resume the requesting role. There is no standalone
+research command. Provider failure or invalid output leaves the record
+requested: inspect logs and staged output, run `devlab doctor`, fix the
+provider/configuration issue, and retry continuation.
+
+An optional `[roles.researcher]` in `agents.toml` selects its provider/model;
+otherwise the requesting role's resolved provider is used. Result JSON schema
+version 1 contains `research_id`, `summary`, cited `evidence`, `sources`,
+`recommendation`, `confidence`, and `unresolved_questions`. Canonical request
+records also retain question, context, desired outcome, acceptance criteria,
+route, and requester provenance. Treat results as untrusted supporting evidence:
+the researcher cannot mutate product or authoritative workflow artifacts.
 
 ## Specs and Planning
 
@@ -297,6 +313,59 @@ A profile contains:
   commands;
 - `[timeouts]`: command timeouts.
 
+For example, a target that owns a `make check` command can use this profile at
+`.devlab/config/profiles/default.toml`:
+
+```toml
+version = 1
+id = "default"
+title = "Project checks"
+
+[tooling]
+summary = "Use the target project's Makefile."
+default_validation = ["make check"]
+
+[environment]
+managed_roles = ["developer", "reviewer", "integrator"]
+pre_session = []
+setup = []
+post_session = []
+
+[timeouts]
+pre_session = 300
+setup = 600
+post_session = 300
+```
+
+Replace `make check` with the target's actual validation command. Commands run
+from the target root. Managed sessions run pre-session cleanup, setup, agent
+work, and post-session teardown; teardown is attempted even after failure.
+Initialization's neutral profile has no default validation, so configure checks
+before implementation tasks depend on it.
+
+### Validation selection and outcomes
+
+| Task metadata | Commands DevLab executes |
+| --- | --- |
+| `validation` omitted | The resolved profile's `default_validation`. |
+| Non-empty `validation` | Those commands, replacing the profile defaults. |
+| `validation = []` | No mechanical task checks; a diagnostic warns when profile defaults were suppressed. |
+
+After completed developer work, explicit task-command failures request one
+bounded correction attempt; repeated failure stops the workflow. Profile-default
+failures are recorded as soft task-level warnings because a broad repository
+check can depend on unfinished later tasks. Missing tools, timeouts, and
+infrastructure errors stop before review and are retried by continuation.
+
+At milestone integration, configured commands from closed tasks are combined,
+with repeated command/service bindings run once. A known failure blocks
+integration and creates a corrective finding, including when the command came
+from profile defaults. Missing prerequisites block without creating a product
+defect. No configured commands means the milestone's mechanical validation is
+unverified, not that tests passed. See [Milestones](#milestones).
+
+### Environment cleanup and compatibility
+
 On POSIX systems, a timed-out validation or environment lifecycle command gets
 a one-second termination grace period before DevLab kills its owned process
 group. Output capture and shell reaping are bounded; timeout logs retain the
@@ -313,6 +382,16 @@ workspace-owned test services. Their checks, preparation commands, service
 definitions, ownership state, private export boundary, and explicit cleanup
 commands are documented in [Runtime Prerequisites and Managed Test
 Services](runtime-prerequisites.md).
+
+Keep profile compatibility in mind. If a changed profile would remove, replace,
+narrow, or materially alter validation, setup, teardown, services, or assumptions
+used by already-planned tasks, prefer creating a new profile and assigning new
+tasks to it.
+
+Different components in one repository can use different profiles. A task that
+crosses component boundaries should select a deliberate aggregate profile whose
+validation invokes a repository-owned integration command, such as `make check`
+or a checked-in script.
 
 ## Executable Configuration Authorization
 
@@ -335,11 +414,30 @@ the workflow:
 
 ```bash
 devlab agent-smoke-test
-devlab continue --unattended
+devlab continue --max-sessions 2
 ```
 
 Use `devlab trust executable-config --show` to inspect the snapshot and trust
-status without changing them.
+status without changing them. Revoke stored trust explicitly with
+`devlab trust executable-config --revoke`.
+
+The digest covers effective provider invocation, role mappings, CLI overrides,
+profile validation/lifecycle/prerequisite configuration, and managed test services.
+Formatting and comment-only TOML changes do not change it. Invocation overrides
+can change it; authorize the same provider/model/effort settings that the run
+will use. Trust is scoped to the canonical workspace, agent-config source, and
+digest and is stored outside the target repository.
+
+For CI, supply the expected digest from protected runner configuration rather
+than letting an ordinary target-repository file authorize itself:
+
+```bash
+devlab continue --max-sessions 20 --unattended \
+  --require-exec-config-digest "$APPROVED_DEVLAB_EXEC_DIGEST"
+```
+
+Use `--unattended` only when the automatic decision policy described in
+[Before running unattended](#before-running-unattended) is appropriate.
 
 The parsed provider, profile, prerequisite, and managed-service snapshot is
 frozen for each command. Changes made during a run do not affect later sessions
@@ -355,16 +453,6 @@ Provider-native permissions and sandboxing remain operator-owned. DevLab does
 not classify provider flags. A matching digest authorizes configured entry
 points; it is not a sandbox and does not establish that repository scripts,
 build targets, external binaries, or transitive commands are safe.
-
-Keep profile compatibility in mind. If a changed profile would remove, replace,
-narrow, or materially alter validation, setup, teardown, services, or assumptions
-used by already-planned tasks, prefer creating a new profile and assigning new
-tasks to it.
-
-Different components in one repository can use different profiles. A task that
-crosses component boundaries should select a deliberate aggregate profile whose
-validation invokes a repository-owned integration command, such as `make check`
-or a checked-in script.
 
 ## Tasks
 
@@ -386,7 +474,12 @@ Each task is a Markdown file with TOML front matter. Important fields include:
 
 Developer sessions work on exactly one eligible task. Reviewer sessions review
 exactly one task in review. The orchestrator updates task status after validating
-handoffs and task-file signals.
+handoffs and task-file signals. An eligible developer task has status `open` or
+`changes_requested` and all dependencies closed. Completed acceptance criteria
+allow it to move to `in_review`. Approval requires both the task's checked
+approval checkbox and an empty structured `open_issues` list; otherwise a valid
+review returns it to `changes_requested`. Invalid handoffs are rejected before
+any such transition.
 
 If task validation stops because a tool is missing, a command times out, or the
 validation infrastructure fails, DevLab retries it before the reviewer session.
@@ -424,7 +517,9 @@ Common milestone fields include:
 
 When all tasks in a milestone close, DevLab routes to the integrator. After a
 successful integration handoff, DevLab routes the integrated milestone to the
-architect for project-state review. Architecture review is not an approval gate:
+architect for project-state review. Command results, integrator concerns, and
+architecture drift are retained in `.devlab/verification/milestones/<id>.toml`.
+Architecture review is not an approval gate:
 remaining drift is recorded as findings.
 
 ## Findings

@@ -1,8 +1,22 @@
 # DevLab Workflow Evaluations
 
-DevLab has deterministic workflow evaluations under `tests/evaluations/`.
+This reference is for maintainers evaluating DevLab itself. To learn normal
+operation, use the [tutorial](../tutorial.md). Evaluation tests and their graders
+live under `tests/evaluations/`; separate demonstration graders live under
+[`demos/`](../../demos/README.md).
 
-They differ from lower-level orchestrator tests: evaluations create temporary target repositories, run the normal DevLab workflow, then grade the generated target system with black-box checks. Workflow evaluations require Git on `PATH`; evaluation targets are initialized with `devlab init` as Git repositories, DevLab commits after every valid session, and artifact hygiene uses Git's ignore rules rather than reimplementing `.gitignore` parsing.
+- [Independent grading boundary](#independent-grading-boundary).
+- [Deterministic scripted evaluations](#deterministic-scripted-evaluations).
+- [Live-agent evaluations](#live-agent-evaluations) and [scenario selection](#scenario-selection).
+- [Environment variables](#environment-variables) and [interpreting results](#interpreting-results).
+- [Dated evidence](baselines/README.md), with its original versions and limitations.
+
+Workflow evaluations differ from lower-level orchestrator tests: evaluations
+create temporary target repositories, run the normal DevLab workflow, then grade
+the generated target system with black-box checks. Workflow evaluations require
+Git on `PATH`; evaluation targets are initialized with `devlab init` as Git
+repositories, DevLab commits after every valid session, and artifact hygiene
+uses Git's ignore rules rather than reimplementing `.gitignore` parsing.
 
 ## Independent grading boundary
 
@@ -75,13 +89,18 @@ Current scenarios cover:
 - C and C++ CMake-presets CLI happy paths
 - mixed Rust/Go components with task-specific profiles and a root integration command
 
-The normal scripted suite uses structural checks as hard gates. Deployment scenarios may also include optional tool-backed checks, such as running a target-owned `make deployment-check`, `make compose-check`, or `docker compose config`, but these are skipped unless explicitly enabled:
+The normal scripted suite uses structural checks as hard gates. Deployment
+scenarios may also include optional tool-backed checks, such as running a
+target-owned `make deployment-check`, `make compose-check`, or `docker compose
+config`, but these are skipped unless explicitly enabled:
 
 ```bash
 DEVLAB_EVAL_DEPLOYMENT_TOOLS=1 uv run pytest tests/evaluations
 ```
 
-When enabled, missing host tools such as `make` are reported as skipped/unverified rather than installed. Target-owned commands that do run must pass, or the evaluation fails.
+When enabled, missing host tools such as `make` are reported as
+skipped/unverified rather than installed. Target-owned commands that do run must
+pass, or the evaluation fails.
 
 Compiled-language structural scenarios always exercise the complete scripted
 workflow and check their generated projects without depending on host
@@ -91,13 +110,36 @@ scope: it runs all of its commands when its complete prerequisite set is on
 `PATH`, or pytest explicitly skips the whole test and reports the missing tools.
 Use `pytest -rs` to display individual skip reasons.
 
-The scripted provider writes realistic role artifacts without using LLM tokens. Each scenario records diagnostics in the temporary target repository:
+The scripted provider writes realistic role artifacts without using LLM tokens.
+Each scenario records diagnostics in the temporary target repository:
 
 ```text
 .devlab/evaluations/<scenario-id>.json
 ```
 
-Diagnostics include sessions used, the structured run `stop_reason`, role sequence, per-session task attribution, per-task developer/reviewer cycle counts, task rework summaries, integrator rework summaries, task status summaries, profile summaries, findings, review rejections, runtime, prompt-size estimate, checked artifacts, Git commit/tag metrics, artifact hygiene, target root, agent log directory, prompt/log counts, quality warnings, and black-box check results. The retained `completed` field is true only for terminal workflow or command boundaries; `stop_reason` distinguishes workflow completion, command completion, session limits, clarification blockers, ineligible work, and errors. Workflow-history diagnostics are shared with `devlab diagnostics`; evaluation-specific diagnostics add scenario identity, runtime, checked artifacts, and black-box check results. Task cycle metrics use the task identity in DevLab-published structured session results, with changed-task-artifact inference only for legacy history. Conflicting sources remain unattributed and visible rather than being guessed. Integrator rework metrics count durable findings whose `source` is `integrator`, which reflects milestone-level rejection/follow-up work without parsing integrator prose. Profile diagnostics list target profiles, validation-command counts, managed roles, and tasks using each profile. Artifact hygiene separates Git-relevant product files, Git-ignored files, and DevLab workflow files under `.devlab/`. Ignored totals are further divided into conventional dependency environments/tool caches and other ignored artifacts; only the latter trigger large-footprint warnings, while verbose output retains contributors for both categories.
+Evaluation diagnostics record:
+
+- **Outcome:** sessions used, duration, `stop_reason`, and errors. `completed`
+  is true only for a terminal workflow or command boundary; reaching a session
+  cap is not completion.
+- **Workflow history:** role sequence, task attribution, developer/reviewer
+  cycles, review rejections, findings, and integrator follow-up work. Task
+  attribution comes from structured results, with file-change inference only
+  for legacy history; conflicting evidence stays unattributed.
+- **Configuration:** profiles, validation command counts, managed roles, task
+  assignments, and estimated prompt sizes.
+- **Git evidence:** baseline/final commits, session commits, target revision,
+  milestone tags, and worktree cleanliness.
+- **Artifacts:** product files, ignored files, and `.devlab/` state measured
+  separately. Conventional dependency/tool caches remain visible but do not
+  trigger large-footprint warnings by themselves.
+- **External checks:** scenario identity, checked artifacts, pass/fail/unverified/
+  grader-error results, and evidence paths.
+
+Workflow-history metrics are shared with `devlab diagnostics`. Evaluation reports
+add scenario and independent-check results, retained prompt/log counts, and
+paths to the target and agent logs. Verbose reports identify the largest
+contributors to each artifact category.
 
 To copy diagnostics to a persistent local directory, set:
 
@@ -107,17 +149,21 @@ DEVLAB_EVAL_RESULTS_DIR=/tmp/devlab-eval-results uv run pytest tests/evaluations
 
 ## Live-agent evaluations
 
-Live-agent evaluations are opt-in and skipped by default because they are slower, token-consuming, and provider-dependent.
+### Configuration and cost
 
-Run the current live calculator evaluation with:
+Live-agent evaluations are opt-in and skipped by default because they are
+slower, token-consuming, and provider-dependent.
+
+Run just the live calculator evaluation with:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \
 DEVLAB_LIVE_AGENTS_TOML=/path/to/agents.toml \
-uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_cli_calculator_happy_path_evaluation -s
 ```
 
-For DevLab development, keep environment-specific live-agent configs outside version control. The recommended repo-local convention is:
+For DevLab development, keep environment-specific live-agent configs outside
+version control. The recommended repo-local convention is:
 
 ```text
 .local/live-eval/<environment>.agents.toml
@@ -128,19 +174,46 @@ For example:
 ```bash
 DEVLAB_LIVE_EVALS=1 \
 DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
-uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_cli_calculator_happy_path_evaluation -s
 ```
 
-These files are local operator config: they may encode installed CLIs, account-specific providers, models, auth assumptions, or machine-specific timeouts. Commit sanitized examples separately if a shared starting point is useful.
+These files are local operator config: they may encode installed CLIs,
+account-specific providers, models, auth assumptions, or machine-specific
+timeouts. Commit sanitized examples separately if a shared starting point is
+useful.
 
-The stateful JSON web API live evaluation is an additional opt-in scenario. It is skipped unless explicitly enabled:
+### Scenario selection
+
+Select a test node as well as its enable flag to avoid starting other live
+scenarios enabled in your shell. Each scenario consumes provider usage; the
+session caps below are workflow bounds, not billing caps.
+
+| Scenario | Additional enable flag | Default session cap |
+| --- | --- | --- |
+| Calculator | None beyond `DEVLAB_LIVE_EVALS=1` | 10 |
+| Stateful API | `DEVLAB_LIVE_STATEFUL_WEB_API=1` | 18 |
+| Rust, Go, C, C++ | Respective `DEVLAB_LIVE_RUST/GO/C/CPP=1` | 12 each |
+| Static frontend | `DEVLAB_LIVE_STATIC_FRONTEND=1` | 20 |
+| React/Vite frontend | `DEVLAB_LIVE_REACT_VITE_FRONTEND=1` | 24 |
+| Deployable API | `DEVLAB_LIVE_DEPLOYMENT=1` | 22 |
+| Specification reconciliation | `DEVLAB_LIVE_SPEC_RECONCILIATION=1` | 10 before and 10 after the change |
+| Existing-project adoption | `DEVLAB_LIVE_ADOPT_EXISTING=1` | 8 implementation sessions after planning |
+
+The sections below describe the different grading contracts.
+
+### Stateful API
+
+The stateful JSON web API live evaluation is an additional opt-in scenario. It
+is skipped unless explicitly enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \
 DEVLAB_LIVE_STATEFUL_WEB_API=1 \
 DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
-uv run pytest tests/evaluations/test_live_workflow_evaluations.py -s
+uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_stateful_web_api_happy_path_evaluation -s
 ```
+
+### Compiled-language profiles
 
 The compiled-language live evaluations exercise real agent planning, dedicated
 task profiles, implementation, review, integration, and architecture review in
@@ -171,7 +244,14 @@ uv run pytest \
   -s
 ```
 
-The static frontend live evaluation extends the stateful API scenario with a browser-facing vanilla HTML/CSS/JS UI. It requires exact static artifact paths (`static/index.html`, `static/app.js`, `static/styles.css`), direct calls to the todo API routes, an error display, README usage instructions, and absence of frontend build artifacts such as `package.json` or Vite config. It is skipped unless explicitly enabled:
+### Static frontend
+
+The static frontend live evaluation extends the stateful API scenario with a
+browser-facing vanilla HTML/CSS/JS UI. It requires exact static artifact paths
+(`static/index.html`, `static/app.js`, `static/styles.css`), direct calls to the
+todo API routes, an error display, README usage instructions, and absence of
+frontend build artifacts such as `package.json` or Vite config. It is skipped
+unless explicitly enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \
@@ -180,9 +260,45 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_static_frontend_todo_app_happy_path_evaluation -s
 ```
 
-The React/Vite frontend live evaluation extends the stateful API scenario with a framework-based browser UI. It verifies the API behavior, structurally checks `package.json`, Vite scripts, React/Vite dependencies including `@vitejs/plugin-react`, `index.html`, React entrypoint/component files under `src/`, todo API calls, error handling, and README instructions for `npm run dev` and `npm run build`, builds the generated frontend inside a disposable Podman Node container, then runs an API, Vite dev server, and real browser flow inside a disposable Playwright-capable Podman container. The connectivity contract uses one deterministic strategy: browser code calls same-origin routes, while Vite reads the API target from `API_BASE_URL` and proxies `/health` and `/todos`. The grader chooses a non-default API port to expose hard-coded targets. The generated project must also own a `make browser-test` Podman check that installs dependencies, builds the frontend, and runs the browser flow; its `todo-app` profile must run backend tests and that browser check. The independent grader still runs its own separate browser flow. The browser flow opens the app, checks empty-submit validation, adds a todo, verifies it appears, deletes it, and fails with captured container/browser diagnostics if the UI cannot reach the API or emits runtime errors. The target repository is mounted read-only, copied to container-local `/tmp/work`, and `npm ci` or `npm install` plus `npm run build` run there so target dependencies are not installed into the host checkout or temporary target repo. The browser container installs its pinned Playwright Node client into a separate evaluator-owned temporary prefix; the image supplies the matching browser binaries and system libraries but not that Node package.
+### React/Vite frontend
 
-There is no separate browser/API integration flag. Setting `DEVLAB_LIVE_REACT_VITE_FRONTEND=1` enables the full React/Vite check set, including the direct API contract check, the Podman-isolated frontend build check, and the Podman/Playwright browser/API integration check. The host running this live evaluation must have `podman` available and be able to pull or use the required Node and Playwright container images. It is skipped unless explicitly enabled:
+The React/Vite frontend live evaluation extends the stateful API scenario with a
+framework-based browser UI. It verifies the API behavior, structurally checks
+`package.json`, Vite scripts, React/Vite dependencies including
+`@vitejs/plugin-react`, `index.html`, React entrypoint/component files under
+`src/`, todo API calls, error handling, and README instructions for `npm run
+dev` and `npm run build`, builds the generated frontend inside a disposable
+Podman Node container, then runs an API, Vite dev server, and real browser flow
+inside a disposable Playwright-capable Podman container.
+
+The connectivity contract uses one deterministic strategy: browser code calls
+same-origin routes, while Vite reads the API target from `API_BASE_URL` and
+proxies `/health` and `/todos`. The grader chooses a non-default API port to
+expose hard-coded targets.
+
+The generated project must also own a `make browser-test` Podman check that
+installs dependencies, builds the frontend, and runs the browser flow; its
+`todo-app` profile must run backend tests and that browser check. The
+independent grader still runs its own separate browser flow.
+
+The browser flow opens the app, checks empty-submit validation, adds a todo,
+verifies it appears, deletes it, and fails with captured container/browser
+diagnostics if the UI cannot reach the API or emits runtime errors.
+
+The target repository is mounted read-only, copied to container-local
+`/tmp/work`, and `npm ci` or `npm install` plus `npm run build` run there so
+target dependencies are not installed into the host checkout or temporary target
+repo. The browser container installs its pinned Playwright Node client into a
+separate evaluator-owned temporary prefix; the image supplies the matching
+browser binaries and system libraries but not that Node package.
+
+There is no separate browser/API integration flag. Setting
+`DEVLAB_LIVE_REACT_VITE_FRONTEND=1` enables the full React/Vite check set,
+including the direct API contract check, the Podman-isolated frontend build
+check, and the Podman/Playwright browser/API integration check. The host running
+this live evaluation must have `podman` available and be able to pull or use the
+required Node and Playwright container images. It is skipped unless explicitly
+enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \
@@ -191,7 +307,16 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_react_vite_todo_app_happy_path_evaluation -s
 ```
 
-The deployable web API live evaluation extends the stateful API scenario with project-owned local container deployment artifacts. It checks for the API behavior plus `Containerfile`, exact Makefile targets named `image` and `deployment-check`, and deployment instructions that reference both commands. API create responses may use any successful `2xx` status unless the scenario spec says otherwise. The deployment-section check is case-insensitive and may be satisfied by `README.md` or `docs/**/*.md`. It is skipped unless explicitly enabled:
+### Deployable API
+
+The deployable web API live evaluation extends the stateful API scenario with
+project-owned local container deployment artifacts. It checks for the API
+behavior plus `Containerfile`, exact Makefile targets named `image` and
+`deployment-check`, and deployment instructions that reference both commands.
+API create responses may use any successful `2xx` status unless the scenario
+spec says otherwise. The deployment-section check is case-insensitive and may be
+satisfied by `README.md` or `docs/**/*.md`. It is skipped unless explicitly
+enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \
@@ -200,7 +325,18 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_deployable_web_api_happy_path_evaluation -s
 ```
 
-The spec reconciliation live evaluation runs a small project to completion, commits a system-spec change, verifies that normal `devlab implement` is blocked until reconciliation, runs `devlab plan`, verifies that generation 1 was archived and generation 2 has active tasks, then finishes the replacement project. This structural test reports the target root and agent log directory on failure rather than writing the standard evaluation diagnostics JSON. It is skipped unless explicitly enabled:
+### Specification reconciliation
+
+This scenario intentionally uses the phase-restricted commands to test stale-spec
+refusal and explicit reconciliation; routine users normally use `devlab continue`.
+
+The spec reconciliation live evaluation runs a small project to completion,
+commits a system-spec change, verifies that normal `devlab implement` is blocked
+until reconciliation, runs `devlab plan`, verifies that generation 1 was
+archived and generation 2 has active tasks, then finishes the replacement
+project. This structural test reports the target root and agent log directory on
+failure rather than writing the standard evaluation diagnostics JSON. It is
+skipped unless explicitly enabled:
 
 ```bash
 DEVLAB_LIVE_EVALS=1 \
@@ -208,6 +344,8 @@ DEVLAB_LIVE_SPEC_RECONCILIATION=1 \
 DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_spec_reconciliation_archives_and_replans -s
 ```
+
+### Existing-project adoption
 
 The adopt-existing live evaluation starts from a tiny pre-existing calculator repo,
 runs `devlab plan --adopt-existing`, checks that the design plan records
@@ -225,7 +363,7 @@ DEVLAB_LIVE_AGENTS_TOML=.local/live-eval/pi-codex.agents.toml \
 uv run pytest tests/evaluations/test_live_workflow_evaluations.py::test_live_adopt_existing_current_state_baseline_and_feature_work -s
 ```
 
-Useful environment variables:
+## Environment variables
 
 - `DEVLAB_EVAL_DEPLOYMENT_TOOLS=1`: enable optional tool-backed deployment checks, such as target-owned Make targets. Missing host tools are skipped/unverified, not installed.
 - `DEVLAB_LIVE_EVALS=1`: enable live evaluations.
@@ -258,10 +396,38 @@ Useful environment variables:
 - `DEVLAB_EVAL_RESULTS_DIR`: optional directory for persistent diagnostics copies.
 - `DEVLAB_LIVE_RETAIN_PROMPTS=1`: retain split base/session prompt logs under `.devlab/logs/agents/` for live-run debugging.
 
-Live evaluations configure the DevLab logger at INFO level so normal workflow session logs are visible, including contextual start/finish lines such as `Starting session 3: developer task=T0001 ...` and `Finished session 3: developer task=T0001 status=in_review next=reviewer`. Use `pytest -s` if your pytest invocation captures output and you want to watch those lines as they happen.
+## Interpreting results
+
+Live evaluations configure the DevLab logger at INFO level so normal workflow
+session logs are visible, including contextual start/finish lines such as
+`Starting session 3: developer task=T0001 ...` and `Finished session 3:
+developer task=T0001 status=in_review next=reviewer`. Use `pytest -s` if your
+pytest invocation captures output and you want to watch those lines as they
+happen.
 
 Live evaluation failures report the temporary target root, diagnostics JSON path,
 and `.devlab/logs/agents/` path. Selected dated evidence is retained under
 [`baselines/`](baselines/README.md).
 
-Evaluation correctness checks are hard failures. Live evaluations also structurally assert automatic version-control behavior: the target workspace must be a Git repository, finish with a clean worktree, create at least one commit per completed role session after evaluation setup, and include expected milestone tags such as `devlab/milestone/M1`. Diagnostics record baseline and final commit counts, session commit count, target HEAD commit, milestone tags, missing expected tags, and peeled tag target commits. Quality warnings are diagnostic only and currently cover flagged artifact paths, same-task developer/reviewer rework, integrator findings, high sessions per closed task, attribution failures, and unusually large non-conventional ignored artifact footprints. Artifact hygiene uses `git ls-files --cached --others --exclude-standard` for product files and `git ls-files --others --ignored --exclude-standard` for ignored files, excluding `.devlab/` from both classes. Conventional directories such as `.venv`, `node_modules`, Python tool caches, `.tox`, and `.nox` remain measured but do not trigger size warnings by themselves. Verbose diagnostics include top product, conventional ignored, other ignored, and `.devlab/` contributors. Target-owned test-suite execution is intentionally deferred because target projects may require their own environment setup.
+Evaluation correctness checks are hard failures. Live evaluations also
+structurally assert automatic version-control behavior: the target workspace
+must be a Git repository, finish with a clean worktree, create at least one
+commit per completed role session after evaluation setup, and include expected
+milestone tags such as `devlab/milestone/M1`. Diagnostics record baseline and
+final commit counts, session commit count, target HEAD commit, milestone tags,
+missing expected tags, and peeled tag target commits.
+
+Quality warnings are diagnostic only and currently cover flagged artifact paths,
+same-task developer/reviewer rework, integrator findings, high sessions per
+closed task, attribution failures, and unusually large non-conventional ignored
+artifact footprints.
+
+Artifact hygiene uses `git ls-files --cached --others --exclude-standard` for
+product files and `git ls-files --others --ignored --exclude-standard` for
+ignored files, excluding `.devlab/` from both classes. Conventional directories
+such as `.venv`, `node_modules`, Python tool caches, `.tox`, and `.nox` remain
+measured but do not trigger size warnings by themselves. Verbose diagnostics
+include top product, conventional ignored, other ignored, and `.devlab/`
+contributors. Independent checks are scenario-specific; the harness does not
+discover and run arbitrary target test suites. The ordinary DevLab workflow runs
+its configured task and milestone validation before external grading.

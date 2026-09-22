@@ -1,9 +1,9 @@
 # DevLab Demonstrations
 
-Each subdirectory is a self-contained, reproducible demonstration or comparative
-experiment. It contains the authoritative input specifications, execution
-protocol, comparison controls, evidence format, and grading design needed to run
-that demonstration without relying on conversational context.
+This directory contains input fixtures, runnable demonstrations, and a controlled
+comparison experiment. Use [First workflow](first-workflow/) for a live DevLab
+introduction. The larger specifications are inputs for experiments, not examples
+of finished software or evidence that a particular run succeeded.
 
 Demo packages are repository-only material used to demonstrate or evaluate
 DevLab product characteristics. They are not installed as part of DevLab and are

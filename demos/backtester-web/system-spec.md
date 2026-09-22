@@ -70,11 +70,14 @@ FastAPI application served by uvicorn. All endpoints are under `/api/`.
 
 ### Endpoints
 
+Request examples are literal JSON. Abbreviated response shapes use text blocks
+with placeholders and ellipses to indicate omitted values.
+
 **`GET /api/strategies`**
 
 Returns the list of available strategies with their parameter metadata.
 
-```json
+```text
 [
   {
     "name": "SMA Crossover",
@@ -106,7 +109,7 @@ Request body:
 ```
 
 Response body:
-```json
+```text
 {
   "portfolio_values": [[<timestamp_ms>, <value>], ...],
   "price_series": [[<timestamp_ms>, <price>], ...],
@@ -190,7 +193,7 @@ Progress message (sent after each entry-date backtest completes):
 ```
 
 Result message (sent once when the sweep finishes):
-```json
+```text
 {
   "type": "result",
   "curves": [

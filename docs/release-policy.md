@@ -1,13 +1,15 @@
 # Release Policy
 
-DevLab is unpublished pre-1.0 software. It is intended to become a reusable CLI
-and Python package, but its workflow formats and operator experience are still
-evolving.
+DevLab is a pre-1.0 CLI distributed as a Python package. Its workflow formats
+and operator experience are still evolving; the 1.x compatibility contract has
+not been frozen.
 
 ## Current Distribution
 
-DevLab is not published to PyPI. Install it from a source checkout or Git URL
-with `uv tool install`, as described in the README.
+DevLab is not published to production PyPI. Install from a source checkout or
+Git URL with `uv tool install`, as described in the [README](../README.md#install).
+Use an immutable tag or commit for a reproducible installation. TestPyPI is used
+only to rehearse publication; it is not a supported distribution channel.
 
 Before a public release, the project verifies package metadata, license
 metadata, source distributions, wheels, and installation from a clean
@@ -166,7 +168,8 @@ must match project `devlab`, GitHub repository `djulich/devlab`, workflow
 
    The command builds the source distribution and wheel in a temporary
    directory; verifies project metadata, version agreement, license, project
-   URLs, package resources, and the source/wheel content boundary; runs strict
+   URLs, absolute README links, package resources, and the source/wheel content
+   boundary; runs strict
    Twine checks through a pinned, isolated `uv tool run` invocation against both
    distributions so their metadata and long descriptions are suitable for a
    package index; installs the wheel in a clean temporary environment; and runs
@@ -213,7 +216,9 @@ must match project `devlab`, GitHub repository `djulich/devlab`, workflow
     checks out the tagged commit solely so GitHub CLI can resolve the repository
     and annotated tag notes; it still uses the artifacts from the build job.
     Confirm that TestPyPI shows the expected version, metadata, description,
-    wheel, source distribution, and provenance. Add the drafted release summary,
+    wheel, source distribution, and provenance. Open the description links and
+    the Documentation sidebar link; rendering checks alone do not prove that
+    destinations work. Add the drafted release summary,
     review the note and assets, mark a `0.x` release as a pre-release, and publish
     it deliberately. Published files are immutable; a failed preparation is
     corrected with a new version and tag rather than by moving the shared tag.

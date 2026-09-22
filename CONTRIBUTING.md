@@ -1,6 +1,6 @@
 # Contributing to DevLab
 
-DevLab is unpublished pre-1.0 software. Contributions are welcome, but changes
+DevLab is pre-1.0 software. Contributions are welcome, but changes
 should strengthen the existing workflow before expanding its feature surface.
 Its CLI and durable formats remain provisional until the 1.0 release-candidate
 freeze.

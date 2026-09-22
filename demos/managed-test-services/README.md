@@ -1,7 +1,9 @@
 # Managed PostgreSQL test service
 
-This example belongs in a fresh target workspace. It never uses the scored
-system-evolution targets or evaluator volumes.
+This example configures a workspace-owned database in an initialized disposable
+DevLab target. See the [runtime reference](../../docs/runtime-prerequisites.md)
+for the service contract. Keep this database separate from any external grader's
+resources.
 
 Prerequisites: Python 3, a usable Docker daemon, and a locally available
 `postgres:16` image. The operator supplies these; the example does not install

@@ -19,7 +19,8 @@ This directory contains target-local DevLab configuration. These files are part 
 
 `agents.toml` controls how DevLab invokes worker agents for each role. It supports defaults, per-role overrides, provider command templates, model/effort settings, and stdin-based prompt delivery for CLIs that require it.
 
-The file is intended to be edited by the human operator. See `docs/agent-configuration.md` in the DevLab repository for a full reference.
+The file is intended to be edited by the human operator. See the [agent configuration reference](https://github.com/djulich/devlab/blob/main/docs/agent-configuration.md)
+for provider definitions, timeouts, prompt transport, and smoke tests.
 
 ## Profiles
 
@@ -44,3 +45,7 @@ Existing profiles should only be extended or fixed in backward-compatible ways. 
 ## Planner Responsibilities
 
 The planner should search existing profiles before creating new ones. If no profile fits upcoming work, it should create a task to add or update a suitable reusable profile before creating tasks that depend on that profile.
+
+See [Profiles and validation](https://github.com/djulich/devlab/blob/main/docs/operator-guide.md#profiles)
+and [Runtime prerequisites and managed test services](https://github.com/djulich/devlab/blob/main/docs/runtime-prerequisites.md)
+for configuration examples and execution boundaries.

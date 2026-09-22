@@ -36,6 +36,9 @@ Edit the Markdown files under:
 .devlab/specs/deployment/
 ```
 
+Deployment requirements are optional. Leave the scaffolded deployment checklist
+inactive when deployment is out of scope. See [Deployment support](../deployment-feature-overview.md).
+
 Record the required behavior and relevant constraints, not an assumed
 implementation. DevLab treats these files as operator-owned planning input;
 `devlab plan --adopt-existing` reads them but does not own or replace them.
@@ -77,6 +80,9 @@ devlab plan --adopt-existing
 This mode is for the first planning run, before an active DevLab plan exists.
 The architect records a current-state baseline and gaps from the specifications;
 the planner creates tasks around the repository's existing validation path.
+
+A session-limit stop may leave adoption planning incomplete. Follow the final
+summary to finish planning before treating the adoption plan as complete.
 
 Inspect the resulting `.devlab/plans/`, `.devlab/tasks/`, and
 `.devlab/milestones/` files, then check the workspace:
