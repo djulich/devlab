@@ -141,6 +141,11 @@ with job-scoped OIDC identity-token permission and attestations. They consume
 the same build artifacts without rebuilding; `SHA256SUMS` remains a GitHub
 Release asset and is not uploaded to either index.
 
+TestPyPI remains part of every release to keep one consistent, exercised
+publication path. Reconsider removing it if repeated releases show little
+additional value and its approval or service dependency becomes a meaningful
+burden.
+
 Each index has its own trusted publisher for project `devlab`, GitHub repository
 `djulich/devlab`, and workflow `release.yml`. The environment must match
 `testpypi` or `pypi` respectively; no API token is stored in GitHub. Configure
