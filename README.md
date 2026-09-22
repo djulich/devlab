@@ -138,7 +138,7 @@ git commit -m "Configure DevLab project"
 devlab doctor
 devlab trust executable-config
 devlab agent-smoke-test
-devlab continue --max-sessions 2
+devlab continue
 ```
 
 `doctor` checks configuration and workflow state without changing them. The
@@ -146,10 +146,13 @@ trust command shows the executable configuration and asks for approval; the
 smoke test invokes the provider to check that it works. Resolve any reported
 setup problems before continuing.
 
-The continuation command runs at most two role sessions. A complete workflow
-usually needs several such runs. Both the smoke test and workflow sessions
-consume usage from your configured provider; a session limit does not cap
-provider billing.
+On a fresh project, `devlab continue` stops after planning, before implementation.
+Inspect the generated plans, then run it again to begin implementation. Each
+invocation runs at most 20 sessions by default, providing regular checkpoints
+to review progress. Use `--max-sessions` to adjust this limit.
+
+Both the smoke test and workflow sessions consume usage from your configured
+provider; a session limit does not cap provider billing.
 
 ## Inspect and continue
 
@@ -161,7 +164,7 @@ These four commands cover routine operation:
 | Where am I? | `devlab status` | Show progress, blockers, and the next action. |
 | Is the workspace healthy? | `devlab doctor` | Validate configuration and workflow state. |
 | How is the workflow performing? | `devlab diagnostics` | Inspect workflow history and quality indicators. |
-| What happens next? | `devlab continue --max-sessions 2` | Run the next sessions from recorded state. |
+| What happens next? | `devlab continue` | Run the next sessions from recorded state. |
 
 The first three commands are read-only. `continue` selects planning,
 implementation, review, integration, or recovery as needed. Reaching the session
