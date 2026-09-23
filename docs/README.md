@@ -32,6 +32,7 @@ the operator guide explains the lifecycle and serves as the workspace reference.
 
 ## Understand and contribute to DevLab
 
+- [Why DevLab?](why-devlab.md): architectural principles, differentiators, and their consequences.
 - [Vision](vision.md): motivation, suitable projects, and potential evolution.
 - [Design overview](design.md): current workflow mechanics and architecture.
 - [Terminology](../CONTEXT.md) and [development constraints](../AGENTS.md):

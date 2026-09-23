@@ -1,18 +1,40 @@
 # DevLab
 
-DevLab is a command-line tool that turns written software requirements into
-reviewed changes through a sequence of bounded agent sessions. It coordinates
-planning, implementation, review, and integration, keeping the work and its
-history in your project's Git repository.
+DevLab is an opinionated, auditable workflow orchestrator for
+substantial agent-assisted software projects. It turns written software
+requirements into reviewed changes through bounded agent sessions, coordinating
+planning, implementation, review, and integration while keeping the work and
+its history in your project's Git repository.
 
 DevLab is intended for projects whose scope spans many agent sessions and needs
 consistent decisions, explicit review, and a way to recover after interruptions.
-It works with new and existing repositories. DevLab itself runs on Python;
-target projects can use Python, Rust, Go, C, C++, or mixed toolchains.
+It is not a lightweight replacement for ordinary coding-agent sessions. It
+works with new and existing repositories. DevLab itself runs on Python; target
+projects can use Python, Rust, Go, C, C++, or mixed toolchains.
 
 [First-workflow tutorial](https://github.com/djulich/devlab/blob/main/docs/tutorial.md)
 · [Documentation](https://github.com/djulich/devlab/blob/main/docs/README.md)
 · [Project vision](https://github.com/djulich/devlab/blob/main/docs/vision.md)
+
+## Why DevLab?
+
+DevLab treats AI agents as replaceable workers in a software-development process, rather than making the development process a feature of one AI provider or one long-running agent session.
+
+- **Provider-independent.** DevLab runs as a standalone CLI and invokes configured agent providers externally. Architect, planner, developer, reviewer, and researcher roles can use different providers or models. The workflow does not belong to Claude, Codex, or any other provider.
+
+- **Durable by design.** Specifications, plans, tasks, findings, research, handoffs, and workflow state live in the target repository rather than in conversation history. Agent sessions are temporary execution contexts; the repository is the project's memory.
+
+- **Bounded roles with explicit handoffs.** Architecture, planning, implementation, review, integration, and research happen in bounded sessions with defined responsibilities and validated handoffs. This limits context growth and allows work produced by one agent or model to be independently reviewed by another.
+
+- **Deterministic control around nondeterministic agents.** Agents perform the reasoning, but DevLab owns workflow transitions, validation, recovery, and publication of durable state. A model does not get to declare the workflow complete simply because it says the work is done.
+
+- **Auditable and recoverable.** Accepted work is anchored in Git and durable workflow artifacts. `status`, `doctor`, `diagnostics`, and `history` expose what the orchestrator believes, while `continue` derives the next valid action from persisted state. Interrupted work can resume without reconstructing an AI conversation.
+
+- **Explicit trust boundaries.** Executable project configuration is fingerprinted and requires operator trust. Changes to that configuration are not silently adopted during a running workflow. Provider permissions and sandboxing remain explicit responsibilities of the configured execution environment rather than being hidden behind an orchestration abstraction.
+
+The result is a workflow in which providers and models can change while the specification, development process, evidence, and project history remain under the project's control.
+
+See [Why DevLab?](https://github.com/djulich/devlab/blob/main/docs/why-devlab.md) for the architectural principles and trade-offs behind these choices.
 
 ## How it works
 
@@ -27,19 +49,12 @@ review the results. DevLab manages the workflow:
 3. **Integrate:** an integrator checks completed milestones. Architecture review
    records remaining gaps for corrective work.
 
-Each agent session has one role. Specifications, plans, tasks, findings,
-and handoffs live under `.devlab/` in the target repository, alongside the
-software being built. DevLab commits accepted session results and uses the
-recorded progress to choose the next action. Sessions can request research or
-stop for a decision from you when needed.
+DevLab commits accepted session results and uses the recorded progress to choose
+the next action. Sessions can request research or stop for a decision from you
+when needed.
 
-You can inspect the files and Git history between runs and continue from the
-recorded state after a stop. Progress does not depend on retaining a conversation
-with an agent.
-
-You choose the coding-agent CLI and can configure different providers or models
-for different roles. DevLab supplies the workflow and role prompts; the target
-project supplies its tooling and validation commands.
+DevLab supplies the workflow and role prompts; the target project supplies its
+tooling and validation commands.
 
 ## Project status
 
