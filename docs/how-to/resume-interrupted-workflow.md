@@ -4,6 +4,9 @@ DevLab keeps workflow state in the target repository, so bounded, failed, or
 clarification-blocked runs can be inspected and continued without relying on
 conversation history.
 
+For supported failure scenarios, command boundaries, and the exact cleanup
+scope, see [Recovery in the operator guide](../operator-guide.md#recovery).
+
 ## 1. Inspect why the workflow stopped
 
 Start with the previous command's final summary. Then run read-only diagnostics:
@@ -61,8 +64,9 @@ Run `devlab continue` to see the supported recovery action. For ordinary
 uncommitted state, it can propose discarding the described tracked, staged,
 and non-ignored untracked changes back to the observed committed boundary.
 Inspect the exact HEAD and affected paths before confirming. If you decline,
-follow the preservation guidance it prints, including the scoped stash command
-when applicable. Do not substitute a broader reset or clean command.
+follow the preservation guidance it prints, including the displayed stash command
+when applicable. The offered stash preserves tracked and non-ignored untracked
+work across the repository. Do not substitute a broader reset or clean command.
 
 Git conflicts, an in-progress Git operation, or nested repository dirt require
 the explicit remediation DevLab reports. A discard does not undo ignored files,

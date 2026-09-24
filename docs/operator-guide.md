@@ -15,6 +15,7 @@ interrupted-workflow recovery.
 ## Find the relevant reference
 
 - [Operating model](#operating-model) and [stop summaries](#workflow-termination-summaries).
+- [Recovery](#recovery): continuation, interrupted sessions, and diagnostic cleanup.
 - [Workspace ownership](#what-operators-own), [specs and planning](#specs-and-planning),
   and [generations](#generations).
 - [Profiles and validation](#profiles) and [configuration authorization](#executable-configuration-authorization).
@@ -54,8 +55,8 @@ A typical run applies those commands as follows:
 
 Continuation derives planning, implementation, clarification resume, validation
 retry, or supported recovery from durable state. `devlab plan`, `devlab
-implement`, and `devlab resume` remain phase-restricted interfaces for explicit
-planning modes, automation, and expert use. Mutating workflow commands require a
+implement` remain phase-restricted interfaces; `devlab resume` explicitly resumes
+a validated clarification route. Mutating workflow commands require a
 clean working tree before agent sessions so operator-authored changes remain
 separate from DevLab-authored session commits.
 
@@ -98,12 +99,104 @@ devlab continue
 The trust command displays the effective configuration and fingerprint before
 asking for approval.
 
-DevLab does not execute the changed configuration or create the next session's
-artifacts in the original invocation. Invalid changed configuration is reported
-before another session is prepared.
+DevLab does not execute the changed configuration or prepare work outside the
+allowed task boundary in the original invocation. Invalid changed configuration
+is reported before another session is prepared.
 
 The summary is read-only. It does not trust configuration, answer
 clarifications, repair state, or alter role selection and exit behavior.
+
+## Recovery
+
+Start with the previous run's summary, `devlab status --verbose`,
+`devlab status --next-command`, and `devlab doctor`. These inspect state without
+repairing it. Continuation reselects work from durable state; it does not resume
+the interrupted provider process or its conversation. See
+[Resume an interrupted workflow](how-to/resume-interrupted-workflow.md) for a
+step-by-step procedure.
+
+### Continue and resume
+
+`devlab continue` is the normal entry point after a stop. It selects planning,
+implementation, research, validation retry, or an answered clarification's stored
+route. Automatic selection still requires valid state, authorized executable
+configuration, and a clean worktree before an agent session starts.
+
+`devlab resume` is specifically for a clarification's stored route after its
+answer has been validated. It is an alternative to `continue` after answering,
+not a prerequisite for it. `devlab clarify answer ... --resume` combines those
+operations. Use `continue` for research and ordinary failures; `resume` is not
+a general retry command. An invalid or obsolete stored route is not silently
+replaced with another task: follow the reported reconciliation or clarification
+supersession guidance.
+
+### Supported stops and next actions
+
+| Stop or condition | What DevLab does | Operator action |
+| --- | --- | --- |
+| Session limit or planning boundary | Preserves accepted work and stops the bounded run. | Run `continue` to select the next work. |
+| Reviewer requests changes | Returns the task to development. | Normally none; the loop continues within its session budget, or the next `continue` selects the developer. |
+| Provider fails, times out, or exits unsuccessfully | Stops and retains diagnostics; uncommitted edits can remain. | Inspect the failure and repair provider availability, authentication, permissions, or configuration as needed. Resolve uncommitted state before retrying with `continue`. |
+| Missing or invalid handoff | Refuses to advance on an invalid result. Optional correction is bounded; see [Handoffs](#session-results-and-handoffs). | Inspect submission diagnostics and remaining edits, address the cause, then retry. Diagnostic cleanup alone does not repair product or workflow files. |
+| Explicit task validation command fails | Returns the task to development for one bounded correction attempt; repeated failure stops. | Inspect the validation evidence after a repeated failure and resolve the cause before continuing. A stopped attempt may leave uncommitted work. |
+| Profile-default task validation fails | Records a soft task-level warning; review can proceed. | Review the evidence. These commands are checked again at milestone integration, where failure creates corrective findings. |
+| Task validation lacks a tool or prerequisite, times out, or encounters an infrastructure error | Stops before review and records the blocker/evidence. Continuation retries validation for the waiting task before review. | Restore the required tool, service, environment, or authorization, then run `continue`. DevLab does not install missing host tools. |
+| Milestone validation fails | Creates corrective findings; missing tools or infrastructure block integration instead. | Let the workflow plan corrective work for command failures. Resolve external blockers before retrying integration. |
+| Developer makes no relevant progress | Allows one bounded recovery attempt on the same route; another non-advancing result stops. | Inspect task scope, provider output, and remaining changes before retrying. |
+| Executable configuration changes | Keeps using the authorized snapshot for allowed work, then stops at the configuration boundary. | Review the changed configuration and authorize an untrusted snapshot before continuation; see [Configuration authorization](#executable-configuration-authorization). |
+| Clarification is pending | Default operation waits for an answer. During an explicitly unattended run, a bounded resolver may answer with agent provenance. | Inspect and answer the record, then use `continue` or `resume`. A failed or invalid resolver answer leaves the clarification pending. |
+| Research fails or produces invalid output | Keeps the request pending. Completed research remains available if the requesting role subsequently fails. | Inspect logs and staged output, fix the cause and any remaining worktree changes, then run `continue`; it retries research or returns to the exact requesting route. |
+| Process is interrupted or the worktree is dirty | `continue` inspects the Git boundary and offers supported recovery or reports required remediation. | Stop any surviving provider process and inspect the work before preserving or discarding it as described below. |
+
+Validation details and evidence semantics are defined under
+[Profiles](#validation-selection-and-outcomes). Invalid workflow files, stale
+resume pointers, invalid task dependencies, and other health blockers require
+the repairs reported by `doctor` and continuation; these commands do not invent
+replacement state to make a run proceed.
+
+### Uncommitted state after interruption
+
+Inspect `git status --short`, `git diff`, `git diff --cached`, and the contents
+of untracked files. DevLab cannot distinguish valuable operator edits from
+unfinished agent work merely because both are uncommitted.
+
+For ordinary uncommitted state, `continue` displays the current HEAD, affected
+paths, and the Git clean preview. In an interactive terminal it asks before
+discarding. Declining changes nothing and prints preservation guidance. Without
+an interactive terminal, or with `--unattended`, it does not obtain discard
+approval implicitly. Automation must explicitly supply both
+`--discard-interrupted-session` and `--require-interrupted-head <observed-SHA>`;
+the SHA must match the proposed boundary. DevLab also rechecks the proposal
+before applying it.
+
+An approved discard restores tracked and staged files to that HEAD and removes
+non-ignored untracked files across the repository. It is not restricted to files
+attributed to the failed session. DevLab then records an
+`interrupted_session_discarded` event in a new commit and continues. If Git still
+reports dirt after discard, DevLab stops without recording successful recovery
+or starting another session; inspect the remaining paths.
+
+Conflicts, an in-progress Git operation, and detected nested-repository or
+submodule dirt require the explicit remediation reported by DevLab. Ignored
+files, running processes, databases, deployments, and other external effects are
+not restored by Git recovery. Restarting work can repeat those effects.
+
+### Diagnostic cleanup
+
+`devlab clean-failed-session` immediately runs Git cleanup for non-ignored,
+untracked files and directories under these paths:
+
+- `.devlab/logs/agents/`
+- `.devlab/logs/environment/`
+- `.devlab/session-artifacts/`
+
+There is no confirmation prompt or selection by session ID or failure status.
+Inspect and preserve needed evidence first. Tracked files (including staged
+files), ignored files, source changes outside those paths, and other workflow
+records are left untouched. This command does not reset task state, roll back
+product changes, or clear a clarification/research resume pointer. If the only
+remaining dirt is eligible diagnostics, cleanup can restore a clean worktree;
+otherwise further operator action is needed before continuation.
 
 ## Initialization Templates
 
@@ -209,7 +302,8 @@ must be resolved before workflow continuation. If the answer commit fails, the
 answer stays saved and DevLab reports the Git error without resuming.
 
 Plain `devlab resume` is useful after answering separately or validating a
-manually edited record. Superseding is an explicit repair for obsolete requests;
+manually edited record. `devlab continue` also dispatches an answered
+clarification's stored route. Superseding is an explicit repair for obsolete requests;
 it does not silently invent an answer.
 
 For a file-edit clarification, inspect the requested paths in the clarification
@@ -224,7 +318,10 @@ When status shows requested or completed research, run `devlab continue` to
 invoke the researcher or resume the requesting role. There is no standalone
 research command. Provider failure or invalid output leaves the record
 requested: inspect logs and staged output, run `devlab doctor`, fix the
-provider/configuration issue, and retry continuation.
+provider/configuration issue, resolve remaining uncommitted changes as described
+under [Recovery](#recovery), and retry continuation. If the requesting role fails
+after research completes, continuation reuses that completed result and retries
+the stored route; it does not need another research session.
 
 An optional `[roles.researcher]` in `agents.toml` selects its provider/model;
 otherwise the requesting role's resolved provider is used. Result JSON schema
@@ -595,8 +692,11 @@ workflow control state directly.
 
 Submission attempts are capped at three. `--handoff-correction` permits one
 additional correction-only provider invocation if the original role exits without
-an accepted result. That invocation may change only disposable handoff artifacts;
-changes to product or durable workflow files reject the correction.
+an accepted result after a successful provider invocation. It normally repairs
+only the handoff candidate and submission artifacts. For a developer completion
+semantic conflict, it may also check acceptance-criteria boxes in the assigned
+task. Changing criterion text, task metadata/status, product files, or other
+durable workflow files rejects the correction.
 
 ## Logs and Diagnostics
 
@@ -677,6 +777,11 @@ pointer, then starts a separate bounded resolver session. The resolver validates
 and records its answer with agent provenance before the interrupted route
 continues. The default `--clarification-mode=operator` behavior instead stops
 with instructions for answering and resuming.
+
+If a previous invocation already stopped with a pending clarification,
+`devlab continue` displays it and asks for an answer, even with `--unattended`.
+Answer that record and then continue. The automatic resolver described above
+handles clarification requests encountered inside the running workflow loop.
 
 Choice clarifications normally use the recommended option. Text clarifications
 use the narrowest repository-supported answer. File-edit clarifications may make

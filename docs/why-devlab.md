@@ -229,7 +229,7 @@ This preserves an important boundary:
 DevLab can enforce this boundary for clarifications that agents submit. It cannot guarantee that an agent will recognize every ambiguity or refrain from making an unstated assumption. Clarification handling therefore complements rather than replaces good specifications, review, validation, and appropriate human oversight.
 
 See [Clarifications](operator-guide.md#clarifications) and
-[Unattended operation](operator-guide.md#unattended-operation) in the operator guide.
+[Unattended operation](operator-guide.md#before-running-unattended) in the operator guide.
 
 ### Trusted executable configuration
 
