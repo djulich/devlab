@@ -21,14 +21,16 @@ environment.
 DevLab uses semantic versioning.
 
 While the version is `0.x`, minor releases may include breaking changes. Patch
-releases should be bugfix-only and should not intentionally break the
-representation written by that minor release.
+releases are limited to bug fixes and documentation or package-metadata
+corrections; they should not intentionally break the representation written by
+that minor release.
 
 After `1.0.0`, public compatibility surfaces follow normal semantic versioning:
 
 - major versions may include breaking changes;
 - minor versions add backward-compatible functionality; and
-- patch versions fix bugs without changing documented behavior.
+- patch versions fix bugs without changing documented behavior and may include
+  documentation or package-metadata corrections.
 
 ### Version source
 
@@ -48,7 +50,8 @@ Choose the release version from the most significant user-facing change since
 the previous release:
 
 - increment the patch component for bug fixes that preserve documented
-  behavior, for example `0.2.0` to `0.2.1`;
+  behavior, or documentation and package-metadata corrections that introduce no
+  runtime or durable-format changes, for example `0.2.0` to `0.2.1`;
 - increment the minor component for new capabilities or intentional breaking
   changes during `0.x`, for example `0.2.1` to `0.3.0`;
 - release `1.0.0` only after the public compatibility contract is frozen and
@@ -130,10 +133,12 @@ repository tag from the package version and is not part of the version recorded
 in package metadata.
 
 The GitHub Release is the canonical release note; a separate changelog is not
-required. An annotated tag message can seed the draft release note, while a
-lightweight tag uses the release commit message. In either case, review and
-expand the draft with a concise summary of notable changes and any scoped
-recovery guidance before publishing it.
+required. The package's `Release Notes` project URL points to the
+[GitHub Releases page](https://github.com/djulich/devlab/releases) so users can
+find these notes from PyPI. An annotated tag message can seed the draft release
+note, while a lightweight tag uses the release commit message. In either case,
+review and expand the draft with a concise summary of notable changes and any
+scoped recovery guidance before publishing it.
 
 The tag workflow builds once and publishes the verified distributions to
 TestPyPI before production PyPI. Both publishing jobs use trusted publishing,
@@ -231,24 +236,32 @@ compatibility contract.
     and annotated tag notes; it still uses the artifacts from the build job.
     Confirm that TestPyPI shows the expected version, metadata, description,
     wheel, source distribution, and provenance. Open the description links and
-    the Documentation sidebar link; rendering checks alone do not prove that
-    destinations work. Add the drafted release summary, review the note and
-    assets, and mark a `0.x` GitHub Release as a pre-release. This GitHub label
+    the Documentation and Release Notes sidebar links; rendering checks alone
+    do not prove that destinations work. Add the drafted release summary, review
+    the note and assets, and mark a `0.x` GitHub Release as a pre-release. This GitHub label
     does not change the package version or how PyPI installers select it.
 11. Before approving production, smoke-test installation from TestPyPI and
-    through the shared tag in an isolated environment, confirming the reported
-    version and command help for each source:
+    through the shared tag in separate temporary virtual environments, confirming
+    the reported version and command help for each source. These POSIX-shell
+    examples use an installed Python 3.12 and invoke the installed executables by
+    absolute path; they do not replace the operator's normal DevLab tool. Replace
+    `X.Y.Z` with the release version and run the block in one shell:
 
     ```bash
-    uv tool install --force \
+    release_smoke=$(mktemp -d /tmp/devlab-release-smoke.XXXXXX)
+
+    uv venv --python 3.12 "$release_smoke/testpypi"
+    uv pip install --python "$release_smoke/testpypi/bin/python" \
       --default-index https://test.pypi.org/simple/ \
       "devlab==X.Y.Z"
-    devlab --version
-    devlab --help
+    "$release_smoke/testpypi/bin/devlab" --version
+    "$release_smoke/testpypi/bin/devlab" --help
 
-    uv tool install --force "git+https://github.com/djulich/devlab.git@vX.Y.Z"
-    devlab --version
-    devlab --help
+    uv venv --python 3.12 "$release_smoke/tag"
+    uv pip install --python "$release_smoke/tag/bin/python" \
+      "git+https://github.com/djulich/devlab.git@vX.Y.Z"
+    "$release_smoke/tag/bin/devlab" --version
+    "$release_smoke/tag/bin/devlab" --help
     ```
 
 12. In **Actions → Prepare release → the release run → Review deployments**,
@@ -261,9 +274,12 @@ compatibility contract.
     isolated environment:
 
     ```bash
-    uv tool install --force --default-index https://pypi.org/simple/ "devlab==X.Y.Z"
-    devlab --version
-    devlab --help
+    production_smoke=$(mktemp -d /tmp/devlab-production-smoke.XXXXXX)
+    uv venv --python 3.12 "$production_smoke/installed"
+    uv pip install --python "$production_smoke/installed/bin/python" \
+      --default-index https://pypi.org/simple/ "devlab==X.Y.Z"
+    "$production_smoke/installed/bin/devlab" --version
+    "$production_smoke/installed/bin/devlab" --help
     ```
 
     Publish the reviewed GitHub Release after these checks succeed. Uploaded

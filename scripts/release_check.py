@@ -33,6 +33,7 @@ EXPECTED_CLASSIFIERS = {
 }
 EXPECTED_URLS = {
     "Documentation": "https://github.com/djulich/devlab/blob/main/docs/README.md",
+    "Release Notes": "https://github.com/djulich/devlab/releases",
     "Issues": "https://github.com/djulich/devlab/issues",
     "Source": "https://github.com/djulich/devlab",
 }
