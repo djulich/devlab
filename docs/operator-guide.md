@@ -29,10 +29,10 @@ state; they do not execute target-owned validation or prerequisite checks.
 
 ## Operating Model
 
-DevLab treats the target repository as the workflow record. Specs, plans, tasks,
-milestones, findings, clarifications, research, handoffs, logs, and configuration
-are ordinary files so they can be reviewed, committed, diffed, and recovered
-after interrupted runs.
+DevLab represents workflow state and evidence as ordinary files under `.devlab/`,
+allowing durable artifacts to be reviewed, committed, diffed, and recovered
+after interrupted runs. Private runtime artifacts such as managed-service exports
+and smoke-test logs remain ignored under `.devlab/local/`.
 
 Four commands cover the normal operator loop:
 
@@ -115,6 +115,17 @@ the interrupted provider process or its conversation. See
 [Resume an interrupted workflow](how-to/resume-interrupted-workflow.md) for a
 step-by-step procedure.
 
+Recovery continues from a valid durable workflow boundary after resolving the
+cause of a stop; it can include explicitly discarding unfinished, uncommitted
+work. Repair changes persisted workflow state because it is invalid or obsolete.
+Prefer supported commands for recovery and repair. If manual state edits are
+necessary, inspect the reported problem and run `doctor` before and after them.
+
+- `status` shows current progress, blockers, and the recommended next action.
+- `doctor` checks configuration and persisted workflow state for health problems.
+- `diagnostics` provides historical and quality-oriented evidence for deeper
+  investigation.
+
 ### Continue and resume
 
 `devlab continue` is the normal entry point after a stop. It selects planning,
@@ -141,17 +152,17 @@ supersession guidance.
 | Explicit task validation command fails | Returns the task to development for one bounded correction attempt; repeated failure stops. | Inspect the validation evidence after a repeated failure and resolve the cause before continuing. A stopped attempt may leave uncommitted work. |
 | Profile-default task validation fails | Records a soft task-level warning; review can proceed. | Review the evidence. These commands are checked again at milestone integration, where failure creates corrective findings. |
 | Task validation lacks a tool or prerequisite, times out, or encounters an infrastructure error | Stops before review and records the blocker/evidence. Continuation retries validation for the waiting task before review. | Restore the required tool, service, environment, or authorization, then run `continue`. DevLab does not install missing host tools. |
-| Milestone validation fails | Creates corrective findings; missing tools or infrastructure block integration instead. | Let the workflow plan corrective work for command failures. Resolve external blockers before retrying integration. |
+| Milestone validation fails | A known command failure blocks integration and creates corrective findings. Missing prerequisites or infrastructure errors block integration without creating a product defect. | Let the workflow plan corrective work for command failures. Resolve external blockers before retrying integration. |
 | Developer makes no relevant progress | Allows one bounded recovery attempt on the same route; another non-advancing result stops. | Inspect task scope, provider output, and remaining changes before retrying. |
 | Executable configuration changes | Keeps using the authorized snapshot for allowed work, then stops at the configuration boundary. | Review the changed configuration and authorize an untrusted snapshot before continuation; see [Configuration authorization](#executable-configuration-authorization). |
-| Clarification is pending | Default operation waits for an answer. During an explicitly unattended run, a bounded resolver may answer with agent provenance. | Inspect and answer the record, then use `continue` or `resume`. A failed or invalid resolver answer leaves the clarification pending. |
+| Clarification is pending | Default operation waits for an operator answer. A request encountered during an explicitly unattended workflow loop may be answered by a bounded resolver with agent provenance. If already pending when `continue` starts, it is displayed for an operator answer, even with `--unattended`. | Inspect and answer the record, then use `continue` or `resume`. A failed or invalid resolver answer leaves the clarification pending. |
 | Research fails or produces invalid output | Keeps the request pending. Completed research remains available if the requesting role subsequently fails. | Inspect logs and staged output, fix the cause and any remaining worktree changes, then run `continue`; it retries research or returns to the exact requesting route. |
 | Process is interrupted or the worktree is dirty | `continue` inspects the Git boundary and offers supported recovery or reports required remediation. | Stop any surviving provider process and inspect the work before preserving or discarding it as described below. |
 
 Validation details and evidence semantics are defined under
 [Profiles](#validation-selection-and-outcomes). Invalid workflow files, stale
 resume pointers, invalid task dependencies, and other health blockers require
-the repairs reported by `doctor` and continuation; these commands do not invent
+the remediation reported by `doctor` or continuation; these commands do not invent
 replacement state to make a run proceed.
 
 ### Uncommitted state after interruption

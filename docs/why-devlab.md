@@ -220,7 +220,7 @@ Some uncertainties are technical and can be investigated. Others concern product
 
 DevLab provides a durable clarification mechanism for uncertainties that agents surface. A submitted clarification becomes workflow state rather than remaining only inside an agent conversation.
 
-In normal interactive operation, DevLab stops and waits for an operator answer. In explicit unattended mode, resolution can instead be delegated to a separate bounded agent session. DevLab validates that response and records agent provenance so that the source of the answer remains visible.
+In normal interactive operation, DevLab stops and waits for an operator answer. For clarification requests encountered during an explicitly unattended workflow loop, resolution can instead be delegated to a separate bounded agent session. DevLab validates that response and records agent provenance so that the source of the answer remains visible. A clarification already pending when `continue` starts is displayed for an operator answer, even in unattended mode.
 
 This preserves an important boundary:
 
