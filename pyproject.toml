@@ -1,7 +1,7 @@
 [project]
 name = "devlab"
 version = "0.1.2"
-description = "CLI that turns repository-stored specifications, plans, and tasks into reviewed software changes through bounded, role-based agent sessions."
+description = "Auditable workflow orchestration for substantial agentic software development."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
