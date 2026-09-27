@@ -720,6 +720,9 @@ Agent logs live under:
 They include resolved invocation metadata, stdout, stderr, and failure diagnostics.
 When `--retain-prompts` is used, DevLab also writes full base/session prompts next
 to those logs.
+The console start line for developer and reviewer sessions includes the task ID
+and a short, single-line version of its title, for example
+`Starting session 1: developer task=T0001 title="Create Python service foundation" ...`.
 
 Treat logs and retained prompts as sensitive. They may contain target-project
 details, command output, file paths, and prompt context.

@@ -46,6 +46,7 @@ from devlab.research import (
     ResearchSource,
 )
 from devlab.roles import ROLES
+from devlab.session_logging import session_start_context
 from devlab.spec_reconciliation import latest_spec_commit
 from devlab.task_tracker import TASKS_DIR, FileTaskTracker, TaskStatus
 from devlab.workflow_events import load_workflow_events
@@ -2925,7 +2926,8 @@ class TestRunLoop:
 
         messages = [record.getMessage() for record in caplog.records]
         assert any(
-            message == "Starting session 1: developer task=T0001 status=open profile=default "
+            message == 'Starting session 1: developer task=T0001 title="First" '
+            "status=open profile=default "
             "domain=deployment milestone=M1"
             for message in messages
         )
@@ -2933,6 +2935,19 @@ class TestRunLoop:
             message == "Finished session 1: developer task=T0001 status=open next=developer"
             for message in messages
         )
+
+    def test_task_session_title_is_bounded_to_one_line(self, tmp_path: Path) -> None:
+        _setup_tree(tmp_path)
+        _write_task(tmp_path, "T0001", "An ordinary task")
+        snapshot = Workspace(tmp_path).snapshot
+        task = dataclasses.replace(snapshot.list_tasks()[0], title="  Build\n" + "a" * 90)
+
+        context = session_start_context(snapshot, "developer", task)
+
+        assert context.startswith('task=T0001 title="Build ')
+        assert '..." status=open' in context
+        assert "\n" not in context
+        assert len(json.loads(context.split("title=", 1)[1].split(" status=", 1)[0])) == 72
 
     def test_developer_incomplete_task_stays_open(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)

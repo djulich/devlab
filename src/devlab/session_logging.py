@@ -188,8 +188,12 @@ def _task_by_id(snapshot: WorkspaceSnapshot, task_id: str) -> Task | None:
 
 
 def _format_task_context(task: Task) -> str:
+    title = " ".join(task.title.split())
+    if len(title) > 72:
+        title = title[:69].rstrip() + "..."
     parts = [
         f"task={task.id}",
+        f"title={json.dumps(title, ensure_ascii=False)}",
         f"status={task.status.value}",
         f"profile={task.profile or DEFAULT_PROFILE}",
         f"domain={task.domain}",
