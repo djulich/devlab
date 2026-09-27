@@ -229,8 +229,13 @@ def check_task_contracts(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
                     DoctorProblem(task_path, f"depends_on references unknown task {dependency!r}")
                 )
         if task.profile is not None and not profile_path(snapshot.root, task.profile).exists():
+            # A preceding task may create the profile; session routing checks it when needed.
             problems.append(
-                DoctorProblem(task_path, f"references missing profile {task.profile!r}")
+                DoctorProblem(
+                    task_path,
+                    f"references missing profile {task.profile!r}",
+                    blocks=frozenset(),
+                )
             )
     for cycle in _dependency_cycles(dependencies):
         task = next(task for task in tasks if task.id == cycle[0])

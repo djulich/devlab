@@ -676,6 +676,27 @@ def test_doctor_reports_task_referencing_missing_milestone(tmp_path: Path) -> No
     assert any("references missing milestone 'M1'" in message for message in messages)
 
 
+def test_missing_profile_for_later_task_does_not_block_earlier_work(tmp_path: Path) -> None:
+    _write_default_profile(tmp_path)
+    _write_task(tmp_path, "T0001", milestone="M1")
+    _write_task(tmp_path, "T0002", milestone="M1")
+    later_task = tmp_path / ".devlab/tasks/T0002_task.md"
+    later_task.write_text(
+        later_task.read_text().replace('status = "open"', 'status = "open"\nprofile = "future"')
+    )
+    _write_milestone(tmp_path, "M1", task_ids=["T0001", "T0002"])
+
+    problem = next(
+        problem
+        for problem in check_workspace(tmp_path)
+        if problem.path == ".devlab/tasks/T0002_task.md"
+    )
+
+    assert problem.message == "references missing profile 'future'"
+    assert not problem.blocks_operation(DoctorOperation.PLANNING)
+    assert not problem.blocks_operation(DoctorOperation.SESSION)
+
+
 def test_doctor_reports_stale_milestone_task_ids(tmp_path: Path) -> None:
     _write_task(tmp_path, "T0001", milestone="M1")
     _write_milestone(tmp_path, "M1", task_ids=[])
