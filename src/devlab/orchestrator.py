@@ -3862,27 +3862,38 @@ def _run_loop(
             dependency_baseline,
         )
         ctx.write_session_metadata(metadata)
-        if non_advancing_recovery and progress == SessionProgress.NON_ADVANCING:
-            message = (
-                f"developer recovery for task {route.task_id or 'unknown'} did not "
-                "advance product or workflow state"
-            )
+        if repeated_validation_failure or (
+            non_advancing_recovery and progress == SessionProgress.NON_ADVANCING
+        ):
+            if repeated_validation_failure:
+                message = (
+                    f"task {route.task_id or 'unknown'} repeated a failing validation "
+                    "outcome after one bounded developer recovery"
+                )
+                phase = "task_validation"
+                reason = RunStopReason.VALIDATION_FAILED
+                stop_commit_message = "Record repeated task validation failure"
+            else:
+                message = (
+                    f"developer recovery for task {route.task_id or 'unknown'} did not "
+                    "advance product or workflow state"
+                )
+                phase = "non_advancing_session"
+                reason = RunStopReason.DEVELOPER_NON_ADVANCING
+                stop_commit_message = "Record non-advancing developer recovery"
             logger.error("%s. Stopping.", message)
+            try:
+                workspace.sync()
+                commit_all(root, stop_commit_message)
+            except VersionControlError as exc:
+                return _error_result(
+                    sessions_run + 1,
+                    SessionError("version_control", str(exc), 1),
+                )
             return _error_result(
                 sessions_run + 1,
-                SessionError("non_advancing_session", message, 1),
-                reason=RunStopReason.DEVELOPER_NON_ADVANCING,
-            )
-        if repeated_validation_failure:
-            message = (
-                f"task {route.task_id or 'unknown'} repeated a failing validation "
-                "outcome after one bounded developer recovery"
-            )
-            logger.error("%s. Stopping.", message)
-            return _error_result(
-                sessions_run + 1,
-                SessionError("task_validation", message, 1),
-                reason=RunStopReason.VALIDATION_FAILED,
+                SessionError(phase, message, 1),
+                reason=reason,
             )
         if task_validation_stop is not None:
             reason, message = task_validation_stop

@@ -4741,6 +4741,13 @@ def test_repeated_non_advancing_developer_stops_after_one_recovery(
     assert result.sessions_run == 2
     assert len(provider.calls) == 2
     assert "## Bounded Recovery" in provider.calls[1].session_prompt
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+    assert (
+        subprocess.check_output(
+            ["git", "log", "-1", "--format=%s"], cwd=tmp_path, text=True
+        ).strip()
+        == "Record non-advancing developer recovery"
+    )
 
 
 def test_reworded_failed_handoffs_and_task_notes_do_not_reset_recovery_bound(
@@ -4777,6 +4784,7 @@ def test_reworded_failed_handoffs_and_task_notes_do_not_reset_recovery_bound(
     assert result.stop_reason == RunStopReason.DEVELOPER_NON_ADVANCING
     assert result.sessions_run == 2
     assert len(provider.calls) == 2
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
 
 
 def test_profile_prerequisite_blocks_before_agent_and_rechecks_on_retry(
@@ -5090,6 +5098,18 @@ def test_repeated_validation_failure_stops_after_one_developer_recovery(
     task = FileTaskTracker(tmp_path).get("T0001")
     assert task.status == TaskStatus.CHANGES_REQUESTED
     assert not task.acceptance_criteria_complete
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+    assert (
+        subprocess.check_output(
+            ["git", "log", "-1", "--format=%s"], cwd=tmp_path, text=True
+        ).strip()
+        == "Record repeated task validation failure"
+    )
+    committed_paths = subprocess.check_output(
+        ["git", "show", "--pretty=", "--name-only", "HEAD"], cwd=tmp_path, text=True
+    )
+    assert ".devlab/verification/tasks/T0001/" in committed_paths
+    assert ".devlab/history/" in committed_paths
 
 
 class TestTimestamp:
