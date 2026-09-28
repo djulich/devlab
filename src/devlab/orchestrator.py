@@ -1733,6 +1733,24 @@ def _is_non_advancing_recovery(root: Path, route: SessionRoute) -> bool:
     return False
 
 
+def _stopped_developer_recovery(root: Path, task_id: str) -> RunStopReason | None:
+    """Find an unresolved bounded stop for the selected developer task."""
+    for event in reversed(load_workflow_events(root)):
+        if event.data.get("task") != task_id:
+            continue
+        if event.type == "session_progress" and event.data.get("role") == "developer":
+            return None
+        if event.type == "developer_recovery_stopped":
+            reason = event.data.get("reason")
+            if reason in {
+                RunStopReason.DEVELOPER_NON_ADVANCING.value,
+                RunStopReason.VALIDATION_FAILED.value,
+            }:
+                return RunStopReason(reason)
+            return None
+    return None
+
+
 def _recovery_prompt(route: SessionRoute) -> str:
     return (
         "## Bounded Recovery\n\n"
@@ -2740,6 +2758,7 @@ def run_loop(
     mark_specs_planned: bool = False,
     clarification_mode: str = "operator",
     handoff_correction: bool = False,
+    retry_stopped_task: bool = False,
     executable_config: ExecutableConfigSnapshot | None = None,
 ) -> RunResult:
     """Keep owned test services locked across preparation and dependent execution."""
@@ -2763,6 +2782,7 @@ def run_loop(
                 mark_specs_planned=mark_specs_planned,
                 clarification_mode=clarification_mode,
                 handoff_correction=handoff_correction,
+                retry_stopped_task=retry_stopped_task,
                 executable_config=executable_config,
             )
         except TestServiceError as exc:
@@ -2792,6 +2812,7 @@ def _run_loop(
     mark_specs_planned: bool = False,
     clarification_mode: str = "operator",
     handoff_correction: bool = False,
+    retry_stopped_task: bool = False,
     executable_config: ExecutableConfigSnapshot | None = None,
 ) -> RunResult:
     """Run the Git-backed orchestrator loop, returning a structured result."""
@@ -3241,6 +3262,21 @@ def _run_loop(
             if research_resume_active
             else _select_session_route(start_snapshot, role_name)
         )
+        if role_name == "developer" and route.task_id is not None and not retry_stopped_task:
+            stopped_reason = _stopped_developer_recovery(root, route.task_id)
+            if stopped_reason is not None:
+                message = (
+                    f"task {route.task_id} stopped after bounded developer recovery "
+                    f"({stopped_reason.value}); inspect the task and session evidence, resolve "
+                    "the cause, then explicitly retry with devlab continue "
+                    "--retry-stopped-task"
+                )
+                logger.error("%s. Stopping before agent invocation.", message)
+                return _error_result(
+                    sessions_run,
+                    SessionError("stopped_task", message, 1),
+                    reason=stopped_reason,
+                )
         progress_baseline = _session_progress_baseline(start_snapshot)
         non_advancing_recovery = role_name == "developer" and _is_non_advancing_recovery(
             root, route
@@ -3882,6 +3918,12 @@ def _run_loop(
                 reason = RunStopReason.DEVELOPER_NON_ADVANCING
                 stop_commit_message = "Record non-advancing developer recovery"
             logger.error("%s. Stopping.", message)
+            append_workflow_event(
+                root,
+                "developer_recovery_stopped",
+                task=route.task_id or "",
+                reason=reason.value,
+            )
             try:
                 workspace.sync()
                 commit_all(root, stop_commit_message)

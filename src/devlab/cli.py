@@ -256,6 +256,11 @@ def _main() -> None:
         metavar="COMMIT",
         help="Discard only when the observed restart boundary is this exact commit.",
     )
+    continue_parser.add_argument(
+        "--retry-stopped-task",
+        action="store_true",
+        help="Explicitly retry a task stopped after bounded developer recovery.",
+    )
 
     plan_parser = subparsers.add_parser(
         "plan",
@@ -1030,6 +1035,7 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
         planning_only=planning_only,
         clarification_mode=args.clarification_mode,
         handoff_correction=args.handoff_correction,
+        retry_stopped_task=args.retry_stopped_task,
         executable_config=executable_config,
     )
     if isinstance(result, RunResult):

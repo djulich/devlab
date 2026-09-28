@@ -267,7 +267,13 @@ def test_guard_stop_reasons_request_operator_inspection(
     )
 
     text = format_run_summary(summary)
-    assert "then run devlab continue" in text
+    if reason in {
+        RunStopReason.DEVELOPER_NON_ADVANCING,
+        RunStopReason.VALIDATION_FAILED,
+    }:
+        assert "devlab continue --retry-stopped-task" in text
+    else:
+        assert "then run devlab continue" in text
 
 
 def test_summary_explains_pending_research_and_uses_stored_command(

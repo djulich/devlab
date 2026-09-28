@@ -290,10 +290,16 @@ def _next_commands(
     if research is not None:
         return ("devlab continue",)
     if result.stop_reason in {
-        RunStopReason.ERROR,
         RunStopReason.DEVELOPER_NON_ADVANCING,
-        RunStopReason.TASK_CONTRACT_INVALID,
         RunStopReason.VALIDATION_FAILED,
+    }:
+        return (
+            "Inspect the task and session evidence, resolve the cause, then run "
+            "devlab continue --retry-stopped-task.",
+        )
+    if result.stop_reason in {
+        RunStopReason.ERROR,
+        RunStopReason.TASK_CONTRACT_INVALID,
         RunStopReason.VALIDATION_PREREQUISITE_MISSING,
         RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR,
     }:

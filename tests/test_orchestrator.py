@@ -4749,6 +4749,21 @@ def test_repeated_non_advancing_developer_stops_after_one_recovery(
         == "Record non-advancing developer recovery"
     )
 
+    blocked = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+    assert blocked.stop_reason == RunStopReason.DEVELOPER_NON_ADVANCING
+    assert blocked.sessions_run == 0
+    assert len(provider.calls) == 2
+    assert "--retry-stopped-task" in blocked.errors[0].message
+
+    retried = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+        retry_stopped_task=True,
+    )
+    assert retried.sessions_run == 1
+    assert len(provider.calls) == 3
+
 
 def test_reworded_failed_handoffs_and_task_notes_do_not_reset_recovery_bound(
     tmp_path: Path,
@@ -5110,6 +5125,20 @@ def test_repeated_validation_failure_stops_after_one_developer_recovery(
     )
     assert ".devlab/verification/tasks/T0001/" in committed_paths
     assert ".devlab/history/" in committed_paths
+
+    blocked = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+    assert blocked.stop_reason == RunStopReason.VALIDATION_FAILED
+    assert blocked.sessions_run == 0
+    assert len(provider.calls) == 2
+
+    retried = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": provider},
+        retry_stopped_task=True,
+    )
+    assert retried.sessions_run == 1
+    assert len(provider.calls) == 3
 
 
 class TestTimestamp:
