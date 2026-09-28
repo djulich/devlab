@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from devlab.clarifications import Clarification
+from devlab.doctor_recovery import RecoveryStage, load_doctor_recovery
 from devlab.findings import Finding, FindingStatus
 from devlab.generations import (
     GENERATION_MANIFEST,
@@ -111,6 +112,14 @@ class ResearchReport:
 
 
 @dataclasses.dataclass(frozen=True)
+class DoctorRecoveryReport:
+    task: str
+    stage: str
+    summary: str
+    guidance: str
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkflowStateReport:
     project_mode: str
     lifecycle_phase: str
@@ -122,6 +131,7 @@ class WorkflowStateReport:
     current_work: CurrentWorkReport
     clarifications: ClarificationReport
     research: ResearchReport | None
+    doctor_recovery: DoctorRecoveryReport | None
     lifecycle_events: int
 
     def as_dict(self) -> dict[str, object]:
@@ -198,6 +208,30 @@ def build_workflow_state_report(root: Path) -> WorkflowStateReport:
     workspace = Workspace(root)
     snapshot = workspace.snapshot
     next_role = snapshot.assess_state()
+    try:
+        recovery = load_doctor_recovery(root)
+        recovery_error = ""
+    except (OSError, ValueError) as exc:
+        recovery = None
+        recovery_error = str(exc)
+    doctor_recovery = (
+        DoctorRecoveryReport(
+            recovery.task,
+            recovery.stage.value,
+            recovery.diagnosis.summary if recovery.diagnosis else "Diagnosis pending",
+            recovery.diagnosis.guidance if recovery.diagnosis else "",
+        )
+        if recovery is not None
+        else DoctorRecoveryReport("", "invalid", recovery_error, "Run devlab doctor")
+        if recovery_error
+        else None
+    )
+    if recovery is not None and recovery.stage != RecoveryStage.BLOCKED:
+        next_role = {
+            RecoveryStage.PENDING_DOCTOR: "doctor",
+            RecoveryStage.PENDING_PLANNER: "planner",
+            RecoveryStage.PENDING_DEVELOPER: "developer",
+        }[recovery.stage]
     workflow_state = snapshot.workflow_state()
     tasks = snapshot.list_tasks()
     milestones = snapshot.list_milestones()
@@ -232,6 +266,7 @@ def build_workflow_state_report(root: Path) -> WorkflowStateReport:
         current_work=current_work,
         clarifications=clarifications,
         research=research,
+        doctor_recovery=doctor_recovery,
         lifecycle_events=len(events),
     )
 
@@ -280,6 +315,9 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     else:
         lines.append("Resume pointer: none")
     lines.extend(_format_research_report(report.research))
+    if report.doctor_recovery is not None:
+        recovery = report.doctor_recovery
+        lines.append(f"Doctor recovery: {recovery.task} ({recovery.stage}) — {recovery.summary}")
     lines.append(f"Active generation: {report.generations.active}")
     lines.append(f"Archived generations: {len(report.generations.archived)}")
     lines.append(f"Next action: {_next_action(report)}")
@@ -371,6 +409,25 @@ def build_next_command_advice(report: WorkflowStateReport) -> NextCommandAdvice:
             "reconcile_specifications",
             ("devlab", "continue"),
             "specifications_changed",
+            True,
+        )
+    if report.doctor_recovery is not None:
+        recovery = report.doctor_recovery
+        if recovery.stage == "invalid":
+            return NextCommandAdvice(
+                "inspect_workflow", ("devlab", "doctor"), "doctor_recovery_invalid", False
+            )
+        if recovery.stage == RecoveryStage.BLOCKED.value:
+            return NextCommandAdvice(
+                "retry_stopped_task",
+                ("devlab", "continue", "--retry-stopped-task"),
+                "doctor_recovery_blocked",
+                True,
+            )
+        return NextCommandAdvice(
+            "continue_recovery",
+            ("devlab", "continue"),
+            f"doctor_recovery_{recovery.stage}",
             True,
         )
     if report.next_role in {"architect", "planner"}:
@@ -511,6 +568,16 @@ def _next_action(report: WorkflowStateReport) -> str:
         return "Commit or revert dirty spec paths, then run `devlab continue`."
     if report.specs.specs_changed_since_baseline is True:
         return "Run `devlab continue` to reconcile committed spec changes."
+    if report.doctor_recovery is not None:
+        recovery = report.doctor_recovery
+        if recovery.stage == "invalid":
+            return f"Doctor recovery is invalid: {recovery.summary}. Run `devlab doctor`."
+        if recovery.stage == RecoveryStage.BLOCKED.value:
+            return (
+                f"Resolve doctor recovery for {recovery.task}: {recovery.guidance} "
+                "Then run `devlab continue --retry-stopped-task`."
+            )
+        return f"Run `devlab continue` for {recovery.stage.replace('_', ' ')} on {recovery.task}."
     if report.next_role in {"architect", "planner"}:
         return "Run `devlab continue` to continue design or planning."
     if report.next_role in {"developer", "reviewer", "integrator"}:
@@ -571,6 +638,7 @@ def _uninitialized_report(root: Path, events: list[WorkflowEvent]) -> WorkflowSt
         ),
         clarifications=ClarificationReport(pending_blockers=[], resume=None),
         research=None,
+        doctor_recovery=None,
         lifecycle_events=len(events),
     )
 

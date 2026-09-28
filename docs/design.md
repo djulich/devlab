@@ -164,7 +164,12 @@ omitting it inherits them, and an explicit empty list disables mechanical task
 validation with a diagnostic when defaults exist.
 
 Explicit task-command failures return work for one bounded correction attempt;
-repeated failure stops. Profile-default command failures are recorded as soft
+repeated failure routes to a bounded doctor diagnosis. A non-advancing
+developer session does the same. The doctor writes a validated, evidence-backed
+report without editing the workspace. A durable recovery route may direct a
+focused planner task revision or another developer attempt and survive a session
+limit; an unsupported diagnosis stops with operator guidance. Profile-default
+command failures are recorded as soft
 task-level warnings because a repository-wide check may depend on later tasks.
 Missing tools, timeouts, and execution infrastructure failures remain unverified
 or errored checks and stop before review. Agents may run additional checks, but

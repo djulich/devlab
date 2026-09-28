@@ -149,15 +149,26 @@ supersession guidance.
 | Reviewer requests changes | Returns the task to development. | Normally none; the loop continues within its session budget, or the next `continue` selects the developer. |
 | Provider fails, times out, or exits unsuccessfully | Stops and retains diagnostics; uncommitted edits can remain. | Inspect the failure and repair provider availability, authentication, permissions, or configuration as needed. Resolve uncommitted state before retrying with `continue`. |
 | Missing or invalid handoff | Refuses to advance on an invalid result. Optional correction is bounded; see [Handoffs](#session-results-and-handoffs). | Inspect submission diagnostics and remaining edits, address the cause, then retry. Diagnostic cleanup alone does not repair product or workflow files. |
-| Explicit task validation command fails | Returns the task to development for one bounded correction attempt; repeated failure stops with the accepted session and validation evidence committed. A plain `continue` will not launch the same task again. | Inspect the validation evidence, resolve the cause, then run `devlab continue --retry-stopped-task`. |
+| Explicit task validation command fails | Returns the task to development for one bounded correction attempt. Repeated failure commits the evidence and routes to a bounded doctor session. | `continue` runs the doctor or its validated recovery route automatically. If the doctor cannot resolve the blocker, follow its focused guidance before `devlab continue --retry-stopped-task`. |
 | Profile-default task validation fails | Records a soft task-level warning; review can proceed. | Review the evidence. These commands are checked again at milestone integration, where failure creates corrective findings. |
 | Task validation lacks a tool or prerequisite, times out, or encounters an infrastructure error | Stops before review and records the blocker/evidence. Continuation retries validation for the waiting task before review. | Restore the required tool, service, environment, or authorization, then run `continue`. DevLab does not install missing host tools. |
 | Milestone validation fails | A known command failure blocks integration and creates corrective findings. Missing prerequisites or infrastructure errors block integration without creating a product defect. | Let the workflow plan corrective work for command failures. Resolve external blockers before retrying integration. |
-| Developer makes no relevant progress | Allows one bounded recovery attempt on the same route; another non-advancing result stops with the accepted session committed. A plain `continue` will not launch the same task again. | Inspect task scope and provider output, resolve the cause, then run `devlab continue --retry-stopped-task`. |
+| Developer makes no relevant progress | Commits the session and routes the task to a bounded doctor diagnosis. | `continue` runs the doctor or its validated recovery route automatically. If unresolved, follow the doctor's guidance before an explicit retry. |
 | Executable configuration changes | Keeps using the authorized snapshot for allowed work, then stops at the configuration boundary. | Review the changed configuration and authorize an untrusted snapshot before continuation; see [Configuration authorization](#executable-configuration-authorization). |
 | Clarification is pending | Default operation waits for an operator answer. A request encountered during an explicitly unattended workflow loop may be answered by a bounded resolver with agent provenance. If already pending when `continue` starts, it is displayed for an operator answer, even with `--unattended`. | Inspect and answer the record, then use `continue` or `resume`. A failed or invalid resolver answer leaves the clarification pending. |
 | Research fails or produces invalid output | Keeps the request pending. Completed research remains available if the requesting role subsequently fails. | Inspect logs and staged output, fix the cause and any remaining worktree changes, then run `continue`; it retries research or returns to the exact requesting route. |
 | Process is interrupted or the worktree is dirty | `continue` inspects the Git boundary and offers supported recovery or reports required remediation. | Stop any surviving provider process and inspect the work before preserving or discarding it as described below. |
+
+The doctor is a bounded auxiliary role. After a non-advancing developer
+session or repeated explicit task validation failure, DevLab records a recovery
+route and invokes the doctor within the remaining session budget, or on the next
+`continue`. Its structured report is archived in `.devlab/history/` and shown in
+`status`. A supported recommendation routes one focused planner revision or
+another developer attempt, then resumes ordinary workflow selection. The doctor
+cannot edit product or workflow files. An invalid result, a planner that does
+not revise the task, or a further failed recovery stops with recorded evidence.
+An unresolved doctor report gives the operator focused guidance; the explicit
+`--retry-stopped-task` option remains available after resolving the cause.
 
 Validation details and evidence semantics are defined under
 [Profiles](#validation-selection-and-outcomes). Invalid workflow files, stale

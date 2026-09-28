@@ -9,6 +9,7 @@ from typing import Literal
 
 from devlab.agent_config import (
     AGENTS_CONFIG,
+    AUXILIARY_ROLE_NAMES,
     ROLE_NAMES,
     AgentConfiguration,
     ResolvedAgentConfig,
@@ -122,6 +123,12 @@ def run_agent_smoke_test(
             discover_provider_versions=True,
         )
     )
+    if role_names is not None:
+        unconfigured = [role for role in role_names if role not in configuration.resolved]
+        if unconfigured:
+            raise ValueError(
+                "auxiliary role(s) are not explicitly configured: " + ", ".join(unconfigured)
+            )
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     results: list[AgentSmokeCheckResult] = []
     targets, skipped = _select_smoke_targets(
@@ -319,7 +326,9 @@ def _role_provider_targets(configuration: AgentConfiguration) -> list[AgentSmoke
         tuple[str, str, str, bool, tuple[str, ...]],
         tuple[ResolvedAgentConfig, AgentProvider, list[str], list[ResolvedAgentConfig]],
     ] = {}
-    for role_name in ROLE_NAMES:
+    for role_name in ROLE_NAMES + tuple(
+        name for name in AUXILIARY_ROLE_NAMES if name in configuration.resolved
+    ):
         resolved = configuration.resolved[role_name]
         provider_instance = configuration.providers[configuration.role_providers[role_name]]
         key = (
@@ -425,9 +434,10 @@ def _emit_progress(
 
 
 def _validate_roles(role_names: tuple[str, ...]) -> None:
-    unknown = [role_name for role_name in role_names if role_name not in ROLE_NAMES]
+    known = ROLE_NAMES + AUXILIARY_ROLE_NAMES
+    unknown = [role_name for role_name in role_names if role_name not in known]
     if unknown:
-        valid = ", ".join(ROLE_NAMES)
+        valid = ", ".join(known)
         raise ValueError(f"unknown role(s): {', '.join(unknown)}; expected one of: {valid}")
 
 

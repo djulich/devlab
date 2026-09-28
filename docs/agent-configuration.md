@@ -42,10 +42,18 @@ Supported roles are:
 - `reviewer`
 - `integrator`
 - `researcher` (optional auxiliary role)
+- `doctor` (optional auxiliary role)
 
 The five software-workflow roles always resolve from `[defaults]` when they do
 not have an override. The researcher inherits the requesting architect,
 planner, or developer configuration unless `[roles.researcher]` is present.
+The doctor inherits the developer configuration unless `[roles.doctor]` is
+present. DevLab invokes it after an unexplained non-advancing developer session
+or repeated explicit task validation failure. The
+doctor reads session evidence and produces a structured diagnosis; DevLab owns
+the resulting route.
+An explicitly configured doctor is included in `devlab agent-smoke-test`; use
+`devlab agent-smoke-test --role doctor` to check it alone.
 The clarification resolver always inherits the role that requested the
 clarification and is not independently configurable.
 

@@ -14,7 +14,7 @@ from devlab.agents import AgentProvider, CliAgentProvider
 
 AGENTS_CONFIG = ".devlab/config/agents.toml"
 ROLE_NAMES = ("architect", "planner", "developer", "reviewer", "integrator")
-AUXILIARY_ROLE_NAMES = ("researcher",)
+AUXILIARY_ROLE_NAMES = ("researcher", "doctor")
 
 
 @dataclasses.dataclass(frozen=True)

@@ -6,6 +6,7 @@ from pathlib import Path
 from devlab.clarification_ops import validate_clarification_answer
 from devlab.clarifications import CLARIFICATIONS_DIR, FileClarificationTracker
 from devlab.doctor_common import DoctorProblem, display_path
+from devlab.doctor_recovery import RECOVERY_PATH, load_doctor_recovery
 from devlab.findings import FindingStatus
 from devlab.git import VersionControlError, run_git
 from devlab.milestones import (
@@ -60,6 +61,16 @@ def check_workflow_state(root: Path) -> list[DoctorProblem]:
         load_workflow_state(root)
     except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
         return [DoctorProblem(WORKFLOW_STATE, str(exc))]
+    return []
+
+
+def check_doctor_recovery(root: Path, snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:
+    try:
+        recovery = load_doctor_recovery(root)
+    except (OSError, ValueError) as exc:
+        return [DoctorProblem(RECOVERY_PATH, str(exc))]
+    if recovery is not None and recovery.task not in {item.id for item in snapshot.list_tasks()}:
+        return [DoctorProblem(RECOVERY_PATH, f"doctor recovery task {recovery.task} is missing")]
     return []
 
 

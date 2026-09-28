@@ -6,9 +6,15 @@ import tomllib
 from pathlib import Path
 from typing import Any, cast
 
-from devlab.agent_config import AGENTS_CONFIG, ROLE_NAMES
+from devlab.agent_config import AGENTS_CONFIG, AUXILIARY_ROLE_NAMES, ROLE_NAMES
+from devlab.doctor_recovery import RecoveryStage, load_doctor_recovery
 from devlab.prompt_resources import read_prompt_resource
-from devlab.prompts import build_base_prompt, build_researcher_prompt, build_session_prompt
+from devlab.prompts import (
+    build_base_prompt,
+    build_doctor_prompt,
+    build_researcher_prompt,
+    build_session_prompt,
+)
 from devlab.research import ResearchStatus
 from devlab.roles import ROLES
 from devlab.workspace import WorkspaceSnapshot
@@ -100,6 +106,22 @@ def build_prompt_context_report(snapshot: WorkspaceSnapshot) -> PromptContextRep
                     thresholds=role_thresholds,
                 )
             )
+    recovery = load_doctor_recovery(root)
+    if recovery is not None and recovery.stage == RecoveryStage.PENDING_DOCTOR:
+        task = next((item for item in snapshot.list_tasks() if item.id == recovery.task), None)
+        if task is not None:
+            base_prompt = read_prompt_resource("role-doctor.md")
+            session_prompt = build_doctor_prompt(task, recovery.trigger, root)
+            role_thresholds = thresholds.get("doctor", thresholds["default"])
+            roles.append(
+                RolePromptContext(
+                    role_name="doctor",
+                    base=measure_prompt(base_prompt),
+                    session=measure_prompt(session_prompt),
+                    total=measure_prompt(base_prompt + "\n\n" + session_prompt),
+                    thresholds=role_thresholds,
+                )
+            )
     return PromptContextReport(tuple(roles))
 
 
@@ -110,7 +132,7 @@ def load_prompt_context_thresholds(root: Path) -> dict[str, PromptContextThresho
     thresholds = {"default": default_thresholds}
     roles = _table(prompt_context.get("roles", {}), "prompt_context.roles")
     for role_name, value in roles.items():
-        if role_name not in {*ROLE_NAMES, "researcher"}:
+        if role_name not in {*ROLE_NAMES, *AUXILIARY_ROLE_NAMES}:
             raise ValueError(f"prompt_context.roles.{role_name} is not a known role")
         role_table = _table(value, f"prompt_context.roles.{role_name}")
         thresholds[role_name] = _thresholds_from_table(

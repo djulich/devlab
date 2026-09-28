@@ -100,6 +100,13 @@ researcher session and returned as cited supporting evidence to the exact
 requesting route. Research does not supply operator intent or workflow authority.
 _Avoid_: clarification, design decision, unverified agent opinion
 
+**Doctor recovery**:
+A bounded software-workflow investigation after repeated developer stagnation or
+explicit task validation failure. The doctor supplies an evidence-backed
+diagnosis; DevLab validates its action and owns the durable planner/developer
+route or operator stop. The doctor does not edit authoritative files.
+_Avoid_: treating a role recommendation as permission for arbitrary repair
+
 **Architecture-reviewed milestone**:
 An integrated milestone for which the architect performed project-state sync against design/spec/project direction. It is not an approval claim; remaining drift is represented as findings.
 _Avoid_: architecture-approved milestone

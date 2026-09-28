@@ -62,6 +62,7 @@ def test_archive_active_generation_moves_workflow_bundle_and_keeps_specs(
     _write(tmp_path / ".devlab/logs/agents/session.log", "log")
     _write(tmp_path / ".devlab/plans/project-plan.md", "plan")
     _write(tmp_path / ".devlab/workflow.toml", "version = 1\n")
+    _write(tmp_path / ".devlab/doctor-recovery.json", "recovery")
     _write(tmp_path / ".devlab/specs/system/spec.md", "spec")
     _write(tmp_path / ".devlab/config/agents.toml", "config")
     _write(tmp_path / ".devlab/adr/0001-decision.md", "adr")
@@ -86,6 +87,8 @@ def test_archive_active_generation_moves_workflow_bundle_and_keeps_specs(
     assert (archive / "verification/tasks/T0001/session.json").read_text() == "task evidence"
     assert list((tmp_path / ".devlab/verification").iterdir()) == []
     assert (archive / "workflow.toml").read_text() == "version = 1\n"
+    assert (archive / "doctor-recovery.json").read_text() == "recovery"
+    assert not (tmp_path / ".devlab/doctor-recovery.json").exists()
     assert not (archive / "specs").exists()
     assert not (archive / "config").exists()
     assert not (archive / "adr").exists()

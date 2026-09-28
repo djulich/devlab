@@ -87,8 +87,16 @@ def build_run_summary(
     """Build read-only operator guidance from a completed bounded run."""
     workspace = Workspace(root)
     snapshot = workspace.snapshot
-    next_role = snapshot.assess_state()
-    task = _next_task(snapshot, next_role)
+    report = build_workflow_state_report(root)
+    next_role = report.next_role
+    task = (
+        next(
+            (item for item in snapshot.list_tasks() if item.id == report.doctor_recovery.task),
+            None,
+        )
+        if report.doctor_recovery is not None
+        else _next_task(snapshot, next_role)
+    )
     milestone = _next_milestone(snapshot, next_role)
     blockers = snapshot.blocking_clarifications()
     clarification = (
@@ -102,7 +110,6 @@ def build_run_summary(
         else None
     )
     executable_config = _executable_config_summary(root, initial_executable_config)
-    report = build_workflow_state_report(root)
     research = (
         RunResearchSummary(
             report.research.id,
@@ -289,6 +296,11 @@ def _next_commands(
         )
     if research is not None:
         return ("devlab continue",)
+    if state_advice.action == "retry_stopped_task":
+        return (
+            "Inspect the doctor diagnosis, resolve the cause, then run "
+            "devlab continue --retry-stopped-task.",
+        )
     if result.stop_reason in {
         RunStopReason.DEVELOPER_NON_ADVANCING,
         RunStopReason.VALIDATION_FAILED,

@@ -501,6 +501,48 @@ def test_smoke_test_supports_role_specific_checks(
     assert calls[0][2] == "test"
 
 
+def test_smoke_test_includes_configured_doctor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "test"
+
+        [roles.doctor]
+        provider = "diagnostic"
+
+        [providers.test]
+        command = "agent"
+        args = ["{system_prompt}", "{session_prompt}"]
+        version_command = ""
+
+        [providers.diagnostic]
+        command = "doctor-agent"
+        args = ["{system_prompt}", "{session_prompt}"]
+        version_command = ""
+        """,
+    )
+
+    def fake_run(*args: Any, **kwargs: Any) -> object:
+        kwargs["stdout"].write(SMOKE_MARKER)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.agents._run_process", fake_run)
+
+    result = run_agent_smoke_test(tmp_path, role_names=("doctor",))
+
+    assert result.passed
+    assert len(result.check_results) == 1
+    assert result.check_results[0].role_names == ("doctor",)
+    assert result.check_results[0].config.provider == "diagnostic"
+
+
 def test_smoke_test_deduplicates_role_configs_that_only_differ_by_maximum_duration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

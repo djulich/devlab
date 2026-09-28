@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
 import pytest
 
 from devlab.clarifications import FileClarificationTracker
+from devlab.doctor_recovery import (
+    DoctorAction,
+    DoctorDiagnosis,
+    DoctorRecovery,
+    RecoveryStage,
+    save_doctor_recovery,
+)
+from devlab.doctor_workflow_state import check_doctor_recovery
 from devlab.findings import FileFindingTracker
 from devlab.generations import archive_active_generation
 from devlab.init import init_workspace
@@ -48,6 +57,7 @@ def test_workflow_state_report_json_has_structured_sections(tmp_path: Path) -> N
 
     assert set(payload) == {
         "current_work",
+        "doctor_recovery",
         "clarifications",
         "generations",
         "history",
@@ -65,6 +75,107 @@ def test_workflow_state_report_json_has_structured_sections(tmp_path: Path) -> N
     assert payload["clarifications"]["pending_blockers"] == []
     assert payload["clarifications"]["resume"] is None
     assert payload["research"] is None
+    assert payload["doctor_recovery"] is None
+
+
+@pytest.mark.parametrize(
+    ("stage", "role", "action", "command"),
+    [
+        (RecoveryStage.PENDING_DOCTOR, "doctor", "continue_recovery", "devlab continue"),
+        (RecoveryStage.PENDING_PLANNER, "planner", "continue_recovery", "devlab continue"),
+        (RecoveryStage.PENDING_DEVELOPER, "developer", "continue_recovery", "devlab continue"),
+        (
+            RecoveryStage.BLOCKED,
+            "developer",
+            "retry_stopped_task",
+            "devlab continue --retry-stopped-task",
+        ),
+    ],
+)
+def test_doctor_recovery_is_reported_as_next_route(
+    tmp_path: Path, stage: RecoveryStage, role: str, action: str, command: str
+) -> None:
+    init_workspace(tmp_path)
+    (tmp_path / ".devlab/plans/design-plan.md").write_text("# Design\n")
+    write_task(tmp_path, "T0001", "First", "M1")
+    save_doctor_recovery(
+        tmp_path,
+        DoctorRecovery(
+            "T0001",
+            "developer_non_advancing",
+            stage,
+            None
+            if stage == RecoveryStage.PENDING_DOCTOR
+            else DoctorDiagnosis(
+                "task_ambiguity", DoctorAction.REVISE_TASK, "Clarify task", "Use specs", ("x",)
+            ),
+        ),
+    )
+
+    report = build_workflow_state_report(tmp_path)
+    advice = build_next_command_advice(report)
+
+    assert report.next_role == role
+    assert report.doctor_recovery is not None
+    assert report.doctor_recovery.task == "T0001"
+    assert advice.action == action
+    assert advice.command == command
+
+
+def test_invalid_doctor_recovery_has_read_only_diagnostic(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    (tmp_path / ".devlab/doctor-recovery.json").write_text("not JSON")
+
+    report = build_workflow_state_report(tmp_path)
+    advice = build_next_command_advice(report)
+    problems = check_doctor_recovery(tmp_path, Workspace(tmp_path).snapshot)
+
+    assert report.doctor_recovery is not None
+    assert report.doctor_recovery.stage == "invalid"
+    assert advice.action == "inspect_workflow"
+    assert problems and "invalid doctor recovery" in problems[0].message
+
+
+@pytest.mark.parametrize("stage", list(RecoveryStage))
+@pytest.mark.parametrize("dirty", [False, True])
+def test_specification_advice_precedes_doctor_recovery(
+    tmp_path: Path, stage: RecoveryStage, dirty: bool
+) -> None:
+    init_workspace(tmp_path)
+    (tmp_path / ".devlab/plans/design-plan.md").write_text("# Design\n")
+    write_task(tmp_path, "T0001", "First", "M1")
+    save_doctor_recovery(
+        tmp_path,
+        DoctorRecovery(
+            "T0001",
+            "developer_non_advancing",
+            stage,
+            None
+            if stage == RecoveryStage.PENDING_DOCTOR
+            else DoctorDiagnosis(
+                "task_ambiguity", DoctorAction.REVISE_TASK, "Clarify task", "Use specs", ("x",)
+            ),
+        ),
+    )
+    report = build_workflow_state_report(tmp_path)
+    report = dataclasses.replace(
+        report,
+        specs=dataclasses.replace(
+            report.specs,
+            dirty_spec_paths=[".devlab/specs/system/product.md"] if dirty else [],
+            specs_changed_since_baseline=True,
+        ),
+    )
+
+    advice = build_next_command_advice(report)
+
+    assert advice.action == ("inspect_dirty_specs" if dirty else "reconcile_specifications")
+    assert advice.command == "devlab continue"
+    assert advice.mutates_state is not dirty
+    text = format_workflow_state_report(report)
+    assert (
+        "Commit or revert dirty spec paths" if dirty else "reconcile committed spec changes"
+    ) in text
 
 
 def test_current_work_counts_tasks_milestones_and_findings(tmp_path: Path) -> None:

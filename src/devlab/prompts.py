@@ -218,6 +218,22 @@ def build_researcher_prompt(
     return "\n\n".join(parts)
 
 
+def build_doctor_prompt(task: Task, trigger: str, root: Path) -> str:
+    """Give the doctor bounded task identity and durable evidence locations."""
+    return (
+        f"## Stopped task\n\nTask: {task.id}\nTrigger: {trigger}\n"
+        f"Task file: {task.path.relative_to(root).as_posix()}\n\n"
+        "## Evidence\n\nInspect this task and its specifications, `.devlab/history/`, "
+        "`.devlab/logs/agents/`, and `.devlab/verification/tasks/` for the latest "
+        "attempts. Cite actual relative file paths in your result.\n\n"
+        "## Result\n\nWrite only `.devlab/session-artifacts/doctor/result.json` with "
+        "`schema_version` 1, this `task`, nonempty `cause`, `summary`, `guidance`, "
+        "nonempty `evidence` array of relative file paths, and `action` set to "
+        "`retry_developer`, `revise_task`, or `operator`. Use `operator` when "
+        "evidence cannot support an automatic route."
+    )
+
+
 def _format_research_knowledge(knowledge: ProjectKnowledge) -> str:
     documents = []
     if knowledge.context_map is not None:

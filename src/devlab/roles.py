@@ -20,4 +20,5 @@ ROLES: dict[str, RoleConfig] = {
     "reviewer": RoleConfig("reviewer", "role-reviewer.md", True, True),
     "integrator": RoleConfig("integrator", "role-integrator.md", True, True),
     "researcher": RoleConfig("researcher", "role-researcher.md", False, False),
+    "doctor": RoleConfig("doctor", "role-doctor.md", False, False),
 }

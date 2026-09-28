@@ -14,6 +14,14 @@ from devlab._logging import logger
 from devlab.agents import AgentCall, AgentInvocation, AgentResult, MockProvider, ProviderError
 from devlab.clarification_ops import answer_clarification, resume_workflow
 from devlab.clarifications import FileClarificationTracker
+from devlab.doctor_recovery import (
+    DoctorAction,
+    DoctorDiagnosis,
+    DoctorRecovery,
+    RecoveryStage,
+    load_doctor_recovery,
+    save_doctor_recovery,
+)
 from devlab.executable_config import build_executable_config_snapshot
 from devlab.findings import FINDINGS_DIR, FileFindingTracker, FindingStatus
 from devlab.handoffs import (
@@ -75,6 +83,68 @@ def _result_from_handoff(handoff: Handoff) -> SessionResult:
             role=handoff.role_name,
         ),
         candidate=candidate_from_handoff(handoff),
+    )
+
+
+def _write_doctor_result(call: AgentCall, action: str) -> None:
+    task = next((call.root / TASKS_DIR).glob("T0001_*.md"))
+    path = call.root / ARTIFACTS_DIR / "doctor" / "result.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "task": "T0001",
+                "cause": "unresolved_task_blocker",
+                "action": action,
+                "summary": "The developer did not make progress on this task",
+                "guidance": "Review the task's unresolved blocker",
+                "evidence": [task.relative_to(call.root).as_posix()],
+            }
+        )
+    )
+
+
+def _submit_recovery_handoff(call: AgentCall, *, completed: bool) -> None:
+    envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
+    outcome = "completed" if completed else "failed"
+    changed = ["product.txt"] if completed and call.role_name == "developer" else []
+    issues = [] if completed else ["Still blocked"]
+    envelope_path.with_name("handoff-candidate.toml").write_text(
+        "schema_version = 1\n"
+        f"outcome = {json.dumps(outcome)}\n"
+        'commit_message = "Recovery session"\n'
+        'done = ["Inspected task"]\n'
+        f"changed_artifacts = {json.dumps(changed)}\n"
+        f"open_issues = {json.dumps(issues)}\n"
+        "addressed_findings = []\n"
+        'next_session_hint = "Continue."\n'
+        + ("planning_complete = true\n" if call.role_name == "planner" else "")
+    )
+    submit_session_handoff(call.root, envelope_path=envelope_path)
+
+
+def _setup_doctor_recovery(
+    root: Path, stage: RecoveryStage = RecoveryStage.PENDING_DEVELOPER
+) -> None:
+    _setup_tree(root)
+    (root / DESIGN_PLAN).write_text("# Design\n")
+    task = _write_task(root, "T0001", "First")
+    save_doctor_recovery(
+        root,
+        DoctorRecovery(
+            "T0001",
+            "developer_non_advancing",
+            stage,
+            None
+            if stage == RecoveryStage.PENDING_DOCTOR
+            else DoctorDiagnosis(
+                "task_ambiguity",
+                DoctorAction.RETRY_DEVELOPER,
+                "Use the specification's alternate approach",
+                "Follow the specification",
+                (task.relative_to(root).as_posix(),),
+            ),
+        ),
     )
 
 
@@ -2932,7 +3002,7 @@ class TestRunLoop:
             for message in messages
         )
         assert any(
-            message == "Finished session 1: developer task=T0001 status=open next=developer"
+            message == "Finished session 1: developer task=T0001 status=open next=doctor"
             for message in messages
         )
 
@@ -4710,7 +4780,7 @@ def test_handoff_correction_can_check_assigned_acceptance_criterion(
     assert 'status = "in_review"' in task.read_text()
 
 
-def test_repeated_non_advancing_developer_stops_after_one_recovery(
+def test_doctor_escalates_non_advancing_developer(
     tmp_path: Path,
 ) -> None:
     _setup_tree(tmp_path)
@@ -4718,6 +4788,9 @@ def test_repeated_non_advancing_developer_stops_after_one_recovery(
     _write_task(tmp_path, "T0001", "First")
 
     def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "doctor":
+            _write_doctor_result(call, "operator")
+            return
         envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
         envelope_path.with_name("handoff-candidate.toml").write_text(
             'schema_version = 1\noutcome = "failed"\n'
@@ -4740,13 +4813,13 @@ def test_repeated_non_advancing_developer_stops_after_one_recovery(
     assert result.stop_reason == RunStopReason.DEVELOPER_NON_ADVANCING
     assert result.sessions_run == 2
     assert len(provider.calls) == 2
-    assert "## Bounded Recovery" in provider.calls[1].session_prompt
+    assert provider.calls[1].role_name == "doctor"
     assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
     assert (
         subprocess.check_output(
             ["git", "log", "-1", "--format=%s"], cwd=tmp_path, text=True
         ).strip()
-        == "Record non-advancing developer recovery"
+        == "Record doctor diagnosis for T0001"
     )
 
     blocked = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
@@ -4775,6 +4848,9 @@ def test_reworded_failed_handoffs_and_task_notes_do_not_reset_recovery_bound(
 
     def on_invoke(call: AgentCall) -> None:
         nonlocal invocations
+        if call.role_name == "doctor":
+            _write_doctor_result(call, "retry_developer")
+            return
         invocations += 1
         task_path.write_text(task_path.read_text() + f"\nPrerequisite note {invocations}.\n")
         envelope_path = Path(call.environment["DEVLAB_SESSION_ENVELOPE"])
@@ -4797,9 +4873,323 @@ def test_reworded_failed_handoffs_and_task_notes_do_not_reset_recovery_bound(
     )
 
     assert result.stop_reason == RunStopReason.DEVELOPER_NON_ADVANCING
-    assert result.sessions_run == 2
-    assert len(provider.calls) == 2
+    assert result.sessions_run == 3
+    assert len(provider.calls) == 3
     assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+
+
+@pytest.mark.parametrize("action", ["retry_developer", "revise_task"])
+def test_doctor_routes_recovery_without_operator_retry(tmp_path: Path, action: str) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    task_path = _write_task(tmp_path, "T0001", "First")
+    developer_calls = 0
+
+    def on_invoke(call: AgentCall) -> None:
+        nonlocal developer_calls
+        if call.role_name == "doctor":
+            _write_doctor_result(call, action)
+            return
+        if call.role_name == "planner":
+            task_path.write_text(task_path.read_text() + "\nClarified from design.\n")
+            _submit_recovery_handoff(call, completed=True)
+            return
+        developer_calls += 1
+        if developer_calls == 2:
+            (call.root / "product.txt").write_text("implemented\n")
+            complete_acceptance(call.root, "T0001")
+            _submit_recovery_handoff(call, completed=True)
+        else:
+            _submit_recovery_handoff(call, completed=False)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+    first = run_loop(
+        tmp_path,
+        max_sessions=2,
+        agent_providers={"default": provider},
+    )
+    assert first.stop_reason == RunStopReason.SESSION_LIMIT
+    assert [call.role_name for call in provider.calls] == ["developer", "doctor"]
+
+    second = run_loop(
+        tmp_path,
+        max_sessions=2 if action == "revise_task" else 1,
+        agent_providers={"default": provider},
+    )
+    expected_roles = ["planner", "developer"] if action == "revise_task" else ["developer"]
+    assert [call.role_name for call in provider.calls[2:]] == expected_roles
+    assert second.sessions_run == len(expected_roles)
+    assert (tmp_path / "product.txt").read_text() == "implemented\n"
+    assert not (tmp_path / ".devlab/doctor-recovery.json").exists()
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+
+
+def test_doctor_forbidden_edit_stops_cleanly_without_another_agent(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First")
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "doctor":
+            (call.root / "forbidden.txt").write_text("doctor edit\n")
+            _write_doctor_result(call, "retry_developer")
+            return
+        _submit_recovery_handoff(call, completed=False)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+    result = run_loop(tmp_path, max_sessions=4, agent_providers={"default": provider})
+
+    assert result.stop_reason == RunStopReason.ERROR
+    assert result.sessions_run == 2
+    assert [call.role_name for call in provider.calls] == ["developer", "doctor"]
+    assert not (tmp_path / "forbidden.txt").exists()
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+    blocked = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+    assert blocked.sessions_run == 0
+    assert len(provider.calls) == 2
+
+
+def test_doctor_repair_attempt_is_bounded(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First")
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "doctor":
+            _write_doctor_result(call, "retry_developer")
+        else:
+            _submit_recovery_handoff(call, completed=False)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+    result = run_loop(tmp_path, max_sessions=5, agent_providers={"default": provider})
+
+    assert result.stop_reason == RunStopReason.DEVELOPER_NON_ADVANCING
+    assert result.sessions_run == 3
+    assert [call.role_name for call in provider.calls] == [
+        "developer",
+        "doctor",
+        "developer",
+    ]
+    blocked = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+    assert blocked.sessions_run == 0
+    assert len(provider.calls) == 3
+
+
+@pytest.mark.parametrize("request_kind", ["clarification", "research"])
+@pytest.mark.parametrize("completed", [False, True])
+def test_doctor_recovery_survives_interruption_and_resume(
+    tmp_path: Path, request_kind: str, completed: bool
+) -> None:
+    _setup_doctor_recovery(tmp_path)
+    handoff_text = _clarification_handoff()
+    if request_kind == "research":
+        handoff_text = (
+            "# Handoff: developer\n"
+            "## Done\n- Identified a research question.\n"
+            "## Changed Artifacts\n- None\n"
+            "## Open Issues\n- Research is required.\n"
+            "## Addressed Findings\n- None\n"
+            "## Next Session Hint\nResearch lock behavior.\n"
+            "## Research Request\nresearch_required = true\n"
+            'title = "Lock behavior"\nscope = "task:T0001"\n'
+            'question = "How do session locks behave?"\n'
+            'context = "The implementation needs a lock."\n'
+            'desired_outcome = "Recommend an approach."\n'
+            'acceptance_criteria = ["Use primary documentation."]\n'
+        )
+    first = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": MockProvider(handoff_text=handoff_text)},
+    )
+    assert first.stop_reason == (
+        RunStopReason.CLARIFICATION_BLOCKED
+        if request_kind == "clarification"
+        else RunStopReason.RESEARCH_PENDING
+    )
+    recovery = load_doctor_recovery(tmp_path)
+    assert recovery is not None and recovery.stage == RecoveryStage.PENDING_DEVELOPER
+    if request_kind == "clarification":
+        answer_clarification(tmp_path, "CL0001", choice="A")
+    else:
+        researcher = MockProvider(
+            write_handoff=False,
+            on_invoke=lambda call: _write_researcher_result(call, "RS0001"),
+        )
+        researched = run_loop(tmp_path, max_sessions=1, agent_providers={"default": researcher})
+        assert researched.stop_reason == RunStopReason.RESEARCH_COMPLETED
+        assert load_doctor_recovery(tmp_path) == recovery
+
+    def on_invoke(call: AgentCall) -> None:
+        assert call.role_name == "developer"
+        assert "## Doctor recovery" in call.session_prompt
+        if completed:
+            (call.root / "product.txt").write_text("implemented\n")
+            complete_acceptance(call.root, "T0001")
+        _submit_recovery_handoff(call, completed=completed)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+    second = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+    assert [call.role_name for call in provider.calls] == ["developer"]
+    if completed:
+        assert second.exit_code == 0
+        assert load_doctor_recovery(tmp_path) is None
+    else:
+        assert second.stop_reason == RunStopReason.DEVELOPER_NON_ADVANCING
+        blocked = load_doctor_recovery(tmp_path)
+        assert blocked is not None and blocked.stage == RecoveryStage.BLOCKED
+        third = run_loop(tmp_path, max_sessions=3, agent_providers={"default": provider})
+        assert third.sessions_run == 0
+        assert len(provider.calls) == 1
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+
+
+def test_doctor_recovery_profile_warning_allows_review(tmp_path: Path) -> None:
+    _setup_doctor_recovery(tmp_path)
+    _write_profile(tmp_path, "default", validation=["false"])
+    provider = MockProvider(on_invoke=lambda call: complete_acceptance(call.root, "T0001"))
+    result = run_loop(tmp_path, max_sessions=2, agent_providers={"default": provider})
+
+    assert result.exit_code == 0
+    assert [call.role_name for call in provider.calls] == ["developer", "reviewer"]
+    assert load_doctor_recovery(tmp_path) is None
+
+
+@pytest.mark.parametrize("fails", [False, True])
+@pytest.mark.parametrize("source", ["task", "profile"])
+def test_doctor_recovery_waits_for_deferred_validation(
+    tmp_path: Path, fails: bool, source: str
+) -> None:
+    _setup_doctor_recovery(tmp_path)
+    command = "test -e ready || exit 127; test ! -e fail"
+    if source == "task":
+        _write_task(tmp_path, "T0001", "First", validation=[command])
+    else:
+        _write_profile(tmp_path, "default", validation=[command])
+    (tmp_path / ".gitignore").write_text("ready\nfail\n")
+    developer = MockProvider(on_invoke=lambda call: complete_acceptance(call.root, "T0001"))
+    first = run_loop(tmp_path, max_sessions=1, agent_providers={"default": developer})
+    assert first.stop_reason == RunStopReason.VALIDATION_PREREQUISITE_MISSING
+    recovery = load_doctor_recovery(tmp_path)
+    assert recovery is not None and recovery.stage == RecoveryStage.PENDING_DEVELOPER
+    (tmp_path / "ready").touch()
+    if fails:
+        (tmp_path / "fail").touch()
+
+    provider = MockProvider()
+    second = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+    if fails and source == "task":
+        assert second.stop_reason == RunStopReason.VALIDATION_FAILED
+        assert provider.calls == []
+        blocked = load_doctor_recovery(tmp_path)
+        assert blocked is not None and blocked.stage == RecoveryStage.BLOCKED
+    else:
+        assert second.exit_code == 0
+        assert [call.role_name for call in provider.calls] == ["reviewer"]
+        assert load_doctor_recovery(tmp_path) is None
+
+
+@pytest.mark.parametrize("stage", list(RecoveryStage))
+@pytest.mark.parametrize("reconcile_specs", [False, True])
+def test_replanning_archives_doctor_recovery(
+    tmp_path: Path, stage: RecoveryStage, reconcile_specs: bool
+) -> None:
+    _setup_doctor_recovery(tmp_path, stage)
+    original = (tmp_path / ".devlab/doctor-recovery.json").read_bytes()
+    if reconcile_specs:
+        _prepare_workflow_repo(tmp_path)
+        _write_system_spec(tmp_path, "# Changed specification\n")
+        _commit_all(tmp_path, "Change specs")
+    provider = MockProvider()
+    result = run_loop(
+        tmp_path,
+        max_sessions=2,
+        planning_only=True,
+        replace_plan=not reconcile_specs,
+        agent_providers={"default": provider},
+    )
+
+    assert result.exit_code == 0
+    assert [call.role_name for call in provider.calls] == ["architect", "planner"]
+    assert load_doctor_recovery(tmp_path) is None
+    assert (tmp_path / ".devlab/generations/0001/doctor-recovery.json").read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "edit",
+    ["new_symlink", "retarget_symlink", "delete_symlink", "mode", "file_to_link", "dir_to_link"],
+)
+def test_doctor_restores_file_types_links_and_permissions(tmp_path: Path, edit: str) -> None:
+    _setup_doctor_recovery(tmp_path, RecoveryStage.PENDING_DOCTOR)
+    product = tmp_path / "product.txt"
+    product.write_text("original\n")
+    product.chmod(0o644)
+    link = tmp_path / "product-link"
+    link.symlink_to("product.txt")
+    directory = tmp_path / "product-dir"
+    directory.mkdir()
+    (directory / "data").write_text("original data\n")
+
+    def on_invoke(call: AgentCall) -> None:
+        if edit == "new_symlink":
+            (call.root / "new-link").symlink_to("missing-target")
+        elif edit == "retarget_symlink":
+            link.unlink()
+            link.symlink_to("missing-target")
+        elif edit == "delete_symlink":
+            link.unlink()
+        elif edit == "mode":
+            product.chmod(0o755)
+        elif edit == "file_to_link":
+            product.unlink()
+            product.symlink_to("missing-target")
+        else:
+            (directory / "data").unlink()
+            directory.rmdir()
+            directory.symlink_to("missing-target", target_is_directory=True)
+        _write_doctor_result(call, "retry_developer")
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+    result = run_loop(tmp_path, max_sessions=3, agent_providers={"default": provider})
+
+    assert result.exit_code == 1
+    assert "forbidden path(s), restored" in result.errors[0].message
+    assert [call.role_name for call in provider.calls] == ["doctor"]
+    assert not (tmp_path / "new-link").is_symlink()
+    assert link.readlink() == Path("product.txt")
+    assert product.read_text() == "original\n"
+    assert product.stat().st_mode & 0o777 == 0o644
+    assert not product.is_symlink() and not directory.is_symlink()
+    assert (directory / "data").read_text() == "original data\n"
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+
+
+def test_doctor_routed_planner_cannot_change_product_files(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    task_path = _write_task(tmp_path, "T0001", "First")
+
+    def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "doctor":
+            _write_doctor_result(call, "revise_task")
+            return
+        if call.role_name == "planner":
+            task_path.write_text(task_path.read_text() + "\nClarified.\n")
+            (call.root / "product.txt").write_text("unauthorized planner edit\n")
+            _submit_recovery_handoff(call, completed=True)
+            return
+        _submit_recovery_handoff(call, completed=False)
+
+    provider = MockProvider(write_handoff=False, on_invoke=on_invoke)
+    result = run_loop(tmp_path, max_sessions=4, agent_providers={"default": provider})
+
+    assert result.stop_reason == RunStopReason.ERROR
+    assert "outside its task" in result.errors[0].message
+    assert [call.role_name for call in provider.calls] == [
+        "developer",
+        "doctor",
+        "planner",
+    ]
 
 
 def test_profile_prerequisite_blocks_before_agent_and_rechecks_on_retry(
@@ -5096,6 +5486,9 @@ def test_repeated_validation_failure_stops_after_one_developer_recovery(
     _write_task(tmp_path, "T0001", "First", validation=["false"])
 
     def on_invoke(call: AgentCall) -> None:
+        if call.role_name == "doctor":
+            _write_doctor_result(call, "operator")
+            return
         complete_acceptance(call.root, "T0001")
 
     provider = MockProvider(on_invoke=on_invoke)
@@ -5107,8 +5500,8 @@ def test_repeated_validation_failure_stops_after_one_developer_recovery(
     )
 
     assert result.stop_reason == RunStopReason.VALIDATION_FAILED
-    assert result.sessions_run == 2
-    assert len(provider.calls) == 2
+    assert result.sessions_run == 3
+    assert len(provider.calls) == 3
     assert "## Validation Recovery" in provider.calls[1].session_prompt
     task = FileTaskTracker(tmp_path).get("T0001")
     assert task.status == TaskStatus.CHANGES_REQUESTED
@@ -5118,18 +5511,16 @@ def test_repeated_validation_failure_stops_after_one_developer_recovery(
         subprocess.check_output(
             ["git", "log", "-1", "--format=%s"], cwd=tmp_path, text=True
         ).strip()
-        == "Record repeated task validation failure"
+        == "Record doctor diagnosis for T0001"
     )
-    committed_paths = subprocess.check_output(
-        ["git", "show", "--pretty=", "--name-only", "HEAD"], cwd=tmp_path, text=True
-    )
+    committed_paths = subprocess.check_output(["git", "ls-files"], cwd=tmp_path, text=True)
     assert ".devlab/verification/tasks/T0001/" in committed_paths
     assert ".devlab/history/" in committed_paths
 
     blocked = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
     assert blocked.stop_reason == RunStopReason.VALIDATION_FAILED
     assert blocked.sessions_run == 0
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 3
 
     retried = run_loop(
         tmp_path,
@@ -5138,7 +5529,7 @@ def test_repeated_validation_failure_stops_after_one_developer_recovery(
         retry_stopped_task=True,
     )
     assert retried.sessions_run == 1
-    assert len(provider.calls) == 3
+    assert len(provider.calls) == 4
 
 
 class TestTimestamp:

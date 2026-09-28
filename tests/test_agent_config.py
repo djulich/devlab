@@ -607,6 +607,34 @@ def test_researcher_configuration_is_resolved_only_when_explicit(tmp_path: Path)
     assert "researcher" not in fallback.resolved
 
 
+def test_doctor_configuration_uses_explicit_role_override(tmp_path: Path) -> None:
+    _write_agents_config(
+        tmp_path,
+        """
+        [defaults]
+        provider = "default"
+
+        [roles.doctor]
+        provider = "diagnostic"
+        model = "diagnostic-model"
+
+        [providers.default]
+        command = "agent"
+        args = ["{system_prompt}", "{session_prompt}"]
+
+        [providers.diagnostic]
+        command = "diagnostic-agent"
+        args = ["{system_prompt}", "{session_prompt}"]
+        """,
+    )
+
+    configured = load_agent_configuration(tmp_path)
+
+    assert configured.resolved["doctor"].provider == "diagnostic"
+    assert configured.resolved["doctor"].model == "diagnostic-model"
+    assert "doctor" in configured.role_providers
+
+
 def test_provider_renders_configured_template_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

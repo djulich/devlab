@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from devlab.clarifications import FileClarificationTracker
+from devlab.doctor_recovery import DoctorRecovery, RecoveryStage, save_doctor_recovery
 from devlab.executable_config import (
     DEVLAB_STATE_HOME_ENV,
     build_executable_config_snapshot,
@@ -67,6 +68,32 @@ def test_summary_reports_requested_changes_and_new_untrusted_configuration(
     assert "devlab trust executable-config --show" not in text
     assert "devlab trust executable-config" in text
     assert text.rstrip().endswith("devlab continue")
+
+
+def test_summary_shows_pending_doctor_instead_of_developer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEVLAB_STATE_HOME_ENV, str(tmp_path / "operator-state"))
+    init_workspace(tmp_path)
+    (tmp_path / ".devlab/plans/design-plan.md").write_text("# Design\n")
+    _write_task(tmp_path)
+    save_doctor_recovery(
+        tmp_path,
+        DoctorRecovery("T0001", "developer_non_advancing", RecoveryStage.PENDING_DOCTOR),
+    )
+    initial = build_executable_config_snapshot(tmp_path)
+    trust_executable_config(initial)
+
+    summary = build_run_summary(
+        tmp_path,
+        command="continue",
+        result=_result(RunStopReason.SESSION_LIMIT),
+        initial_executable_config=initial,
+    )
+
+    assert summary.next_role == "doctor"
+    assert summary.task is not None and summary.task.id == "T0001"
+    assert summary.next_commands == ("devlab continue",)
 
 
 def test_summary_calls_out_dependency_introduced_in_latest_session(

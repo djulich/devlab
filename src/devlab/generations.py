@@ -27,6 +27,7 @@ ACTIVE_GENERATION_BUNDLE_PATHS = (
     ".devlab/logs/agents",
     ".devlab/plans",
     ".devlab/workflow.toml",
+    ".devlab/doctor-recovery.json",
 )
 
 ACTIVE_GENERATION_SKELETON_DIRS = (

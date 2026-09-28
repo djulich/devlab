@@ -166,6 +166,7 @@ def session_finish_context(
     *,
     task_id: str | None,
     milestone_id: str | None,
+    next_role_override: str | None = None,
 ) -> str:
     parts: list[str] = []
     if role_name in {"developer", "reviewer"} and task_id is not None:
@@ -175,7 +176,7 @@ def session_finish_context(
             parts.append(f"status={task.status.value}")
     elif role_name in {"integrator", "architect"} and milestone_id is not None:
         parts.append(f"milestone={milestone_id}")
-    next_role = snapshot.assess_state()
+    next_role = next_role_override or snapshot.assess_state()
     parts.append(f"next={next_role or 'complete'}")
     return " ".join(parts)
 
