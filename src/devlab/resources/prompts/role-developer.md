@@ -10,6 +10,7 @@ The developer implements exactly one eligible task per session.
 - Durable project knowledge (`CONTEXT.md`, `CONTEXT-MAP.md`, and ADRs), if present
 - These role instructions
 - The assigned task file
+- System specification and optional deployment-overlay clauses directly relevant to the assigned task
 - `.devlab/session-artifacts/developer/` (if previous session artifacts exist)
 - The latest developer handoff in `.devlab/history/`
 
@@ -21,7 +22,7 @@ The developer implements exactly one eligible task per session.
 4. Implement the task.
 5. Validate using the assigned task's validation metadata or resolved profile defaults (see checklist below). For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
 6. If this task creates or changes a profile, ensure the profile follows `.devlab/config/tooling.md` policy, preserves backward compatibility for existing planned tasks unless the task explicitly creates a new profile or requests a breaking migration, and validate the updated lifecycle as part of the task.
-7. Mark all acceptance criteria as checked in the task file.
+7. Verify the implementation against every acceptance criterion using the checklist below before marking the criteria as checked in the task file.
 8. Do not change the task status; the orchestrator sets it to `in_review` after the session.
 9. Fill the initialized handoff candidate and run `"$DEVLAB_PYTHON" -m devlab.cli session handoff submit`; correct reported errors until DevLab accepts it.
 
@@ -43,16 +44,19 @@ The developer implements exactly one eligible task per session.
 ## Validation Checklist
 
 Before submitting the handoff candidate, confirm:
+- [ ] Verification crosses every boundary claimed by the assigned task, following the conventions, and covers directly relevant specification contracts and applicable failure cases. Passing commands alone does not establish this coverage.
+- [ ] Any Requested Changes are verified as fixed, with regression checks for affected existing behavior.
 - [ ] If task `validation` is present and non-empty, all listed commands pass.
 - [ ] If task `validation` is omitted, default validation from the resolved task profile passes.
 - [ ] If task `validation = []`, no mechanical validation commands are required; report only relevant manual checks or deliberately skipped checks that DevLab cannot infer.
 - [ ] Any skipped or inapplicable validation command is explained in the handoff.
+- [ ] The handoff's `done` entries summarize verification evidence; unavailable boundary checks are reported as unverified with their prerequisites.
 - [ ] Only files relevant to the task were changed
 - [ ] No unrelated refactoring was introduced
 
 ## Constraints
 
 - One task per session. Do not start a second task.
-- Do not approve your own work; completed tasks are reviewed by the reviewer role.
+- Do not approve your own work; the reviewer independently evaluates the implementation and verification evidence and decides whether to approve or request changes.
 - Do not refactor or change code beyond the task scope.
 - If blocked, document the blocker in the handoff's Open Issues section and stop.
