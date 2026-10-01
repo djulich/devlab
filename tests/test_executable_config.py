@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -339,6 +340,14 @@ def test_trust_review_marks_resolved_provider_commands_and_role_assignments(
     )
     assert "- codex: codex --model model-one --effort low exec -\n  roles: integrator" in output
     assert not any("roles: architect" in line and "[NEW]" in line for line in provider_lines)
+    new_only = format_executable_config(build_executable_config_snapshot(root), view="new")
+    assert "- codex: codex --model model-one --effort high exec -  [NEW]\n" in new_only
+    assert "  roles: developer, integrator\n" in new_only
+    assert "--effort medium" not in new_only
+    assert "REMOVED:" not in new_only
+    changes = format_executable_config(build_executable_config_snapshot(root), view="changes")
+    assert "--effort medium" not in changes
+    assert "REMOVED:\n- codex:" in changes
 
 
 def test_trust_review_compares_validation_entries_without_marking_reordering(
@@ -415,3 +424,56 @@ def test_trust_review_aligns_new_markers_within_each_section(
     assert "- default: medium-command".ljust(marker_column) + "[NEW]" in output
     assert "- default: a-long-unchanged-command\n" in output
     assert "- default.setup: setup  [NEW]\n" in output
+
+
+@pytest.mark.parametrize("view", ["new", "changes"])
+@pytest.mark.parametrize("baseline", ["missing", "legacy", "unchanged", "removed", "timeout"])
+def test_filtered_trust_views_handle_empty_or_unavailable_comparisons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    view: Literal["new", "changes"],
+    baseline: str,
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "state"))
+    root = tmp_path / "target"
+    init_workspace(root)
+    profile_path = root / ".devlab/config/profiles/default.toml"
+    if baseline == "removed":
+        profile_path.write_text(
+            profile_path.read_text().replace("setup = []", 'setup = ["removed-setup"]')
+        )
+    if baseline != "missing":
+        path = trust_executable_config(build_executable_config_snapshot(root))
+        if baseline == "legacy":
+            record = json.loads(path.read_text())
+            del record["canonical_json"]
+            path.write_text(json.dumps(record))
+    if baseline == "removed":
+        profile_path.write_text(
+            profile_path.read_text().replace('setup = ["removed-setup"]', "setup = []")
+        )
+    if baseline == "timeout":
+        agents_path = root / ".devlab/config/agents.toml"
+        agents_path.write_text(
+            agents_path.read_text().replace(
+                "max_session_duration_seconds = 3600", "max_session_duration_seconds = 2400"
+            )
+        )
+    output = format_executable_config(build_executable_config_snapshot(root), view=view)
+    assert "Agent providers:" not in output
+    assert "[NEW]" not in output
+    if baseline == "missing":
+        assert "No previous approval found" in output
+    elif baseline == "legacy":
+        assert "Comparison unavailable:" in output
+    elif baseline == "removed" and view == "changes":
+        assert "Profile lifecycle commands:\nREMOVED:\n- default.setup: removed-setup" in output
+        assert "- None" not in output
+    else:
+        assert (
+            "No new executable configuration entries."
+            if view == "new"
+            else "No added or removed executable configuration entries."
+        ) in output
+    if baseline == "timeout":
+        assert "Fingerprint changed, but displayed entries are unchanged." in output

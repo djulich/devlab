@@ -540,6 +540,12 @@ Use `devlab trust executable-config --show` to inspect the snapshot and trust
 status without changing them. Revoke stored trust explicitly with
 `devlab trust executable-config --revoke`.
 
+Use `devlab trust executable-config --show-new` to show only added entries, or
+`--show-changes` to show additions and removals. Both views are read-only, retain
+complete multi-line entries, and omit unchanged entries and empty sections. They
+report when there are no matching changes or no saved approval for comparison.
+These actions are mutually exclusive with `--show` and `--revoke`.
+
 The review compares resolved list entries against the most recent stored approval
 for the same workspace and agent-config source, including invocation overrides.
 Added entries carry an inline `[NEW]` marker; removed entries appear under

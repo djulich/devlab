@@ -474,6 +474,16 @@ def _main() -> None:
         help="Show effective executable configuration and trust status without changing it.",
     )
     trust_action.add_argument(
+        "--show-new",
+        action="store_true",
+        help="Show only added executable configuration entries without changing trust.",
+    )
+    trust_action.add_argument(
+        "--show-changes",
+        action="store_true",
+        help="Show added and removed executable configuration entries without changing trust.",
+    )
+    trust_action.add_argument(
         "--revoke",
         action="store_true",
         help="Revoke stored trust for this workspace and config source.",
@@ -1174,8 +1184,9 @@ def _run_trust_command(args: argparse.Namespace, root: Path) -> None:
     except (OSError, ValueError, KeyError) as exc:
         print(f"DevLab trust: could not load executable configuration: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
-    if args.show:
-        print(format_executable_config(snapshot))
+    if args.show or args.show_new or args.show_changes:
+        view = "new" if args.show_new else "changes" if args.show_changes else "all"
+        print(format_executable_config(snapshot, view=view))
         return
     if args.revoke:
         revoked = revoke_executable_config_trust(snapshot)

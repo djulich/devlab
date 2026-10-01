@@ -9,7 +9,7 @@ import sys
 from datetime import UTC, date, datetime, time
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from devlab._files import atomic_write_text
 from devlab.agent_config import (
@@ -440,7 +440,9 @@ def _executable_config_sections(payload: dict[str, Any]) -> dict[str, list[tuple
     return sections
 
 
-def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
+def format_executable_config(
+    snapshot: ExecutableConfigSnapshot, *, view: Literal["all", "new", "changes"] = "all"
+) -> str:
     payload = json.loads(snapshot.canonical_json)
     sections = _executable_config_sections(payload)
     previous, comparison_lines = _last_trusted_config(snapshot)
@@ -453,17 +455,22 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
                 "Comparison unavailable: previous configuration cannot be resolved."
             )
         else:
-            if previous == payload:
+            if previous == payload and view == "all":
                 comparison_lines.append("No executable configuration changes.")
-            elif all(
+            elif previous != payload and all(
                 set(previous_sections[heading]) == set(entries)
                 for heading, entries in sections.items()
             ):
                 comparison_lines.append(
                     "Fingerprint changed, but displayed entries are unchanged."
                 )
+    title = "Executable configuration"
+    if view == "new":
+        title += " - only new entries"
+    elif view == "changes":
+        title += " - only added or removed entries"
     lines = [
-        "Executable configuration",
+        title,
         f"Workspace: {snapshot.root}",
         f"Agent config: {snapshot.config_path}",
         f"Fingerprint: {snapshot.digest}",
@@ -471,14 +478,23 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
         + ("trusted" if executable_config_is_trusted(snapshot) else "not trusted"),
         *comparison_lines,
     ]
+    shown_sections = 0
     for heading, entries in sections.items():
         old_entries = previous_sections[heading] if previous_sections is not None else None
-        if heading == "Managed test services:" and not entries and not old_entries:
-            continue
-        lines.extend(["", heading])
         new_entries = [
             entry for entry in entries if old_entries is not None and entry not in old_entries
         ]
+        removed = [entry for entry in old_entries or [] if entry not in entries]
+        if view != "all":
+            entries = new_entries
+            if view == "new":
+                removed = []
+            if not entries and not removed:
+                continue
+        elif heading == "Managed test services:" and not entries and not old_entries:
+            continue
+        shown_sections += 1
+        lines.extend(["", heading])
         marker_column = max((len(entry[0]) for entry in new_entries), default=0) + 2
         for entry in entries:
             line = entry[0]
@@ -486,13 +502,18 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
                 line = line.ljust(marker_column) + "[NEW]"
             lines.append(line)
             lines.extend(entry[1:])
-        if not entries:
+        if not entries and view == "all":
             lines.append("- None")
-        removed = [entry for entry in old_entries or [] if entry not in entries]
         if removed:
             lines.append("REMOVED:")
             for entry in removed:
                 lines.extend(entry)
+    if view != "all" and previous_sections is not None and shown_sections == 0:
+        lines.append(
+            "No new executable configuration entries."
+            if view == "new"
+            else "No added or removed executable configuration entries."
+        )
     lines.extend(
         [
             "",

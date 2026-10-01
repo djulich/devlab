@@ -4,6 +4,7 @@ import json
 import logging
 import subprocess
 from importlib.metadata import version
+from itertools import combinations
 from pathlib import Path
 from typing import cast
 
@@ -15,6 +16,7 @@ from devlab.doctor_common import DoctorProblem
 from devlab.executable_config import (
     ExecutableConfigSnapshot,
     build_executable_config_snapshot,
+    trust_executable_config,
 )
 from devlab.handoffs import SessionEnvelope, write_session_envelope
 from devlab.init import init_workspace
@@ -670,6 +672,58 @@ def test_cli_trust_executable_config_approves_shows_and_revokes(
         "--revoke",
     )
     assert "Revoked executable-configuration trust" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("flag", ["--show-new", "--show-changes"])
+def test_cli_trust_filtered_views_are_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flag: str
+) -> None:
+    state_home = tmp_path / "operator-state"
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(state_home))
+    root = tmp_path / "target"
+    init_workspace(root)
+    profile_path = root / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text()
+        .replace("default_validation = []", 'default_validation = ["keep", "remove"]')
+        .replace("setup = []", 'setup = ["unchanged-setup"]')
+    )
+    trust_executable_config(build_executable_config_snapshot(root))
+    before = {path: path.read_bytes() for path in state_home.rglob("*") if path.is_file()}
+    profile_path.write_text(
+        profile_path.read_text().replace('["keep", "remove"]', '["keep", "added"]')
+    )
+
+    def unexpected_prompt(_prompt: str) -> str:
+        pytest.fail("filtered trust views must not prompt")
+
+    monkeypatch.setattr("builtins.input", unexpected_prompt)
+    _run_cli(monkeypatch, "trust", "--root", str(root), "executable-config", flag)
+    output = capsys.readouterr().out
+    assert "Profile default validation commands:\n- default: added  [NEW]" in output
+    assert output.splitlines()[0] == (
+        "Executable configuration - only new entries"
+        if flag == "--show-new"
+        else "Executable configuration - only added or removed entries"
+    )
+    assert "- default: keep" not in output
+    assert "Agent providers:" not in output
+    assert "Profile lifecycle commands:" not in output
+    assert ("REMOVED:\n- default: remove" in output) == (flag == "--show-changes")
+    assert "Trust status: not trusted" in output
+    assert {path: path.read_bytes() for path in state_home.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    list(combinations(["--show", "--show-new", "--show-changes", "--revoke"], 2)),
+)
+def test_cli_trust_views_are_mutually_exclusive(
+    monkeypatch: pytest.MonkeyPatch, first: str, second: str
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "trust", "executable-config", first, second)
+    assert exc.value.code == 2
 
 
 def test_cli_prerequisite_checks_and_persists_operator_approval(
