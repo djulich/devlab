@@ -540,12 +540,16 @@ Use `devlab trust executable-config --show` to inspect the snapshot and trust
 status without changing them. Revoke stored trust explicitly with
 `devlab trust executable-config --revoke`.
 
-The review displays a diff against the most recent stored approval for the same
-workspace and agent-config source, including invocation overrides. New approvals
-save the canonical configuration in operator-local state for this comparison.
-Older approvals remain valid but cannot supply a diff until a configuration has
-been approved with a saved snapshot. The comparison does not change which
-digests are trusted.
+The review compares resolved list entries against the most recent stored approval
+for the same workspace and agent-config source, including invocation overrides.
+Added entries carry an inline `[NEW]` marker; removed entries appear under
+`REMOVED:` at the end of their section. Provider entries include both the command
+and its assigned roles. New approvals save the canonical configuration in
+operator-local state for this comparison. Older approvals remain valid but cannot
+supply a comparison until a configuration has been approved with a saved snapshot.
+The comparison does not change which digests are trusted. If the fingerprint
+changes without adding or removing displayed entries (for example, a timeout
+change or command reordering), the review reports that explicitly.
 
 The digest covers effective provider invocation, role mappings, CLI overrides,
 profile validation/lifecycle/prerequisite configuration, and managed test services.

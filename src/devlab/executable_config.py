@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import difflib
 import hashlib
 import json
 import os
@@ -297,7 +296,9 @@ def devlab_state_home() -> Path:
     )
 
 
-def _format_changes_since_last_trust(snapshot: ExecutableConfigSnapshot) -> list[str]:
+def _last_trusted_config(
+    snapshot: ExecutableConfigSnapshot,
+) -> tuple[dict[str, Any] | None, list[str]]:
     """Compare operator-local approvals without changing authorization semantics."""
     records: list[tuple[datetime, dict[str, Any]]] = []
     directory = executable_config_trust_record_path(snapshot).parent
@@ -323,9 +324,9 @@ def _format_changes_since_last_trust(snapshot: ExecutableConfigSnapshot) -> list
         except (OSError, ValueError, TypeError):
             continue
         records.append((trusted_at, record))
-    lines = ["Changes since last trust:"]
+    lines: list[str] = []
     if not records:
-        return [*lines, "No previous approval found for this workspace and agent config."]
+        return None, ["No previous approval found for this workspace and agent config."]
     _, previous = max(records, key=lambda item: (item[0], item[1]["digest"]))
     lines.append(f"Last approved: {previous['trusted_at']} ({previous['digest']})")
     canonical = previous.get("canonical_json")
@@ -340,59 +341,54 @@ def _format_changes_since_last_trust(snapshot: ExecutableConfigSnapshot) -> list
         if previous["digest"] != prefix + hashlib.sha256(canonical.encode()).hexdigest():
             raise ValueError("snapshot digest mismatch")
     except (ValueError, TypeError):
-        return [
+        return None, [
             *lines,
             "Comparison unavailable: previous approval has no valid saved configuration.",
             "New approvals save a configuration snapshot for future comparisons.",
         ]
-    if canonical == snapshot.canonical_json:
-        return [*lines, "No executable configuration changes."]
-    before = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True).splitlines()
-    after = json.dumps(
-        json.loads(snapshot.canonical_json), indent=2, sort_keys=True, ensure_ascii=True
-    ).splitlines()
-    return [
-        *lines,
-        *difflib.unified_diff(
-            before, after, fromfile="last trusted", tofile="current", n=2, lineterm=""
-        ),
-    ]
+    return payload, lines
 
 
-def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
-    configuration = snapshot.resolve_agents()
-    lines = [
-        "Executable configuration",
-        f"Workspace: {snapshot.root}",
-        f"Agent config: {snapshot.config_path}",
-        f"Fingerprint: {snapshot.digest}",
-        "Trust status: "
-        + ("trusted" if executable_config_is_trusted(snapshot) else "not trusted"),
-        "",
-        *_format_changes_since_last_trust(snapshot),
-        "",
-        "Agent providers:",
-    ]
-    seen_commands: set[tuple[str, ...]] = set()
+def _executable_config_sections(payload: dict[str, Any]) -> dict[str, list[tuple[str, ...]]]:
+    """Render current and saved canonical configurations through the same resolver."""
+    agents = payload.get("agents", {})
+    overrides = agents.get("overrides", {})
+    configuration = resolve_agent_configuration(
+        agents,
+        provider=overrides.get("provider"),
+        model=overrides.get("model"),
+        effort=overrides.get("effort"),
+        discover_provider_versions=False,
+    )
+    sections: dict[str, list[tuple[str, ...]]] = {
+        "Agent providers:": [],
+        "Profile default validation commands:": [],
+        "Profile lifecycle commands:": [],
+        "Managed test services:": [],
+        "Profile prerequisite checks:": [],
+    }
+    provider_entries = sections["Agent providers:"]
+    seen_commands: set[tuple[str, tuple[str, ...]]] = set()
     assigned_provider_names: set[str] = set()
     for role_name in sorted(configuration.resolved):
         config = configuration.resolved[role_name]
         assigned_provider_names.add(config.provider)
-        if config.command in seen_commands:
+        identity = (config.provider, config.command)
+        if identity in seen_commands:
             continue
-        seen_commands.add(config.command)
+        seen_commands.add(identity)
         roles = sorted(
             role
             for role, candidate in configuration.resolved.items()
-            if candidate.command == config.command
+            if (candidate.provider, candidate.command) == identity
         )
-        lines.extend(
-            [
+        provider_entries.append(
+            (
                 f"- {config.provider}: {shlex.join(config.command)}",
                 "  roles: " + ", ".join(roles),
-            ]
+            )
         )
-    providers_data = snapshot.agent_data.get("providers", {})
+    providers_data = agents.get("providers", {})
     if isinstance(providers_data, dict):
         for provider_name, provider_data in sorted(providers_data.items()):
             if not isinstance(provider_name, str) or not isinstance(provider_data, dict):
@@ -406,44 +402,97 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
                 and isinstance(args, list)
                 and all(isinstance(item, str) for item in args)
             ):
-                lines.extend(
-                    [
+                provider_entries.append(
+                    (
                         f"- {provider_name}: {shlex.join([*shlex.split(command), *args])}",
                         "  roles: none",
-                    ]
+                    )
                 )
             version_command = provider_table.get("version_command")
             if isinstance(version_command, str) and version_command:
-                lines.append(f"  version discovery for {provider_name}: {version_command}")
-    lifecycle_lines = []
-    validation_lines = []
-    prerequisite_lines = []
-    for profile_id, profile in sorted(snapshot.profiles.items()):
-        for command in profile.tooling.default_validation:
-            validation_lines.append(f"- {profile_id}: {command}")
+                provider_entries.append(
+                    (f"  version discovery for {provider_name}: {version_command}",)
+                )
+    for profile_id, profile in sorted(payload.get("profiles", {}).items()):
+        for command in profile["default_validation"]:
+            sections["Profile default validation commands:"].append(
+                (f"- {profile_id}: {command}",)
+            )
         for phase in ("pre_session", "setup", "post_session"):
-            commands = getattr(profile.environment, phase)
+            commands = profile[phase]
             for command in commands:
-                lifecycle_lines.append(f"- {profile_id}.{phase}: {command}")
-        for item in profile.prerequisites:
-            mechanism = item.check or (
-                f"environment {item.environment}" if item.environment else "operator attestation"
+                sections["Profile lifecycle commands:"].append(
+                    (f"- {profile_id}.{phase}: {command}",)
+                )
+        for item in profile["prerequisites"]:
+            mechanism = item["check"] or (
+                f"environment {item['environment']}"
+                if item["environment"]
+                else "operator attestation"
             )
-            operations = ",".join(scope.value for scope in item.required_for)
-            preparation = f"; prepare {item.prepare}" if item.prepare else ""
-            prerequisite_lines.append(
-                f"- {item.reference} [{operations}]: {mechanism}{preparation}"
+            operations = ",".join(item["required_for"])
+            preparation = f"; prepare {item['prepare']}" if item.get("prepare") else ""
+            sections["Profile prerequisite checks:"].append(
+                (f"- {profile_id}.{item['id']} [{operations}]: {mechanism}{preparation}",)
             )
-    lines.extend(["", "Profile default validation commands:"])
-    lines.extend(validation_lines or ["- None"])
-    lines.extend(["", "Profile lifecycle commands:"])
-    lines.extend(lifecycle_lines or ["- None"])
-    if snapshot.test_services:
-        lines.extend(["", "Managed test services:"])
-        for service in snapshot.test_services.values():
-            lines.append(json.dumps(service.definition(), sort_keys=True))
-    lines.extend(["", "Profile prerequisite checks:"])
-    lines.extend(prerequisite_lines or ["- None"])
+    for service in payload.get("test_services", {}).values():
+        sections["Managed test services:"].append((json.dumps(service, sort_keys=True),))
+    return sections
+
+
+def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
+    payload = json.loads(snapshot.canonical_json)
+    sections = _executable_config_sections(payload)
+    previous, comparison_lines = _last_trusted_config(snapshot)
+    previous_sections = None
+    if previous is not None:
+        try:
+            previous_sections = _executable_config_sections(previous)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            comparison_lines.append(
+                "Comparison unavailable: previous configuration cannot be resolved."
+            )
+        else:
+            if previous == payload:
+                comparison_lines.append("No executable configuration changes.")
+            elif all(
+                set(previous_sections[heading]) == set(entries)
+                for heading, entries in sections.items()
+            ):
+                comparison_lines.append(
+                    "Fingerprint changed, but displayed entries are unchanged."
+                )
+    lines = [
+        "Executable configuration",
+        f"Workspace: {snapshot.root}",
+        f"Agent config: {snapshot.config_path}",
+        f"Fingerprint: {snapshot.digest}",
+        "Trust status: "
+        + ("trusted" if executable_config_is_trusted(snapshot) else "not trusted"),
+        *comparison_lines,
+    ]
+    for heading, entries in sections.items():
+        old_entries = previous_sections[heading] if previous_sections is not None else None
+        if heading == "Managed test services:" and not entries and not old_entries:
+            continue
+        lines.extend(["", heading])
+        new_entries = [
+            entry for entry in entries if old_entries is not None and entry not in old_entries
+        ]
+        marker_column = max((len(entry[0]) for entry in new_entries), default=0) + 2
+        for entry in entries:
+            line = entry[0]
+            if entry in new_entries:
+                line = line.ljust(marker_column) + "[NEW]"
+            lines.append(line)
+            lines.extend(entry[1:])
+        if not entries:
+            lines.append("- None")
+        removed = [entry for entry in old_entries or [] if entry not in entries]
+        if removed:
+            lines.append("REMOVED:")
+            for entry in removed:
+                lines.extend(entry)
     lines.extend(
         [
             "",

@@ -257,17 +257,15 @@ def test_trust_review_shows_changes_and_keeps_display_read_only(
     )
     changed = build_executable_config_snapshot(root, model="new-model")
     output = format_executable_config(changed)
-    assert "Changes since last trust:" in output
-    assert '-      "model": null' in output
-    assert '+      "model": "new-model"' in output
-    assert '+        "make setup"' in output
-    assert output.index("Changes since last trust:") < output.index("Agent providers:")
+    assert "Changes since last trust:" not in output
+    assert "- default.setup: make setup  [NEW]" in output
+    assert "--- last trusted" not in output
     assert record.read_text() == saved
     assert not executable_config_is_trusted(changed)
 
     trust_executable_config(changed)
     reverted = format_executable_config(initial)
-    assert '-        "make setup"' in reverted
+    assert "Profile lifecycle commands:\n- None\nREMOVED:\n- default.setup: make setup" in reverted
     assert executable_config_is_trusted(initial)
 
 
@@ -309,3 +307,111 @@ def test_trust_review_ignores_other_scopes_and_malformed_records(
     (original_path.parent / "invalid.json").write_text("[1, 2]")
 
     assert "No executable configuration changes." in format_executable_config(snapshot)
+
+
+def test_trust_review_marks_resolved_provider_commands_and_role_assignments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "state"))
+    init_workspace(tmp_path / "target")
+    root = tmp_path / "target"
+    agents_path = root / ".devlab/config/agents.toml"
+    agents_path.write_text(
+        '[defaults]\nprovider = "codex"\nmodel = "model-one"\neffort = "medium"\n'
+        '[providers.codex]\ncommand = "codex"\n'
+        'args = ["--model", "{model}", "--effort", "{effort}", "exec", "-"]\n'
+        'stdin_template = "{system_prompt}\\n{session_prompt}"\n'
+        '[roles.developer]\neffort = "high"\n'
+        '[roles.integrator]\neffort = "low"\n'
+    )
+    trust_executable_config(build_executable_config_snapshot(root))
+    agents_path.write_text(agents_path.read_text().replace('effort = "low"', 'effort = "high"'))
+    output = format_executable_config(build_executable_config_snapshot(root))
+
+    assert "- codex: codex --model model-one --effort high exec -  [NEW]\n" in output
+    provider_section = output.split("Agent providers:\n", 1)[1].split("\nREMOVED:", 1)[0]
+    provider_lines = provider_section.splitlines()
+    assert "  roles: developer, integrator" in provider_lines
+    assert not any("roles:" in line and "[NEW]" in line for line in provider_lines)
+    assert (
+        "REMOVED:\n- codex: codex --model model-one --effort high exec -\n  roles: developer"
+        in output
+    )
+    assert "- codex: codex --model model-one --effort low exec -\n  roles: integrator" in output
+    assert not any("roles: architect" in line and "[NEW]" in line for line in provider_lines)
+
+
+def test_trust_review_compares_validation_entries_without_marking_reordering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "state"))
+    root = tmp_path / "target"
+    init_workspace(root)
+    profile_path = root / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text().replace(
+            "default_validation = []", 'default_validation = ["ruff check", "ty check"]'
+        )
+    )
+    trust_executable_config(build_executable_config_snapshot(root))
+    profile_path.write_text(
+        profile_path.read_text().replace('["ruff check", "ty check"]', '["ty check", "pytest"]')
+    )
+    output = format_executable_config(build_executable_config_snapshot(root))
+    assert (
+        "Profile default validation commands:\n- default: ty check\n"
+        "- default: pytest  [NEW]\nREMOVED:\n- default: ruff check\n"
+    ) in output
+    trust_executable_config(build_executable_config_snapshot(root))
+    profile_path.write_text(
+        profile_path.read_text().replace('["ty check", "pytest"]', '["pytest", "ty check"]')
+    )
+    reordered = format_executable_config(build_executable_config_snapshot(root))
+    assert "[NEW]" not in reordered
+    assert "REMOVED:" not in reordered
+    assert "Fingerprint changed, but displayed entries are unchanged." in reordered
+
+
+def test_trust_review_reports_fingerprint_changes_outside_displayed_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "state"))
+    init_workspace(tmp_path / "target")
+    root = tmp_path / "target"
+    trust_executable_config(build_executable_config_snapshot(root))
+    agents_path = root / ".devlab/config/agents.toml"
+    agents_path.write_text(
+        agents_path.read_text().replace(
+            "max_session_duration_seconds = 3600", "max_session_duration_seconds = 2400"
+        )
+    )
+    output = format_executable_config(build_executable_config_snapshot(root))
+    assert "Fingerprint changed, but displayed entries are unchanged." in output
+    assert "[NEW]" not in output
+    assert "REMOVED:" not in output
+
+
+def test_trust_review_aligns_new_markers_within_each_section(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "state"))
+    init_workspace(tmp_path / "target")
+    root = tmp_path / "target"
+    profile_path = root / ".devlab/config/profiles/default.toml"
+    original = profile_path.read_text().replace(
+        "default_validation = []", 'default_validation = ["a-long-unchanged-command"]'
+    )
+    profile_path.write_text(original)
+    trust_executable_config(build_executable_config_snapshot(root))
+    profile_path.write_text(
+        original.replace(
+            '["a-long-unchanged-command"]',
+            '["short", "a-long-unchanged-command", "medium-command"]',
+        ).replace("setup = []", 'setup = ["setup"]')
+    )
+    output = format_executable_config(build_executable_config_snapshot(root))
+    marker_column = len("- default: medium-command") + 2
+    assert "- default: short".ljust(marker_column) + "[NEW]" in output
+    assert "- default: medium-command".ljust(marker_column) + "[NEW]" in output
+    assert "- default: a-long-unchanged-command\n" in output
+    assert "- default.setup: setup  [NEW]\n" in output
