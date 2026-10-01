@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import difflib
 import hashlib
 import json
 import os
@@ -236,6 +237,7 @@ def trust_executable_config(snapshot: ExecutableConfigSnapshot) -> Path:
         "config_path": str(snapshot.config_path),
         "digest": snapshot.digest,
         "trusted_at": datetime.now(UTC).isoformat(),
+        "canonical_json": snapshot.canonical_json,
     }
     atomic_write_text(record_path, json.dumps(record, indent=2, sort_keys=True) + "\n")
     return record_path
@@ -295,6 +297,68 @@ def devlab_state_home() -> Path:
     )
 
 
+def _format_changes_since_last_trust(snapshot: ExecutableConfigSnapshot) -> list[str]:
+    """Compare operator-local approvals without changing authorization semantics."""
+    records: list[tuple[datetime, dict[str, Any]]] = []
+    directory = executable_config_trust_record_path(snapshot).parent
+    try:
+        paths = list(directory.glob("*.json"))
+    except OSError:
+        paths = []
+    for path in paths:
+        try:
+            record = json.loads(path.read_text())
+            if (
+                not isinstance(record, dict)
+                or record.get("version") != TRUST_RECORD_SCHEMA
+                or record.get("workspace") != str(snapshot.root)
+                or record.get("config_path") != str(snapshot.config_path)
+                or not isinstance(record.get("digest"), str)
+                or not isinstance(record.get("trusted_at"), str)
+            ):
+                continue
+            trusted_at = datetime.fromisoformat(record["trusted_at"])
+            if trusted_at.tzinfo is None:
+                continue
+        except (OSError, ValueError, TypeError):
+            continue
+        records.append((trusted_at, record))
+    lines = ["Changes since last trust:"]
+    if not records:
+        return [*lines, "No previous approval found for this workspace and agent config."]
+    _, previous = max(records, key=lambda item: (item[0], item[1]["digest"]))
+    lines.append(f"Last approved: {previous['trusted_at']} ({previous['digest']})")
+    canonical = previous.get("canonical_json")
+    try:
+        if not isinstance(canonical, str):
+            raise ValueError("missing snapshot")
+        payload = json.loads(canonical)
+        if not isinstance(payload, dict):
+            raise ValueError("invalid snapshot")
+        schema = payload.get("schema")
+        prefix = f"exec-v{schema}:" if "schema" in payload else "sha256:"
+        if previous["digest"] != prefix + hashlib.sha256(canonical.encode()).hexdigest():
+            raise ValueError("snapshot digest mismatch")
+    except (ValueError, TypeError):
+        return [
+            *lines,
+            "Comparison unavailable: previous approval has no valid saved configuration.",
+            "New approvals save a configuration snapshot for future comparisons.",
+        ]
+    if canonical == snapshot.canonical_json:
+        return [*lines, "No executable configuration changes."]
+    before = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True).splitlines()
+    after = json.dumps(
+        json.loads(snapshot.canonical_json), indent=2, sort_keys=True, ensure_ascii=True
+    ).splitlines()
+    return [
+        *lines,
+        *difflib.unified_diff(
+            before, after, fromfile="last trusted", tofile="current", n=2, lineterm=""
+        ),
+    ]
+
+
 def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
     configuration = snapshot.resolve_agents()
     lines = [
@@ -304,6 +368,8 @@ def format_executable_config(snapshot: ExecutableConfigSnapshot) -> str:
         f"Fingerprint: {snapshot.digest}",
         "Trust status: "
         + ("trusted" if executable_config_is_trusted(snapshot) else "not trusted"),
+        "",
+        *_format_changes_since_last_trust(snapshot),
         "",
         "Agent providers:",
     ]

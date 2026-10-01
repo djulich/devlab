@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -236,3 +237,75 @@ def test_revoke_removes_workspace_trust_record(
     assert revoke_executable_config_trust(snapshot)
     assert not executable_config_is_trusted(snapshot)
     assert not revoke_executable_config_trust(snapshot)
+
+
+def test_trust_review_shows_changes_and_keeps_display_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "state"))
+    root = tmp_path / "target"
+    init_workspace(root)
+    initial = build_executable_config_snapshot(root)
+    assert "No previous approval found" in format_executable_config(initial)
+    record = trust_executable_config(initial)
+    saved = record.read_text()
+    assert "No executable configuration changes." in format_executable_config(initial)
+
+    profile_path = root / ".devlab/config/profiles/default.toml"
+    profile_path.write_text(
+        profile_path.read_text().replace("setup = []", 'setup = ["make setup"]')
+    )
+    changed = build_executable_config_snapshot(root, model="new-model")
+    output = format_executable_config(changed)
+    assert "Changes since last trust:" in output
+    assert '-      "model": null' in output
+    assert '+      "model": "new-model"' in output
+    assert '+        "make setup"' in output
+    assert output.index("Changes since last trust:") < output.index("Agent providers:")
+    assert record.read_text() == saved
+    assert not executable_config_is_trusted(changed)
+
+    trust_executable_config(changed)
+    reverted = format_executable_config(initial)
+    assert '-        "make setup"' in reverted
+    assert executable_config_is_trusted(initial)
+
+
+@pytest.mark.parametrize("legacy", [True, False])
+def test_trust_review_handles_missing_or_corrupt_saved_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, legacy: bool
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "state"))
+    init_workspace(tmp_path / "target")
+    snapshot = build_executable_config_snapshot(tmp_path / "target")
+    path = trust_executable_config(snapshot)
+    record = json.loads(path.read_text())
+    if legacy:
+        del record["canonical_json"]
+    else:
+        record["canonical_json"] = "{}"
+    path.write_text(json.dumps(record))
+
+    assert "Comparison unavailable:" in format_executable_config(snapshot)
+    assert executable_config_is_trusted(snapshot)
+
+
+def test_trust_review_ignores_other_scopes_and_malformed_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEVLAB_STATE_HOME", str(tmp_path / "state"))
+    root = tmp_path / "target"
+    init_workspace(root)
+    snapshot = build_executable_config_snapshot(root)
+    original_path = trust_executable_config(snapshot)
+    init_workspace(tmp_path / "other")
+    trust_executable_config(build_executable_config_snapshot(tmp_path / "other"))
+    alternate_config = root / "alternate.toml"
+    alternate_config.write_text((root / ".devlab/config/agents.toml").read_text())
+    trust_executable_config(
+        build_executable_config_snapshot(root, config_path=alternate_config, model="other-model")
+    )
+    (original_path.parent / "broken.json").write_text("invalid json")
+    (original_path.parent / "invalid.json").write_text("[1, 2]")
+
+    assert "No executable configuration changes." in format_executable_config(snapshot)
