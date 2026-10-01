@@ -15,7 +15,7 @@ def has_git_repository(root: Path) -> bool:
 
 def init_repository(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    run_git(root, "init")
+    run_git(root, "init", "--initial-branch=main")
 
 
 def ensure_git_repository(root: Path) -> None:

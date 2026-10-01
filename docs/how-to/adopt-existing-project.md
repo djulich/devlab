@@ -12,7 +12,8 @@ generated artifacts are covered by `.gitignore`. Commit or otherwise resolve
 all existing work so the repository has a clean Git working tree.
 
 If the directory is not already a Git repository, `devlab init` initializes it
-and creates a baseline commit containing all non-ignored files.
+with `main` as the initial branch and creates a baseline commit containing all
+non-ignored files. Existing repositories keep their current branch names.
 
 ## 2. Initialize DevLab
 

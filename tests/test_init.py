@@ -147,7 +147,13 @@ def test_format_init_next_steps_mentions_specs_config_commit_and_plan() -> None:
     assert "clean Git working tree" in text
 
 
-def test_init_workspace_can_initialize_git_and_commit_baseline(tmp_path: Path) -> None:
+@pytest.mark.parametrize("default_branch", ["master", "custom-default"])
+def test_init_workspace_can_initialize_git_and_commit_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, default_branch: str
+) -> None:
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", default_branch)
     init_workspace(
         tmp_path,
         automatic_git=True,
@@ -156,6 +162,7 @@ def test_init_workspace_can_initialize_git_and_commit_baseline(tmp_path: Path) -
     )
 
     assert (tmp_path / ".git").exists()
+    assert _git(tmp_path, "branch", "--show-current").stdout.strip() == "main"
     assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
     assert _git(tmp_path, "log", "-1", "--pretty=%s").stdout.strip() == (
         "Initialize DevLab workspace"
@@ -167,13 +174,14 @@ def test_init_workspace_can_initialize_git_and_commit_baseline(tmp_path: Path) -
 
 
 def test_init_workspace_commits_existing_clean_git_repo(tmp_path: Path) -> None:
-    _git(tmp_path, "init")
+    _git(tmp_path, "init", "--initial-branch=master")
     _git(tmp_path, "config", "user.name", "Existing User")
     _git(tmp_path, "config", "user.email", "existing@example.invalid")
     _git(tmp_path, "commit", "--allow-empty", "-m", "Existing baseline")
 
     init_workspace(tmp_path, automatic_git=True)
 
+    assert _git(tmp_path, "branch", "--show-current").stdout.strip() == "master"
     assert _git(tmp_path, "status", "--porcelain").stdout.strip() == ""
     assert _git(tmp_path, "log", "-1", "--pretty=%s").stdout.strip() == (
         "Initialize DevLab workspace"
