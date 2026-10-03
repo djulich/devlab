@@ -404,7 +404,25 @@ def _markdown_section(text: str, fragment: str, prerequisite_reference: str) -> 
     lines = text.splitlines()
     start = None
     level = 0
+    fence_character = ""
+    fence_length = 0
     for index, line in enumerate(lines):
+        fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence_character:
+            if (
+                fence is not None
+                and fence.group(1)[0] == fence_character
+                and len(fence.group(1)) >= fence_length
+                and not fence.group(2).strip()
+            ):
+                fence_character = ""
+            continue
+        if fence is not None:
+            delimiter, info = fence.groups()
+            if delimiter[0] != "`" or "`" not in info:
+                fence_character = delimiter[0]
+                fence_length = len(delimiter)
+                continue
         match = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", line)
         if match is None:
             continue

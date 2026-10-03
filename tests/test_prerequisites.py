@@ -297,6 +297,54 @@ def test_prerequisite_guide_renders_only_referenced_markdown_section(
     assert "Resolution guide:\n## Docker daemon" in rendered
 
 
+@pytest.mark.parametrize("fence", ["```", "~~~~", "   ```"])
+def test_prerequisite_guide_keeps_shell_comments_and_commands_in_fences(
+    tmp_path: Path, fence: str
+) -> None:
+    content = (
+        "## Protected configuration\n\n"
+        f"{fence}sh\n"
+        "./scripts/ingress generate\n"
+        "# Inspect generated artifacts privately.\n"
+        "export EXTERNAL_CONFIG=/private/external.toml\n"
+        "./scripts/check config\n"
+        f"{fence}\n\n"
+        "### More detail\nKeep this subsection.\n"
+    )
+    (tmp_path / "README.md").write_text(
+        "```md\n## Protected configuration\nNot the actual heading.\n```\n"
+        + content
+        + "## Other configuration\nDo not include this section.\n"
+    )
+    prerequisite = Prerequisite(
+        "deploy",
+        "config",
+        (PrerequisiteOperation.SETUP,),
+        "Protected configuration",
+        guide="README.md#protected-configuration",
+    )
+    assert read_prerequisite_guide(tmp_path, prerequisite) == content.strip()
+
+
+def test_prerequisite_guide_requires_matching_fence_closer(tmp_path: Path) -> None:
+    content = (
+        "## Setup\n````sh\n"
+        "```\n# Still code after shorter delimiter\n"
+        "~~~~\n# Still code after different delimiter\n"
+        "```` trailing text\n# Still code after invalid closer\n"
+        "`````\nInstructions after the code block.\n"
+    )
+    (tmp_path / "README.md").write_text(content + "## Next\nOmitted.\n")
+    prerequisite = Prerequisite(
+        "deploy",
+        "setup",
+        (PrerequisiteOperation.SETUP,),
+        "Setup",
+        guide="README.md#setup",
+    )
+    assert read_prerequisite_guide(tmp_path, prerequisite) == content.strip()
+
+
 def test_prerequisite_guide_reports_missing_heading(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("# Project\n")
     prerequisite = Prerequisite(
