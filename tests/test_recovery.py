@@ -231,7 +231,9 @@ def test_recovery_explains_timeout_and_preservation_without_mutating(tmp_path: P
     assert "unverified claims" in output
     assert "normal handoff/commit path" in output
     assert "git stash push --include-untracked" in output
-    assert "does not resume that work" in output
+    assert "Save this attempt aside and start over" in output
+    assert "DevLab will not reuse the stashed work automatically" in output
+    assert "later inspection or selective recovery" in output
     assert "Keep and finish" in output
     assert "clean-failed-session removes only untracked diagnostics" in output
     assert "devlab continue" in output

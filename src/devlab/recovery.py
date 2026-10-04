@@ -205,9 +205,10 @@ def discard_guidance(proposal: DiscardProposal) -> OperatorGuidance:
                 (),
             ),
             OperatorAlternative(
-                "Preserve and restart",
-                "Stash tracked and non-ignored untracked files, then retry from the commit. "
-                "This preserves the partial work in the stash; it does not resume that work.",
+                "Save this attempt aside and start over",
+                "Stash tracked and non-ignored untracked changes, then retry from the last "
+                "commit. DevLab will not reuse the stashed work automatically. Keep the stash "
+                "for later inspection or selective recovery.",
                 (
                     "git stash push --include-untracked -m " + shlex.quote(stash_message),
                     "devlab continue",
