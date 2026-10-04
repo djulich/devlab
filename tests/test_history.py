@@ -221,3 +221,66 @@ def test_history_keeps_provider_failure_when_teardown_was_last_phase(tmp_path: P
     )
     path.write_text(json.dumps(data))
     assert "FAILED (max_duration)" in format_history(tmp_path)
+
+
+def test_recovery_summary_explains_duration_timeout_before_evidence(tmp_path: Path) -> None:
+    from devlab.history import describe_session
+
+    invocation = "20260529T120000_001_developer"
+    path = _write_metadata(
+        tmp_path, invocation, task_id="T0003", return_code=124, failure_kind="timeout"
+    )
+    data = json.loads(path.read_text())
+    data.update(
+        timeout_kind="max_duration",
+        max_session_duration_seconds=2400,
+        inactive_seconds_at_stop=6.6,
+    )
+    path.write_text(json.dumps(data))
+    output = describe_session(tmp_path, session_id=invocation, role="developer", task="T0003")
+    summary = output.split("\n\n", 1)[0]
+    assert summary.startswith("What happened: The developer session for T0003")
+    assert "40-minute limit" in summary
+    assert "6.6 seconds earlier" in summary
+    assert "before its normal session commit" in summary
+    assert "review the remaining work" in summary
+    assert output.index("What happened:") < output.index("Related session:")
+
+
+def test_recovery_summary_uses_failure_reason_not_last_phase(tmp_path: Path) -> None:
+    from devlab.history import describe_session
+
+    invocation = "20260529T120000_001_developer"
+    path = _write_metadata(tmp_path, invocation, task_id="T0003")
+    data = json.loads(path.read_text())
+    data.update(
+        lifecycle_phase="environment_teardown",
+        lifecycle_stop_reason="handoff_validation: invalid result",
+    )
+    path.write_text(json.dumps(data))
+    summary = describe_session(
+        tmp_path, session_id=invocation, role="developer", task="T0003"
+    ).split("\n\n", 1)[0]
+    assert "agent finished successfully, but DevLab stopped while accepting its handoff" in summary
+    assert "tearing down" not in summary
+
+
+def test_recovery_summary_does_not_invent_reason_for_unrelated_edits(tmp_path: Path) -> None:
+    from devlab.history import describe_session
+
+    _write_metadata(tmp_path, "20260529T120000_001_developer", failure_kind="timeout")
+    summary = describe_session(tmp_path).split("\n\n", 1)[0]
+    assert "cannot be linked to these changes" in summary
+    assert "normal session commit" not in summary
+
+
+def test_recovery_summary_does_not_call_unknown_completion_a_failure(tmp_path: Path) -> None:
+    from devlab.history import describe_session
+
+    invocation = "20260529T120000_001_developer"
+    _write_metadata(tmp_path, invocation, failure_kind="incomplete", return_code=-1)
+    summary = describe_session(tmp_path, session_id=invocation, role="developer").split("\n\n", 1)[
+        0
+    ]
+    assert "may still be running or may have been interrupted" in summary
+    assert "normal session commit" not in summary

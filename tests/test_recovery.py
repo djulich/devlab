@@ -311,3 +311,21 @@ def test_recovery_does_not_call_setup_failure_a_provider_failure(tmp_path: Path)
     assert "Normal handoff/commit phase not reached" in output
     assert "environment_setup: setup command failed" in output
     assert "Provider failure stops" not in output
+
+
+def test_summary_does_not_claim_uncommitted_session_when_metadata_was_committed(
+    tmp_path: Path,
+) -> None:
+    from devlab.git import run_git
+
+    _dirty_session_evidence(tmp_path)
+    run_git(tmp_path, "add", ".")
+    run_git(tmp_path, "commit", "-m", "Preserve interrupted work")
+    candidate = tmp_path / ".devlab/session-artifacts/developer/handoff-candidate.toml"
+    candidate.write_text(candidate.read_text() + "# Later edit\n")
+    report = _recovery_report(tmp_path)
+    summary = report.split("What happened: ", 1)[1].split("\n\n", 1)[0]
+    assert "Its metadata appears in Git history" in summary
+    assert "do not establish why the current changes remain uncommitted" in summary
+    assert "No commit" not in summary
+    assert "before its normal session commit" not in summary

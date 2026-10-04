@@ -72,16 +72,33 @@ def describe_session(root: Path, *, session_id: str = "", role: str = "", task: 
             if entry is not None:
                 role, task = entry.role_name, entry.task_id
     if not session_id:
-        return "No usable session evidence found; the origin of these changes is unknown."
+        return (
+            "What happened: No usable session evidence was found, "
+            "so the origin of these changes is unknown."
+        )
     label = (
         "Related session" if related else "Latest recorded session (relationship to edits unknown)"
     )
-    lines = [f"{label}: {session_id}; role={role}; task={task or 'none'}."]
+    if entry is not None and related and (entry.role_name != role or entry.task_id != task):
+        entry = None
+    commit = ""
+    if entry is not None:
+        try:
+            commit = run_git(
+                root,
+                "log",
+                "-1",
+                "--format=%H",
+                "--",
+                f"{AGENT_LOG_DIR}/{session_id}.metadata.json",
+            ).stdout.strip()
+        except VersionControlError:
+            commit = ""
+    lines = ["What happened: " + _session_summary(entry, related=related, committed=bool(commit))]
+    lines.extend(["", f"{label}: {session_id}; role={role}; task={task or 'none'}."])
     lines.append("Current changes may also include later operator edits.")
     if related:
         lines.extend(_describe_staged_handoff(root, session_id, role, task))
-    if entry is not None and related and (entry.role_name != role or entry.task_id != task):
-        entry = None
     metadata_path = f"{AGENT_LOG_DIR}/{session_id}.metadata.json"
     lines.append(f"Evidence: {metadata_path}")
     for suffix in ("stderr.log", "stdout.log"):
@@ -127,10 +144,6 @@ def describe_session(root: Path, *, session_id: str = "", role: str = "", task: 
         lines.append(f"Orchestrator stop: {entry.lifecycle_stop_reason}")
     if entry.starting_head:
         lines.append(f"Starting HEAD: {entry.starting_head}")
-    try:
-        commit = run_git(root, "log", "-1", "--format=%H", "--", metadata_path).stdout.strip()
-    except VersionControlError:
-        commit = ""
     if commit:
         lines.append(
             f"Session metadata recorded in commit: {commit} (not proof of task approval)."
@@ -150,6 +163,87 @@ def describe_session(root: Path, *, session_id: str = "", role: str = "", task: 
     if entry.accepted_handoff:
         lines.append(f"Recorded accepted handoff: {entry.accepted_handoff}")
     return "\n".join(lines)
+
+
+def _session_summary(entry: SessionMetadata | None, *, related: bool, committed: bool) -> str:
+    """Summarize recorded causes, keeping unrelated and incomplete evidence explicit."""
+    if entry is None:
+        return (
+            "Session evidence is missing, invalid, or inconsistent, so DevLab cannot reliably "
+            "explain why these changes remain uncommitted."
+        )
+    if not related:
+        return (
+            "The latest session record cannot be linked to these changes. DevLab cannot tell "
+            "whether they are unfinished session work or later edits."
+        )
+    subject = f"The {entry.role_name} session"
+    if entry.task_id:
+        subject += f" for {entry.task_id}"
+    if entry.failure_kind == "incomplete" and not entry.lifecycle_stop_reason:
+        return (
+            f"{subject} has no recorded completion. It may still be running or may have been "
+            "interrupted; the records do not establish which."
+        )
+    if entry.lifecycle_phase in {"starting", "environment_setup"}:
+        summary = f"{subject} did not reach agent invocation in the recorded lifecycle."
+        if entry.lifecycle_stop_reason:
+            summary += " DevLab stopped during session preparation."
+    elif entry.failure_kind == "timeout":
+        if entry.timeout_kind == "max_duration":
+            limit = entry.max_session_duration_seconds
+            duration = (
+                f"{limit / 60:g}-minute"
+                if limit is not None and limit % 60 == 0
+                else f"{limit:g}-second"
+                if limit is not None
+                else "maximum duration"
+            )
+            summary = f"{subject} reached its {duration} limit and was stopped."
+            if entry.inactive_seconds_at_stop is not None:
+                summary += (
+                    f" It last produced output {entry.inactive_seconds_at_stop:.1f}"
+                    " seconds earlier."
+                )
+        elif entry.timeout_kind == "inactivity":
+            summary = f"{subject} was stopped because it exceeded its inactivity limit."
+        else:
+            summary = f"{subject} timed out; the timeout type was not recorded."
+    elif entry.failure_kind == "incomplete":
+        summary = f"{subject} was interrupted before its provider outcome was recorded."
+    elif entry.failure_kind != "none" or entry.return_code != 0:
+        summary = f"{subject}'s agent invocation failed."
+    elif entry.lifecycle_stop_reason:
+        phase = entry.lifecycle_stop_reason.split(":", 1)[0]
+        cause = {
+            "handoff_validation": "accepting its handoff",
+            "environment_teardown": "tearing down its environment",
+            "version_control": "recording its changes in Git",
+            "task_validation": "validating its task",
+            "milestone_validation": "validating its milestone",
+        }.get(phase, "processing the session after agent execution")
+        summary = f"{subject}'s agent finished successfully, but DevLab stopped while {cause}."
+    else:
+        summary = (
+            f"{subject}'s agent finished successfully, but that alone does not establish "
+            "workflow completion."
+        )
+    if committed:
+        return summary + (
+            " Its metadata appears in Git history; these records do not establish why the "
+            "current changes remain uncommitted."
+        )
+    if entry.failure_kind in {
+        "timeout",
+        "nonzero_exit",
+        "provider_error",
+        "missing_executable",
+    } and entry.role_name in {"architect", "planner", "developer", "reviewer", "integrator"}:
+        summary += " Such failures stop DevLab before its normal session commit."
+    return (
+        summary
+        + " No commit containing this session's metadata was found; review the remaining work."
+    )
 
 
 def _describe_staged_handoff(root: Path, session_id: str, role: str, task: str) -> list[str]:

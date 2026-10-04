@@ -52,7 +52,10 @@ for approval.
 
 `devlab continue` reports related session evidence, provider timeout/failure
 details, handoff candidate/result presence, and all preservation/restart choices
-before asking whether to discard changes. Declining leaves files unchanged and
+before asking whether to discard changes. A short “What happened” summary
+connects the recorded stop to session completion before the detailed evidence.
+It states uncertainty when records are incomplete or cannot explain current edits.
+Declining leaves files unchanged and
 prints only that confirmation. In unattended mode, the same guidance is shown
 and continuation stops unless explicit discard authorization was supplied.
 `devlab doctor` retains a concise dirty-worktree finding and points to `continue`
