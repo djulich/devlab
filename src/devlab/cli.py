@@ -83,7 +83,7 @@ from devlab.workflow_state_report import (
     format_next_command,
     format_workflow_state_digest,
 )
-from devlab.workspace import Workspace, WorkspaceCompatibilityError
+from devlab.workspace import WORKSPACE_MANIFEST, Workspace, WorkspaceCompatibilityError
 
 IMPLEMENT_MAX_SESSIONS = 20
 PLAN_MAX_SESSIONS = 2
@@ -929,13 +929,15 @@ def _run_log_level(*, quiet: bool, verbose: bool) -> int:
 
 
 def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
-    report = build_workflow_state_report(root)
-    if report.lifecycle_phase == "uninitialized":
+    if not (root / WORKSPACE_MANIFEST).exists():
         print("Workspace is not initialized. Run devlab init, then devlab continue.")
         raise SystemExit(1)
     inspection = inspect_recovery(root)
     if inspection.proposal is not None:
         proposal = inspection.proposal
+        if inspection.guidance is not None:
+            print(format_operator_guidance(inspection.guidance))
+            print()
         print(format_discard_proposal(proposal))
         approved = False
         if args.discard_interrupted_session:
@@ -945,17 +947,13 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
                     f"match {proposal.head}.",
                     file=sys.stderr,
                 )
-                if inspection.guidance is not None:
-                    print("\n" + format_operator_guidance(inspection.guidance), file=sys.stderr)
                 raise SystemExit(1)
             approved = True
         if not approved and not args.unattended and sys.stdin.isatty():
             answer = input("\nDiscard the uncommitted repository state and restart? [y/N] ")
             approved = answer.strip().lower() in {"y", "yes"}
         if not approved:
-            if inspection.guidance is not None:
-                print("\nNo files were changed.\n", file=sys.stderr)
-                print(format_operator_guidance(inspection.guidance), file=sys.stderr)
+            print("No files were changed.", file=sys.stderr)
             raise SystemExit(1)
         try:
             commit = discard_interrupted_session(root, proposal)

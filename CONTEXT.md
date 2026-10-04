@@ -34,8 +34,8 @@ _Avoid_: transaction reconstruction, generic repository fix
 
 **Operator guidance**:
 Structured, condition-specific inspection, preservation, remediation, warning,
-and retry advice emitted whenever DevLab cannot continue or the operator declines
-a proposed discard.
+and retry advice shown by `continue` before discard confirmation and whenever
+DevLab cannot continue. Declining a proposed discard reveals no additional advice.
 _Avoid_: generic “run doctor” advice
 
 **Workspace health finding**:

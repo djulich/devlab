@@ -164,3 +164,150 @@ def test_recovery_refuses_untracked_nested_repository(tmp_path: Path) -> None:
     assert "nested Git repositories" in inspection.reason
     assert inspection.guidance is not None
     assert "git -C nested/ status" in format_operator_guidance(inspection.guidance)
+
+
+def _recovery_report(root: Path) -> str:
+    inspection = inspect_recovery(root)
+    assert inspection.guidance is not None
+    return format_operator_guidance(inspection.guidance)
+
+
+def _dirty_session_evidence(root: Path, **overrides: object) -> Path:
+    import dataclasses
+    import json
+
+    from devlab.handoffs import SessionEnvelope, write_session_envelope
+    from devlab.init import init_workspace
+    from devlab.session_logging import SessionMetadata
+
+    init_workspace(
+        root, automatic_git=True, git_user_name="Test", git_user_email="test@example.invalid"
+    )
+    invocation_id = "20261004T004128_003_developer"
+    directory = root / ".devlab/session-artifacts/developer"
+    write_session_envelope(
+        directory / "session.toml", SessionEnvelope(1, invocation_id, "developer", task="T0003")
+    )
+    (directory / "handoff-candidate.toml").write_text('outcome = "completed"\n')
+    metadata = SessionMetadata(
+        invocation_id,
+        3,
+        "developer",
+        "codex",
+        "test",
+        124,
+        "timeout",
+        2400.0,
+        "T0003",
+        timeout_kind="max_duration",
+        inactive_seconds_at_stop=6.6,
+    )
+    path = root / f".devlab/logs/agents/{invocation_id}.metadata.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(dataclasses.asdict(metadata) | overrides))
+    (root / "unfinished.py").write_text("partial = True\n")
+    return path
+
+
+def test_recovery_explains_timeout_and_preservation_without_mutating(tmp_path: Path) -> None:
+    from devlab.git import run_git
+
+    _dirty_session_evidence(tmp_path)
+    before = {
+        str(path.relative_to(tmp_path)): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(tmp_path).parts
+    }
+    head = run_git(tmp_path, "rev-parse", "HEAD").stdout
+    status = run_git(tmp_path, "status", "--porcelain").stdout
+    output = _recovery_report(tmp_path)
+
+    assert "Related session: 20261004T004128_003_developer" in output
+    assert "role=developer; task=T0003" in output
+    assert "maximum duration" in output
+    assert "2400.0s" in output
+    assert "6.6s before stop" in output
+    assert "Accepted handoff result absent" in output
+    assert "unverified claims" in output
+    assert "normal handoff/commit path" in output
+    assert "git stash push --include-untracked" in output
+    assert "does not resume that work" in output
+    assert "Keep and finish" in output
+    assert "clean-failed-session removes only untracked diagnostics" in output
+    assert "devlab continue" in output
+    assert "plan/implement" not in output
+    assert "later operator edits" in output
+    assert run_git(tmp_path, "rev-parse", "HEAD").stdout == head
+    assert run_git(tmp_path, "status", "--porcelain").stdout == status
+    assert before == {
+        str(path.relative_to(tmp_path)): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(tmp_path).parts
+    }
+
+
+def test_recovery_distinguishes_provider_success_from_commit_failure(tmp_path: Path) -> None:
+    _dirty_session_evidence(
+        tmp_path,
+        return_code=0,
+        failure_kind="none",
+        timeout_kind="",
+        lifecycle_phase="commit",
+        lifecycle_stop_reason="version_control: hook rejected commit",
+        starting_head="abc123",
+    )
+    output = _recovery_report(tmp_path)
+    assert "Provider completed successfully (exit code 0)" in output
+    assert "hook rejected commit" in output
+    assert "Reached commit phase" in output
+    assert "Starting HEAD: abc123" in output
+
+
+def test_recovery_retains_guidance_with_invalid_metadata_and_result(tmp_path: Path) -> None:
+    path = _dirty_session_evidence(tmp_path)
+    path.write_text('{"session_number": "invalid"}')
+    (tmp_path / ".devlab/session-artifacts/developer/result.toml").write_text("invalid")
+    output = _recovery_report(tmp_path)
+    assert "Related session:" in output
+    assert "metadata is missing, invalid, or mismatched" in output
+    assert "Staged result is invalid" in output
+    assert "git stash push --include-untracked" in output
+
+
+def test_recovery_does_not_attribute_operator_edits_to_old_session(tmp_path: Path) -> None:
+    from devlab.git import run_git
+
+    _dirty_session_evidence(tmp_path)
+    run_git(tmp_path, "add", ".")
+    run_git(tmp_path, "commit", "-m", "Preserve partial work")
+    commit = run_git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    (tmp_path / "unfinished.py").write_text("operator = True\n")
+    output = _recovery_report(tmp_path)
+    assert "Latest recorded session (relationship to edits unknown)" in output
+    assert f"Session metadata recorded in commit: {commit}" in output
+    assert "not proof of task approval" in output
+    assert "no session commit found" not in output
+
+
+def test_recovery_explains_missing_completion_without_claiming_a_crash(tmp_path: Path) -> None:
+    _dirty_session_evidence(
+        tmp_path, return_code=-1, failure_kind="incomplete", lifecycle_phase="provider"
+    )
+    output = _recovery_report(tmp_path)
+    assert "may still be running or interrupted" in output
+    assert "Last recorded lifecycle phase: provider" in output
+
+
+def test_recovery_does_not_call_setup_failure_a_provider_failure(tmp_path: Path) -> None:
+    _dirty_session_evidence(
+        tmp_path,
+        return_code=1,
+        failure_kind="provider_error",
+        lifecycle_phase="environment_setup",
+        lifecycle_stop_reason="environment_setup: setup command failed",
+    )
+    output = _recovery_report(tmp_path)
+    assert "Provider invocation not reached" in output
+    assert "Normal handoff/commit phase not reached" in output
+    assert "environment_setup: setup command failed" in output
+    assert "Provider failure stops" not in output

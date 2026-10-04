@@ -2775,6 +2775,7 @@ def _invoke_role_agent(
     """Prepare, invoke, and tear down one role's managed environment."""
     manage_environment = role.needs_environment and environment.manages_role(ctx.role_name)
     if manage_environment:
+        ctx.record_phase("environment_setup")
         try:
             logger.info("Preparing environment for %s session", ctx.role_name)
             environment.pre_session(ctx.role_name)
@@ -2787,6 +2788,7 @@ def _invoke_role_agent(
 
     agent_result = AgentResult(return_code=1, failure_kind="provider_error")
     agent_error: SessionError | None = None
+    ctx.record_phase("provider")
     try:
         agent_result = invoke_session(
             ctx.build_invocation(base_prompt, session_prompt),
@@ -2812,6 +2814,7 @@ def _invoke_role_agent(
 
     teardown_error: SessionError | None = None
     if manage_environment:
+        ctx.record_phase("environment_teardown")
         try:
             logger.info("Tearing down environment for %s session", ctx.role_name)
             environment.post_session(ctx.role_name)
@@ -2849,6 +2852,12 @@ def _load_accepted_result(
     return session_result
 
 
+@dataclasses.dataclass
+class _RunProgress:
+    sessions_run: int = 0
+    active_session: SessionContext | None = None
+
+
 class _TestServicePreparation:
     def __init__(
         self, root: Path, stack: ExitStack, config: ExecutableConfigSnapshot | None
@@ -2857,7 +2866,6 @@ class _TestServicePreparation:
         self.stack = stack
         self.config = config
         self.locked = False
-        self.sessions_run = 0
         self.exports: dict[str, dict[str, str]] = {}
         self.duration_seconds = 0.0
 
@@ -2940,10 +2948,12 @@ def run_loop(
     """Keep owned test services locked across preparation and dependent execution."""
     with ExitStack() as stack:
         services = _TestServicePreparation(root, stack, executable_config)
+        run_progress = _RunProgress()
         try:
             result = _run_loop(
                 root,
                 services=services,
+                run_progress=run_progress,
                 max_sessions=max_sessions,
                 provider=provider,
                 model=model,
@@ -2963,7 +2973,15 @@ def run_loop(
             )
         except TestServiceError as exc:
             result = _error_result(
-                services.sessions_run, SessionError("test_service", str(exc), 1)
+                run_progress.sessions_run, SessionError("test_service", str(exc), 1)
+            )
+        except BaseException as exc:
+            if run_progress.active_session is not None:
+                run_progress.active_session.record_uncommitted_stop(type(exc).__name__)
+            raise
+        if run_progress.active_session is not None and result.errors:
+            run_progress.active_session.record_uncommitted_stop(
+                "; ".join(f"{error.phase}: {error.message}" for error in result.errors)
             )
         return dataclasses.replace(
             result, test_service_duration_seconds=round(services.duration_seconds, 3)
@@ -2975,6 +2993,7 @@ def _run_loop(
     *,
     max_sessions: int,
     services: _TestServicePreparation,
+    run_progress: _RunProgress,
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
@@ -3601,7 +3620,7 @@ def _run_loop(
                 frozen_profiles if frozen_profiles is not None else load_profiles(root)
             )
             route_profiles = _profiles_for_route(root, start_snapshot, route, available_profiles)
-            services.sessions_run = sessions_run
+            run_progress.sessions_run = sessions_run
             service_operations = ["session"]
             if role.needs_environment:
                 service_operations.append("setup")
@@ -3810,6 +3829,23 @@ def _run_loop(
         ctx.write_prompt_logs(base_prompt, session_prompt)
         dependency_baseline = snapshot_direct_dependencies(root)
 
+        run_progress.active_session = ctx
+        ctx.write_session_metadata(
+            dataclasses.replace(
+                _build_session_metadata(
+                    ctx,
+                    AgentResult(return_code=-1),
+                    resolved_agent_configs,
+                    route.task_id,
+                    executable_config,
+                ),
+                failure_kind="incomplete",
+            )
+        )
+        ctx.record_phase(
+            "starting", starting_head=run_git(root, "rev-parse", "HEAD").stdout.strip()
+        )
+
         lifecycle = _invoke_role_agent(
             ctx,
             role,
@@ -3819,8 +3855,13 @@ def _run_loop(
             session_prompt,
             config_log,
         )
-        services.sessions_run = sessions_run + 1
+        run_progress.sessions_run = sessions_run + 1
         agent_result = lifecycle.agent_result
+        ctx.write_session_metadata(
+            _build_session_metadata(
+                ctx, agent_result, resolved_agent_configs, route.task_id, executable_config
+            )
+        )
         if lifecycle.errors:
             primary_error = lifecycle.errors[0]
             logger.error("%s. Stopping.", primary_error.message)
@@ -3838,6 +3879,7 @@ def _run_loop(
 
         workspace.did_mutate()
 
+        ctx.record_phase("handoff_validation")
         result_path = artifacts_dir / SESSION_RESULT_FILE
         if not result_path.exists():
             submission_issues: tuple[str, ...]
@@ -3936,6 +3978,7 @@ def _run_loop(
             return _error_result(sessions_run, SessionError("handoff_validation", message, 1))
 
         commit_message = _commit_message(workspace.snapshot, candidate, role_name)
+        ctx.record_phase("validation", accepted_handoff=str(result_path.relative_to(root)))
         milestone_validation: ValidationRun | None = None
         milestone_validation_contract: EffectiveMilestoneValidation | None = None
         if role_name == "integrator" and route.milestone_id is not None:
@@ -4035,6 +4078,7 @@ def _run_loop(
             milestone_validation=milestone_validation,
             milestone_validation_contract=milestone_validation_contract,
         )
+        ctx.record_phase("task_validation")
         validation_run: ValidationRun | None = None
         repeated_validation_failure = False
         task_validation_stop: tuple[RunStopReason, str] | None = None
@@ -4395,6 +4439,7 @@ def _run_loop(
             clear_doctor_recovery(root)
         try:
             workspace.sync()
+            ctx.record_phase("commit")
             committed = commit_all(root, commit_message)
             if committed:
                 logger.info("Committed session changes: %s", commit_message)
@@ -4429,6 +4474,7 @@ def _run_loop(
             duration_info,
         )
         sessions_run += 1
+        run_progress.active_session = None
         last_completed_task_id = route.task_id
         if planner_recovery_error is not None:
             return _error_result(

@@ -214,7 +214,7 @@ def test_cli_init_creates_devlab_tree_and_git_baseline(
     assert "created: .devlab/manifest.toml" in output
     assert "Next steps:" in output
     assert ".devlab/config/agents.toml" in output
-    assert "DevLab plan/implement require a clean Git working tree" in output
+    assert "DevLab continuation requires a clean Git working tree" in output
     assert (tmp_path / ".devlab/manifest.toml").exists()
     assert (tmp_path / ".devlab/config/profiles/default.toml").exists()
     assert (tmp_path / ".devlab/config/agents.toml").exists()
@@ -1000,9 +1000,10 @@ def test_cli_continue_declines_discard_with_actionable_preservation_advice(
     assert exc.value.code == 1
     output = capsys.readouterr()
     assert "No files were changed" in output.err
-    assert "git stash push --include-untracked" in output.err
-    assert f"git reset --hard {head}" in output.err
-    assert "external effects" in output.err
+    assert "git stash push --include-untracked" in output.out
+    assert f"git reset --hard {head}" in output.out
+    assert "external effects" in output.out
+    assert output.err.strip() == "No files were changed."
     assert interrupted.exists()
 
 
@@ -1507,3 +1508,110 @@ def test_cli_agent_smoke_test_requires_selector_for_provider_defaults_modifier(
         )
 
     assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("damaged_state", [False, True])
+def test_continue_shows_complete_recovery_before_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    damaged_state: bool,
+) -> None:
+    import dataclasses
+
+    from devlab.session_logging import SessionMetadata
+    from devlab.workflow_state import WORKFLOW_STATE
+
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    invocation = "20261004T004128_003_developer"
+    write_session_envelope(
+        tmp_path / ".devlab/session-artifacts/developer/session.toml",
+        SessionEnvelope(1, invocation, "developer", task="T0003"),
+    )
+    metadata = SessionMetadata(
+        invocation,
+        3,
+        "developer",
+        "test",
+        "test",
+        124,
+        "timeout",
+        2400.0,
+        "T0003",
+        timeout_kind="max_duration",
+        inactive_seconds_at_stop=6.6,
+    )
+    metadata_path = tmp_path / f".devlab/logs/agents/{invocation}.metadata.json"
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(json.dumps(dataclasses.asdict(metadata)))
+    if damaged_state:
+        (tmp_path / WORKFLOW_STATE).write_text("not valid TOML = [")
+    partial = tmp_path / "partial.py"
+    partial.write_text("unfinished = True\n")
+    before = {
+        str(path.relative_to(tmp_path)): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(tmp_path).parts
+    }
+    head = _git_output(tmp_path, "rev-parse", "HEAD")
+    prompted = False
+
+    def decline(prompt: str) -> str:
+        nonlocal prompted
+        prompted = True
+        output = capsys.readouterr().out
+        assert "maximum duration" in output
+        assert "6.6s before stop" in output
+        assert "Accepted handoff result absent" in output
+        assert "Keep and finish the work" in output
+        assert "git stash push --include-untracked" in output
+        assert "Discard manually (destructive)" in output
+        assert "Ignored files and external effects" in output
+        assert f"Restart boundary: {head}" in output
+        assert "partial.py" in output
+        assert output.index("Related session:") < output.index("Keep and finish")
+        assert output.index("Keep and finish") < output.index("Restart boundary:")
+        assert output.count("Related session:") == 1
+        assert "[y/N]" in prompt
+        return "n"
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", decline)
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "continue", "--root", str(tmp_path))
+    assert exc.value.code == 1
+    assert prompted
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err.strip() == "No files were changed."
+    assert _git_output(tmp_path, "rev-parse", "HEAD") == head
+    assert before == {
+        str(path.relative_to(tmp_path)): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(tmp_path).parts
+    }
+
+
+def test_continue_unattended_shows_recovery_without_prompt_or_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_cli(monkeypatch, "init", "--root", str(tmp_path))
+    capsys.readouterr()
+    partial = tmp_path / "partial.py"
+    partial.write_text("keep me\n")
+
+    def unexpected_prompt(_prompt: str) -> str:
+        pytest.fail("unattended recovery must not prompt")
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", unexpected_prompt)
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(monkeypatch, "continue", "--root", str(tmp_path), "--unattended")
+    assert exc.value.code == 1
+    output = capsys.readouterr()
+    assert "Keep and finish" in output.out
+    assert "git stash push --include-untracked" in output.out
+    assert "Restart boundary:" in output.out
+    assert output.err.strip() == "No files were changed."
+    assert partial.read_text() == "keep me\n"

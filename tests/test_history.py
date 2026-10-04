@@ -181,3 +181,43 @@ class TestFormatHistory:
 
         assert "developer" in output
         assert "ok" in output
+
+
+def test_history_orders_across_runs_by_invocation_not_session_number(tmp_path: Path) -> None:
+    _write_metadata(tmp_path, "20260529T120000_010_reviewer", session_number=10)
+    _write_metadata(tmp_path, "20260530T120000_001_developer", session_number=1)
+    assert [entry.session_number for entry in load_session_metadata(tmp_path)] == [10, 1]
+
+
+def test_history_skips_wrongly_typed_metadata(tmp_path: Path) -> None:
+    path = _write_metadata(tmp_path, "20260529T120000_001_developer")
+    data = json.loads(path.read_text())
+    data["duration_seconds"] = "forty"
+    path.write_text(json.dumps(data))
+    assert load_session_metadata(tmp_path) == []
+
+
+def test_latest_malformed_record_does_not_fall_back_to_old_success(tmp_path: Path) -> None:
+    from devlab.history import describe_session
+
+    _write_metadata(tmp_path, "20260529T120000_010_reviewer", session_number=10)
+    path = _write_metadata(tmp_path, "20260530T120000_001_developer", session_number=1)
+    path.write_text("invalid")
+    output = describe_session(tmp_path)
+    assert "20260530T120000_001_developer" in output
+    assert "20260529T120000_010_reviewer" not in output
+    assert "Provider outcome unavailable" in output
+
+
+def test_history_keeps_provider_failure_when_teardown_was_last_phase(tmp_path: Path) -> None:
+    path = _write_metadata(
+        tmp_path, "20260529T120000_001_developer", return_code=124, failure_kind="timeout"
+    )
+    data = json.loads(path.read_text())
+    data.update(
+        timeout_kind="max_duration",
+        lifecycle_phase="environment_teardown",
+        lifecycle_stop_reason="agent_invocation: timeout",
+    )
+    path.write_text(json.dumps(data))
+    assert "FAILED (max_duration)" in format_history(tmp_path)

@@ -61,7 +61,9 @@ def format_doctor_report(problems: list[DoctorProblem]) -> str:
     if not problems:
         return "DevLab doctor: OK"
     lines = [f"DevLab doctor: {len(problems)} problem(s)"]
-    lines.extend(f"- {problem.path}: {problem.message}" for problem in problems)
+    lines.extend(
+        f"- {problem.path}: " + problem.message.replace("\n", "\n  ") for problem in problems
+    )
     return "\n".join(lines)
 
 

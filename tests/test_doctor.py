@@ -937,3 +937,21 @@ def _write_milestone(
         f'architecture_review_handoff = "{architecture_review_handoff}"\n'
         f"findings = [{findings_text}]\n"
     )
+
+
+def test_doctor_keeps_dirty_finding_concise_and_checks_other_problems(tmp_path: Path) -> None:
+    init_workspace(
+        tmp_path, automatic_git=True, git_user_name="Test", git_user_email="test@example.invalid"
+    )
+    (tmp_path / "partial.py").write_text("unfinished = True\n")
+    (tmp_path / ".devlab/config/agents.toml").write_text("not valid TOML = [")
+    problems = check_workspace(tmp_path)
+    dirty = next(problem for problem in problems if problem.path == ".")
+    assert "run devlab continue for diagnosis and recovery options" in dirty.message
+    assert "explicit confirmation" in dirty.message
+    assert "\n" not in dirty.message
+    assert "git stash" not in dirty.message
+    assert "git reset" not in dirty.message
+    assert dirty.blocks_operation(DoctorOperation.PLANNING)
+    assert dirty.blocks_operation(DoctorOperation.SESSION)
+    assert any(problem.path == ".devlab/config/agents.toml" for problem in problems)

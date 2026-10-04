@@ -4541,6 +4541,13 @@ class TestSessionMetadata:
         assert meta["failure_kind"] == "none"
         assert meta["task_id"] == "T0001"
         assert meta["session_number"] == 1
+        assert meta["starting_head"]
+        assert meta["lifecycle_phase"] == "commit"
+        assert meta["accepted_handoff"].endswith("developer/result.toml")
+        assert meta["lifecycle_stop_reason"] == ""
+        from devlab.git import run_git
+
+        assert run_git(tmp_path, "status", "--porcelain").stdout == ""
 
     def test_metadata_written_for_failed_session(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -4557,6 +4564,7 @@ class TestSessionMetadata:
         )
 
         meta = _find_metadata(tmp_path)
+        assert "agent_invocation:" in meta["lifecycle_stop_reason"]
         assert meta["return_code"] == 3
         assert meta["failure_kind"] == "nonzero_exit"
         assert meta["task_id"] == "T0001"
@@ -4600,6 +4608,8 @@ class TestSessionMetadata:
         meta = _find_metadata(tmp_path)
         assert meta["return_code"] == 0
         assert meta["failure_kind"] == "none"
+        assert meta["lifecycle_phase"] == "handoff_validation"
+        assert "handoff_validation:" in meta["lifecycle_stop_reason"]
 
 
 def test_run_loop_can_use_one_opt_in_handoff_correction(tmp_path: Path) -> None:
@@ -5537,3 +5547,49 @@ class TestTimestamp:
         ts = _timestamp()
         assert len(ts) == 15
         assert ts[8] == "T"
+
+
+def test_session_start_and_interruption_are_durable(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+
+    def interrupt(call: AgentCall) -> None:
+        meta = _find_metadata(call.root)
+        assert meta["starting_head"]
+        assert meta["lifecycle_phase"] == "provider"
+        assert meta["failure_kind"] == "incomplete"
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        run_loop(
+            tmp_path,
+            max_sessions=1,
+            agent_providers={"default": MockProvider(on_invoke=interrupt)},
+        )
+    meta = _find_metadata(tmp_path)
+    assert meta["lifecycle_stop_reason"] == "KeyboardInterrupt"
+    assert meta["failure_kind"] == "incomplete"
+
+
+def test_commit_failure_records_orchestrator_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import devlab.orchestrator as orchestrator
+    from devlab.git import VersionControlError
+
+    _setup_tree(tmp_path)
+
+    def fail_commit(root: Path, message: str) -> bool:
+        raise VersionControlError("commit hook rejected changes")
+
+    monkeypatch.setattr(orchestrator, "commit_all", fail_commit)
+    result = run_loop(
+        tmp_path,
+        max_sessions=1,
+        agent_providers={"default": MockProvider()},
+    )
+    assert result.exit_code != 0
+    meta = _find_metadata(tmp_path)
+    assert meta["failure_kind"] == "none"
+    assert meta["return_code"] == 0
+    assert meta["lifecycle_phase"] == "commit"
+    assert "commit hook rejected changes" in meta["lifecycle_stop_reason"]

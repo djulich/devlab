@@ -18,8 +18,9 @@ devlab doctor
 ```
 
 Use the reported stop reason and next command rather than guessing which role
-should run. Fix provider availability, an unclean worktree, invalid state, or
-other reported prerequisites before continuing.
+should run. For uncommitted changes, run `devlab continue` for diagnosis and
+recovery choices. Resolve provider availability, invalid state, or other reported
+prerequisites before starting further sessions.
 
 `devlab doctor` is the authoritative global health check and returns nonzero for
 every finding. Workflow commands reuse those same domain-owned findings and stop
@@ -49,6 +50,27 @@ for approval.
 
 ## 3. Recover an interrupted session with uncommitted changes
 
+`devlab continue` reports related session evidence, provider timeout/failure
+details, handoff candidate/result presence, and all preservation/restart choices
+before asking whether to discard changes. Declining leaves files unchanged and
+prints only that confirmation. In unattended mode, the same guidance is shown
+and continuation stops unless explicit discard authorization was supplied.
+`devlab doctor` retains a concise dirty-worktree finding and points to `continue`
+for diagnosis and recovery options. Doctor remains read-only; continuation can
+start workflow work when the worktree is clean or after authorized recovery.
+Candidate claims are not accepted results, and session evidence does not prove
+that every current edit came from the session. Missing or malformed evidence is
+reported as unknown rather than guessed.
+
+New role sessions record their starting HEAD, last lifecycle phase, accepted
+handoff reference, and uncommitted stop reason in session metadata. Recovery diagnosis uses
+Git history to identify a commit containing the metadata; that is evidence of
+preservation, not reviewer approval. Provider success alone does not establish
+successful handoff processing or commit. Older sessions may lack lifecycle
+details; a start record without completion may represent an active or interrupted
+session. Auxiliary researcher/resolver/doctor sessions retain their existing
+provider metadata and do not yet record these main workflow lifecycle phases.
+
 First stop any still-running provider process and inspect the affected work:
 
 ```bash
@@ -59,13 +81,17 @@ git diff --cached
 
 Read any untracked files named by `git status` as well; they do not appear in
 `git diff`. Preserve work you want to keep before agreeing to discard it.
+Stashing with untracked files preserves partial work but restarts the workflow
+from the committed boundary. To retain the implementation in place, review and
+finish it, validate it, and commit selectively without manufacturing a completed
+handoff or reviewer approval.
 
 Run `devlab continue` to see the supported recovery action. For ordinary
 uncommitted state, it can propose discarding the described tracked, staged,
 and non-ignored untracked changes back to the observed committed boundary.
-Inspect the exact HEAD and affected paths before confirming. If you decline,
-follow the preservation guidance it prints, including the displayed stash command
-when applicable. The offered stash preserves tracked and non-ignored untracked
+Inspect the diagnosis, recovery alternatives, exact HEAD, and affected paths
+before confirming. All guidance, including the applicable stash command, is
+shown before the prompt; declining reveals no additional choices. The offered stash preserves tracked and non-ignored untracked
 work across the repository. Do not substitute a broader reset or clean command.
 
 Git conflicts, an in-progress Git operation, or nested repository dirt require

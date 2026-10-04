@@ -37,10 +37,15 @@ version of already-dirty content. Git conflicts, in-progress Git operations, and
 nested repository dirt are refused. After reset and clean, DevLab verifies that
 the worktree is actually clean before recording the interruption or continuing.
 
-If the operator declines or DevLab refuses, it emits structured, condition-specific
-guidance: inspection commands, a non-destructive stash alternative when
-applicable, exact manual remediation, warnings, and `devlab continue` as the
-retry command. DevLab restores only Git-controlled repository state. Ignored
+Before requesting discard confirmation, `continue` presents the recorded-session
+diagnosis and all condition-specific recovery guidance: inspection commands,
+preservation choices, a non-destructive stash alternative when applicable, exact
+manual remediation, warnings, and `devlab continue` as the retry command. It then
+shows the exact discard proposal. Declining reports that no files were changed;
+it does not reveal additional guidance. Unsupported recovery states receive
+applicable remediation without a discard prompt. `doctor` keeps a concise dirty
+worktree health finding and points to `continue` for the complete explanation.
+DevLab restores only Git-controlled repository state. Ignored
 files and external effects are neither reverted nor claimed to be repeatable;
 the operator decides whether restarting the bounded session is appropriate.
 

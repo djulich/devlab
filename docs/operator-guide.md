@@ -123,6 +123,9 @@ necessary, inspect the reported problem and run `doctor` before and after them.
 
 - `status` shows current progress, blockers, and the recommended next action.
 - `doctor` checks configuration and persisted workflow state for health problems.
+  A dirty-worktree finding points to `continue` for the full diagnosis and recovery
+  choices. `continue` presents those choices before requesting discard approval;
+  declining changes no files and reveals no additional recovery instructions.
 - `diagnostics` provides historical and quality-oriented evidence for deeper
   investigation.
 

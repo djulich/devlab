@@ -6,8 +6,9 @@ from pathlib import Path
 
 from devlab.git import VersionControlError, run_git
 from devlab.handoffs import HandoffError, load_session_envelope
+from devlab.history import describe_session
 from devlab.workflow_events import append_workflow_event
-from devlab.workspace import ARTIFACTS_DIR
+from devlab.workspace import ARTIFACTS_DIR, Workspace
 
 INTERRUPTION_COMMIT_MESSAGE = "Record discarded interrupted DevLab session"
 
@@ -118,10 +119,46 @@ def inspect_recovery(root: Path) -> RecoveryInspection:
     clean_paths = _clean_preview(root)
     session = _interrupted_session(root, entries)
     proposal = DiscardProposal(head, entries, clean_paths, session)
+    guidance = discard_guidance(proposal)
+    diagnosis = describe_session(
+        root, session_id=session.session_id, role=session.role, task=session.task
+    )
+    counts = {"product/other": 0, "workflow/configuration": 0, "session diagnostics": 0}
+    for _status, path in entries:
+        category = (
+            "session diagnostics"
+            if path.startswith((".devlab/logs/", ".devlab/session-artifacts/"))
+            else "workflow/configuration"
+            if path.startswith(".devlab/")
+            else "product/other"
+        )
+        counts[category] += 1
+    diagnosis += (
+        "\nChanged paths: "
+        + ", ".join(f"{count} {category}" for category, count in counts.items() if count)
+        + "."
+    )
+    if session.task:
+        try:
+            task = next(
+                (
+                    task
+                    for task in Workspace(root).snapshot.list_tasks()
+                    if task.id == session.task
+                ),
+                None,
+            )
+            if task is not None:
+                diagnosis += (
+                    f"\nCurrent task: {task.id}; status={task.status.value}; "
+                    f"{task.path.relative_to(root)}"
+                )
+        except (OSError, ValueError):
+            diagnosis += "\nCurrent task state could not be read; inspect the task diagnostics."
     return RecoveryInspection(
         proposal,
         "uncommitted repository state",
-        discard_guidance(proposal),
+        dataclasses.replace(guidance, explanation=diagnosis + "\n" + guidance.explanation),
     )
 
 
@@ -161,8 +198,16 @@ def discard_guidance(proposal: DiscardProposal) -> OperatorGuidance:
         inspection_commands=("git status --short", "git diff", "git diff --cached"),
         alternatives=(
             OperatorAlternative(
+                "Keep and finish the work",
+                "Review tracked and untracked changes and the session evidence. Finish and "
+                "validate the work before selectively committing it; a commit alone does not "
+                "establish handoff acceptance or reviewer approval.",
+                (),
+            ),
+            OperatorAlternative(
                 "Preserve and restart",
-                "Stash tracked and non-ignored untracked files, then retry from the commit.",
+                "Stash tracked and non-ignored untracked files, then retry from the commit. "
+                "This preserves the partial work in the stash; it does not resume that work.",
                 (
                     "git stash push --include-untracked -m " + shlex.quote(stash_message),
                     "devlab continue",
@@ -184,6 +229,8 @@ def discard_guidance(proposal: DiscardProposal) -> OperatorGuidance:
             "Ignored files and external effects such as databases, deployments, APIs, and "
             "running processes are not restored.",
             "Restarting may repeat external effects from the interrupted session.",
+            "Read untracked files separately; git diff does not show their contents. "
+            "clean-failed-session removes only untracked diagnostics, not product changes.",
         ),
     )
 

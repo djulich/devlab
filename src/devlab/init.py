@@ -194,7 +194,7 @@ def format_init_next_steps() -> str:
   7. Generate plans:
        devlab plan
 
-DevLab plan/implement require a clean Git working tree. Commit spec and config edits
+DevLab continuation requires a clean Git working tree. Commit spec and config edits
 before starting agent sessions."""
 
 

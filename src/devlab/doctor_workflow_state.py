@@ -203,8 +203,8 @@ def check_git_worktree(root: Path) -> list[DoctorProblem]:
     return [
         DoctorProblem(
             ".",
-            "working tree is dirty; commit, stash, or ignore changes before running "
-            f"DevLab plan/implement ({preview})",
+            f"working tree is dirty ({preview}); run devlab continue for diagnosis and "
+            "recovery options. Discarding changes requires explicit confirmation.",
         )
     ]
 

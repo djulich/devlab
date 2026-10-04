@@ -8,8 +8,10 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from devlab._files import atomic_write_text
 from devlab.agent_config import ResolvedAgentConfig, format_resolved_agent_config
 from devlab.agents import AgentInvocation
+from devlab.git import VersionControlError, run_git
 from devlab.handoffs import DEVLAB_PYTHON_ENV, SESSION_ENVELOPE_ENV, SESSION_ENVELOPE_FILE
 from devlab.profiles import DEFAULT_PROFILE
 from devlab.task_tracker import Task
@@ -18,7 +20,7 @@ from devlab.workspace import AGENT_LOG_DIR, ARTIFACTS_DIR, DESIGN_PLAN, Workspac
 
 @dataclasses.dataclass(frozen=True)
 class SessionMetadata:
-    """Durable metadata written for one provider invocation."""
+    """Provider outcome and available orchestrator lifecycle evidence for one session."""
 
     invocation_id: str
     session_number: int
@@ -39,6 +41,10 @@ class SessionMetadata:
     test_service_instances: dict[str, str] = dataclasses.field(default_factory=dict)
     progress: str = ""
     dependency_introductions: tuple[dict[str, str], ...] = ()
+    starting_head: str = ""
+    lifecycle_phase: str = ""
+    lifecycle_stop_reason: str = ""
+    accepted_handoff: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,9 +102,42 @@ class SessionContext:
 
     def write_session_metadata(self, metadata: SessionMetadata) -> Path:
         path = agent_log_path(self.root, self.invocation_id, "metadata.json")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(dataclasses.asdict(metadata), indent=2) + "\n")
+        data = dataclasses.asdict(metadata)
+        if path.exists():
+            previous = json.loads(path.read_text())
+            for key in (
+                "starting_head",
+                "lifecycle_phase",
+                "lifecycle_stop_reason",
+                "accepted_handoff",
+            ):
+                data[key] = previous.get(key, data[key])
+        atomic_write_text(path, json.dumps(data, indent=2) + "\n")
         return path
+
+    def record_phase(self, phase: str, **details: str) -> None:
+        """Persist orchestration progress separately from the provider outcome."""
+        path = agent_log_path(self.root, self.invocation_id, "metadata.json")
+        if not path.exists():
+            return
+        data = json.loads(path.read_text())
+        data.update(lifecycle_phase=phase, **details)
+        atomic_write_text(path, json.dumps(data, indent=2) + "\n")
+
+    def record_uncommitted_stop(self, reason: str) -> None:
+        """Retain failure evidence without dirtying an already committed boundary."""
+        path = agent_log_path(self.root, self.invocation_id, "metadata.json")
+        if not path.exists():
+            return
+        try:
+            committed = run_git(self.root, "show", f"HEAD:{path.relative_to(self.root)}").stdout
+        except VersionControlError:
+            committed = ""
+        if committed == path.read_text():
+            return
+        data = json.loads(path.read_text())
+        data["lifecycle_stop_reason"] = reason
+        atomic_write_text(path, json.dumps(data, indent=2) + "\n")
 
 
 def agent_log_path(root: Path, invocation_id: str, suffix: str) -> Path:
