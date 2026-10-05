@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 import shlex
-import shutil
-import textwrap
 from pathlib import Path
 
+from devlab._console import wrap_prose as _wrap_prose
 from devlab.git import VersionControlError, run_git
 from devlab.handoffs import HandoffError, load_session_envelope
 from devlab.history import SessionDiagnosticLine, session_diagnostic_lines
@@ -273,7 +272,6 @@ def discard_guidance(proposal: DiscardProposal) -> OperatorGuidance:
 
 
 def format_discard_proposal(proposal: DiscardProposal, *, width: int | None = None) -> str:
-    width = width or shutil.get_terminal_size(fallback=(80, 24)).columns
     lines = [
         "Discard proposal — technical details:",
         _wrap_prose(
@@ -298,26 +296,7 @@ def format_discard_proposal(proposal: DiscardProposal, *, width: int | None = No
     return "\n".join(lines)
 
 
-def _wrap_prose(
-    text: str, width: int, *, indent: str = "", continuation: str | None = None
-) -> str:
-    return "\n".join(
-        textwrap.fill(
-            paragraph,
-            width=width,
-            initial_indent=indent,
-            subsequent_indent=indent if continuation is None else continuation,
-            break_long_words=False,
-            break_on_hyphens=False,
-        )
-        if paragraph
-        else ""
-        for paragraph in text.split("\n")
-    )
-
-
 def format_operator_guidance(guidance: OperatorGuidance, *, width: int | None = None) -> str:
-    width = width or shutil.get_terminal_size(fallback=(80, 24)).columns
     lines = [_wrap_prose(guidance.summary, width), ""]
     if guidance.diagnosis:
         lines.extend(

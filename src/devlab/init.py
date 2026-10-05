@@ -4,6 +4,7 @@ import dataclasses
 from importlib import resources
 from pathlib import Path
 
+from devlab._console import wrap_prose
 from devlab.version_control import (
     assert_clean_worktree,
     commit_all,
@@ -168,34 +169,41 @@ def format_init_result(result: InitResult, root: Path) -> str:
     return "\n".join(lines)
 
 
-def format_init_next_steps() -> str:
-    return """Next steps:
-  1. Edit the system spec:
-       .devlab/specs/system/README.md
-
-  2. Review the optional deployment overlay:
-       .devlab/specs/deployment/README.md
-     Remove its placeholder marker when deployment is in scope.
-
-  3. Configure an installed agent command:
-       .devlab/config/agents.toml
-
-  4. Commit your user-authored setup changes:
-       git add .devlab/specs .devlab/config
-       git commit -m "Configure DevLab project"
-
-  5. Validate configuration:
-       devlab doctor
-
-  6. Review, trust, and smoke-test executable configuration:
-       devlab trust executable-config
-       devlab agent-smoke-test
-
-  7. Generate plans:
-       devlab plan
-
-DevLab continuation requires a clean Git working tree. Commit spec and config edits
-before starting agent sessions."""
+def format_init_next_steps(*, width: int | None = None) -> str:
+    return "\n".join(
+        [
+            wrap_prose("Next steps:", width),
+            wrap_prose("  1. Edit the system spec:", width),
+            "       .devlab/specs/system/README.md",
+            "",
+            wrap_prose("  2. Review the optional deployment overlay:", width),
+            "       .devlab/specs/deployment/README.md",
+            wrap_prose("     Remove its placeholder marker when deployment is in scope.", width),
+            "",
+            wrap_prose("  3. Configure an installed agent command:", width),
+            "       .devlab/config/agents.toml",
+            "",
+            wrap_prose("  4. Commit your user-authored setup changes:", width),
+            "       git add .devlab/specs .devlab/config",
+            '       git commit -m "Configure DevLab project"',
+            "",
+            wrap_prose("  5. Validate configuration:", width),
+            "       devlab doctor",
+            "",
+            wrap_prose("  6. Review, trust, and smoke-test executable configuration:", width),
+            "       devlab trust executable-config",
+            "       devlab agent-smoke-test",
+            "",
+            wrap_prose("  7. Generate plans:", width),
+            "       devlab plan",
+            "",
+            wrap_prose(
+                "DevLab continuation requires a clean Git working tree. "
+                "Commit spec and config edits before starting agent sessions.",
+                width,
+            ),
+        ]
+    )
 
 
 def _ensure_dir(path: Path, created: list[Path]) -> None:

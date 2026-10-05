@@ -6,6 +6,7 @@ import shlex
 from collections.abc import Iterable
 from pathlib import Path
 
+from devlab._console import wrap_prose
 from devlab.clarifications import Clarification
 from devlab.doctor_recovery import RecoveryStage, load_doctor_recovery
 from devlab.findings import Finding, FindingStatus
@@ -271,7 +272,7 @@ def build_workflow_state_report(root: Path) -> WorkflowStateReport:
     )
 
 
-def format_workflow_state_report(report: WorkflowStateReport) -> str:
+def format_workflow_state_report(report: WorkflowStateReport, *, width: int | None = None) -> str:
     lines = ["Workspace status:"]
     lines.append(f"Project mode: {report.project_mode}")
     lines.append(f"Lifecycle phase: {report.lifecycle_phase}")
@@ -280,29 +281,43 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
     lines.append(f"Design plan: {_present_text(report.planning.design_plan_present)}")
     lines.append(f"Project plan: {_present_text(report.planning.project_plan_present)}")
     lines.append(
-        "Tasks: "
-        f"{report.current_work.tasks_total} total, "
-        f"{report.current_work.tasks_closed} closed, "
-        f"{report.current_work.tasks_active} active"
+        wrap_prose(
+            "Tasks: "
+            f"{report.current_work.tasks_total} total, "
+            f"{report.current_work.tasks_closed} closed, "
+            f"{report.current_work.tasks_active} active",
+            width,
+        )
     )
     lines.append(f"Milestones: {report.current_work.milestones_total} total")
     lines.append(
-        "Findings: "
-        f"{report.current_work.findings_open} open, "
-        f"{report.current_work.findings_planned} planned, "
-        f"{report.current_work.findings_resolved} resolved"
+        wrap_prose(
+            "Findings: "
+            f"{report.current_work.findings_open} open, "
+            f"{report.current_work.findings_planned} planned, "
+            f"{report.current_work.findings_resolved} resolved",
+            width,
+        )
     )
     if report.clarifications.pending_blockers:
         lines.append(
-            "Pending clarification blockers: " + str(len(report.clarifications.pending_blockers))
+            wrap_prose(
+                "Pending clarification blockers: "
+                + str(len(report.clarifications.pending_blockers)),
+                width,
+            )
         )
         for blocker in report.clarifications.pending_blockers[:5]:
             lines.append(
-                f"- {blocker.id}: {blocker.title} "
-                f"(scope={blocker.scope}, blocks={blocker.blocks}, role={blocker.asking_role})"
+                wrap_prose(
+                    f"- {blocker.id}: {blocker.title} "
+                    f"(scope={blocker.scope}, blocks={blocker.blocks}, "
+                    f"role={blocker.asking_role})",
+                    width,
+                )
             )
     else:
-        lines.append("Pending clarification blockers: 0")
+        lines.append(wrap_prose("Pending clarification blockers: 0", width))
     if report.clarifications.resume is not None:
         resume = report.clarifications.resume
         lines.append(
@@ -314,13 +329,17 @@ def format_workflow_state_report(report: WorkflowStateReport) -> str:
         )
     else:
         lines.append("Resume pointer: none")
-    lines.extend(_format_research_report(report.research))
+    lines.extend(_format_research_report(report.research, width=width))
     if report.doctor_recovery is not None:
         recovery = report.doctor_recovery
-        lines.append(f"Doctor recovery: {recovery.task} ({recovery.stage}) — {recovery.summary}")
+        lines.append(
+            wrap_prose(
+                f"Doctor recovery: {recovery.task} ({recovery.stage}) — {recovery.summary}", width
+            )
+        )
     lines.append(f"Active generation: {report.generations.active}")
     lines.append(f"Archived generations: {len(report.generations.archived)}")
-    lines.append(f"Next action: {_next_action(report)}")
+    lines.append(wrap_prose(f"Next action: {_next_action(report)}", width))
     return "\n".join(lines)
 
 
@@ -458,7 +477,7 @@ def format_next_command(advice: NextCommandAdvice) -> str:
     return advice.command
 
 
-def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
+def format_workflow_state_digest(digest: WorkflowStateDigest, *, width: int | None = None) -> str:
     lines = ["# DevLab Status", ""]
     lines.append(f"- Lifecycle phase: {digest.summary.lifecycle_phase}")
     lines.append(f"- Project mode: {digest.summary.project_mode}")
@@ -468,21 +487,27 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
     lines.append("")
     lines.append("## Next Action")
     lines.append("")
-    lines.append(digest.next_action)
+    lines.append(wrap_prose(digest.next_action, width))
     lines.append("")
     lines.append("## Current Work")
     lines.append("")
     lines.append(
-        "- Tasks: "
-        f"{digest.current_work.tasks_total} total, "
-        f"{digest.current_work.tasks_closed} closed, "
-        f"{digest.current_work.tasks_active} active"
+        wrap_prose(
+            "- Tasks: "
+            f"{digest.current_work.tasks_total} total, "
+            f"{digest.current_work.tasks_closed} closed, "
+            f"{digest.current_work.tasks_active} active",
+            width,
+        )
     )
     lines.append(
-        "- Findings: "
-        f"{digest.current_work.findings_open} open, "
-        f"{digest.current_work.findings_planned} planned, "
-        f"{digest.current_work.findings_resolved} resolved"
+        wrap_prose(
+            "- Findings: "
+            f"{digest.current_work.findings_open} open, "
+            f"{digest.current_work.findings_planned} planned, "
+            f"{digest.current_work.findings_resolved} resolved",
+            width,
+        )
     )
     lines.append(f"- Milestones: {digest.current_work.milestones_total} total")
     lines.append("")
@@ -491,8 +516,12 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
     lines.append(f"- Pending blockers: {len(digest.clarifications.pending_blockers)}")
     for blocker in digest.clarifications.pending_blockers[:5]:
         lines.append(
-            f"- {blocker.id}: {blocker.title} "
-            f"(scope={blocker.scope}, blocks={blocker.blocks}, role={blocker.asking_role})"
+            wrap_prose(
+                f"- {blocker.id}: {blocker.title} "
+                f"(scope={blocker.scope}, blocks={blocker.blocks}, "
+                f"role={blocker.asking_role})",
+                width,
+            )
         )
     if digest.clarifications.resume is not None:
         resume = digest.clarifications.resume
@@ -505,7 +534,14 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
         )
     else:
         lines.append("- Resume pointer: none")
-    lines.extend(["", "## Research", "", *_format_research_report(digest.research, bullet=True)])
+    lines.extend(
+        [
+            "",
+            "## Research",
+            "",
+            *_format_research_report(digest.research, bullet=True, width=width),
+        ]
+    )
     lines.append("")
     lines.append("## Specs")
     lines.append("")
@@ -537,12 +573,14 @@ def format_workflow_state_digest(digest: WorkflowStateDigest) -> str:
     lines.append("")
     lines.append("## Validation")
     lines.append("")
-    lines.append(f"Validation state: {_validation_state_text(digest.validation.state)}.")
+    lines.append(
+        wrap_prose(f"Validation state: {_validation_state_text(digest.validation.state)}.", width)
+    )
     if digest.notes:
         lines.append("")
         lines.append("## Notes")
         lines.append("")
-        lines.extend(f"- {note}" for note in digest.notes)
+        lines.extend(wrap_prose(f"- {note}", width) for note in digest.notes)
     return "\n".join(lines)
 
 
@@ -710,12 +748,14 @@ def _research_report(snapshot: WorkspaceSnapshot, workflow_state: object) -> Res
     )
 
 
-def _format_research_report(research: ResearchReport | None, *, bullet: bool = False) -> list[str]:
+def _format_research_report(
+    research: ResearchReport | None, *, bullet: bool = False, width: int | None = None
+) -> list[str]:
     prefix = "- " if bullet else ""
     if research is None:
         return [prefix + "Research: none"]
     return [
-        prefix + f"Research: {research.id}: {research.title}",
+        wrap_prose(prefix + f"Research: {research.id}: {research.title}", width),
         prefix + f"Research state: {research.status}",
         prefix
         + f"Request route: devlab {research.command}; role={research.asking_role}; "

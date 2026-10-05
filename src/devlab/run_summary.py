@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+from devlab._console import wrap_prose
 from devlab.executable_config import (
     ExecutableConfigSnapshot,
     build_executable_config_snapshot,
@@ -160,25 +161,39 @@ def build_run_summary(
     )
 
 
-def format_run_summary(summary: RunSummary) -> str:
-    lines = [f"DevLab stopped: {_stop_reason_text(summary.stop_reason)}"]
-    lines.append(f"Sessions completed: {summary.sessions_run}")
+def format_run_summary(summary: RunSummary, *, width: int | None = None) -> str:
+    lines = [wrap_prose(f"DevLab stopped: {_stop_reason_text(summary.stop_reason)}", width)]
+    lines.append(wrap_prose(f"Sessions completed: {summary.sessions_run}", width))
     if summary.test_service_duration_seconds:
-        lines.append(f"Test service preparation: {summary.test_service_duration_seconds:.3f}s")
-    lines.extend(["", "Current workflow:"])
-    lines.append(f"- Next role: {summary.next_role or 'none'}")
+        lines.append(
+            wrap_prose(
+                f"Test service preparation: {summary.test_service_duration_seconds:.3f}s", width
+            )
+        )
+    lines.extend(["", wrap_prose("Current workflow:", width)])
+    lines.append(wrap_prose(f"- Next role: {summary.next_role or 'none'}", width))
     if summary.task is not None:
-        lines.append(f"- Task: {summary.task.id} — {summary.task.title}")
-        lines.append(f"- Task status: {summary.task.status.replace('_', ' ')}")
+        lines.append(wrap_prose(f"- Task: {summary.task.id} — {summary.task.title}", width))
+        lines.append(wrap_prose(f"- Task status: {summary.task.status.replace('_', ' ')}", width))
     if summary.milestone is not None:
-        lines.append(f"- Milestone: {summary.milestone.id} — {summary.milestone.title}")
+        lines.append(
+            wrap_prose(f"- Milestone: {summary.milestone.id} — {summary.milestone.title}", width)
+        )
     lines.append(
-        "- Operator clarification: "
-        + (summary.clarification.id if summary.clarification is not None else "none")
+        wrap_prose(
+            "- Operator clarification: "
+            + (summary.clarification.id if summary.clarification is not None else "none"),
+            width,
+        )
     )
     lines.append(
-        "- Research: "
-        + (f"{summary.research.id} — {summary.research.title}" if summary.research else "none")
+        wrap_prose(
+            "- Research: "
+            + (
+                f"{summary.research.id} — {summary.research.title}" if summary.research else "none"
+            ),
+            width,
+        )
     )
 
     attention: list[str] = []
@@ -186,45 +201,54 @@ def format_run_summary(summary: RunSummary) -> str:
         clarification = summary.clarification
         attention.extend(
             [
-                f"- {clarification.id}: {clarification.title}",
-                f"- Asked by: {clarification.asking_role}",
-                f"- Blocks: {clarification.blocks}",
+                wrap_prose(f"- {clarification.id}: {clarification.title}", width),
+                wrap_prose(f"- Asked by: {clarification.asking_role}", width),
+                wrap_prose(f"- Blocks: {clarification.blocks}", width),
             ]
         )
     if summary.research is not None:
         research = summary.research
         attention.extend(
             [
-                f"- Research state: {research.status}",
-                f"- Requested by: {research.asking_role} via devlab {research.command}",
-                "- Stored route: "
-                f"task={research.task or 'none'}, "
-                f"milestone={research.milestone or 'none'}",
-                f"- Next step: {research.next_step.replace('_', ' ')}",
+                wrap_prose(f"- Research state: {research.status}", width),
+                wrap_prose(
+                    f"- Requested by: {research.asking_role} via devlab {research.command}", width
+                ),
+                wrap_prose(
+                    "- Stored route: "
+                    f"task={research.task or 'none'}, "
+                    f"milestone={research.milestone or 'none'}",
+                    width,
+                ),
+                wrap_prose(f"- Next step: {research.next_step.replace('_', ' ')}", width),
             ]
         )
     config = summary.executable_config
     if config.state == "invalid":
-        attention.append(f"- Executable configuration is invalid: {config.error}")
+        attention.append(
+            wrap_prose(f"- Executable configuration is invalid: {config.error}", width)
+        )
     elif config.state == "untrusted":
         qualifier = " changed during this run and" if config.changed else ""
         attention.append(
-            f"- Executable configuration{qualifier} is not trusted ({config.digest})."
+            wrap_prose(
+                f"- Executable configuration{qualifier} is not trusted ({config.digest}).", width
+            )
         )
     if summary.errors:
-        attention.extend(f"- Error: {message}" for message in summary.errors)
+        attention.extend(wrap_prose(f"- Error: {message}", width) for message in summary.errors)
     attention.extend(
-        f"- Review unverified direct dependency: {item}"
+        wrap_prose(f"- Review unverified direct dependency: {item}", width)
         for item in summary.dependency_introductions
     )
     if attention:
-        lines.extend(["", "Operator attention:", *attention])
+        lines.extend(["", wrap_prose("Operator attention:", width), *attention])
 
-    lines.extend(["", "Next action:"])
+    lines.extend(["", wrap_prose("Next action:", width)])
     if summary.next_commands:
         lines.extend(f"  {command}" for command in summary.next_commands)
     else:
-        lines.append("  No workflow action is currently required.")
+        lines.append(wrap_prose("  No workflow action is currently required.", width))
     return "\n".join(lines)
 
 

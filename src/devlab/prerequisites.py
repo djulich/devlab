@@ -16,6 +16,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, cast
 
+from devlab._console import wrap_prose
 from devlab._files import atomic_write_text
 
 PREREQUISITE_BLOCKER = ".devlab/prerequisite-blocker.json"
@@ -352,25 +353,27 @@ def read_prerequisite_guide(root: Path, prerequisite: Prerequisite) -> str | Non
     return _markdown_section(text, reference.heading, prerequisite.reference)
 
 
-def format_prerequisite_result(root: Path, result: PrerequisiteResult) -> str:
+def format_prerequisite_result(
+    root: Path, result: PrerequisiteResult, *, width: int | None = None
+) -> str:
     item = result.prerequisite
     lines = [
         f"Prerequisite: {item.reference}",
         f"Status: {result.status.value}",
         f"Required for: {', '.join(scope.value for scope in item.required_for)}",
-        f"Summary: {item.summary}",
-        f"Observed: {result.detail}",
+        wrap_prose(f"Summary: {item.summary}", width),
+        wrap_prose(f"Observed: {result.detail}", width),
     ]
     if item.check:
         lines.append(f"Check: {item.check}")
     elif item.environment:
         lines.append(f"Environment: {item.environment}")
     elif item.attestation:
-        lines.append(f"Attestation: {item.attestation}")
+        lines.append(wrap_prose(f"Attestation: {item.attestation}", width))
     if item.prepare:
         lines.append(f"Automatic preparation: {item.prepare}")
     if item.sensitive:
-        lines.append("Security: Do not commit or print sensitive values.")
+        lines.append(wrap_prose("Security: Do not commit or print sensitive values.", width))
     reference = prerequisite_guide_reference(root, item)
     if reference is not None:
         guide_display = str(reference.path)
@@ -380,9 +383,9 @@ def format_prerequisite_result(root: Path, result: PrerequisiteResult) -> str:
         try:
             guide_text = read_prerequisite_guide(root, item)
         except FileNotFoundError:
-            lines.append("Resolution guide is missing.")
+            lines.append(wrap_prose("Resolution guide is missing.", width))
         except ValueError as exc:
-            lines.append(f"Resolution guide is invalid: {exc}")
+            lines.append(wrap_prose(f"Resolution guide is invalid: {exc}", width))
         else:
             if guide_text:
                 lines.extend(
@@ -394,7 +397,11 @@ def format_prerequisite_result(root: Path, result: PrerequisiteResult) -> str:
                 )
                 if len(guide_text) > MAX_PREREQUISITE_GUIDE_CHARS:
                     lines.append(
-                        "[Guide truncated; use a dedicated guide or Markdown heading reference.]"
+                        wrap_prose(
+                            "[Guide truncated; use a dedicated guide or Markdown "
+                            "heading reference.]",
+                            width,
+                        )
                     )
     return "\n".join(lines)
 

@@ -1351,7 +1351,9 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
         return Result()
 
     monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
-    monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+    monkeypatch.setattr(
+        "devlab.cli.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
+    )
     config_path = tmp_path / ".local/live-eval/agents.toml"
     config_path.parent.mkdir(parents=True)
     config_path.write_text(
@@ -1398,7 +1400,9 @@ def test_cli_agent_smoke_test_exits_nonzero_on_failure(
         return Result()
 
     monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
-    monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+    monkeypatch.setattr(
+        "devlab.cli.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
+    )
 
     with pytest.raises(SystemExit) as exc:
         _run_cli(
@@ -1447,7 +1451,9 @@ def test_cli_agent_smoke_test_supports_all_providers(
         return Result()
 
     monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
-    monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+    monkeypatch.setattr(
+        "devlab.cli.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
+    )
 
     _run_cli(
         monkeypatch,
@@ -1476,7 +1482,9 @@ def test_cli_agent_smoke_test_supports_provider_defaults_modifier(
         return Result()
 
     monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
-    monkeypatch.setattr("devlab.cli.format_agent_smoke_report", lambda _result: "smoke report")
+    monkeypatch.setattr(
+        "devlab.cli.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
+    )
 
     _run_cli(
         monkeypatch,

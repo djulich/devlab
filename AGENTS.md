@@ -84,6 +84,7 @@ CLI and shared infrastructure:
 - `init.py`: target-workspace initialization.
 - `agent_smoke.py`: configured-provider smoke-test selection, execution, and reporting.
 - `cleanup.py`: explicit failed-session artifact cleanup.
+- `_console.py`: shared prose wrapping and destination-terminal width detection.
 - `_logging.py`: package logging configuration.
 - `_toml.py`: shared TOML parsing helpers.
 - `_files.py`: low-level atomic text replacement for authoritative workflow files.

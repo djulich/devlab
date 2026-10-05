@@ -3,6 +3,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+from devlab._console import wrap_prose
 from devlab.agent_config import AGENTS_CONFIG, ResolvedAgentConfig, load_agent_configuration
 from devlab.clarifications import Clarification
 from devlab.findings import Finding
@@ -18,9 +19,9 @@ from devlab.workflow_state_report import (
 from devlab.workspace import Workspace, WorkspaceSnapshot
 
 
-def format_status(root: Path, *, verbose: bool = False) -> str:
+def format_status(root: Path, *, verbose: bool = False, width: int | None = None) -> str:
     report = build_workflow_state_report(root)
-    lines = format_workflow_state_report(report).splitlines()
+    lines = format_workflow_state_report(report, width=width).splitlines()
     if report.lifecycle_phase == "uninitialized":
         return "\n".join(lines)
 
@@ -41,10 +42,10 @@ def format_status(root: Path, *, verbose: bool = False) -> str:
     if verbose:
         lines.extend(["", *format_workflow_state_provenance(report).splitlines()])
         lines.extend(["", *_format_agent_configuration(root)])
-        lines.extend(["", *_format_prompt_context(snapshot)])
-        lines.extend(["", *_format_clarification_status(snapshot)])
-        lines.extend(["", *_format_milestone_status(snapshot)])
-        lines.extend(["", *_format_finding_status(snapshot)])
+        lines.extend(["", *_format_prompt_context(snapshot, width=width)])
+        lines.extend(["", *_format_clarification_status(snapshot, width=width)])
+        lines.extend(["", *_format_milestone_status(snapshot, width=width)])
+        lines.extend(["", *_format_finding_status(snapshot, width=width)])
     return "\n".join(lines)
 
 
@@ -61,12 +62,14 @@ def _format_agent_configuration(root: Path) -> list[str]:
     return lines
 
 
-def _format_prompt_context(snapshot: WorkspaceSnapshot) -> list[str]:
+def _format_prompt_context(snapshot: WorkspaceSnapshot, *, width: int | None = None) -> list[str]:
     report = build_prompt_context_report(snapshot)
-    return _format_prompt_context_report(report)
+    return _format_prompt_context_report(report, width=width)
 
 
-def _format_prompt_context_report(report: PromptContextReport) -> list[str]:
+def _format_prompt_context_report(
+    report: PromptContextReport, *, width: int | None = None
+) -> list[str]:
     lines = ["Prompt context:"]
     for role in report.roles:
         if role.status == "ok":
@@ -80,10 +83,12 @@ def _format_prompt_context_report(report: PromptContextReport) -> list[str]:
             f"(base ~{_format_count(role.base.estimated_tokens)}, "
             f"session ~{_format_count(role.session.estimated_tokens)}) {status_text}"
         )
-    return lines
+    return [wrap_prose(line, width) for line in lines]
 
 
-def _format_milestone_status(snapshot: WorkspaceSnapshot) -> list[str]:
+def _format_milestone_status(
+    snapshot: WorkspaceSnapshot, *, width: int | None = None
+) -> list[str]:
     milestones = snapshot.list_milestones()
     tasks = snapshot.list_tasks()
     missing_milestones = sorted(
@@ -97,17 +102,17 @@ def _format_milestone_status(snapshot: WorkspaceSnapshot) -> list[str]:
         try:
             verification = snapshot.milestone_verification(milestone.id)
         except (tomllib.TOMLDecodeError, ValueError) as exc:
-            lines.extend(_format_milestone(milestone, tasks))
-            lines.append(f"  verification: invalid ({exc})")
+            lines.extend(_format_milestone(milestone, tasks, width=width))
+            lines.append(wrap_prose(f"  verification: invalid ({exc})", width))
         else:
-            lines.extend(_format_milestone(milestone, tasks, verification))
+            lines.extend(_format_milestone(milestone, tasks, verification, width=width))
     for milestone_id in missing_milestones:
         task_ids = [task.id for task in tasks if task.milestone == milestone_id]
         lines.extend(
             [
-                f"- {milestone_id}: missing milestone state file",
+                wrap_prose(f"- {milestone_id}: missing milestone state file", width),
                 "  referenced_by_tasks: " + ", ".join(task_ids),
-                "  note: run devlab implement to advance workflow state",
+                wrap_prose("  note: run devlab implement to advance workflow state", width),
             ]
         )
     return lines
@@ -117,12 +122,14 @@ def _format_milestone(
     milestone: Milestone,
     tasks: list[Task],
     verification: MilestoneVerification | None = None,
+    *,
+    width: int | None = None,
 ) -> list[str]:
     milestone_tasks = [task for task in tasks if task.milestone == milestone.id]
     closed = sum(1 for task in milestone_tasks if task.status == TaskStatus.CLOSED)
     active = len(milestone_tasks) - closed
     lines = [
-        f"- {milestone.id}: {milestone.title}",
+        wrap_prose(f"- {milestone.id}: {milestone.title}", width),
         f"  status: {milestone.status.value}",
         f"  tasks: {len(milestone_tasks)} total, {closed} closed, {active} active",
         f"  integration_required: {_bool_text(milestone.integration_required)}",
@@ -150,21 +157,21 @@ def _format_milestone(
     return lines
 
 
-def _format_finding_status(snapshot: WorkspaceSnapshot) -> list[str]:
+def _format_finding_status(snapshot: WorkspaceSnapshot, *, width: int | None = None) -> list[str]:
     findings = snapshot.list_findings()
     if not findings:
         return ["Findings: none"]
     tasks = snapshot.list_tasks()
     lines = ["Findings:"]
     for finding in findings:
-        lines.extend(_format_finding(finding, tasks))
+        lines.extend(_format_finding(finding, tasks, width=width))
     return lines
 
 
-def _format_finding(finding: Finding, tasks: list[Task]) -> list[str]:
+def _format_finding(finding: Finding, tasks: list[Task], *, width: int | None = None) -> list[str]:
     addressing_tasks = [task.id for task in tasks if finding.id in task.addresses_findings]
     lines = [
-        f"- {finding.id}: {finding.title}",
+        wrap_prose(f"- {finding.id}: {finding.title}", width),
         f"  status: {finding.status.value}",
         f"  source: {finding.source}",
     ]
@@ -179,19 +186,21 @@ def _format_finding(finding: Finding, tasks: list[Task]) -> list[str]:
     return lines
 
 
-def _format_clarification_status(snapshot: WorkspaceSnapshot) -> list[str]:
+def _format_clarification_status(
+    snapshot: WorkspaceSnapshot, *, width: int | None = None
+) -> list[str]:
     clarifications = snapshot.list_clarifications()
     if not clarifications:
         return ["Clarifications: none"]
     lines = ["Clarifications:"]
     for clarification in clarifications:
-        lines.extend(_format_clarification(clarification))
+        lines.extend(_format_clarification(clarification, width=width))
     return lines
 
 
-def _format_clarification(clarification: Clarification) -> list[str]:
+def _format_clarification(clarification: Clarification, *, width: int | None = None) -> list[str]:
     return [
-        f"- {clarification.id}: {clarification.title}",
+        wrap_prose(f"- {clarification.id}: {clarification.title}", width),
         f"  status: {clarification.status.value}",
         f"  blocks: {clarification.blocks}",
         f"  scope: {clarification.scope}",

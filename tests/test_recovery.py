@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
@@ -376,26 +375,14 @@ def test_recovery_wraps_prose_but_preserves_evidence_and_commands(
     assert f"Restart boundary: {inspection.proposal.head}" in proposal.splitlines()
 
 
-@pytest.mark.parametrize("columns", [55, None])
-def test_recovery_uses_terminal_width_or_80_column_fallback(
-    monkeypatch: pytest.MonkeyPatch, columns: int | None
-) -> None:
-    monkeypatch.delenv("COLUMNS", raising=False)
-    monkeypatch.delenv("LINES", raising=False)
-
-    def terminal_size(*args: object) -> os.terminal_size:
-        if columns is None:
-            raise OSError("No terminal")
-        return os.terminal_size((columns, 24))
-
-    monkeypatch.setattr(os, "get_terminal_size", terminal_size)
+def test_recovery_without_width_preserves_unwrapped_prose() -> None:
+    summary = "A long explanatory sentence for the operator. " * 4
     guidance = recovery.OperatorGuidance(
-        summary="A long explanatory sentence for the operator. " * 4,
+        summary=summary,
         explanation="Resolve the dirty worktree before continuing. " * 4,
         inspection_commands=(),
         alternatives=(),
         warnings=(),
     )
     report = format_operator_guidance(guidance)
-    assert report == format_operator_guidance(guidance, width=columns or 80)
-    assert max(map(len, report.splitlines())) <= (columns or 80)
+    assert summary in report.splitlines()

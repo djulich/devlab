@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
+from devlab._console import console_width, wrap_prose
+
 logger = logging.getLogger("devlab")
 
 _DEVLAB_OWNED = "_devlab_owned"
@@ -31,7 +33,7 @@ def configure_logging(
 
     console = logging.StreamHandler(stream or sys.stderr)
     console.setLevel(level)
-    console.setFormatter(_console_formatter(level))
+    console.setFormatter(_ConsoleFormatter(level, console.stream))
     setattr(console, _DEVLAB_OWNED, True)
     logger.addHandler(console)
 
@@ -44,7 +46,39 @@ def configure_logging(
         logger.addHandler(file_handler)
 
 
-def _console_formatter(level: int) -> logging.Formatter:
-    if level <= logging.DEBUG:
-        return logging.Formatter("%(asctime)s %(levelname)s: %(message)s", datefmt="%H:%M")
-    return logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M")
+class _ConsoleFormatter(logging.Formatter):
+    def __init__(self, level: int, stream: TextIO) -> None:
+        super().__init__(datefmt="%H:%M")
+        self.verbose = level <= logging.DEBUG
+        self.stream = stream
+
+    def format(self, record: logging.LogRecord) -> str:
+        prefix = self.formatTime(record, self.datefmt) + " "
+        if self.verbose:
+            prefix += record.levelname + ": "
+        message = record.getMessage()
+        # Debug records and explicitly literal records are diagnostic evidence.
+        # Existing multiline bodies (including tracebacks) retain their layout.
+        first, separator, rest = message.partition("\n")
+        if (
+            not first
+            or record.levelno <= logging.DEBUG
+            or getattr(record, "console_literal", False)
+        ):
+            result = prefix + message
+        else:
+            result = (
+                wrap_prose(
+                    first,
+                    console_width(self.stream),
+                    indent=prefix,
+                    continuation=" " * len(prefix),
+                )
+                + separator
+                + rest
+            )
+        if record.exc_info:
+            result += "\n" + self.formatException(record.exc_info)
+        if record.stack_info:
+            result += "\n" + self.formatStack(record.stack_info)
+        return result

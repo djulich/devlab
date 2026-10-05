@@ -284,3 +284,16 @@ def test_recovery_summary_does_not_call_unknown_completion_a_failure(tmp_path: P
     ]
     assert "may still be running or may have been interrupted" in summary
     assert "normal session commit" not in summary
+
+
+def test_narrow_history_stacks_fields_without_changing_json(tmp_path: Path) -> None:
+    _write_metadata(tmp_path, "20260529T120000_001_developer", task_id="T0001")
+    narrow = format_history(tmp_path, width=50)
+    assert "  #1 developer" in narrow.splitlines()
+    assert "    T0001" in narrow.splitlines()
+    assert "    42.5s" in narrow.splitlines()
+    assert max(map(len, narrow.splitlines())) <= 50
+    assert format_history(tmp_path, json_output=True, width=50) == format_history(
+        tmp_path, json_output=True
+    )
+    assert format_history(tmp_path, width=120) == format_history(tmp_path)

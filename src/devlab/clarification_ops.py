@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from devlab._console import wrap_prose
 from devlab.clarifications import (
     Clarification,
     ClarificationAnswerShape,
@@ -262,7 +263,9 @@ def _resume_context(resume: ResumeState) -> str:
     return ", ".join(details)
 
 
-def format_clarification_list(clarifications: list[Clarification]) -> str:
+def format_clarification_list(
+    clarifications: list[Clarification], *, width: int | None = None
+) -> str:
     if not clarifications:
         return "No clarifications."
     ordered = sorted(
@@ -281,5 +284,18 @@ def format_clarification_list(clarifications: list[Clarification]) -> str:
             f"{clarification.scope:<15} "
             f"{clarification.asking_role:<10} "
             f"{clarification.title}"
+        )
+    if width is not None and any(len(line) > width for line in lines):
+        return "\n".join(
+            "\n".join(
+                [
+                    wrap_prose(f"{item.id}: {item.title}", width),
+                    f"  Status: {item.status.value}",
+                    f"  Blocks: {item.blocks}",
+                    f"  Scope: {item.scope}",
+                    f"  Role: {item.asking_role}",
+                ]
+            )
+            for item in ordered
         )
     return "\n".join(lines)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+from devlab._console import wrap_prose
 from devlab.git import run_git
 
 FAILED_SESSION_CLEAN_PATHS = (
@@ -24,12 +25,12 @@ def clean_failed_session_artifacts(root: Path) -> CleanupResult:
     return CleanupResult(tuple(removed))
 
 
-def format_cleanup_result(result: CleanupResult) -> str:
+def format_cleanup_result(result: CleanupResult, *, width: int | None = None) -> str:
     if not result.removed:
-        return "No failed-session artifacts to clean."
-    lines = [f"Removed {len(result.removed)} failed-session artifact(s):"]
+        return wrap_prose("No failed-session artifacts to clean.", width)
+    lines = [wrap_prose(f"Removed {len(result.removed)} failed-session artifact(s):", width)]
     lines.extend(f"- {path}" for path in result.removed)
-    lines.append("Target source changes, if any, were left untouched.")
+    lines.append(wrap_prose("Target source changes, if any, were left untouched.", width))
     return "\n".join(lines)
 
 

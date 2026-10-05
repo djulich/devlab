@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from devlab._console import wrap_prose
 from devlab.artifact_hygiene import (
     LARGE_IGNORED_BYTES_WARNING,
     LARGE_IGNORED_FILES_WARNING,
@@ -622,7 +623,9 @@ def quality_summary(
     )
 
 
-def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
+def format_workflow_diagnostics(
+    root: Path, *, verbose: bool = False, width: int | None = None
+) -> str:
     diagnostics = build_workflow_diagnostics(root)
     lines = ["Workflow diagnostics:"]
     lines.append(f"Sessions: {len(diagnostics.sessions)}")
@@ -642,9 +645,10 @@ def format_workflow_diagnostics(root: Path, *, verbose: bool = False) -> str:
     lines.append(_format_generation_summary(diagnostics.generations))
     lines.append(_format_artifact_hygiene_summary(diagnostics.artifact_hygiene))
     lines.append(_format_session_progress_summary(diagnostics.session_progress))
+    lines = [wrap_prose(line, width) for line in lines]
     if diagnostics.quality.warnings:
         lines.append("Warnings:")
-        lines.extend(f"- {warning}" for warning in diagnostics.quality.warnings)
+        lines.extend(wrap_prose(f"- {warning}", width) for warning in diagnostics.quality.warnings)
         if has_large_ignored_artifacts(diagnostics.artifact_hygiene):
             lines.append("Top other ignored artifact contributors:")
             lines.extend(

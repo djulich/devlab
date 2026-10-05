@@ -11,6 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from devlab._console import wrap_prose
 from devlab._files import atomic_write_text
 from devlab.agent_config import (
     AGENTS_CONFIG,
@@ -297,7 +298,7 @@ def devlab_state_home() -> Path:
 
 
 def _last_trusted_config(
-    snapshot: ExecutableConfigSnapshot,
+    snapshot: ExecutableConfigSnapshot, *, width: int | None = None
 ) -> tuple[dict[str, Any] | None, list[str]]:
     """Compare operator-local approvals without changing authorization semantics."""
     records: list[tuple[datetime, dict[str, Any]]] = []
@@ -326,7 +327,9 @@ def _last_trusted_config(
         records.append((trusted_at, record))
     lines: list[str] = []
     if not records:
-        return None, ["No previous approval found for this workspace and agent config."]
+        return None, [
+            wrap_prose("No previous approval found for this workspace and agent config.", width)
+        ]
     _, previous = max(records, key=lambda item: (item[0], item[1]["digest"]))
     lines.append(f"Last approved: {previous['trusted_at']} ({previous['digest']})")
     canonical = previous.get("canonical_json")
@@ -343,8 +346,13 @@ def _last_trusted_config(
     except (ValueError, TypeError):
         return None, [
             *lines,
-            "Comparison unavailable: previous approval has no valid saved configuration.",
-            "New approvals save a configuration snapshot for future comparisons.",
+            wrap_prose(
+                "Comparison unavailable: previous approval has no valid saved configuration.",
+                width,
+            ),
+            wrap_prose(
+                "New approvals save a configuration snapshot for future comparisons.", width
+            ),
         ]
     return payload, lines
 
@@ -441,28 +449,33 @@ def _executable_config_sections(payload: dict[str, Any]) -> dict[str, list[tuple
 
 
 def format_executable_config(
-    snapshot: ExecutableConfigSnapshot, *, view: Literal["all", "new", "changes"] = "all"
+    snapshot: ExecutableConfigSnapshot,
+    *,
+    view: Literal["all", "new", "changes"] = "all",
+    width: int | None = None,
 ) -> str:
     payload = json.loads(snapshot.canonical_json)
     sections = _executable_config_sections(payload)
-    previous, comparison_lines = _last_trusted_config(snapshot)
+    previous, comparison_lines = _last_trusted_config(snapshot, width=width)
     previous_sections = None
     if previous is not None:
         try:
             previous_sections = _executable_config_sections(previous)
         except (ValueError, KeyError, TypeError, AttributeError):
             comparison_lines.append(
-                "Comparison unavailable: previous configuration cannot be resolved."
+                wrap_prose(
+                    "Comparison unavailable: previous configuration cannot be resolved.", width
+                )
             )
         else:
             if previous == payload and view == "all":
-                comparison_lines.append("No executable configuration changes.")
+                comparison_lines.append(wrap_prose("No executable configuration changes.", width))
             elif previous != payload and all(
                 set(previous_sections[heading]) == set(entries)
                 for heading, entries in sections.items()
             ):
                 comparison_lines.append(
-                    "Fingerprint changed, but displayed entries are unchanged."
+                    wrap_prose("Fingerprint changed, but displayed entries are unchanged.", width)
                 )
     title = "Executable configuration"
     if view == "new":
@@ -510,16 +523,26 @@ def format_executable_config(
                 lines.extend(entry)
     if view != "all" and previous_sections is not None and shown_sections == 0:
         lines.append(
-            "No new executable configuration entries."
-            if view == "new"
-            else "No added or removed executable configuration entries."
+            wrap_prose(
+                "No new executable configuration entries."
+                if view == "new"
+                else "No added or removed executable configuration entries.",
+                width,
+            )
         )
     lines.extend(
         [
             "",
-            "Provider permission, sandbox, authentication, and network policy are operator-owned.",
-            "Trust covers configured process entry points, not the transitive behavior "
-            "of commands they invoke.",
+            wrap_prose(
+                "Provider permission, sandbox, authentication, and network policy "
+                "are operator-owned.",
+                width,
+            ),
+            wrap_prose(
+                "Trust covers configured process entry points, not the transitive behavior "
+                "of commands they invoke.",
+                width,
+            ),
         ]
     )
     return "\n".join(lines)

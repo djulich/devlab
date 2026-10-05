@@ -7,6 +7,7 @@ import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from devlab._console import ConsoleArgumentParser, console_width, print_prose, wrap_prose
 from devlab._logging import configure_logging
 from devlab.agent_smoke import (
     AgentSmokeProgressEvent,
@@ -21,7 +22,7 @@ from devlab.clarification_ops import (
 )
 from devlab.clarifications import FileClarificationTracker
 from devlab.cleanup import clean_failed_session_artifacts, format_cleanup_result
-from devlab.doctor import check_workspace, format_doctor_report
+from devlab.doctor import check_workspace, format_doctor_problem, format_doctor_report
 from devlab.doctor_common import DoctorOperation, DoctorProblem
 from devlab.environment import (
     FileTestServiceTracker,
@@ -100,8 +101,8 @@ def _devlab_version() -> str:
 
 def _run_parent_parser(
     *, max_sessions: int, session_kind: str = "sessions"
-) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(add_help=False)
+) -> ConsoleArgumentParser:
+    parser = ConsoleArgumentParser(add_help=False)
     parser.add_argument(
         "--root",
         type=Path,
@@ -194,7 +195,7 @@ def _add_executable_config_authorization_options(
 
 
 def _main() -> None:
-    parser = argparse.ArgumentParser(
+    parser = ConsoleArgumentParser(
         prog="devlab",
         description="Orchestrate agentic development sessions.",
     )
@@ -671,7 +672,7 @@ def _main() -> None:
         )
         print(format_init_result(result, root))
         print()
-        print(format_init_next_steps())
+        print(format_init_next_steps(width=console_width(sys.stdout)))
     elif args.command == "continue":
         _run_continue_command(args, root)
     elif args.command == "implement":
@@ -705,7 +706,8 @@ def _main() -> None:
                         command="implement",
                         result=result,
                         initial_executable_config=executable_config,
-                    )
+                    ),
+                    width=console_width(sys.stdout),
                 )
             )
         if result.exit_code != 0:
@@ -750,7 +752,8 @@ def _main() -> None:
                         command="plan",
                         result=result,
                         initial_executable_config=executable_config,
-                    )
+                    ),
+                    width=console_width(sys.stdout),
                 )
             )
         if result.exit_code != 0:
@@ -773,27 +776,31 @@ def _main() -> None:
             if args.json:
                 print(digest.to_json())
             else:
-                print(format_workflow_state_digest(digest))
+                print(format_workflow_state_digest(digest, width=console_width(sys.stdout)))
         elif args.json:
             report = build_workflow_state_report(root)
             print(report.to_json())
         else:
-            print(format_status(root, verbose=args.verbose))
+            print(format_status(root, verbose=args.verbose, width=console_width(sys.stdout)))
     elif args.command == "diagnostics":
         if args.json:
             print(build_workflow_diagnostics(root).to_json())
         else:
-            print(format_workflow_diagnostics(root, verbose=args.verbose))
+            print(
+                format_workflow_diagnostics(
+                    root, verbose=args.verbose, width=console_width(sys.stdout)
+                )
+            )
     elif args.command == "history":
-        print(format_history(root, json_output=args.json))
+        print(format_history(root, json_output=args.json, width=console_width(sys.stdout)))
     elif args.command == "doctor":
         problems = check_workspace(root)
-        print(format_doctor_report(problems))
+        print(format_doctor_report(problems, width=console_width(sys.stdout)))
         if not problems:
             try:
                 executable_config = build_executable_config_snapshot(root)
             except (OSError, ValueError, KeyError) as exc:
-                print(f"Executable configuration: invalid ({exc})")
+                print_prose(f"Executable configuration: invalid ({exc})")
                 raise SystemExit(1) from exc
             trust_status = (
                 "trusted" if executable_config_is_trusted(executable_config) else "not trusted"
@@ -827,12 +834,12 @@ def _main() -> None:
             )
         except ValueError as exc:
             parser.error(str(exc))
-        print(format_agent_smoke_report(result))
+        print(format_agent_smoke_report(result, width=console_width(sys.stdout)))
         if not result.passed:
             raise SystemExit(1)
     elif args.command == "clean-failed-session":
         result = clean_failed_session_artifacts(root)
-        print(format_cleanup_result(result))
+        print(format_cleanup_result(result, width=console_width(sys.stdout)))
     elif args.command == "test-service":
         _run_test_service_command(args, root)
     elif args.command == "prerequisite":
@@ -840,7 +847,11 @@ def _main() -> None:
     elif args.command == "clarify":
         tracker = FileClarificationTracker(root)
         if args.clarify_command == "list":
-            print(format_clarification_list(tracker.list_clarifications()))
+            print(
+                format_clarification_list(
+                    tracker.list_clarifications(), width=console_width(sys.stdout)
+                )
+            )
         elif args.clarify_command == "show":
             print(tracker.get(args.clarification_id).path.read_text(), end="")
         elif args.clarify_command == "answer":
@@ -869,7 +880,7 @@ def _main() -> None:
                 )
             except ValueError as exc:
                 parser.error(str(exc))
-            print(f"Answered {result.clarification.id}: {result.clarification.title}")
+            print_prose(f"Answered {result.clarification.id}: {result.clarification.title}")
             if result.resumed is not None and result.resumed.exit_code != 0:
                 raise SystemExit(result.resumed.exit_code)
         elif args.clarify_command == "supersede":
@@ -881,7 +892,7 @@ def _main() -> None:
                 )
             except ValueError as exc:
                 parser.error(str(exc))
-            print(f"Superseded {clarification.id}: {clarification.title}")
+            print_prose(f"Superseded {clarification.id}: {clarification.title}")
     elif args.command == "resume":
         configure_logging(logging.INFO, None)
         result = resume_workflow(
@@ -894,7 +905,7 @@ def _main() -> None:
                 allow_prompt=False,
             ),
         )
-        print(result.message)
+        print_prose(result.message)
         if not result.resumed:
             raise SystemExit(1)
         if result.run_result is not None and result.run_result.exit_code != 0:
@@ -908,15 +919,17 @@ def _main() -> None:
                 print(f"Initialized handoff candidate: {path.relative_to(root)}")
             else:
                 result = submit_session_handoff(root, envelope_path=args.session_envelope)
-                print(f"Accepted handoff for {result.role_name} session {result.session_id}.")
+                print_prose(
+                    f"Accepted handoff for {result.role_name} session {result.session_id}."
+                )
         except HandoffSubmissionError as exc:
-            print("Handoff rejected:\n")
+            print_prose("Handoff rejected:\n")
             for index, issue in enumerate(exc.issues, start=1):
-                print(f"{index}. {issue}")
-            print("\nCorrect the candidate and submit it again.")
+                print_prose(f"{index}. {issue}")
+            print_prose("\nCorrect the candidate and submit it again.")
             raise SystemExit(1) from exc
         except HandoffError as exc:
-            print(f"Handoff submission failed: {exc}")
+            print_prose(f"Handoff submission failed: {exc}")
             raise SystemExit(1) from exc
 
 
@@ -930,19 +943,19 @@ def _run_log_level(*, quiet: bool, verbose: bool) -> int:
 
 def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
     if not (root / WORKSPACE_MANIFEST).exists():
-        print("Workspace is not initialized. Run devlab init, then devlab continue.")
+        print_prose("Workspace is not initialized. Run devlab init, then devlab continue.")
         raise SystemExit(1)
     inspection = inspect_recovery(root)
     if inspection.proposal is not None:
         proposal = inspection.proposal
         if inspection.guidance is not None:
-            print(format_operator_guidance(inspection.guidance))
+            print(format_operator_guidance(inspection.guidance, width=console_width(sys.stdout)))
             print()
-        print(format_discard_proposal(proposal))
+        print(format_discard_proposal(proposal, width=console_width(sys.stdout)))
         approved = False
         if args.discard_interrupted_session:
             if args.require_interrupted_head != proposal.head:
-                print(
+                print_prose(
                     "DevLab refused discard because --require-interrupted-head does not "
                     f"match {proposal.head}.",
                     file=sys.stderr,
@@ -950,47 +963,60 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
                 raise SystemExit(1)
             approved = True
         if not approved and not args.unattended and sys.stdin.isatty():
-            answer = input("\nDiscard the uncommitted repository state and restart? [y/N] ")
+            answer = input(
+                wrap_prose(
+                    "\nDiscard the uncommitted repository state and restart? [y/N] ",
+                    console_width(sys.stdout),
+                ).rstrip()
+                + " "
+            )
             approved = answer.strip().lower() in {"y", "yes"}
         if not approved:
-            print("No files were changed.", file=sys.stderr)
+            print_prose("No files were changed.", file=sys.stderr)
             raise SystemExit(1)
         try:
             commit = discard_interrupted_session(root, proposal)
         except IncompleteDiscardError as exc:
-            print(f"DevLab could not complete the discard: {exc}.", file=sys.stderr)
-            print("\n" + format_operator_guidance(exc.guidance), file=sys.stderr)
+            print_prose(f"DevLab could not complete the discard: {exc}.", file=sys.stderr)
+            print(
+                "\n" + format_operator_guidance(exc.guidance, width=console_width(sys.stderr)),
+                file=sys.stderr,
+            )
             raise SystemExit(1) from exc
-        print(f"Discarded interrupted repository state and recorded commit {commit}.")
+        print_prose(f"Discarded interrupted repository state and recorded commit {commit}.")
     elif inspection.reason != "clean":
-        print(f"DevLab cannot continue safely: {inspection.reason}.", file=sys.stderr)
+        print_prose(f"DevLab cannot continue safely: {inspection.reason}.", file=sys.stderr)
         if inspection.guidance is not None:
-            print("\nNo files were changed.\n", file=sys.stderr)
-            print(format_operator_guidance(inspection.guidance), file=sys.stderr)
+            print_prose("\nNo files were changed.\n", file=sys.stderr)
+            print(
+                format_operator_guidance(inspection.guidance, width=console_width(sys.stderr)),
+                file=sys.stderr,
+            )
         raise SystemExit(1)
 
     report = build_workflow_state_report(root)
     advice = build_next_command_advice(report)
     if advice.action == "none":
         _report_workspace_health(root)
-        print("Workflow is complete.")
+        print_prose("Workflow is complete.")
         return
     if advice.action == "inspect_clarification":
         clarification_id = report.clarifications.pending_blockers[0].id
         clarification = FileClarificationTracker(root).get(clarification_id)
         print(clarification.path.read_text(), end="")
-        print("\nAnswer the clarification, then run devlab continue.")
+        print_prose("\nAnswer the clarification, then run devlab continue.")
         raise SystemExit(1)
     if advice.action in {"inspect_dirty_specs", "inspect_workflow"}:
+        width = console_width(sys.stderr)
         print(
-            f"DevLab cannot continue automatically: {advice.reason}.\n"
-            "No files were changed.\n\n"
-            "Inspect:\n"
-            "  devlab status --verbose\n"
-            "  devlab doctor\n"
-            "  git status --short\n\n"
-            "After resolving the reported condition, run:\n"
-            "  devlab continue",
+            wrap_prose(
+                f"DevLab cannot continue automatically: {advice.reason}.\n"
+                "No files were changed.\n\nInspect:",
+                width,
+            )
+            + "\n  devlab status --verbose\n  devlab doctor\n  git status --short\n\n"
+            + wrap_prose("After resolving the reported condition, run:", width)
+            + "\n  devlab continue",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -1011,7 +1037,7 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
                 allow_prompt=not args.unattended,
             ),
         )
-        print(resumed.message)
+        print_prose(resumed.message)
         if not resumed.resumed or (
             resumed.run_result is not None and resumed.run_result.exit_code != 0
         ):
@@ -1054,7 +1080,8 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
                     command="continue",
                     result=result,
                     initial_executable_config=executable_config,
-                )
+                ),
+                width=console_width(sys.stdout),
             )
         )
     if result.exit_code != 0:
@@ -1081,34 +1108,49 @@ def _require_healthy_operation(root: Path, operation: DoctorOperation) -> None:
         finding for finding in health_findings if finding.blocks_operation(operation)
     ]
     if blocking_findings:
+        width = console_width(sys.stderr)
         print(
-            "DevLab cannot continue because workspace health findings block "
-            f"{operation.value}:\n\n{format_doctor_report(blocking_findings)}\n\n"
-            "Inspect all findings with:\n  devlab doctor",
+            wrap_prose(
+                "DevLab cannot continue because workspace health findings block "
+                f"{operation.value}:",
+                width,
+            )
+            + "\n\n"
+            + format_doctor_report(blocking_findings, width=width)
+            + "\n\n"
+            + wrap_prose("Inspect all findings with:", width)
+            + "\n  devlab doctor",
             file=sys.stderr,
         )
         raise SystemExit(1)
     if health_findings:
-        print(_format_nonblocking_health_findings(health_findings, operation), file=sys.stderr)
+        print(
+            _format_nonblocking_health_findings(
+                health_findings, operation, width=console_width(sys.stderr)
+            ),
+            file=sys.stderr,
+        )
 
 
 def _report_workspace_health(root: Path) -> None:
     health_findings = check_workspace(root)
     if health_findings:
         print(
-            _format_nonblocking_health_findings(health_findings, "workflow completion"),
+            _format_nonblocking_health_findings(
+                health_findings, "workflow completion", width=console_width(sys.stderr)
+            ),
             file=sys.stderr,
         )
 
 
 def _format_nonblocking_health_findings(
-    findings: list[DoctorProblem], operation: DoctorOperation | str
+    findings: list[DoctorProblem], operation: DoctorOperation | str, *, width: int | None = None
 ) -> str:
     operation_name = operation.value if isinstance(operation, DoctorOperation) else operation
     lines = [
-        "Workspace health findings do not block " + operation_name + ":",
-        *(f"- {finding.path}: {finding.message}" for finding in findings),
-        "Run 'devlab doctor' for the authoritative workspace-health result.",
+        wrap_prose("Workspace health findings do not block " + operation_name + ":", width),
+        *(format_doctor_problem(finding, width=width) for finding in findings),
+        wrap_prose("Run 'devlab doctor' for the authoritative workspace-health result.", width),
     ]
     return "\n".join(lines)
 
@@ -1133,7 +1175,9 @@ def _authorized_executable_config(
             effort=effort,
         )
     except (OSError, ValueError, KeyError) as exc:
-        print(f"DevLab trust: could not load executable configuration: {exc}", file=sys.stderr)
+        print_prose(
+            f"DevLab trust: could not load executable configuration: {exc}", file=sys.stderr
+        )
         raise SystemExit(1) from exc
     try:
         authorization = authorize_executable_config(
@@ -1143,10 +1187,10 @@ def _authorized_executable_config(
         )
     except ExecutableConfigTrustError as exc:
         if expected_digest is not None or accept_current or not allow_prompt:
-            print(f"DevLab trust: {exc}", file=sys.stderr)
+            print_prose(f"DevLab trust: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
         if not sys.stdin.isatty():
-            print(
+            print_prose(
                 f"DevLab trust: {exc}\n"
                 "Non-interactive execution cannot create trust. Run "
                 "'devlab trust executable-config' first, supply "
@@ -1155,14 +1199,20 @@ def _authorized_executable_config(
                 file=sys.stderr,
             )
             raise SystemExit(1) from exc
-        print(format_executable_config(snapshot))
-        answer = input("\nTrust this executable configuration for this workspace? [y/N] ")
+        print(format_executable_config(snapshot, width=console_width(sys.stdout)))
+        answer = input(
+            wrap_prose(
+                "\nTrust this executable configuration for this workspace? [y/N] ",
+                console_width(sys.stdout),
+            ).rstrip()
+            + " "
+        )
         if answer.strip().lower() not in {"y", "yes"}:
             raise SystemExit(1) from exc
         trust_executable_config(snapshot)
         authorization = authorize_executable_config(snapshot)
     if accept_current:
-        print(
+        print_prose(
             "WARNING: accepting current executable configuration for this invocation "
             f"without persistent trust ({snapshot.digest}).",
             file=sys.stderr,
@@ -1180,30 +1230,38 @@ def _run_trust_command(args: argparse.Namespace, root: Path) -> None:
             effort=args.effort,
         )
     except (OSError, ValueError, KeyError) as exc:
-        print(f"DevLab trust: could not load executable configuration: {exc}", file=sys.stderr)
+        print_prose(
+            f"DevLab trust: could not load executable configuration: {exc}", file=sys.stderr
+        )
         raise SystemExit(1) from exc
     if args.show or args.show_new or args.show_changes:
         view = "new" if args.show_new else "changes" if args.show_changes else "all"
-        print(format_executable_config(snapshot, view=view))
+        print(format_executable_config(snapshot, view=view, width=console_width(sys.stdout)))
         return
     if args.revoke:
         revoked = revoke_executable_config_trust(snapshot)
-        print(
+        print_prose(
             "Revoked executable-configuration trust."
             if revoked
             else "No executable-configuration trust record existed."
         )
         return
-    print(format_executable_config(snapshot))
+    print(format_executable_config(snapshot, width=console_width(sys.stdout)))
     if executable_config_is_trusted(snapshot):
-        print("\nThis executable configuration is already trusted.")
+        print_prose("\nThis executable configuration is already trusted.")
         return
-    answer = input("\nTrust this executable configuration for this workspace? [y/N] ")
+    answer = input(
+        wrap_prose(
+            "\nTrust this executable configuration for this workspace? [y/N] ",
+            console_width(sys.stdout),
+        ).rstrip()
+        + " "
+    )
     if answer.strip().lower() not in {"y", "yes"}:
-        print("Executable configuration was not trusted.")
+        print_prose("Executable configuration was not trusted.")
         raise SystemExit(1)
     path = trust_executable_config(snapshot)
-    print(f"Trusted executable configuration {snapshot.digest}.")
+    print_prose(f"Trusted executable configuration {snapshot.digest}.")
     print(f"Operator-local record: {path}")
 
 
@@ -1211,12 +1269,12 @@ def _run_prerequisite_command(args: argparse.Namespace, root: Path) -> None:
     try:
         profiles = load_profiles(root)
     except (OSError, ValueError) as exc:
-        print(f"DevLab prerequisite: could not load profiles: {exc}", file=sys.stderr)
+        print_prose(f"DevLab prerequisite: could not load profiles: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     if args.prerequisite_command == "list":
         items = [item for profile in profiles.values() for item in profile.prerequisites]
         if not items:
-            print("No profile prerequisites are configured.")
+            print_prose("No profile prerequisites are configured.")
             return
         for item in items:
             kind = (
@@ -1229,7 +1287,7 @@ def _run_prerequisite_command(args: argparse.Namespace, root: Path) -> None:
             state = (
                 " (approved)" if item.attestation and prerequisite_is_attested(root, item) else ""
             )
-            print(
+            print_prose(
                 f"- {item.reference}: {item.summary} "
                 f"[{kind}; {', '.join(scope.value for scope in item.required_for)}]{state}"
             )
@@ -1237,18 +1295,20 @@ def _run_prerequisite_command(args: argparse.Namespace, root: Path) -> None:
     if args.prerequisite_command == "blocked":
         blocker = FilePrerequisiteTracker(root).read_blocker()
         if blocker is None:
-            print("No workflow prerequisite blocker is recorded.")
+            print_prose("No workflow prerequisite blocker is recorded.")
             return
-        print(
+        print_prose(
             f"Workflow blocked before {blocker.operation.value}: "
             f"role={blocker.role or 'none'} task={blocker.task or 'none'} "
             f"milestone={blocker.milestone or 'none'}"
         )
         for result in blocker.results:
-            print("\n" + format_prerequisite_result(root, result))
+            print("\n" + format_prerequisite_result(root, result, width=console_width(sys.stdout)))
         print(
-            "\nAfter resolving the prerequisites, continue with:\n"
-            f"  devlab {blocker.command or 'implement'}"
+            wrap_prose(
+                "\nAfter resolving the prerequisites, continue with:", console_width(sys.stdout)
+            )
+            + f"\n  devlab {blocker.command or 'implement'}"
         )
         return
     prerequisite = _find_prerequisite(profiles, args.profile_id, args.prerequisite_id)
@@ -1260,7 +1320,11 @@ def _run_prerequisite_command(args: argparse.Namespace, root: Path) -> None:
             if prerequisite.attestation
             else "not checked"
         )
-        print(_format_prerequisite_definition(root, prerequisite, status))
+        print(
+            _format_prerequisite_definition(
+                root, prerequisite, status, width=console_width(sys.stdout)
+            )
+        )
         return
     if args.prerequisite_command == "check":
         results = evaluate_prerequisites(
@@ -1269,29 +1333,38 @@ def _run_prerequisite_command(args: argparse.Namespace, root: Path) -> None:
             prerequisite.required_for[0],
         )
         result = results[0]
-        print(format_prerequisite_result(root, result))
+        print(format_prerequisite_result(root, result, width=console_width(sys.stdout)))
         if result.blocks:
             raise SystemExit(1)
         return
     if args.prerequisite_command == "revoke":
         revoked = revoke_prerequisite_attestation(root, prerequisite)
-        print("Prerequisite approval revoked." if revoked else "No approval record existed.")
+        print_prose("Prerequisite approval revoked." if revoked else "No approval record existed.")
         return
     if not prerequisite.attestation:
-        print(
+        print_prose(
             f"DevLab prerequisite: {prerequisite.reference} is automatically checked "
             "and cannot be operator-approved.",
             file=sys.stderr,
         )
         raise SystemExit(1)
-    print(_format_prerequisite_definition(root, prerequisite, "not approved"))
+    print(
+        _format_prerequisite_definition(
+            root, prerequisite, "not approved", width=console_width(sys.stdout)
+        )
+    )
     if not args.yes:
-        answer = input("\nApprove this prerequisite for this workspace? [y/N] ")
+        answer = input(
+            wrap_prose(
+                "\nApprove this prerequisite for this workspace? [y/N] ", console_width(sys.stdout)
+            ).rstrip()
+            + " "
+        )
         if answer.strip().lower() not in {"y", "yes"}:
-            print("Prerequisite was not approved.")
+            print_prose("Prerequisite was not approved.")
             raise SystemExit(1)
     path = attest_prerequisite(root, prerequisite, operator=args.operator, note=args.note)
-    print(f"Approved {prerequisite.reference}.")
+    print_prose(f"Approved {prerequisite.reference}.")
     print(f"Operator-local record: {path}")
 
 
@@ -1307,7 +1380,9 @@ def _find_prerequisite(
     raise SystemExit(f"unknown prerequisite: {profile_id}.{prerequisite_id}")
 
 
-def _format_prerequisite_definition(root: Path, prerequisite: Prerequisite, status: str) -> str:
+def _format_prerequisite_definition(
+    root: Path, prerequisite: Prerequisite, status: str, *, width: int | None = None
+) -> str:
     mechanism = (
         f"check command: {prerequisite.check}"
         if prerequisite.check
@@ -1319,7 +1394,7 @@ def _format_prerequisite_definition(root: Path, prerequisite: Prerequisite, stat
         f"Prerequisite: {prerequisite.reference}",
         f"Status: {status}",
         f"Required for: {', '.join(item.value for item in prerequisite.required_for)}",
-        f"Summary: {prerequisite.summary}",
+        wrap_prose(f"Summary: {prerequisite.summary}", width),
         f"Mechanism: {mechanism}",
     ]
     if prerequisite.prepare:
@@ -1335,14 +1410,14 @@ def _format_prerequisite_definition(root: Path, prerequisite: Prerequisite, stat
     if prerequisite.guide:
         lines.append(f"Guide: {(root / prerequisite.guide).resolve()}")
     if prerequisite.sensitive:
-        lines.append("Security: Do not commit or print sensitive values.")
+        lines.append(wrap_prose("Security: Do not commit or print sensitive values.", width))
     return "\n".join(lines)
 
 
 def _print_agent_smoke_progress(event: AgentSmokeProgressEvent) -> None:
     if event.event == "start":
         roles = _format_agent_smoke_progress_roles(event.role_names)
-        print(
+        print_prose(
             f"Starting [{event.check_name}] "
             f"provider={event.config.provider} model={event.config.model}{roles}...",
             flush=True,
@@ -1353,7 +1428,7 @@ def _print_agent_smoke_progress(event: AgentSmokeProgressEvent) -> None:
     status = "OK" if event.result.passed else "FAILED"
     duration = event.result.result.duration_seconds
     duration_text = "" if duration is None else f" in {duration:.1f}s"
-    print(f"Finished [{event.check_name}] {status}{duration_text}", flush=True)
+    print_prose(f"Finished [{event.check_name}] {status}{duration_text}", flush=True)
 
 
 def _format_agent_smoke_progress_roles(role_names: tuple[str, ...]) -> str:
@@ -1366,7 +1441,7 @@ def _run_test_service_command(args: argparse.Namespace, root: Path) -> None:
     try:
         if args.service_action == "init":
             init_test_service_storage(root)
-            print(
+            print_prose(
                 "Private test service storage prepared; "
                 "commit .devlab/.gitignore before continuing."
             )
@@ -1379,11 +1454,11 @@ def _run_test_service_command(args: argparse.Namespace, root: Path) -> None:
                     f"(last observed {record['updated_at']}); instance {record['instance']}"
                 )
             if not records:
-                print("No managed test service instances recorded.")
+                print_prose("No managed test service instances recorded.")
             return
         record = FileTestServiceTracker(root).read(args.service_id)
         if record is None or record["state"] == "destroyed":
-            print("No live owned instance recorded.")
+            print_prose("No live owned instance recorded.")
             return
         service = parse_test_service(args.service_id, record["definition"])
         snapshot = test_service_cleanup_snapshot(root, service)
@@ -1392,7 +1467,7 @@ def _run_test_service_command(args: argparse.Namespace, root: Path) -> None:
             return
         if args.trust:
             trust_executable_config(snapshot)
-            print("Cleanup definition trusted; no resource was removed.")
+            print_prose("Cleanup definition trusted; no resource was removed.")
             return
         # Existing full-configuration trust also covers its unchanged destroy
         # entry point. Otherwise authorize the exact saved cleanup definition.
@@ -1413,9 +1488,9 @@ def _run_test_service_command(args: argparse.Namespace, root: Path) -> None:
             )
         with test_service_lock(root):
             Workspace(root).test_services().cleanup(service)
-        print(f"Cleaned up test service {service.id} ({authorization.source.value}).")
+        print_prose(f"Cleaned up test service {service.id} ({authorization.source.value}).")
     except (OSError, ValueError, VersionControlError) as exc:
-        print(f"DevLab test service: {exc}", file=sys.stderr)
+        print_prose(f"DevLab test service: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
 
@@ -1424,7 +1499,7 @@ def main() -> None:
     try:
         _main()
     except WorkspaceCompatibilityError as exc:
-        print(f"DevLab: {exc}", file=sys.stderr)
+        print_prose(f"DevLab: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
 

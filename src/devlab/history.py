@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 
+from devlab._console import wrap_prose
 from devlab.git import VersionControlError, run_git
 from devlab.handoffs import HandoffError, load_session_result
 from devlab.session_logging import SessionMetadata
@@ -368,7 +369,7 @@ def _describe_staged_handoff(
     return lines
 
 
-def format_history(root: Path, *, json_output: bool = False) -> str:
+def format_history(root: Path, *, json_output: bool = False, width: int | None = None) -> str:
     entries = load_session_metadata(root)
     research_events = [
         event
@@ -384,7 +385,7 @@ def format_history(root: Path, *, json_output: bool = False) -> str:
         )
     lines = ["Session history:"]
     for entry in entries:
-        lines.append(_format_entry(entry))
+        lines.append(_format_entry(entry, width=width))
     if research_events:
         lines.append("Research lifecycle:")
         for event in research_events:
@@ -395,7 +396,7 @@ def format_history(root: Path, *, json_output: bool = False) -> str:
     return "\n".join(lines)
 
 
-def _format_entry(entry: SessionMetadata) -> str:
+def _format_entry(entry: SessionMetadata, *, width: int | None = None) -> str:
     provider_model = f"{entry.provider}/{entry.model}" if entry.provider else ""
     if provider_model and entry.provider_version:
         provider_model = f"{provider_model} ({entry.provider_version})"
@@ -418,4 +419,10 @@ def _format_entry(entry: SessionMetadata) -> str:
         f"{task:<6s}" if task else "",
         duration,
     ]
-    return " ".join(part for part in parts if part)
+    row = " ".join(part for part in parts if part)
+    if width is not None and len(row) > width:
+        return "\n".join(
+            [f"  #{entry.session_number} {entry.role_name}"]
+            + [wrap_prose(part.strip(), width, indent="    ") for part in parts[2:] if part]
+        )
+    return row

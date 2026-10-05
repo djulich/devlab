@@ -3,6 +3,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+from devlab._console import wrap_prose
 from devlab.doctor_agent_config import check_agents_config
 from devlab.doctor_common import DoctorProblem
 from devlab.doctor_deployment import check_deployment_spec
@@ -57,14 +58,19 @@ def check_workspace(root: Path) -> list[DoctorProblem]:
     return problems
 
 
-def format_doctor_report(problems: list[DoctorProblem]) -> str:
+def format_doctor_report(problems: list[DoctorProblem], *, width: int | None = None) -> str:
     if not problems:
-        return "DevLab doctor: OK"
-    lines = [f"DevLab doctor: {len(problems)} problem(s)"]
-    lines.extend(
-        f"- {problem.path}: " + problem.message.replace("\n", "\n  ") for problem in problems
-    )
+        return wrap_prose("DevLab doctor: OK", width)
+    lines = [wrap_prose(f"DevLab doctor: {len(problems)} problem(s)", width)]
+    lines.extend(format_doctor_problem(problem, width=width) for problem in problems)
     return "\n".join(lines)
+
+
+def format_doctor_problem(problem: DoctorProblem, *, width: int | None = None) -> str:
+    prefix = f"- {problem.path}: "
+    if width is not None and len(prefix) > width:
+        return prefix.rstrip() + "\n" + wrap_prose(problem.message, width, indent="  ")
+    return wrap_prose(prefix + problem.message.replace("\n", "\n  "), width)
 
 
 def _check_prompt_context_sizes(snapshot: WorkspaceSnapshot) -> list[DoctorProblem]:

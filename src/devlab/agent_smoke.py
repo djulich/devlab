@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from devlab._console import wrap_prose
 from devlab.agent_config import (
     AGENTS_CONFIG,
     AUXILIARY_ROLE_NAMES,
@@ -202,7 +203,7 @@ def run_agent_smoke_test(
     )
 
 
-def format_agent_smoke_report(result: AgentSmokeResult) -> str:
+def format_agent_smoke_report(result: AgentSmokeResult, *, width: int | None = None) -> str:
     lines = [
         "Agent smoke test",
         f"Workspace: {result.root}",
@@ -215,7 +216,7 @@ def format_agent_smoke_report(result: AgentSmokeResult) -> str:
             if result.executable_config_digest
             else []
         ),
-        "Checks: " + _format_check_names(result.check_results),
+        wrap_prose("Checks: " + _format_check_names(result.check_results), width),
         "",
     ]
     for check_result in result.check_results:
@@ -229,14 +230,14 @@ def format_agent_smoke_report(result: AgentSmokeResult) -> str:
                 f"Effort: {config.effort}",
                 "Inactivity timeout: " + _format_timeout(config.inactivity_timeout_seconds),
                 "Maximum duration: " + _format_timeout(config.max_session_duration_seconds),
-                f"Assigned roles: {_format_roles(check_result.role_names)}",
+                wrap_prose(f"Assigned roles: {_format_roles(check_result.role_names)}", width),
                 f"Stdin: {_format_bool(config.uses_stdin)}",
                 "Command: " + shlex.join(agent_result.command),
                 f"Result: {'OK' if check_result.passed else 'FAILED'}",
             ]
         )
         if not check_result.passed:
-            lines.append(f"Failure: {_format_failure(check_result)}")
+            lines.append(wrap_prose(f"Failure: {_format_failure(check_result)}", width))
             lines.append(f"Exit code: {agent_result.return_code}")
         if agent_result.duration_seconds is not None:
             lines.append(f"Duration: {agent_result.duration_seconds:.1f}s")
@@ -252,13 +253,14 @@ def format_agent_smoke_report(result: AgentSmokeResult) -> str:
             [
                 f"[{skipped.provider}]",
                 "Result: SKIPPED",
-                f"Reason: {skipped.reason}",
+                wrap_prose(f"Reason: {skipped.reason}", width),
                 "",
             ]
         )
-    lines.append(f"Summary: {result.passed_count} passed, {result.failed_count} failed")
+    summary = f"Summary: {result.passed_count} passed, {result.failed_count} failed"
     if result.skipped_count:
-        lines[-1] += f", {result.skipped_count} skipped"
+        summary += f", {result.skipped_count} skipped"
+    lines.append(wrap_prose(summary, width))
     return "\n".join(lines)
 
 

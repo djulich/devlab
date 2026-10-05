@@ -60,6 +60,20 @@ a validated clarification route. Mutating workflow commands require a
 clean working tree before agent sessions so operator-authored changes remain
 separate from DevLab-authored session commits.
 
+## Console formatting
+
+DevLab-authored explanations, warnings, and progress messages wrap to the
+output terminal's width, with an 80-column fallback when its size is unavailable.
+A positive `COLUMNS` value overrides the detected width. Standard output and
+standard error are checked independently; redirected output is unwrapped.
+History and clarification lists use stacked fields when their columns do not fit.
+
+Commands, paths, hashes, literal evidence, JSON, raw file contents (including
+prerequisite guides), subprocess output, and file logs retain their original
+content. Long tokens can exceed the terminal width. Console log continuations
+align below the message after its timestamp; debug records and existing multiline
+diagnostic bodies retain their layout.
+
 ## Workflow Termination Summaries
 
 Every bounded continuation command that reaches an orchestrator result prints a
@@ -188,9 +202,8 @@ unfinished agent work merely because both are uncommitted.
 For ordinary uncommitted state, `continue` displays the current HEAD, affected
 paths, and the Git clean preview. In an interactive terminal it asks before
 discarding, with diagnosis and recovery choices shown before the prompt.
-Declining changes nothing. Recovery prose wraps to the terminal width, falling
-back to 80 columns when the width is unavailable. Commands, paths, and literal
-evidence lines remain intact for copying. Without
+Declining changes nothing. Recovery uses the console formatting rules above;
+commands, paths, and literal evidence remain intact for copying. Without
 an interactive terminal, or with `--unattended`, it does not obtain discard
 approval implicitly. Automation must explicitly supply both
 `--discard-interrupted-session` and `--require-interrupted-head <observed-SHA>`;
