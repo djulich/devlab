@@ -19,6 +19,7 @@ class OperatorAlternative:
     effect: str
     commands: tuple[str, ...]
     destructive: bool = False
+    prompt_instruction: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -158,7 +159,7 @@ def inspect_recovery(root: Path) -> RecoveryInspection:
     return RecoveryInspection(
         proposal,
         "uncommitted repository state",
-        dataclasses.replace(guidance, explanation=diagnosis + "\n" + guidance.explanation),
+        dataclasses.replace(guidance, explanation=diagnosis + "\n\n" + guidance.explanation),
     )
 
 
@@ -192,17 +193,38 @@ def discard_guidance(proposal: DiscardProposal) -> OperatorGuidance:
     return OperatorGuidance(
         summary="Uncommitted repository state prevents workflow continuation.",
         explanation=(
-            f"DevLab can restore the repository to committed boundary {proposal.head}. "
+            f"DevLab can restore the repository to committed boundary {proposal.head} "
+            "if the discard is approved at the prompt below. "
             "Declining leaves every file unchanged."
         ),
-        inspection_commands=("git status --short", "git diff", "git diff --cached"),
+        inspection_commands=(),
         alternatives=(
             OperatorAlternative(
-                "Keep and finish the work",
-                "Review tracked and untracked changes and the session evidence. Finish and "
-                "validate the work before selectively committing it; a commit alone does not "
-                "establish handoff acceptance or reviewer approval.",
+                "Discard and restart through DevLab",
+                "Approve the exact discard scope shown below. DevLab discards the changes, "
+                "records the interruption, and continues automatically.",
                 (),
+                destructive=True,
+                prompt_instruction="y to approve the discard and continue.",
+            ),
+            OperatorAlternative(
+                "Discard manually",
+                "Prefer approving the devlab continue prompt: DevLab rechecks the HEAD, "
+                "affected Git scope, and session identity, verifies the worktree is clean, "
+                "and commits an interruption record before continuing. These manual commands "
+                "bypass those checks and that record. Run them from the repository root to "
+                "discard staged and unstaged changes and delete non-ignored untracked files, "
+                "keeping the current HEAD commit. This matches the proposed discard only "
+                "while HEAD and the affected scope remain unchanged. If HEAD has advanced, "
+                "these commands preserve the newer commits; DevLab would reject the old "
+                "proposal as stale.",
+                (
+                    "git restore --source=HEAD --staged --worktree .",
+                    "git clean -fd",
+                    "devlab continue",
+                ),
+                destructive=True,
+                prompt_instruction="N (or Enter), then run the commands below yourself.",
             ),
             OperatorAlternative(
                 "Save this attempt aside and start over",
@@ -213,16 +235,15 @@ def discard_guidance(proposal: DiscardProposal) -> OperatorGuidance:
                     "git stash push --include-untracked -m " + shlex.quote(stash_message),
                     "devlab continue",
                 ),
+                prompt_instruction="N (or Enter), then run the commands below.",
             ),
             OperatorAlternative(
-                "Discard manually",
-                "Restore the same committed boundary and remove non-ignored untracked files.",
-                (
-                    f"git reset --hard {proposal.head}",
-                    "git clean -fd",
-                    "devlab continue",
-                ),
-                destructive=True,
+                "Keep and finish the work",
+                "Review tracked and untracked changes and the session evidence. Finish and "
+                "validate the work before selectively committing it; a commit alone does not "
+                "establish handoff acceptance or reviewer approval.",
+                (),
+                prompt_instruction="N (or Enter), then review and finish the work yourself.",
             ),
         ),
         warnings=(
@@ -238,6 +259,7 @@ def discard_guidance(proposal: DiscardProposal) -> OperatorGuidance:
 
 def format_discard_proposal(proposal: DiscardProposal) -> str:
     lines = [
+        "Discard proposal — technical details:",
         "DevLab found uncommitted state outside a completed workflow boundary.",
         "",
         f"Restart boundary: {proposal.head}",
@@ -255,25 +277,23 @@ def format_discard_proposal(proposal: DiscardProposal) -> str:
     if proposal.clean_paths:
         lines.extend(["", "Git clean preview:"])
         lines.extend(f"- {path}" for path in proposal.clean_paths)
-    lines.extend(
-        [
-            "",
-            "Ignored files and external effects will not be restored.",
-            "Restarting may repeat external effects from the interrupted session.",
-        ]
-    )
     return "\n".join(lines)
 
 
 def format_operator_guidance(guidance: OperatorGuidance) -> str:
-    lines = [guidance.summary, guidance.explanation]
+    lines = [guidance.summary, "", guidance.explanation]
     if guidance.inspection_commands:
         lines.extend(["", "Inspect:"])
         lines.extend(f"  {command}" for command in guidance.inspection_commands)
-    for alternative in guidance.alternatives:
+    if guidance.alternatives:
+        lines.extend(["", "Recovery options:"])
+    for number, alternative in enumerate(guidance.alternatives, start=1):
         marker = " (destructive)" if alternative.destructive else ""
-        lines.extend(["", f"{alternative.title}{marker}:", alternative.effect])
-        lines.extend(f"  {command}" for command in alternative.commands)
+        lines.extend(["", f"  {number}. {alternative.title}{marker}:"])
+        if alternative.prompt_instruction:
+            lines.append(f"     At the discard prompt: {alternative.prompt_instruction}")
+        lines.append(f"     {alternative.effect}")
+        lines.extend(f"       {command}" for command in alternative.commands)
     if guidance.warnings:
         lines.extend(["", "Warnings:"])
         lines.extend(f"- {warning}" for warning in guidance.warnings)

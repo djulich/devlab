@@ -990,7 +990,6 @@ def test_cli_continue_declines_discard_with_actionable_preservation_advice(
 ) -> None:
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
-    head = _git_output(tmp_path, "rev-parse", "HEAD")
     interrupted = tmp_path / "interrupted.txt"
     interrupted.write_text("partial work\n")
 
@@ -1001,7 +1000,7 @@ def test_cli_continue_declines_discard_with_actionable_preservation_advice(
     output = capsys.readouterr()
     assert "No files were changed" in output.err
     assert "git stash push --include-untracked" in output.out
-    assert f"git reset --hard {head}" in output.out
+    assert "git restore --source=HEAD --staged --worktree ." in output.out
     assert "external effects" in output.out
     assert output.err.strip() == "No files were changed."
     assert interrupted.exists()
@@ -1573,6 +1572,20 @@ def test_continue_shows_complete_recovery_before_prompt(
         assert output.index("Related session:") < output.index("Keep and finish")
         assert output.index("Keep and finish") < output.index("Restart boundary:")
         assert output.count("Related session:") == 1
+        assert "\n\nWhat happened:" in output
+        assert "\n\nDevLab can restore the repository" in output
+        assert "Inspect:" not in output
+        assert "\n\nDiscard proposal — technical details:\nDevLab found uncommitted" in output
+        assert "if the discard is approved at the prompt below" in output
+        assert "Recovery options:" in output
+        assert "4. Keep and finish the work" in output
+        assert "3. Save this attempt aside and start over" in output
+        assert "1. Discard and restart through DevLab (destructive)" in output
+        assert "2. Discard manually (destructive)" in output
+        assert output.count("At the discard prompt: N (or Enter)") == 3
+        assert output.count("At the discard prompt: y") == 1
+        assert output.count("Ignored files and external effects") == 1
+        assert output.count("Restarting may repeat external effects") == 1
         assert "[y/N]" in prompt
         return "n"
 

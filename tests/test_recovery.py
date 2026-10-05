@@ -106,19 +106,27 @@ def test_discard_stops_when_worktree_is_not_clean_after_reset(
     assert not (tmp_path / ".devlab/workflow-events.jsonl").exists()
 
 
-def test_decline_guidance_offers_inspection_stash_and_exact_manual_boundary(
+def test_decline_guidance_offers_stash_and_manual_restore_to_current_head(
     tmp_path: Path,
 ) -> None:
-    head = _dirty_session(tmp_path)
+    _dirty_session(tmp_path)
     inspection = inspect_recovery(tmp_path)
     assert inspection.guidance is not None
 
     text = format_operator_guidance(inspection.guidance)
 
-    assert "git status --short" in text
-    assert "git diff --cached" in text
+    assert "Inspect:" not in text
+    assert "git status --short" not in text
+    assert "git diff --cached" not in text
     assert "git stash push --include-untracked" in text
-    assert f"git reset --hard {head}" in text
+    assert "git restore --source=HEAD --staged --worktree ." in text
+    assert "git reset --hard" not in text
+    assert "keeping the current HEAD commit" in text
+    assert "while HEAD and the affected scope remain unchanged" in text
+    assert "preserve the newer commits" in text
+    assert "Prefer approving the devlab continue prompt" in text
+    assert "commits an interruption record" in text
+    assert "bypass those checks and that record" in text
     assert "git clean -fd deletes" in text
     assert "external effects" in text
     assert text.endswith("  devlab continue")
