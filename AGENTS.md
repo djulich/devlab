@@ -99,4 +99,4 @@ CLI and shared infrastructure:
 - Run the complete development validation (`make check`, including Ruff, ty, and pytest) for code changes.
 - Only split a module when the extracted piece is a self-contained domain with minimal coupling back. If the extracted code needs types or functions from multiple other modules, it increases the import graph agents must navigate — keep it together instead.
 - After completing code changes, include a commit message covering the full logical change in the final response.
-- Use the Conventional Commits format `<type>[optional scope]: <description>` (with optional body and footers) for commit messages (type=`fix`, `feat`, etc). Consult the reference: https://www.conventionalcommits.org only for unclear edge cases.
+- Use Conventional Commits for commit messages. Follow [Commit Messages](CONTRIBUTING.md#commit-messages) for the format, type-selection rules, and DevLab-specific examples; consult the linked upstream reference only for unclear format edge cases.

@@ -66,6 +66,58 @@ If the change affects a repository demonstration, also run:
 make -C demos check
 ```
 
+## Commit Messages
+
+Use Conventional Commits for changes to DevLab itself:
+
+```text
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Choose the type from the primary purpose of the complete logical change. Use a
+short description of the outcome and, when helpful, a scope naming the affected
+area, such as `cli`, `recovery`, or `tasks`. Add a body or footers when the change
+needs further explanation.
+
+| Type | Use in DevLab | Example |
+| --- | --- | --- |
+| `feat` | Add a capability or extend observable behavior. | `feat(cli): wrap console prose to terminal width` |
+| `fix` | Correct unintended or incorrect behavior. | `fix(recovery): reject discard after HEAD changes` |
+| `perf` | Improve performance, supported by measurement. | `perf(status): reduce repeated workspace reads` |
+| `refactor` | Improve internal structure while preserving observable behavior. | `refactor(tasks): simplify task selection logic` |
+| `style` | Change source formatting without changing structure or behavior. | `style: apply Ruff formatting` |
+| `test` | Add or improve tests, fixtures, or test assertions. | `test(recovery): cover interrupted discard failures` |
+| `docs` | Change documentation, comments, or docstrings. | `docs: clarify prerequisite resolution guidance` |
+| `build` | Change package builds, packaging, or runtime dependencies. | `build: include prompt resources in the wheel` |
+| `ci` | Change CI workflows or their dependencies. | `ci: update pinned GitHub Actions` |
+| `chore` | Maintain repository settings or development tools when no more specific type fits. | `chore: ignore local editor files` |
+| `revert` | Undo a previous commit; identify its hash in the body. | `revert: undo terminal-width console formatting` |
+
+Apply these boundaries when more than one type seems plausible:
+
+- Tests and documentation accompanying a feature or fix share that change's
+  type. Use `test` or `docs` when testing or documentation is the primary purpose.
+- Observable output is behavior. Terminal formatting improvements can be `feat`
+  or `fix`; `style` applies to source formatting.
+- Error handling that corrects a crash or changes a result is `fix`, even if
+  implemented by restructuring code or handling a previously unhandled `None`.
+  Use `refactor` only when behavior stays the same.
+- Classify file moves and dependency updates by purpose. Moving documentation
+  is `docs`, reorganizing code without behavior changes is `refactor`, and
+  changing package contents is `build`. Runtime dependency updates use
+  `build(deps)`, GitHub Actions updates use `ci(deps)`, and routine development
+  tool updates can use `chore(deps)`.
+- Split unrelated purposes into separate commits. Use `chore` only when the
+  change does not fit a more specific type.
+
+These are DevLab's type-selection conventions. Consult the
+[Conventional Commits reference](https://www.conventionalcommits.org)
+for unclear format edge cases.
+
 ## GitHub Actions Dependencies
 
 Reference every external GitHub Action by its full-length commit SHA and put the

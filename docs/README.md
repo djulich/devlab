@@ -37,7 +37,7 @@ the operator guide explains the lifecycle and serves as the workspace reference.
 - [Design overview](design.md): current workflow mechanics and architecture.
 - [Terminology](../CONTEXT.md) and [development constraints](../AGENTS.md):
   shared language, module ownership, and invariants for maintainers.
-- [Contributing](../CONTRIBUTING.md): development setup and validation.
+- [Contributing](../CONTRIBUTING.md): development setup, validation, and commit conventions.
 - [Roadmap](roadmap.md): strategic direction and release gates. Concrete work is
   tracked in linked GitHub Issues and the roadmap project.
 - [Architecture decisions](adr/): durable decisions and their tradeoffs.
