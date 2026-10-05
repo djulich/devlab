@@ -1576,7 +1576,7 @@ def test_continue_shows_complete_recovery_before_prompt(
         assert "\n\nDevLab can restore the repository" in output
         assert "Inspect:" not in output
         assert "\n\nDiscard proposal — technical details:\nDevLab found uncommitted" in output
-        assert "if the discard is approved at the prompt below" in output
+        assert "if the discard is approved at the prompt below" in " ".join(output.split())
         assert "Recovery options:" in output
         assert "4. Keep and finish the work" in output
         assert "3. Save this attempt aside and start over" in output

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import dataclasses
 import shlex
+import shutil
+import textwrap
 from pathlib import Path
 
 from devlab.git import VersionControlError, run_git
 from devlab.handoffs import HandoffError, load_session_envelope
-from devlab.history import describe_session
+from devlab.history import SessionDiagnosticLine, session_diagnostic_lines
 from devlab.workflow_events import append_workflow_event
 from devlab.workspace import ARTIFACTS_DIR, Workspace
 
@@ -30,6 +32,7 @@ class OperatorGuidance:
     alternatives: tuple[OperatorAlternative, ...]
     warnings: tuple[str, ...]
     retry_command: str = "devlab continue"
+    diagnosis: tuple[SessionDiagnosticLine, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -121,8 +124,10 @@ def inspect_recovery(root: Path) -> RecoveryInspection:
     session = _interrupted_session(root, entries)
     proposal = DiscardProposal(head, entries, clean_paths, session)
     guidance = discard_guidance(proposal)
-    diagnosis = describe_session(
-        root, session_id=session.session_id, role=session.role, task=session.task
+    diagnosis = list(
+        session_diagnostic_lines(
+            root, session_id=session.session_id, role=session.role, task=session.task
+        )
     )
     counts = {"product/other": 0, "workflow/configuration": 0, "session diagnostics": 0}
     for _status, path in entries:
@@ -134,10 +139,13 @@ def inspect_recovery(root: Path) -> RecoveryInspection:
             else "product/other"
         )
         counts[category] += 1
-    diagnosis += (
-        "\nChanged paths: "
-        + ", ".join(f"{count} {category}" for category, count in counts.items() if count)
-        + "."
+    diagnosis.append(
+        SessionDiagnosticLine(
+            "Changed paths: "
+            + ", ".join(f"{count} {category}" for category, count in counts.items() if count)
+            + ".",
+            prose=True,
+        )
     )
     if session.task:
         try:
@@ -150,16 +158,23 @@ def inspect_recovery(root: Path) -> RecoveryInspection:
                 None,
             )
             if task is not None:
-                diagnosis += (
-                    f"\nCurrent task: {task.id}; status={task.status.value}; "
-                    f"{task.path.relative_to(root)}"
+                diagnosis.append(
+                    SessionDiagnosticLine(
+                        f"Current task: {task.id}; status={task.status.value}; "
+                        f"{task.path.relative_to(root)}"
+                    )
                 )
         except (OSError, ValueError):
-            diagnosis += "\nCurrent task state could not be read; inspect the task diagnostics."
+            diagnosis.append(
+                SessionDiagnosticLine(
+                    "Current task state could not be read; inspect the task diagnostics.",
+                    prose=True,
+                )
+            )
     return RecoveryInspection(
         proposal,
         "uncommitted repository state",
-        dataclasses.replace(guidance, explanation=diagnosis + "\n\n" + guidance.explanation),
+        dataclasses.replace(guidance, diagnosis=tuple(diagnosis)),
     )
 
 
@@ -257,10 +272,13 @@ def discard_guidance(proposal: DiscardProposal) -> OperatorGuidance:
     )
 
 
-def format_discard_proposal(proposal: DiscardProposal) -> str:
+def format_discard_proposal(proposal: DiscardProposal, *, width: int | None = None) -> str:
+    width = width or shutil.get_terminal_size(fallback=(80, 24)).columns
     lines = [
         "Discard proposal — technical details:",
-        "DevLab found uncommitted state outside a completed workflow boundary.",
+        _wrap_prose(
+            "DevLab found uncommitted state outside a completed workflow boundary.", width
+        ),
         "",
         f"Restart boundary: {proposal.head}",
     ]
@@ -280,8 +298,34 @@ def format_discard_proposal(proposal: DiscardProposal) -> str:
     return "\n".join(lines)
 
 
-def format_operator_guidance(guidance: OperatorGuidance) -> str:
-    lines = [guidance.summary, "", guidance.explanation]
+def _wrap_prose(
+    text: str, width: int, *, indent: str = "", continuation: str | None = None
+) -> str:
+    return "\n".join(
+        textwrap.fill(
+            paragraph,
+            width=width,
+            initial_indent=indent,
+            subsequent_indent=indent if continuation is None else continuation,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        if paragraph
+        else ""
+        for paragraph in text.split("\n")
+    )
+
+
+def format_operator_guidance(guidance: OperatorGuidance, *, width: int | None = None) -> str:
+    width = width or shutil.get_terminal_size(fallback=(80, 24)).columns
+    lines = [_wrap_prose(guidance.summary, width), ""]
+    if guidance.diagnosis:
+        lines.extend(
+            _wrap_prose(line.text, width) if line.prose else line.text
+            for line in guidance.diagnosis
+        )
+        lines.append("")
+    lines.append(_wrap_prose(guidance.explanation, width))
     if guidance.inspection_commands:
         lines.extend(["", "Inspect:"])
         lines.extend(f"  {command}" for command in guidance.inspection_commands)
@@ -289,14 +333,33 @@ def format_operator_guidance(guidance: OperatorGuidance) -> str:
         lines.extend(["", "Recovery options:"])
     for number, alternative in enumerate(guidance.alternatives, start=1):
         marker = " (destructive)" if alternative.destructive else ""
-        lines.extend(["", f"  {number}. {alternative.title}{marker}:"])
+        lines.extend(
+            [
+                "",
+                _wrap_prose(
+                    f"{alternative.title}{marker}:",
+                    width,
+                    indent=f"  {number}. ",
+                    continuation="     ",
+                ),
+            ]
+        )
         if alternative.prompt_instruction:
-            lines.append(f"     At the discard prompt: {alternative.prompt_instruction}")
-        lines.append(f"     {alternative.effect}")
+            lines.append(
+                _wrap_prose(
+                    f"At the discard prompt: {alternative.prompt_instruction}",
+                    width,
+                    indent="     ",
+                )
+            )
+        lines.append(_wrap_prose(alternative.effect, width, indent="     "))
         lines.extend(f"       {command}" for command in alternative.commands)
     if guidance.warnings:
         lines.extend(["", "Warnings:"])
-        lines.extend(f"- {warning}" for warning in guidance.warnings)
+        lines.extend(
+            _wrap_prose(warning, width, indent="- ", continuation="  ")
+            for warning in guidance.warnings
+        )
     lines.extend(["", "After resolving the condition, run:", f"  {guidance.retry_command}"])
     return "\n".join(lines)
 

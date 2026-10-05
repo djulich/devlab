@@ -187,7 +187,10 @@ unfinished agent work merely because both are uncommitted.
 
 For ordinary uncommitted state, `continue` displays the current HEAD, affected
 paths, and the Git clean preview. In an interactive terminal it asks before
-discarding. Declining changes nothing and prints preservation guidance. Without
+discarding, with diagnosis and recovery choices shown before the prompt.
+Declining changes nothing. Recovery prose wraps to the terminal width, falling
+back to 80 columns when the width is unavailable. Commands, paths, and literal
+evidence lines remain intact for copying. Without
 an interactive terminal, or with `--unattended`, it does not obtain discard
 approval implicitly. Automation must explicitly supply both
 `--discard-interrupted-session` and `--require-interrupted-head <observed-SHA>`;

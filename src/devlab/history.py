@@ -59,7 +59,24 @@ def load_session_metadata(root: Path) -> list[SessionMetadata]:
     return sorted(entries, key=lambda m: m.invocation_id)
 
 
+@dataclasses.dataclass(frozen=True)
+class SessionDiagnosticLine:
+    """A session diagnostic sentence or a literal evidence line."""
+
+    text: str
+    prose: bool = False
+
+
 def describe_session(root: Path, *, session_id: str = "", role: str = "", task: str = "") -> str:
+    return "\n".join(
+        line.text
+        for line in session_diagnostic_lines(root, session_id=session_id, role=role, task=task)
+    )
+
+
+def session_diagnostic_lines(
+    root: Path, *, session_id: str = "", role: str = "", task: str = ""
+) -> tuple[SessionDiagnosticLine, ...]:
     """Explain recorded session evidence without assigning ownership of current edits."""
     entries = load_session_metadata(root)
     entry = next((item for item in entries if item.invocation_id == session_id), None)
@@ -73,8 +90,11 @@ def describe_session(root: Path, *, session_id: str = "", role: str = "", task: 
                 role, task = entry.role_name, entry.task_id
     if not session_id:
         return (
-            "What happened: No usable session evidence was found, "
-            "so the origin of these changes is unknown."
+            SessionDiagnosticLine(
+                "What happened: No usable session evidence was found, "
+                "so the origin of these changes is unknown.",
+                prose=True,
+            ),
         )
     label = (
         "Related session" if related else "Latest recorded session (relationship to edits unknown)"
@@ -94,31 +114,59 @@ def describe_session(root: Path, *, session_id: str = "", role: str = "", task: 
             ).stdout.strip()
         except VersionControlError:
             commit = ""
-    lines = ["What happened: " + _session_summary(entry, related=related, committed=bool(commit))]
-    lines.extend(["", f"{label}: {session_id}; role={role}; task={task or 'none'}."])
-    lines.append("Current changes may also include later operator edits.")
+    lines = [
+        SessionDiagnosticLine(
+            "What happened: " + _session_summary(entry, related=related, committed=bool(commit)),
+            prose=True,
+        )
+    ]
+    lines.extend(
+        [
+            SessionDiagnosticLine(""),
+            SessionDiagnosticLine(f"{label}: {session_id}; role={role}; task={task or 'none'}."),
+        ]
+    )
+    lines.append(
+        SessionDiagnosticLine("Current changes may also include later operator edits.", prose=True)
+    )
     if related:
         lines.extend(_describe_staged_handoff(root, session_id, role, task))
     metadata_path = f"{AGENT_LOG_DIR}/{session_id}.metadata.json"
-    lines.append(f"Evidence: {metadata_path}")
+    lines.append(SessionDiagnosticLine(f"Evidence: {metadata_path}"))
     for suffix in ("stderr.log", "stdout.log"):
         path = f"{AGENT_LOG_DIR}/{session_id}.{suffix}"
         if (root / path).is_file():
-            lines.append(f"Log: {path}")
+            lines.append(SessionDiagnosticLine(f"Log: {path}"))
     if entry is None:
-        lines.append("Provider outcome unavailable: metadata is missing, invalid, or mismatched.")
-        return "\n".join(lines)
+        lines.append(
+            SessionDiagnosticLine(
+                "Provider outcome unavailable: metadata is missing, invalid, or mismatched.",
+                prose=True,
+            )
+        )
+        return tuple(lines)
     if entry.lifecycle_phase in {"starting", "environment_setup"}:
-        lines.append("Provider invocation not reached in the recorded lifecycle.")
+        lines.append(
+            SessionDiagnosticLine(
+                "Provider invocation not reached in the recorded lifecycle.", prose=True
+            )
+        )
     elif entry.failure_kind == "incomplete":
         lines.append(
-            "Provider completion not recorded; session may still be running or interrupted."
+            SessionDiagnosticLine(
+                "Provider completion not recorded; session may still be running or interrupted.",
+                prose=True,
+            )
         )
     elif entry.failure_kind == "timeout":
         kind = {"max_duration": "maximum duration", "inactivity": "inactivity"}.get(
             entry.timeout_kind, "unspecified timeout"
         )
-        lines.append(f"Provider stopped: {kind}; exit code {entry.return_code}.")
+        lines.append(
+            SessionDiagnosticLine(
+                f"Provider stopped: {kind}; exit code {entry.return_code}.", prose=True
+            )
+        )
         limit = (
             entry.max_session_duration_seconds
             if entry.timeout_kind == "max_duration"
@@ -127,42 +175,73 @@ def describe_session(root: Path, *, session_id: str = "", role: str = "", task: 
             else None
         )
         if limit is not None:
-            lines.append(f"Configured {kind} limit: {limit}s.")
+            lines.append(SessionDiagnosticLine(f"Configured {kind} limit: {limit}s.", prose=True))
     elif entry.return_code == 0 and entry.failure_kind == "none":
         lines.append(
-            "Provider completed successfully (exit code 0); workflow completion is separate."
+            SessionDiagnosticLine(
+                "Provider completed successfully (exit code 0); workflow completion is separate.",
+                prose=True,
+            )
         )
     else:
-        lines.append(f"Provider outcome: {entry.failure_kind}; exit code {entry.return_code}.")
+        lines.append(
+            SessionDiagnosticLine(
+                f"Provider outcome: {entry.failure_kind}; exit code {entry.return_code}.",
+                prose=True,
+            )
+        )
     if entry.duration_seconds is not None:
-        lines.append(f"Provider duration: {entry.duration_seconds:.1f}s.")
+        lines.append(
+            SessionDiagnosticLine(f"Provider duration: {entry.duration_seconds:.1f}s.", prose=True)
+        )
     if entry.inactive_seconds_at_stop is not None:
-        lines.append(f"Last provider output: {entry.inactive_seconds_at_stop:.1f}s before stop.")
+        lines.append(
+            SessionDiagnosticLine(
+                f"Last provider output: {entry.inactive_seconds_at_stop:.1f}s before stop.",
+                prose=True,
+            )
+        )
     if entry.lifecycle_phase:
-        lines.append(f"Last recorded lifecycle phase: {entry.lifecycle_phase}.")
+        lines.append(
+            SessionDiagnosticLine(
+                f"Last recorded lifecycle phase: {entry.lifecycle_phase}.", prose=True
+            )
+        )
     if entry.lifecycle_stop_reason:
-        lines.append(f"Orchestrator stop: {entry.lifecycle_stop_reason}")
+        lines.append(SessionDiagnosticLine(f"Orchestrator stop: {entry.lifecycle_stop_reason}"))
     if entry.starting_head:
-        lines.append(f"Starting HEAD: {entry.starting_head}")
+        lines.append(SessionDiagnosticLine(f"Starting HEAD: {entry.starting_head}"))
     if commit:
         lines.append(
-            f"Session metadata recorded in commit: {commit} (not proof of task approval)."
+            SessionDiagnosticLine(
+                f"Session metadata recorded in commit: {commit} (not proof of task approval)."
+            )
         )
     elif entry.lifecycle_phase == "commit":
-        lines.append("Reached commit phase; no commit containing this metadata was found.")
+        lines.append(
+            SessionDiagnosticLine(
+                "Reached commit phase; no commit containing this metadata was found.", prose=True
+            )
+        )
     elif entry.lifecycle_phase in {"starting", "environment_setup"}:
-        lines.append("Normal handoff/commit phase not reached.")
+        lines.append(SessionDiagnosticLine("Normal handoff/commit phase not reached.", prose=True))
     elif entry.failure_kind in {"timeout", "nonzero_exit", "provider_error"}:
         lines.append(
-            "Provider failure stops the normal handoff/commit path; no session commit found."
+            SessionDiagnosticLine(
+                "Provider failure stops the normal handoff/commit path; no session commit found.",
+                prose=True,
+            )
         )
     else:
         lines.append(
-            "No commit containing this session metadata found; completion is not established."
+            SessionDiagnosticLine(
+                "No commit containing this session metadata found; completion is not established.",
+                prose=True,
+            )
         )
     if entry.accepted_handoff:
-        lines.append(f"Recorded accepted handoff: {entry.accepted_handoff}")
-    return "\n".join(lines)
+        lines.append(SessionDiagnosticLine(f"Recorded accepted handoff: {entry.accepted_handoff}"))
+    return tuple(lines)
 
 
 def _session_summary(entry: SessionMetadata | None, *, related: bool, committed: bool) -> str:
@@ -246,15 +325,21 @@ def _session_summary(entry: SessionMetadata | None, *, related: bool, committed:
     )
 
 
-def _describe_staged_handoff(root: Path, session_id: str, role: str, task: str) -> list[str]:
-    lines: list[str] = []
+def _describe_staged_handoff(
+    root: Path, session_id: str, role: str, task: str
+) -> list[SessionDiagnosticLine]:
+    lines: list[SessionDiagnosticLine] = []
     # Roles from envelopes must remain a single workspace directory name.
     if Path(role).name != role or role in {".", ".."}:
-        return ["Invalid role in session evidence."]
+        return [SessionDiagnosticLine("Invalid role in session evidence.", prose=True)]
     directory = root / ".devlab/session-artifacts" / role
     candidate = directory / "handoff-candidate.toml"
     if candidate.is_file():
-        lines.append(f"Handoff candidate: {candidate.relative_to(root)} (unverified claims).")
+        lines.append(
+            SessionDiagnosticLine(
+                f"Handoff candidate: {candidate.relative_to(root)} (unverified claims)."
+            )
+        )
     result = directory / "result.toml"
     if result.is_file():
         try:
@@ -267,12 +352,19 @@ def _describe_staged_handoff(root: Path, session_id: str, role: str, task: str) 
         except (OSError, ValueError, HandoffError):
             matches = False
         lines.append(
-            "Accepted handoff result: " + str(result.relative_to(root))
-            if matches
-            else "Staged result is invalid or belongs to another session."
+            SessionDiagnosticLine(
+                "Accepted handoff result: " + str(result.relative_to(root))
+                if matches
+                else "Staged result is invalid or belongs to another session.",
+                prose=not matches,
+            )
         )
     else:
-        lines.append("Accepted handoff result absent from this session's staging directory.")
+        lines.append(
+            SessionDiagnosticLine(
+                "Accepted handoff result absent from this session's staging directory.", prose=True
+            )
+        )
     return lines
 
 

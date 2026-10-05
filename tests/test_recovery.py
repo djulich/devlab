@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -335,7 +336,66 @@ def test_summary_does_not_claim_uncommitted_session_when_metadata_was_committed(
     candidate.write_text(candidate.read_text() + "# Later edit\n")
     report = _recovery_report(tmp_path)
     summary = report.split("What happened: ", 1)[1].split("\n\n", 1)[0]
+    summary = " ".join(summary.split())
     assert "Its metadata appears in Git history" in summary
     assert "do not establish why the current changes remain uncommitted" in summary
     assert "No commit" not in summary
     assert "before its normal session commit" not in summary
+
+
+@pytest.mark.parametrize("width", [50, 80, 120])
+def test_recovery_wraps_prose_but_preserves_evidence_and_commands(
+    tmp_path: Path, width: int
+) -> None:
+    _dirty_session_evidence(tmp_path)
+    inspection = inspect_recovery(tmp_path)
+    assert inspection.guidance is not None
+    assert inspection.proposal is not None
+    guidance = inspection.guidance
+    report = format_operator_guidance(guidance, width=width)
+    literal_lines = {line.text for line in guidance.diagnosis if not line.prose}
+    literal_lines.update(
+        f"       {command}"
+        for alternative in guidance.alternatives
+        for command in alternative.commands
+    )
+    for line in literal_lines:
+        assert line in report.splitlines()
+    if width == 50:
+        assert any(len(line) > width for line in literal_lines)
+    assert all(len(line) <= width for line in report.splitlines() if line not in literal_lines)
+    options = report.split("Recovery options:\n", 1)[1].split("\nWarnings:", 1)[0]
+    assert all(not line or line.startswith("  ") for line in options.splitlines())
+    warnings = report.split("Warnings:\n", 1)[1].split("\n\n", 1)[0]
+    assert all(line.startswith(("- ", "  ")) for line in warnings.splitlines())
+    proposal = recovery.format_discard_proposal(inspection.proposal, width=width)
+    for status, path in inspection.proposal.entries:
+        assert f"- {status} {path}" in proposal.splitlines()
+    for path in inspection.proposal.clean_paths:
+        assert f"- {path}" in proposal.splitlines()
+    assert f"Restart boundary: {inspection.proposal.head}" in proposal.splitlines()
+
+
+@pytest.mark.parametrize("columns", [55, None])
+def test_recovery_uses_terminal_width_or_80_column_fallback(
+    monkeypatch: pytest.MonkeyPatch, columns: int | None
+) -> None:
+    monkeypatch.delenv("COLUMNS", raising=False)
+    monkeypatch.delenv("LINES", raising=False)
+
+    def terminal_size(*args: object) -> os.terminal_size:
+        if columns is None:
+            raise OSError("No terminal")
+        return os.terminal_size((columns, 24))
+
+    monkeypatch.setattr(os, "get_terminal_size", terminal_size)
+    guidance = recovery.OperatorGuidance(
+        summary="A long explanatory sentence for the operator. " * 4,
+        explanation="Resolve the dirty worktree before continuing. " * 4,
+        inspection_commands=(),
+        alternatives=(),
+        warnings=(),
+    )
+    report = format_operator_guidance(guidance)
+    assert report == format_operator_guidance(guidance, width=columns or 80)
+    assert max(map(len, report.splitlines())) <= (columns or 80)
