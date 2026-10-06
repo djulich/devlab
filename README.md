@@ -210,5 +210,7 @@ for development setup and contribution guidelines. Report bugs through
 vulnerabilities privately through the
 [security policy](https://github.com/djulich/devlab/blob/main/SECURITY.md).
 
+Copyright 2026 Dirk Jülich and DevLab contributors.
+
 DevLab is licensed under the
 [Apache License 2.0](https://github.com/djulich/devlab/blob/main/LICENSE).
