@@ -1,194 +1,166 @@
 # Make a release
 
-This how-to document describes the steps required to create a release. The example illustrates the process for the hypothetical release v0.1.3.
+Commands use `0.2.0` as an example, with `0.1.2` as the previous release. Substitute your release and previous-release versions throughout. Run commands from the repository root in the same shell.
 
 ## 1. Confirm the release scope and version.
 
-Review:
+Review the changes between the last release and the current state:
 
+```bash
 git log --oneline v0.1.2..HEAD
 git diff --stat v0.1.2..HEAD
+```
 
-Describe this as a documentation and package-metadata release. It introduces no runtime or durable-
-format changes, so these changes require no workspace migration.
+Choose the next version using the [version-selection rules](../release-policy.md#choosing-the-next-version).
 
-One policy ambiguity: it calls patch releases “bugfix-only” without explicitly mentioning
-documentation or metadata corrections. I recommend clarifying that those corrections also qualify for
-patch releases. There is no reason to use 0.2.0 for the current changes.
+## 2. Update the version.
 
-  2. Check publishing prerequisites and push access.
+Change `[project].version` in `pyproject.toml` to `0.2.0`, then refresh the lockfile:
 
-     You need working Git, Python 3.12+, uv, GitHub access, and permission to approve both publishing
-     environments.
+```bash
+uv lock
+```
 
-     The existing trusted publishers should remain configured for:
-      - Repository: djulich/devlab
-      - Workflow: release.yml
-      - Environments: testpypi and pypi
+Inspect the lockfile diff; avoid unrelated dependency updates.
 
-     No PyPI API token is required. I verified GitHub environment settings, but not the private trusted-
-     publisher settings inside the index accounts.
+## 3. Prepare the release notes.
 
-     A local issue to resolve: my SSH remote query failed with “Bad owner or permissions” for /etc/ssh/
-     ssh_config.d/20-systemd-ssh-proxy.conf. GitHub API access worked. Confirm Git push access before
-     preparing the tag.
+Summarize notable changes and any upgrade or recovery instructions. Save the notes to `/tmp/devlab-0.2.0-notes.md` for the annotated tag created in step 6.
 
-  3. Update the version and installation examples.
+## 4. Run development validation and assess evaluation needs.
 
-     Change [project].version in pyproject.toml to 0.1.3, then refresh the lockfile:
+```bash
+make check
+```
 
-     UV_CACHE_DIR=/tmp/uv-cache uv lock
+_This runs ruff, ty, pytest, and the normal scripted workflow evaluations._
 
-     Inspect the lockfile diff; avoid unrelated dependency updates.
+If the changes warrant additional evaluation, select and run the relevant scenarios from the [evaluation guide](../evaluations/README.md), including live-agent baselines where needed.
 
-     Update the current pinned installation examples in:
-      - README.md: devlab==0.1.3 and @v0.1.3
-      - docs/tutorial.md: devlab==0.1.3
+## 5. Run package verification.
 
-     Leave historical release evidence and baseline versions unchanged. Do not bump workflow schema
-     versions.
+```bash
+make release-check
+```
 
-  4. Prepare the release notes.
+_Checks distribution contents and metadata, then installs the wheel in a clean environment and verifies the CLI._
 
-     The GitHub Release is the canonical release note; no separate changelog is required.
+## 6. Commit new version and create an annotated tag.
 
-     Suggested scope:
+Review the changes and stage the version and lockfile:
 
-     > DevLab 0.1.3 improves the project introduction, architectural explanation, and operator recovery
-     > documentation, and updates the package summary displayed on PyPI.
-     >
-     > Runtime behavior and durable workspace formats are unchanged from 0.1.2. These changes require no
-     > workspace migration. DevLab remains pre-1.0 with provisional compatibility.
+```bash
+git add pyproject.toml uv.lock
+```
 
-     Add actual validation results after running them. If no new live-agent evaluation is performed, say
-     so.
+Explicitly stage any other intended release changes, then commit:
 
-     Save the full notes in a temporary file for an annotated tag, matching your preferred release
-     practice.
+```bash
+git commit -m "chore: prepare release 0.2.0"
+```
 
-  5. Run development validation and assess evaluation needs.
+Check that the worktree is clean:
 
-     UV_CACHE_DIR=/tmp/uv-cache make check
+```bash
+git status --short
+```
 
-     This runs Ruff, ty, pytest, and the normal scripted workflow evaluations.
+Expect no output. Resolve any remaining changes before creating the tag:
 
-     For this documentation-only release, I would not require another live-agent baseline. Record that
-     decision and its rationale. Optional deployment/toolchain checks should be driven by release risk;
-     missing prerequisites must remain reported as skipped or unverified.
+```bash
+git tag -a v0.2.0 -F /tmp/devlab-0.2.0-notes.md
+git rev-parse HEAD
+git rev-parse 'v0.2.0^{commit}'
+```
 
-     The remaining 1.0 compatibility exercises in issue #6 are separate from publishing this provisional
-     patch release.
+The last two hashes must match.
 
-  6. Run package verification.
+## 7. Verify installation from the exact commit before sharing it.
 
-     UV_CACHE_DIR=/tmp/uv-cache make release-check
+Use a temporary environment outside the editable checkout:
 
-     This checks the wheel and source distribution, metadata, version agreement, license, packaged
-     resources, distribution contents, README link form, strict Twine validation, clean wheel installation,
-     and CLI version/help.
+```bash
+release_verify=$(mktemp -d /tmp/devlab-0.2.0-verify.XXXXXX)
+release_commit=$(git rev-parse HEAD)
 
-     Manually inspect the new short description too. Automated rendering and metadata checks do not replace
-     checking how the description looks on the index or whether its links work.
+uv venv --python 3.12 "$release_verify/commit"
+uv pip install --python "$release_verify/commit/bin/python" \
+   "git+file://$(pwd)@$release_commit"
 
-  7. Commit preparation and create an annotated tag.
+"$release_verify/commit/bin/devlab" --version
+"$release_verify/commit/bin/devlab" --help
+```
 
-     Review and commit the version, lockfile, example updates, and any policy clarification:
+Expect `devlab 0.2.0`.
 
-     git add pyproject.toml uv.lock README.md docs/tutorial.md
-     git commit -m "chore: prepare release 0.1.3"
+_Temporary environments leave your installed DevLab unchanged._
 
-     Include docs/release-policy.md if you clarified patch-release scope.
+## 8. Push the release commit, then the specific tag.
 
-     With a clean worktree, create the tag using your prepared notes:
+```bash
+git push origin main
+git push origin v0.2.0
+```
 
-     git tag -a v0.1.3 -F /tmp/devlab-0.1.3-notes.md
-     git status --short
-     git rev-parse HEAD
-     git rev-parse 'v0.1.3^{commit}'
+The tag push triggers the GitHub `Prepare release` workflow. Once pushed, do not repoint or replace the release tag. Release corrections under a new version and tag.
 
-     The last two hashes must match. Tag signing is optional under the current policy.
+_The workflow automatically checks tag/version agreement, reruns validation, builds the publication artifacts once, verifies them, and generates checksums. It then creates a draft GitHub Release and requests TestPyPI approval._
 
-  8. Verify installation from the exact commit before sharing it.
+## 9. Approve and inspect TestPyPI before production.
 
-     Use a temporary environment outside the editable checkout:
+On [GitHub](https://github.com/djulich/devlab), open **Actions → Prepare release → the run for your tag → Review deployments**.
+Approve the `testpypi` deployment with **Approve and deploy**, then wait for the upload job to succeed.
 
-     release_verify=$(mktemp -d /tmp/devlab-0.1.3-verify.XXXXXX)
-     release_commit=$(git rev-parse HEAD)
+On [TestPyPI](https://test.pypi.org/project/devlab/), select the new version and inspect its short description, README rendering, links, wheel, source distribution, and provenance.
 
-     uv venv --python 3.12 "$release_verify/commit"
-     uv pip install --python "$release_verify/commit/bin/python" \
-       "git+file:///home/dirk/repos/devlab@$release_commit"
+Follow the **Release Notes** project link to [GitHub's release list](https://github.com/djulich/devlab/releases) and select the matching draft. Review its notes and assets. For versions before `1.0.0`, choose **Edit release → Release label → Pre-release → Save draft**.
 
-     "$release_verify/commit/bin/devlab" --version
-     "$release_verify/commit/bin/devlab" --help
+Test both installation sources separately:
 
-     Expect devlab 0.1.3.
+```bash
+uv venv --python 3.12 "$release_verify/testpypi"
+uv pip install --python "$release_verify/testpypi/bin/python" \
+   --default-index https://test.pypi.org/simple/ "devlab==0.2.0"
+"$release_verify/testpypi/bin/devlab" --version
+"$release_verify/testpypi/bin/devlab" --help
+```
 
-     These isolated virtual environments satisfy the policy’s intent without replacing your normal uv tool
-     installation.
+```bash
+uv venv --python 3.12 "$release_verify/tag"
+uv pip install --python "$release_verify/tag/bin/python" \
+   "git+https://github.com/djulich/devlab.git@v0.2.0"
+"$release_verify/tag/bin/devlab" --version
+"$release_verify/tag/bin/devlab" --help
+```
 
-  9. Push the release commit, then the specific tag.
+Both must report `devlab 0.2.0` and display command help.
 
-     git push origin main
-     git push origin v0.1.3
+_The GitHub pre-release label does not make `0.2.0` a prerelease version to Python package installers._
 
-     The tag push triggers Prepare release. Never move a shared release tag.
+## 10. Approve production publication.
 
-     The workflow automatically checks tag/version agreement, reruns validation, builds the publication
-     artifacts once, verifies them, and generates checksums. It then creates a draft GitHub Release and
-     requests TestPyPI approval.
+Only after candidate inspection succeeds, approve the `pypi` deployment in the workflow run's **Review deployments** dialog. Wait for the upload job to succeed.
 
-  10. Approve and inspect TestPyPI before production.
+_Production consumes the same verified distributions uploaded to TestPyPI. It does not rebuild them. SHA256SUMS stays a GitHub Release asset._
 
-     In the workflow’s Review deployments dialog, approve testpypi.
+## 11. Verify production, then publish the GitHub Release.
 
-     Inspect the TestPyPI version, short description, README rendering, links, wheel, source distribution,
-     and provenance. Review the draft GitHub Release’s notes and assets, and mark it as a pre-release.
+On [PyPI](https://pypi.org/project/devlab/), select the new version and inspect its short description, README rendering, links, wheel, source distribution, and provenance.
 
-     Test both installation sources separately:
+Open **Release files → Details** for each distribution. Compare its **SHA256** with the checksum listed for the matching filename inside the GitHub Release Asset's `SHA256SUMS` file.
 
-     uv venv --python 3.12 "$release_verify/testpypi"
-     uv pip install --python "$release_verify/testpypi/bin/python" \
-       --default-index https://test.pypi.org/simple/ "devlab==0.1.3"
-     "$release_verify/testpypi/bin/devlab" --version
-     "$release_verify/testpypi/bin/devlab" --help
+Verify that the production installation reports `devlab 0.2.0` and displays command help:
 
-     uv venv --python 3.12 "$release_verify/tag"
-     uv pip install --python "$release_verify/tag/bin/python" \
-       "git+https://github.com/djulich/devlab.git@v0.1.3"
-     "$release_verify/tag/bin/devlab" --version
-     "$release_verify/tag/bin/devlab" --help
+```bash
+uv venv --python 3.12 "$release_verify/pypi"
+uv pip install --python "$release_verify/pypi/bin/python" \
+   --default-index https://pypi.org/simple/ "devlab==0.2.0"
+"$release_verify/pypi/bin/devlab" --version
+"$release_verify/pypi/bin/devlab" --help
+```
 
-     Both must report 0.1.3. The GitHub pre-release label does not make 0.1.3 a prerelease version to
-     Python package installers.
+Then publish the reviewed GitHub Release (**Edit release → Publish release**), keeping its pre-release designation for versions before `1.0.0`.
 
-  11. Approve production publication.
+_Publishing the GitHub Release makes its notes and assets public; the package was already published by the PyPI deployment._
 
-     Only after candidate inspection succeeds, approve pypi in Review deployments.
-
-     Production consumes the same verified distributions uploaded to TestPyPI. It does not rebuild them.
-     SHA256SUMS stays a GitHub Release asset.
-
-  12. Verify production, then publish the GitHub Release.
-
-     Check the production version, description, links, files, and publisher provenance. Compare both
-     distribution SHA-256 hashes against the workflow-generated SHA256SUMS.
-
-     uv venv --python 3.12 "$release_verify/pypi"
-     uv pip install --python "$release_verify/pypi/bin/python" \
-       --default-index https://pypi.org/simple/ "devlab==0.1.3"
-     "$release_verify/pypi/bin/devlab" --version
-     "$release_verify/pypi/bin/devlab" --help
-
-     Then publish the reviewed GitHub Release, keeping its pre-release designation.
-
-     Retain the workflow URL, validation results, installation checks, hash comparison, and evaluation
-     limitations. Do not infer increased maturity from successful packaging alone.
-
-     If publication fails, inspect whether any files were uploaded before retrying. Corrections that change
-     published artifacts require a new version and tag.
-
-  Alignment verdict: the policy and workflow agree on the release order, approval gates, immutable tags,
-  shared artifacts, and final verification. The two documentation improvements worth making are explicitly
-  allowing documentation/metadata patch releases and making the smoke-test isolation concrete.
-
+If publication fails, inspect whether any files were uploaded before retrying. Corrections that change published artifacts require a new version and tag.
