@@ -483,6 +483,14 @@ before implementation tasks depend on it.
 
 ### Validation selection and outcomes
 
+DevLab sets `DEVLAB_PYTHON` for validation commands to the absolute interpreter
+path of the running DevLab installation, as it does for agent sessions. Commands
+that need DevLab's Python modules can use this interpreter even when the target
+has its own virtual environment. No manual export is needed for `devlab continue`
+or other DevLab-managed validation, including retries and milestone integration.
+This value takes precedence over inherited or service-provided values. Standalone
+target scripts that require the variable must still arrange it themselves.
+
 | Task metadata | Commands DevLab executes |
 | --- | --- |
 | `validation` omitted | The resolved profile's `default_validation`. |

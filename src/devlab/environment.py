@@ -8,6 +8,7 @@ import re
 import signal
 import stat
 import subprocess
+import sys
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from devlab._files import atomic_write_text
+from devlab.handoffs import DEVLAB_PYTHON_ENV
 
 ENVIRONMENT_LOG_DIR = ".devlab/logs/environment"
 _ENVIRONMENT_TERMINATION_GRACE_SECONDS = 1.0
@@ -558,6 +560,9 @@ def run_validation_commands(
                         if command_environments is not None
                         else environ or {}
                     ),
+                    # Use this DevLab installation even when the target runs in
+                    # its own Python environment or the shell has a stale export.
+                    DEVLAB_PYTHON_ENV: str(Path(sys.executable).absolute()),
                 },
                 timeout=timeout,
             )

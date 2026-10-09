@@ -21,6 +21,49 @@ from devlab.environment import (
 )
 
 
+@pytest.mark.parametrize("context", ["task", "milestone"])
+@pytest.mark.parametrize("environment_source", ["unset", "service", "command"])
+def test_validation_uses_running_devlab_interpreter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    context: str,
+    environment_source: str,
+) -> None:
+    if environment_source == "unset":
+        monkeypatch.delenv("DEVLAB_PYTHON", raising=False)
+    else:
+        monkeypatch.setenv("DEVLAB_PYTHON", "/stale/operator/python")
+    environment = {"DEVLAB_TEST_VALUE": "service environment preserved"}
+    if environment_source != "unset":
+        environment["DEVLAB_PYTHON"] = "/different/service/python"
+    script = tmp_path / "validate.py"
+    script.write_text(
+        "import json, os, sys\n"
+        "from devlab.profiles import load_profiles\n"
+        "assert callable(load_profiles)\n"
+        "print(json.dumps([sys.executable, os.environ['DEVLAB_TEST_VALUE']]))\n"
+    )
+    run = run_validation_commands(
+        tmp_path,
+        role_name="orchestrator" if context == "task" else "integrator",
+        task_id="T0001" if context == "task" else None,
+        milestone_id="M1" if context == "milestone" else None,
+        session_id="interpreter",
+        commands=(f'"$DEVLAB_PYTHON" {shlex.quote(str(script))}',),
+        environ=environment if environment_source != "command" else None,
+        command_environments=(environment,) if environment_source == "command" else None,
+    )
+    assert run.outcome == "passed", run.commands
+    assert json.loads(run.commands[0].output_summary) == [
+        str(Path(sys.executable).absolute()),
+        "service environment preserved",
+    ]
+    if environment_source == "unset":
+        assert "DEVLAB_PYTHON" not in os.environ
+    else:
+        assert os.environ["DEVLAB_PYTHON"] == "/stale/operator/python"
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX process-group termination")
 @pytest.mark.parametrize("operation", ["validation", "pre_session", "setup", "post_session"])
 @pytest.mark.parametrize("close_output", [False, True])
