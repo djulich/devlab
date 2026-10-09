@@ -1993,6 +1993,8 @@ class TestBuildSessionPrompt:
 
         assert "## Task Validation Commands" in prompt
         assert "`uv run pytest`" in prompt
+        assert "orchestrator runs the full configured suite" in prompt
+        assert "do not rerun the full suite" in prompt
 
     def test_developer_prompt_omits_validation_section_when_validation_is_omitted(
         self, tmp_path: Path
@@ -2016,6 +2018,7 @@ class TestBuildSessionPrompt:
         assert "Profile: `api`" in prompt
         assert "default validation from profile `api`" in prompt
         assert "`uv run pytest tests/api`" in prompt
+        assert "orchestrator runs the full configured suite" in prompt
 
     def test_developer_prompt_explains_explicit_empty_validation(self, tmp_path: Path) -> None:
         _setup_tree(tmp_path)
@@ -5054,15 +5057,50 @@ def test_doctor_recovery_survives_interruption_and_resume(
     assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
 
 
-def test_doctor_recovery_profile_warning_allows_review(tmp_path: Path) -> None:
+@pytest.mark.parametrize("fixed", [False, True])
+def test_historical_profile_failure_is_rechecked_before_review(
+    tmp_path: Path, fixed: bool
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    _write_task(tmp_path, "T0001", "First", status="in_review")
+    complete_acceptance(tmp_path, "T0001")
+    _write_profile(tmp_path, "default", validation=["true" if fixed else "false"])
+    verification = tmp_path / ".devlab/verification/tasks/T0001"
+    verification.mkdir(parents=True)
+    (verification / "000_old_warning.json").write_text(
+        json.dumps({"source": "profile", "outcome": "failed", "session_id": "old"})
+    )
+
+    def on_invoke(call: AgentCall) -> None:
+        assert call.role_name == ("reviewer" if fixed else "developer")
+        records = sorted(verification.glob("*.json"))
+        assert len(records) == 2
+        record = json.loads(records[-1].read_text())
+        assert record["outcome"] == ("passed" if fixed else "failed")
+        assert record["recovery_of"] == "old"
+        if not fixed:
+            assert "## Validation Recovery" in call.session_prompt
+            assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.CHANGES_REQUESTED
+            complete_acceptance(call.root, "T0001")
+
+    provider = MockProvider(on_invoke=on_invoke)
+    run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+    assert [call.role_name for call in provider.calls] == ["reviewer" if fixed else "developer"]
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path) == b""
+
+
+def test_doctor_recovery_profile_failure_blocks_review(tmp_path: Path) -> None:
     _setup_doctor_recovery(tmp_path)
     _write_profile(tmp_path, "default", validation=["false"])
     provider = MockProvider(on_invoke=lambda call: complete_acceptance(call.root, "T0001"))
     result = run_loop(tmp_path, max_sessions=2, agent_providers={"default": provider})
 
-    assert result.exit_code == 0
-    assert [call.role_name for call in provider.calls] == ["developer", "reviewer"]
-    assert load_doctor_recovery(tmp_path) is None
+    assert result.stop_reason == RunStopReason.VALIDATION_FAILED
+    assert [call.role_name for call in provider.calls] == ["developer"]
+    recovery = load_doctor_recovery(tmp_path)
+    assert recovery is not None and recovery.stage == RecoveryStage.BLOCKED
+    assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.CHANGES_REQUESTED
 
 
 @pytest.mark.parametrize("fails", [False, True])
@@ -5088,7 +5126,7 @@ def test_doctor_recovery_waits_for_deferred_validation(
 
     provider = MockProvider()
     second = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
-    if fails and source == "task":
+    if fails:
         assert second.stop_reason == RunStopReason.VALIDATION_FAILED
         assert provider.calls == []
         blocked = load_doctor_recovery(tmp_path)
@@ -5488,12 +5526,18 @@ def test_unsuccessful_validation_retries_commit_evidence_for_next_continue(
             assert latest["commands"][-1]["log_path"] in committed_paths
 
 
+@pytest.mark.parametrize("source", ["task", "profile"])
 def test_repeated_validation_failure_stops_after_one_developer_recovery(
     tmp_path: Path,
+    source: str,
 ) -> None:
     _setup_tree(tmp_path)
     (tmp_path / DESIGN_PLAN).write_text("# Design\n")
-    _write_task(tmp_path, "T0001", "First", validation=["false"])
+    if source == "task":
+        _write_task(tmp_path, "T0001", "First", validation=["false"])
+    else:
+        _write_task(tmp_path, "T0001", "First")
+        _write_profile(tmp_path, "default", validation=["false"])
 
     def on_invoke(call: AgentCall) -> None:
         if call.role_name == "doctor":

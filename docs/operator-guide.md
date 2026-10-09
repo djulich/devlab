@@ -166,8 +166,7 @@ supersession guidance.
 | Reviewer requests changes | Returns the task to development. | Normally none; the loop continues within its session budget, or the next `continue` selects the developer. |
 | Provider fails, times out, or exits unsuccessfully | Stops and retains diagnostics; uncommitted edits can remain. | Inspect the failure and repair provider availability, authentication, permissions, or configuration as needed. Resolve uncommitted state before retrying with `continue`. |
 | Missing or invalid handoff | Refuses to advance on an invalid result. Optional correction is bounded; see [Handoffs](#session-results-and-handoffs). | Inspect submission diagnostics and remaining edits, address the cause, then retry. Diagnostic cleanup alone does not repair product or workflow files. |
-| Explicit task validation command fails | Returns the task to development for one bounded correction attempt. Repeated failure commits the evidence and routes to a bounded doctor session. | `continue` runs the doctor or its validated recovery route automatically. If the doctor cannot resolve the blocker, follow its focused guidance before `devlab continue --retry-stopped-task`. |
-| Profile-default task validation fails | Records a soft task-level warning; review can proceed. | Review the evidence. These commands are checked again at milestone integration, where failure creates corrective findings. |
+| Task validation command fails (explicit or profile default) | Returns the task to development for one bounded correction attempt. Repeated failure commits the evidence and routes to a bounded doctor session. | `continue` runs the doctor or its validated recovery route automatically. If the doctor cannot resolve the blocker, follow its focused guidance before `devlab continue --retry-stopped-task`. |
 | Task validation lacks a tool or prerequisite, times out, or encounters an infrastructure error | Stops before review and records the blocker/evidence. Continuation retries validation for the waiting task before review. | Restore the required tool, service, environment, or authorization, then run `continue`. DevLab does not install missing host tools. |
 | Milestone validation fails | A known command failure blocks integration and creates corrective findings. Missing prerequisites or infrastructure errors block integration without creating a product defect. | Let the workflow plan corrective work for command failures. Resolve external blockers before retrying integration. |
 | Developer makes no relevant progress | Commits the session and routes the task to a bounded doctor diagnosis. | `continue` runs the doctor or its validated recovery route automatically. If unresolved, follow the doctor's guidance before an explicit retry. |
@@ -177,7 +176,7 @@ supersession guidance.
 | Process is interrupted or the worktree is dirty | `continue` inspects the Git boundary and offers supported recovery or reports required remediation. | Stop any surviving provider process and inspect the work before preserving or discarding it as described below. |
 
 The doctor is a bounded auxiliary role. After a non-advancing developer
-session or repeated explicit task validation failure, DevLab records a recovery
+session or repeated task validation failure, DevLab records a recovery
 route and invokes the doctor within the remaining session budget, or on the next
 `continue`. Its structured report is archived in `.devlab/history/` and shown in
 `status`. A supported recommendation routes one focused planner revision or
@@ -497,11 +496,21 @@ target scripts that require the variable must still arrange it themselves.
 | Non-empty `validation` | Those commands, replacing the profile defaults. |
 | `validation = []` | No mechanical task checks; a diagnostic warns when profile defaults were suppressed. |
 
-After completed developer work, explicit task-command failures request one
-bounded correction attempt; repeated failure stops the workflow. Profile-default
-failures are recorded as soft task-level warnings because a broad repository
-check can depend on unfinished later tasks. Missing tools, timeouts, and
-infrastructure errors stop before review and are retried by continuation.
+The orchestrator runs the full configured suite after a completed developer
+handoff. Developers run focused checks needed for implementation or diagnosis;
+they need not repeat the full suite just to submit a handoff. Their handoffs must
+report actual checks without claiming pending orchestrator results. Integrators
+likewise focus on integration risks before DevLab runs milestone validation.
+Reviewers retain independent validation responsibilities.
+
+Any configured task-command failure, including profile defaults, returns the task
+to development for one bounded correction attempt. Repeated failure routes to the
+doctor; a failed doctor-directed correction blocks further progression. Profile
+defaults must be suitable for the current task. If a broad suite depends on later
+work, specify appropriate task validation instead of relying on ignored failures.
+Missing tools, timeouts, and infrastructure errors stop before review and are
+retried by continuation. Existing tasks awaiting review with historical failed
+validation are rechecked before a reviewer can start.
 
 At milestone integration, configured commands from closed tasks are combined,
 with repeated command/service bindings run once. A known failure blocks

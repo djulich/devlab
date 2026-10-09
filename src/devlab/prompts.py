@@ -548,8 +548,19 @@ def _profile_prompt_sections(
     return ["## Task Profile\n\n" + "\n".join(lines)]
 
 
-def _validation_prompt_section(task: Task, profile: Profile) -> str:
+def _validation_prompt_section(
+    task: Task, profile: Profile, *, orchestrator_owned: bool = False
+) -> str:
     validation = effective_validation(task, profile)
+    instruction = (
+        "The orchestrator runs the full configured suite after your completed handoff. "
+        "Run focused checks needed to implement or diagnose this task; do not rerun "
+        "the full suite solely to submit the handoff. Report what you actually checked "
+        "and leave the authoritative suite result to DevLab. Commands run from the "
+        "workspace root:"
+        if orchestrator_owned
+        else "Run from the workspace root:"
+    )
     if validation.source == "profile":
         commands = validation.commands
         if commands:
@@ -557,12 +568,12 @@ def _validation_prompt_section(task: Task, profile: Profile) -> str:
             return (
                 "## Task Validation Commands\n\n"
                 f"Task metadata omits `validation`; use default validation from "
-                f"profile `{profile.id}`. Run from the workspace root:\n\n{command_lines}"
+                f"profile `{profile.id}`. {instruction}\n\n{command_lines}"
             )
         return ""
     if validation.source == "task":
         commands = "\n".join(f"- `{command}`" for command in validation.commands)
-        return f"## Task Validation Commands\n\nRun from the workspace root:\n\n{commands}"
+        return f"## Task Validation Commands\n\n{instruction}\n\n{commands}"
     if task.validation is None:
         return ""
     return (
@@ -644,7 +655,7 @@ def _build_developer_prompt(
         parts.append(f"## Assigned Task ({task.path.name})\n\n{content}")
         parts.extend(_profile_prompt_sections(root, task, profiles))
         validation_section = _validation_prompt_section(
-            task, _session_profile(root, task, profiles)
+            task, _session_profile(root, task, profiles), orchestrator_owned=True
         )
         if validation_section:
             parts.append(validation_section)

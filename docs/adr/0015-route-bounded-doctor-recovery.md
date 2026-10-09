@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted.
+Accepted. The profile-default validation exception is superseded by
+[ADR 0016](0016-own-configured-validation-and-gate-review.md).
 
 ## Context
 

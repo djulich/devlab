@@ -1806,7 +1806,7 @@ def _latest_validation_record(root: Path, task_id: str) -> dict[str, object] | N
 
 def _latest_validation_failure(root: Path, task_id: str) -> dict[str, object] | None:
     data = _latest_validation_record(root, task_id)
-    if data is not None and data.get("source") == "task" and data.get("outcome") == "failed":
+    if data is not None and data.get("outcome") == "failed":
         return data
     return None
 
@@ -1844,6 +1844,7 @@ def _retry_unverified_task_validation(
                 "missing_tool",
                 "timeout",
                 "infrastructure_error",
+                "failed",
             }
         )
     ):
@@ -1872,7 +1873,7 @@ def _retry_unverified_task_validation(
         environ=service_environment,
         recovery_of=str(previous.get("session_id") or "") if previous is not None else "",
     )
-    if run.outcome == "failed" and validation.source == "task" and run.commands:
+    if run.outcome == "failed" and run.commands:
         failed = run.commands[-1]
         workspace.tasks().get(task.id).record_validation_failure(
             f"{failed.command!r} ({failed.outcome}); see {failed.log_path}"
@@ -1883,11 +1884,9 @@ def _retry_unverified_task_validation(
         and recovery.task == task.id
         and recovery.stage == RecoveryStage.PENDING_DEVELOPER
     ):
-        if run.outcome in {"passed", "not_configured"} or (
-            run.outcome == "failed" and validation.source == "profile"
-        ):
+        if run.outcome in {"passed", "not_configured"}:
             clear_doctor_recovery(workspace.root)
-        elif run.outcome == "failed" and validation.source == "task":
+        elif run.outcome == "failed":
             save_doctor_recovery(
                 workspace.root,
                 dataclasses.replace(recovery, stage=RecoveryStage.BLOCKED),
@@ -4167,7 +4166,7 @@ def _run_loop(
                     else ""
                 ),
             )
-            if validation_run.outcome == "failed" and validation.source == "task":
+            if validation_run.outcome == "failed":
                 failed = validation_run.commands[-1]
                 workspace.tasks().get(route.task.id).record_validation_failure(
                     f"{failed.command!r} ({failed.outcome}); see {failed.log_path}"
@@ -4178,12 +4177,6 @@ def _run_loop(
                     validation_run.outcome,
                 )
                 repeated_validation_failure = prior_validation_failure is not None
-            elif validation_run.outcome == "failed":
-                logger.warning(
-                    "Task %s profile validation %s; recorded as a soft task-level warning",
-                    route.task.id,
-                    validation_run.outcome,
-                )
             elif validation_run.outcome == "missing_tool":
                 logger.warning(
                     "Task %s validation prerequisite is missing; leaving it unverified",
@@ -4328,7 +4321,6 @@ def _run_loop(
             recovery is not None
             and recovery.stage == RecoveryStage.PENDING_DEVELOPER
             and validation_run is not None
-            and validation_run.source == "task"
             and validation_run.outcome == "failed"
         )
         recovery_developer_stalled = (

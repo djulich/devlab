@@ -102,7 +102,7 @@ _Avoid_: clarification, design decision, unverified agent opinion
 
 **Doctor recovery**:
 A bounded software-workflow investigation after repeated developer stagnation or
-explicit task validation failure. The doctor supplies an evidence-backed
+configured task validation failure. The doctor supplies an evidence-backed
 diagnosis; DevLab validates its action and owns the durable planner/developer
 route or operator stop. The doctor does not edit authoritative files.
 _Avoid_: treating a role recommendation as permission for arbitrary repair

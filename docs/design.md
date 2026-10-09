@@ -163,17 +163,20 @@ reviewer session. A task's non-empty `validation` list replaces profile defaults
 omitting it inherits them, and an explicit empty list disables mechanical task
 validation with a diagnostic when defaults exist.
 
-Explicit task-command failures return work for one bounded correction attempt;
+Configured task-command failures, including profile defaults, return work for one bounded correction attempt;
 repeated failure routes to a bounded doctor diagnosis. A non-advancing
 developer session does the same. The doctor writes a validated, evidence-backed
 report without editing the workspace. A durable recovery route may direct a
 focused planner task revision or another developer attempt and survive a session
-limit; an unsupported diagnosis stops with operator guidance. Profile-default
-command failures are recorded as soft
-task-level warnings because a repository-wide check may depend on later tasks.
+limit; an unsupported diagnosis stops with operator guidance. Task validation
+must be scoped to the work that can pass at that point; profile defaults do not
+bypass the gate. Historical failed evidence is rechecked before review.
 Missing tools, timeouts, and execution infrastructure failures remain unverified
 or errored checks and stop before review. Agents may run additional checks, but
-configured validation is the durable workflow gate.
+configured validation is the durable workflow gate. Developer and integrator
+prompts assign focused checks to the agent and the full configured suite to the
+orchestrator after handoff, avoiding a mandatory duplicate run. Reviewer checks
+remain independent. See [ADR 0016](adr/0016-own-configured-validation-and-gate-review.md).
 
 The [profile and validation reference](operator-guide.md#profiles) explains the
 configuration and operator consequences. Target-owned acceptance tests remain

@@ -20,7 +20,7 @@ The developer implements exactly one eligible task per session.
 2. Read and understand the task's goal, acceptance criteria, and any `## Requested Changes` section.
 3. Search the existing codebase before writing new code.
 4. Implement the task.
-5. Validate using the assigned task's validation metadata or resolved profile defaults (see checklist below). For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
+5. Run focused checks needed to implement and diagnose the assigned task. The orchestrator runs the full task validation or resolved profile defaults after your completed handoff; do not run that entire suite solely for handoff submission. For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
 6. If this task creates or changes a profile, ensure the profile follows `.devlab/config/tooling.md` policy, preserves backward compatibility for existing planned tasks unless the task explicitly creates a new profile or requests a breaking migration, and validate the updated lifecycle as part of the task.
 7. Verify the implementation against every acceptance criterion using the checklist below before marking the criteria as checked in the task file.
 8. Do not change the task status; the orchestrator sets it to `in_review` after the session.
@@ -46,8 +46,7 @@ The developer implements exactly one eligible task per session.
 Before submitting the handoff candidate, confirm:
 - [ ] Verification crosses every boundary claimed by the assigned task, following the conventions, and covers directly relevant specification contracts and applicable failure cases. Passing commands alone does not establish this coverage.
 - [ ] Any Requested Changes are verified as fixed, with regression checks for affected existing behavior.
-- [ ] If task `validation` is present and non-empty, all listed commands pass.
-- [ ] If task `validation` is omitted, default validation from the resolved task profile passes.
+- [ ] Focused checks support the implementation and any known failures are fixed or reported; the full configured suite is pending orchestrator validation, not claimed as already passed.
 - [ ] If task `validation = []`, no mechanical validation commands are required; report only relevant manual checks or deliberately skipped checks that DevLab cannot infer.
 - [ ] Any skipped or inapplicable validation command is explained in the handoff.
 - [ ] The handoff's `done` entries summarize verification evidence; unavailable boundary checks are reported as unverified with their prerequisites.
