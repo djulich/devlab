@@ -88,7 +88,8 @@ Diagnostics and reporting:
 - `session_logging.py`: session identity, invocation artifact paths, durable metadata, prompt/config logging, and structured start/finish context.
 
 CLI and shared infrastructure:
-- `cli.py`: command parsing and thin operator-interface adapters.
+- `cli.py`: lightweight command parsing, shell completion, and deferred dispatch.
+- `cli_commands.py`: thin operator-interface adapters loaded after argument parsing.
 - `init.py`: target-workspace initialization.
 - `agent_smoke.py`: configured-provider smoke-test selection, execution, and reporting.
 - `cleanup.py`: explicit failed-session artifact cleanup.

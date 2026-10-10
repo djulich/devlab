@@ -4,6 +4,7 @@ version = "0.2.0"
 description = "Auditable workflow orchestration for substantial agentic software development."
 readme = "README.md"
 requires-python = ">=3.12"
+dependencies = ["argcomplete>=3.6.3,<4"]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
@@ -35,6 +36,7 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 source-include = ["Makefile", "scripts/release_check.py", "tests/**", "uv.lock"]
 source-exclude = ["/demos"]
+data = { data = "share-data" }
 
 [tool.ruff]
 src = ["src"]

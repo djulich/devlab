@@ -62,7 +62,7 @@ def test_cli_configures_shared_heartbeat_interval(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", run)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", run)
     monkeypatch.setattr("devlab._logging._heartbeat_interval_seconds", 60)
     options = ("--heartbeat-interval", value) if value is not None else ()
     _run_cli(
@@ -858,7 +858,7 @@ def test_cli_unattended_requires_trust_or_explicit_authorization(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     with pytest.raises(SystemExit) as exc:
         _run_cli(monkeypatch, "implement", "--unattended", "--root", str(tmp_path))
@@ -893,7 +893,7 @@ def test_cli_accepts_independently_expected_executable_config_digest(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
     digest = build_executable_config_snapshot(tmp_path).digest
 
     _run_cli(
@@ -938,7 +938,7 @@ def test_cli_continue_routes_initial_work_to_planning(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     _run_cli(
         monkeypatch,
@@ -968,9 +968,9 @@ def test_cli_continue_reports_health_finding_that_does_not_block_next_action(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
     monkeypatch.setattr(
-        "devlab.cli.check_workspace",
+        "devlab.cli_commands.check_workspace",
         lambda _root: [
             DoctorProblem(
                 ".devlab/verification/milestones/M1.toml",
@@ -1000,7 +1000,7 @@ def test_cli_continue_stops_for_health_finding_that_blocks_next_action(
     _run_cli(monkeypatch, "init", "--root", str(tmp_path))
     capsys.readouterr()
     monkeypatch.setattr(
-        "devlab.cli.check_workspace",
+        "devlab.cli_commands.check_workspace",
         lambda _root: [DoctorProblem(".devlab/workflow.toml", "invalid workflow state")],
     )
 
@@ -1061,7 +1061,7 @@ def test_cli_continue_explicit_discard_is_head_bound_and_then_routes(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     _run_cli(
         monkeypatch,
@@ -1110,7 +1110,7 @@ def test_cli_plan_passes_planning_mode(monkeypatch: pytest.MonkeyPatch, tmp_path
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     _run_cli(
         monkeypatch,
@@ -1144,7 +1144,7 @@ def test_cli_implement_passes_retain_prompts(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     _run_cli(
         monkeypatch,
@@ -1175,7 +1175,7 @@ def test_cli_unattended_sets_agent_clarification_mode(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     _run_cli(
         monkeypatch,
@@ -1203,7 +1203,7 @@ def test_cli_plan_passes_agent_clarification_mode(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     _run_cli(
         monkeypatch,
@@ -1231,7 +1231,7 @@ def test_cli_plan_unattended_sets_agent_clarification_mode(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     _run_cli(
         monkeypatch,
@@ -1280,7 +1280,7 @@ def test_cli_implement_verbose_emits_debug_logs(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
 
     _run_cli(
         monkeypatch,
@@ -1308,7 +1308,7 @@ def test_cli_implement_log_file_captures_debug_logs_when_console_is_quiet(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("devlab.cli_commands.run_loop", fake_run_loop)
     log_file = tmp_path / "logs/devlab.log"
 
     _run_cli(
@@ -1386,9 +1386,9 @@ def test_cli_agent_smoke_test_prints_report_and_exits_zero(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli_commands.run_agent_smoke_test", fake_smoke)
     monkeypatch.setattr(
-        "devlab.cli.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
+        "devlab.cli_commands.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
     )
     config_path = tmp_path / ".local/live-eval/agents.toml"
     config_path.parent.mkdir(parents=True)
@@ -1435,9 +1435,9 @@ def test_cli_agent_smoke_test_exits_nonzero_on_failure(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli_commands.run_agent_smoke_test", fake_smoke)
     monkeypatch.setattr(
-        "devlab.cli.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
+        "devlab.cli_commands.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -1458,7 +1458,7 @@ def test_cli_agent_smoke_test_reports_configuration_errors(
     def fake_smoke(*_args: object, **_kwargs: object) -> object:
         raise ValueError("providers.test.args[1] has invalid placeholder syntax")
 
-    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli_commands.run_agent_smoke_test", fake_smoke)
 
     with pytest.raises(SystemExit) as exc:
         _run_cli(
@@ -1486,9 +1486,9 @@ def test_cli_agent_smoke_test_supports_all_providers(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli_commands.run_agent_smoke_test", fake_smoke)
     monkeypatch.setattr(
-        "devlab.cli.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
+        "devlab.cli_commands.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
     )
 
     _run_cli(
@@ -1517,9 +1517,9 @@ def test_cli_agent_smoke_test_supports_provider_defaults_modifier(
 
         return Result()
 
-    monkeypatch.setattr("devlab.cli.run_agent_smoke_test", fake_smoke)
+    monkeypatch.setattr("devlab.cli_commands.run_agent_smoke_test", fake_smoke)
     monkeypatch.setattr(
-        "devlab.cli.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
+        "devlab.cli_commands.format_agent_smoke_report", lambda _result, **_kwargs: "smoke report"
     )
 
     _run_cli(

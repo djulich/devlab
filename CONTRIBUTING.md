@@ -31,6 +31,19 @@ it globally:
 uv run devlab --help
 ```
 
+For Tab completion while developing, activate the synchronized environment and
+invoke `devlab` directly:
+
+```bash
+source .venv/bin/activate
+devlab --help
+```
+
+Completion after the `uv run devlab` prefix depends on uv delegating to the
+wrapped command; the tested uv completion does not do this. Direct invocation
+uses the same checkout. See [shell completion](docs/operator-guide.md#shell-completion)
+for automatic discovery and the one-time Bash/Zsh fallback.
+
 To make the `devlab` command available from other target workspaces while
 developing DevLab, install the checkout as an editable tool:
 

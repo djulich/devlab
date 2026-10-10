@@ -168,6 +168,11 @@ def _verify_wheel(wheel: Path, project: dict[str, Any], version: str) -> None:
             "wheel classifiers disagree",
         )
         _require(_metadata_urls(message) == project["urls"], "wheel project URLs disagree")
+        for path in (ROOT / "share-data").rglob("*"):
+            if path.is_file():
+                relative = path.relative_to(ROOT / "share-data").as_posix()
+                installed = f"devlab-{version}.data/data/{relative}"
+                _require(installed in names, f"wheel is missing completion data: {installed}")
 
         expected_package = {
             f"devlab/{path.relative_to(ROOT / 'src/devlab').as_posix()}"
@@ -206,7 +211,7 @@ def _verify_source(source: Path) -> None:
     }
     required.update(
         f"{root}/{path.relative_to(ROOT).as_posix()}"
-        for base in (ROOT / "src/devlab", ROOT / "tests")
+        for base in (ROOT / "src/devlab", ROOT / "tests", ROOT / "share-data")
         for path in base.rglob("*")
         if path.is_file() and "__pycache__" not in path.parts
     )
@@ -251,6 +256,9 @@ def _verify_clean_install(
     _require(reported == f"devlab {version}", f"installed CLI reported {reported!r}")
     help_text = _run([str(executable), "--help"], env=env, capture=True)
     _require("usage: devlab" in help_text, "installed CLI help is unavailable")
+    for shell in ("bash", "zsh"):
+        code = _run([str(executable), "completion", shell], env=env, capture=True)
+        _require("_python_argcomplete" in code, f"installed {shell} completion is unavailable")
 
 
 def _write_checksums(paths: tuple[Path, ...], dist: Path) -> Path:

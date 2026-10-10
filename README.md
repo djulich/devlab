@@ -87,6 +87,10 @@ uv tool install devlab
 devlab --version
 ```
 
+DevLab includes Bash/Zsh Tab completion for commands, options, choices, and paths.
+See [shell completion](https://github.com/djulich/devlab/blob/main/docs/operator-guide.md#shell-completion)
+for automatic discovery and the fallback for shells that need explicit registration.
+
 For a reproducible installation, pin a version with `uv tool install "devlab==0.1.2"`.
 You can also install an immutable Git tag or commit with
 `uv tool install "git+https://github.com/djulich/devlab.git@v0.1.2"`, or a local

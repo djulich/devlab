@@ -60,6 +60,53 @@ a validated clarification route. Mutating workflow commands require a
 clean working tree before agent sessions so operator-authored changes remain
 separate from DevLab-authored session commits.
 
+## Shell completion
+
+DevLab provides Bash and Zsh Tab completion for commands, options, fixed choices,
+and filesystem paths. `--root` completes directories; file options such as
+`--config` complete files and directories. Arbitrary values such as models and
+workspace record IDs are not suggested. Completion reads local directory entries
+but does not run providers, Git, or workflow commands, or modify workspace state.
+
+The wheel installs shell integration under the installation prefix:
+
+- `share/bash-completion/completions/devlab`
+- `share/zsh/site-functions/_devlab`
+
+This applies to `pip install devlab`, including virtual environments, and
+`uv tool install devlab`. With modern `bash-completion` loaded, Bash discovers
+the file relative to the executable's prefix, including uv's resolved executable
+symlink. Older completion frameworks may need explicit registration. Zsh discovers
+the file when its directory is on `fpath` and `compinit` is enabled; isolated
+Python environments do not automatically add their directories to Zsh's `fpath`.
+The `PYTHON_ARGCOMPLETE_OK` marker also supports shells with global argcomplete
+discovery already enabled.
+
+If automatic discovery is unavailable, add this line to `~/.bashrc`:
+
+```bash
+eval "$(devlab completion bash)"
+```
+
+For Zsh, add the following to `~/.zshrc`, after the existing `compinit` setup:
+
+```zsh
+eval "$(devlab completion zsh)"
+```
+
+If Zsh completion is not initialized yet, first add `autoload -Uz compinit` and
+`compinit`. Reopen the terminal or reload its configuration. These lines register
+completion for that user's shells; the DevLab command itself only prints code.
+The executable must be on `PATH` when the line runs. For a temporary virtual
+environment, activate it and run the matching `eval` line in that shell instead.
+No separate `register-python-argcomplete` executable is needed.
+
+For checkout development, `make setup` installs DevLab into `.venv`. Activate it
+with `source .venv/bin/activate` and complete `devlab` directly. `uv run devlab`
+continues to execute normally, but Tab completion after that prefix is not
+provided: uv's completion handler must delegate to DevLab for this to work.
+DevLab does not replace the shell's completion handler for uv.
+
 ## Console formatting
 
 DevLab-authored explanations, warnings, and progress messages wrap to the

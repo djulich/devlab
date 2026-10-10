@@ -5,6 +5,7 @@ from importlib import resources
 from pathlib import Path
 
 from devlab._console import wrap_prose
+from devlab.resources.init import INIT_TEMPLATES as INIT_TEMPLATES
 from devlab.version_control import (
     assert_clean_worktree,
     commit_all,
@@ -19,7 +20,6 @@ from devlab.workspace import WORKSPACE_LAYOUT_VERSION, validate_workspace_compat
 LAYOUT_VERSION = WORKSPACE_LAYOUT_VERSION
 _TEMPLATE_PACKAGE = "devlab.resources.init"
 DEFAULT_TEMPLATE = "neutral"
-INIT_TEMPLATES = ("neutral", "python", "rust", "go", "c", "cpp")
 
 TEMPLATE_FILES = (
     ".gitignore",

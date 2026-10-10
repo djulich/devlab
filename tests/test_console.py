@@ -165,10 +165,11 @@ def test_cli_errors_use_stderr_width_independently(monkeypatch: pytest.MonkeyPat
 
     message = "There is an explanatory problem with the configuration. " * 8
 
-    def fail() -> None:
+    def fail(*_args: object) -> None:
         raise WorkspaceCompatibilityError(message)
 
-    monkeypatch.setattr(cli, "_main", fail)
+    monkeypatch.setattr("devlab.cli_commands.dispatch", fail)
+    monkeypatch.setattr("sys.argv", ["devlab", "status"])
     monkeypatch.setenv("COLUMNS", "50")
     stream = Terminal()
     monkeypatch.setattr("sys.stdout", io.StringIO())
