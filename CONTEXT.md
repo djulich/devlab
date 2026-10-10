@@ -128,6 +128,16 @@ Cleanup is explicit. Session teardown and planning-generation replacement do
 not end this lifetime. See ADR 0013.
 _Avoid_: host-tool installer, implicit prerequisite repair, session environment
 
+**Authoritative task validation evidence**:
+The orchestrator's observed command outcomes, logs and execution provenance.
+Matching complete passing evidence can supply a review's mechanical checks;
+the reviewer still independently examines acceptance criteria, test adequacy and
+external-state risks. Reuse identifies actual versionable workspace inputs and
+resolved validation configuration, not merely HEAD. Changed inputs require
+revalidation before an approval using that evidence closes the task. Ignored
+dependencies and current external services are not certified by this evidence.
+_Avoid_: reviewer approval or proof of current external acceptance
+
 **Prerequisite**:
 A profile-owned condition that DevLab checks or an operator attests before a
 profile-backed session, environment setup, or validation operation. Automatic

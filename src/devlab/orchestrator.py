@@ -58,8 +58,10 @@ from devlab.environment import (
     EnvironmentManager,
     TestServiceError,
     ValidationRun,
+    reusable_task_validation,
     run_validation_commands,
     test_service_lock,
+    validation_evidence_matches,
 )
 from devlab.executable_config import (
     ExecutableConfigSnapshot,
@@ -112,6 +114,7 @@ from devlab.profiles import (
     load_profile,
     load_profiles,
     profile_from_snapshot,
+    validation_contract_digest,
 )
 from devlab.prompt_resources import read_prompt_resource
 from devlab.prompts import (
@@ -1851,6 +1854,7 @@ def _retry_unverified_task_validation(
         return None
     profile = profile_from_snapshot(profiles, task.profile, root=workspace.root)
     route = SessionRoute("developer", task=task)
+    logger.info("Retrying configured validation for task %s before review", task.id)
     service_environment = services.prepare((profile,), ("validation",))
     prerequisite_results = _resolve_profile_prerequisites(
         workspace.root, (profile,), PrerequisiteOperation.VALIDATION, service_environment
@@ -1869,6 +1873,7 @@ def _retry_unverified_task_validation(
         session_id=f"{_timestamp()}_validation_retry",
         commands=validation.commands,
         source=validation.source,
+        contract_digest=validation_contract_digest(task, profile),
         timeout=profile.environment.timeouts.setup,
         environ=service_environment,
         recovery_of=str(previous.get("session_id") or "") if previous is not None else "",
@@ -3743,6 +3748,26 @@ def _run_loop(
             },
         )
         config_log: Path | None = None
+        review_validation_evidence = None
+        if role_name == "reviewer" and route.task is not None:
+            review_profile = profile_from_snapshot(
+                frozen_profiles if frozen_profiles is not None else load_profiles(root),
+                route.task.profile,
+                root=root,
+            )
+            review_validation_evidence = reusable_task_validation(
+                root,
+                route.task.id,
+                effective_validation(route.task, review_profile).commands,
+                validation_contract_digest(route.task, review_profile),
+                service_environment,
+            )
+            if review_validation_evidence is not None:
+                logger.info(
+                    "Reviewer will use recorded validation for %s; "
+                    "focused independent checks remain required",
+                    route.task.id,
+                )
 
         try:
             snapshot = workspace.snapshot
@@ -3760,6 +3785,7 @@ def _run_loop(
                 adopt_existing=planning_only and adopt_existing,
                 fresh_generation=planning_only and fresh_generation_plan,
                 spec_reconciliation=reconcile_plan,
+                review_validation_evidence=review_validation_evidence,
             )
             if recovery is not None and recovery.diagnosis is not None:
                 diagnosis = recovery.diagnosis
@@ -4067,22 +4093,43 @@ def _run_loop(
                 ),
                 timeout=max(timeouts, default=600),
             )
-        process_result = process_session_result(
-            accepted_result,
-            workspace,
-            command=requested_command,
-            session_id=ctx.invocation_id,
-            task_id=route.task_id,
-            milestone_id=route.milestone_id,
-            milestone_validation=milestone_validation,
-            milestone_validation_contract=milestone_validation_contract,
+        defer_review = role_name == "reviewer" and review_validation_evidence is not None
+        process_result = (
+            ProcessResult()
+            if defer_review
+            else process_session_result(
+                accepted_result,
+                workspace,
+                command=requested_command,
+                session_id=ctx.invocation_id,
+                task_id=route.task_id,
+                milestone_id=route.milestone_id,
+                milestone_validation=milestone_validation,
+                milestone_validation_contract=milestone_validation_contract,
+            )
         )
         ctx.record_phase("task_validation")
         validation_run: ValidationRun | None = None
         repeated_validation_failure = False
         task_validation_stop: tuple[RunStopReason, str] | None = None
+        review_requires_validation = False
+        if defer_review and route.task is not None and not accepted_result.candidate.open_issues:
+            current_task = _task_by_id(workspace.snapshot, route.task.id)
+            assert review_validation_evidence is not None
+            if current_task is not None and current_task.review_approved:
+                review_requires_validation = not validation_evidence_matches(
+                    root,
+                    review_validation_evidence,
+                    validation_contract_digest(current_task, review_profile),
+                    service_environment,
+                )
+                if review_requires_validation:
+                    logger.info(
+                        "Review changed validation inputs for %s; revalidating before closure",
+                        route.task.id,
+                    )
         if (
-            role_name == "developer"
+            (role_name == "developer" or review_requires_validation)
             and route.task is not None
             and accepted_result.candidate.outcome == "completed"
             and process_result.clarification_id is None
@@ -4149,7 +4196,8 @@ def _run_loop(
                     RunStopReason.PREREQUISITE_BLOCKED,
                     (SessionError("prerequisite", message, 0),),
                 )
-            validation = effective_validation(route.task, profile)
+            validation_task = _task_by_id(workspace.snapshot, route.task.id) or route.task
+            validation = effective_validation(validation_task, profile)
             validation_run = run_validation_commands(
                 root,
                 role_name=role_name,
@@ -4157,6 +4205,7 @@ def _run_loop(
                 session_id=ctx.invocation_id,
                 commands=validation.commands,
                 source=validation.source,
+                contract_digest=validation_contract_digest(validation_task, profile),
                 infrastructure_error=service_validation_error,
                 environ=service_environment,
                 timeout=profile.environment.timeouts.setup,
@@ -4191,6 +4240,19 @@ def _run_loop(
                     RunStopReason.VALIDATION_INFRASTRUCTURE_ERROR,
                     f"task {route.task.id} validation {validation_run.outcome}",
                 )
+        if (
+            defer_review
+            and task_validation_stop is None
+            and (validation_run is None or validation_run.outcome in {"passed", "not_configured"})
+        ):
+            process_result = process_session_result(
+                accepted_result,
+                workspace,
+                command=requested_command,
+                session_id=ctx.invocation_id,
+                task_id=route.task_id,
+                milestone_id=route.milestone_id,
+            )
         if planning_only and not plan_started_recorded and role_name in {"architect", "planner"}:
             append_workflow_event(
                 root,

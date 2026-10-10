@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from devlab._files import atomic_write_text
+from devlab._logging import logger
+from devlab.git import VersionControlError, git_ls_files
 from devlab.handoffs import DEVLAB_PYTHON_ENV
 
 ENVIRONMENT_LOG_DIR = ".devlab/logs/environment"
@@ -451,6 +453,178 @@ class ValidationRun:
     repository_revision: str
     recovery_of: str
     infrastructure_error: str = ""
+    workspace_digest: str = ""
+    contract_digest: str = ""
+    runtime_digest: str = ""
+    completed_at: str = ""
+
+
+@dataclasses.dataclass(frozen=True)
+class TaskValidationEvidence:
+    record_path: str
+    session_id: str
+    completed_at: str
+    log_paths: tuple[str, ...]
+    workspace_digest: str
+    contract_digest: str
+    runtime_digest: str
+
+
+def validation_workspace_digest(root: Path) -> str:
+    """Identify actual versionable inputs, including uncommitted product changes.
+
+    Workflow bookkeeping is excluded; configuration, specs and plans are inputs.
+    Ignored dependencies and external services are deliberately not certified.
+    Unsupported file types and Git/read failures disable evidence reuse.
+    """
+    digest = hashlib.sha256()
+    try:
+        paths = git_ls_files(root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+        for name in sorted(set(paths)):
+            if name in {
+                ".devlab/workflow.toml",
+                ".devlab/workflow-events.jsonl",
+                ".devlab/prerequisite-blocker.json",
+                ".devlab/doctor-recovery.json",
+            } or name.startswith(
+                (
+                    ".devlab/tasks/",
+                    ".devlab/history/",
+                    ".devlab/logs/",
+                    ".devlab/session-artifacts/",
+                    ".devlab/verification/",
+                    ".devlab/milestones/",
+                    ".devlab/findings/",
+                    ".devlab/clarifications/",
+                    ".devlab/research/",
+                    ".devlab/generations/",
+                )
+            ):
+                continue
+            path = root / name
+            # Do not follow links to inputs outside the identified tree.
+            if path.is_symlink() or any(
+                parent.is_symlink() for parent in path.parents if parent != root
+            ):
+                return ""
+            if not path.exists():
+                continue
+            mode = path.stat().st_mode
+            if not stat.S_ISREG(mode):
+                return ""
+            digest.update(name.encode() + b"\0" + str(stat.S_IMODE(mode)).encode() + b"\0")
+            with path.open("rb") as stream:
+                file_digest = hashlib.file_digest(stream, "sha256").digest()
+            digest.update(file_digest)
+    except (OSError, VersionControlError):
+        return ""
+    return digest.hexdigest()
+
+
+def validation_runtime_digest(environ: Mapping[str, str] | None = None) -> str:
+    """Compare inherited/managed environment without persisting secret values."""
+    try:
+        executable = Path(sys.executable).resolve()
+        info = executable.stat()
+        payload = [
+            str(executable),
+            sys.version,
+            info.st_size,
+            info.st_mtime_ns,
+            {
+                **os.environ,
+                **(environ or {}),
+                DEVLAB_PYTHON_ENV: str(Path(sys.executable).absolute()),
+            },
+        ]
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    except OSError:
+        return ""
+
+
+def validation_evidence_matches(
+    root: Path,
+    evidence: TaskValidationEvidence,
+    contract_digest: str,
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    return bool(
+        evidence.workspace_digest
+        and evidence.contract_digest == contract_digest
+        and evidence.runtime_digest
+        and evidence.runtime_digest == validation_runtime_digest(environ)
+        and evidence.workspace_digest == validation_workspace_digest(root)
+    )
+
+
+def reusable_task_validation(
+    root: Path,
+    task_id: str,
+    commands: tuple[str, ...],
+    contract_digest: str,
+    environ: Mapping[str, str] | None = None,
+) -> TaskValidationEvidence | None:
+    """Read only the latest complete authoritative result; never fall back past failure."""
+    records = sorted((root / ".devlab/verification/tasks" / task_id).glob("*.json"))
+    if not commands or not records or not contract_digest:
+        return None
+    path = records[-1]
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict) or data.get("outcome") != "passed":
+            return None
+        if data.get("context_kind") != "task" or data.get("context_id") != task_id:
+            return None
+        if data.get("role") not in {"developer", "orchestrator", "reviewer"}:
+            return None
+        results = data.get("commands")
+        if not isinstance(results, list) or len(results) != len(commands):
+            return None
+        logs = []
+        for command, raw_result in zip(commands, results, strict=True):
+            result: Any = raw_result
+            if not isinstance(result, dict) or result.get("command") != command:
+                return None
+            if (
+                result.get("outcome") != "passed"
+                or type(result.get("return_code")) is not int
+                or result.get("return_code") != 0
+            ):
+                return None
+            log = result.get("log_path")
+            if not isinstance(log, str) or not log.startswith(ENVIRONMENT_LOG_DIR + "/"):
+                return None
+            if (
+                not (root / log).resolve().is_relative_to(root.resolve())
+                or not (root / log).is_file()
+            ):
+                return None
+            logs.append(log)
+        fields = (
+            "session_id",
+            "completed_at",
+            "workspace_digest",
+            "contract_digest",
+            "runtime_digest",
+        )
+        if any(not isinstance(data.get(key), str) or not data[key] for key in fields):
+            return None
+        evidence = TaskValidationEvidence(
+            path.relative_to(root).as_posix(),
+            data["session_id"],
+            data["completed_at"],
+            tuple(logs),
+            data["workspace_digest"],
+            data["contract_digest"],
+            data["runtime_digest"],
+        )
+        return (
+            evidence
+            if validation_evidence_matches(root, evidence, contract_digest, environ)
+            else None
+        )
+    except (OSError, ValueError, TypeError):
+        return None
 
 
 def _run_environment_command(
@@ -531,6 +705,7 @@ def run_validation_commands(
     environ: Mapping[str, str] | None = None,
     command_environments: tuple[Mapping[str, str], ...] | None = None,
     infrastructure_error: str = "",
+    contract_digest: str = "",
 ) -> ValidationRun:
     """Run target-owned validation and persist compact observed outcomes."""
     if (task_id is None) == (milestone_id is None):
@@ -540,6 +715,19 @@ def run_validation_commands(
     context_kind = "task" if task_id is not None else "milestone"
     context_id = task_id or milestone_id or ""
     revision = _repository_revision(root)
+    workspace_digest = validation_workspace_digest(root) if contract_digest else ""
+    runtime_digest = (
+        validation_runtime_digest(environ)
+        if contract_digest and command_environments is None
+        else ""
+    )
+    logger.info(
+        "Validating %s %s: %d configured commands (%s)",
+        context_kind,
+        context_id,
+        len(commands),
+        role_name,
+    )
     results: list[ValidationCommandResult] = []
     overall = "not_configured" if not commands else "passed"
     if infrastructure_error:
@@ -549,6 +737,14 @@ def run_validation_commands(
         stored_log_path = log_path.relative_to(root).as_posix()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
+        logger.info(
+            "Validation %s: command %d/%d: %s",
+            context_id,
+            index,
+            len(commands),
+            command,
+            extra={"console_literal": True},
+        )
         try:
             result = _run_environment_command(
                 root,
@@ -567,61 +763,54 @@ def run_validation_commands(
                 timeout=timeout,
             )
         except subprocess.TimeoutExpired as exc:
-            log_path.write_text(
-                f"command: {command}\noutcome: timeout\n\n"
-                + _decode_output(exc.stdout)
-                + "\n"
-                + _decode_output(exc.stderr)
-            )
+            outcome = "timeout"
+            return_code = None
             output = _decode_output(exc.stdout) + "\n" + _decode_output(exc.stderr)
-            results.append(
-                ValidationCommandResult(
-                    command,
-                    "timeout",
-                    None,
-                    stored_log_path,
-                    round(time.monotonic() - started, 3),
-                    _output_summary(output),
-                )
-            )
-            overall = "timeout"
-            break
+            log_path.write_text(f"command: {command}\noutcome: timeout\n\n" + output)
         except OSError as exc:
+            outcome = "infrastructure_error"
+            return_code = None
+            output = str(exc)
             log_path.write_text(f"command: {command}\noutcome: infrastructure_error\n{exc}\n")
-            results.append(
-                ValidationCommandResult(
-                    command,
-                    "infrastructure_error",
-                    None,
-                    stored_log_path,
-                    round(time.monotonic() - started, 3),
-                    _output_summary(str(exc)),
-                )
+        else:
+            outcome = (
+                "passed"
+                if result.returncode == 0
+                else ("missing_tool" if result.returncode == 127 else "failed")
             )
-            overall = "infrastructure_error"
-            break
-        outcome = (
-            "passed"
-            if result.returncode == 0
-            else ("missing_tool" if result.returncode == 127 else "failed")
-        )
-        log_path.write_text(
-            f"command: {command}\noutcome: {outcome}\nexit_code: {result.returncode}\n\n"
-            f"## stdout\n{result.stdout}\n## stderr\n{result.stderr}"
-        )
+            return_code = result.returncode
+            output = result.stdout + "\n" + result.stderr
+            log_path.write_text(
+                f"command: {command}\noutcome: {outcome}\nexit_code: {return_code}\n\n"
+                f"## stdout\n{result.stdout}\n## stderr\n{result.stderr}"
+            )
+        duration = round(time.monotonic() - started, 3)
         results.append(
             ValidationCommandResult(
                 command,
                 outcome,
-                result.returncode,
+                return_code,
                 stored_log_path,
-                round(time.monotonic() - started, 3),
-                _output_summary(result.stdout + "\n" + result.stderr),
+                duration,
+                _output_summary(output),
             )
+        )
+        logger.info(
+            "Validation %s: command %d %s after %.1fs; log: %s",
+            context_id,
+            index,
+            outcome,
+            duration,
+            stored_log_path,
+            extra={"console_literal": True},
         )
         if outcome != "passed":
             overall = outcome
             break
+    if workspace_digest and workspace_digest != validation_workspace_digest(root):
+        workspace_digest = ""
+    if runtime_digest and runtime_digest != validation_runtime_digest(environ):
+        runtime_digest = ""
     run = ValidationRun(
         source,
         overall,
@@ -633,7 +822,12 @@ def run_validation_commands(
         revision,
         recovery_of,
         infrastructure_error,
+        workspace_digest,
+        contract_digest,
+        runtime_digest,
+        datetime.now(UTC).isoformat(),
     )
+    logger.info("Validation %s: %s", context_id, overall)
     if task_id is not None:
         record_path = root / ".devlab/verification/tasks" / task_id / f"{session_id}.json"
         record_path.parent.mkdir(parents=True, exist_ok=True)

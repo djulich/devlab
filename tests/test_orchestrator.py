@@ -5637,3 +5637,72 @@ def test_commit_failure_records_orchestrator_outcome(
     assert meta["return_code"] == 0
     assert meta["lifecycle_phase"] == "commit"
     assert "commit hook rejected changes" in meta["lifecycle_stop_reason"]
+
+
+@pytest.mark.parametrize("review_change", ["none", "passing", "failing", "missing_tool", "reject"])
+def test_reviewer_reuses_evidence_and_revalidates_changed_inputs(
+    tmp_path: Path,
+    review_change: str,
+) -> None:
+    _setup_tree(tmp_path)
+    (tmp_path / DESIGN_PLAN).write_text("# Design\n")
+    task_path = _write_task(tmp_path, "T0001", "First")
+    _write_profile(
+        tmp_path,
+        "default",
+        validation=[
+            "echo run >> .validation-count; test ! -f missing-tool || exit 127; test ! -f broken"
+        ],
+    )
+    (tmp_path / ".gitignore").write_text(".validation-count\n")
+
+    def develop(call: AgentCall) -> None:
+        (call.root / "product.txt").write_text("implemented\n")
+        complete_acceptance(call.root, "T0001")
+
+    first = run_loop(
+        tmp_path, max_sessions=1, agent_providers={"default": MockProvider(on_invoke=develop)}
+    )
+    assert first.exit_code == 0
+    assert FileTaskTracker(tmp_path).get("T0001").status == TaskStatus.IN_REVIEW
+
+    def review(call: AgentCall) -> None:
+        assert call.role_name == "reviewer"
+        assert "## Authoritative Task Validation Evidence" in call.session_prompt
+        assert "do not repeat the full suite solely for review approval" in call.session_prompt
+        assert "No reusable authoritative" not in call.session_prompt
+        assert "## Task Validation Commands" not in call.session_prompt
+        if review_change == "passing":
+            (call.root / "product.txt").write_text("trivial reviewer fix\n")
+        elif review_change == "failing":
+            (call.root / "broken").write_text("regression\n")
+        elif review_change == "missing_tool":
+            (call.root / "missing-tool").write_text("missing prerequisite\n")
+        if review_change != "reject":
+            task_path.write_text(task_path.read_text() + "\n## Review\n- [x] Approved\n")
+
+    provider = MockProvider(on_invoke=review)
+    result = run_loop(tmp_path, max_sessions=1, agent_providers={"default": provider})
+    expected = {
+        "none": TaskStatus.CLOSED,
+        "passing": TaskStatus.CLOSED,
+        "failing": TaskStatus.CHANGES_REQUESTED,
+        "reject": TaskStatus.CHANGES_REQUESTED,
+        "missing_tool": TaskStatus.IN_REVIEW,
+    }[review_change]
+    assert FileTaskTracker(tmp_path).get("T0001").status == expected
+    count = len((tmp_path / ".validation-count").read_text().splitlines())
+    assert count == (1 if review_change in {"none", "reject"} else 2)
+    if review_change == "missing_tool":
+        assert result.stop_reason == RunStopReason.VALIDATION_PREREQUISITE_MISSING
+    records = sorted((tmp_path / ".devlab/verification/tasks/T0001").glob("*.json"))
+    assert len(records) == count
+
+
+def test_reviewer_without_evidence_keeps_independent_validation_in_prompt(tmp_path: Path) -> None:
+    _setup_tree(tmp_path)
+    _write_task(tmp_path, "T0001", "First", status="in_review", validation=["make check"])
+    prompt = build_session_prompt(Workspace(tmp_path).snapshot, "reviewer")
+    assert "No reusable authoritative validation evidence" in prompt
+    assert "Run the configured checks independently before approving" in prompt
+    assert "`make check`" in prompt

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
 import re
 import tomllib
 from pathlib import Path
@@ -74,6 +76,18 @@ def effective_validation(task: Task, profile: Profile) -> EffectiveValidation:
     if profile.tooling.default_validation:
         return EffectiveValidation(source="profile", commands=profile.tooling.default_validation)
     return EffectiveValidation(source="none", commands=())
+
+
+def validation_contract_digest(task: Task, profile: Profile) -> str:
+    """Bind observed checks to their resolved software-workflow configuration."""
+    payload = {
+        "task": task.id,
+        "validation": dataclasses.asdict(effective_validation(task, profile)),
+        "profile": {
+            key: value for key, value in dataclasses.asdict(profile).items() if key != "path"
+        },
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 def effective_milestone_validation(

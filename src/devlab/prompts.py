@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from devlab.clarifications import Clarification, ClarificationStatus
+from devlab.environment import TaskValidationEvidence
 from devlab.findings import FindingStatus
 from devlab.knowledge import ProjectKnowledge, discover_project_knowledge
 from devlab.profiles import (
@@ -65,6 +66,7 @@ def build_session_prompt(
     adopt_existing: bool = False,
     fresh_generation: bool = False,
     spec_reconciliation: bool = False,
+    review_validation_evidence: TaskValidationEvidence | None = None,
 ) -> str:
     builders = {
         "architect": _build_architect_prompt,
@@ -78,7 +80,9 @@ def build_session_prompt(
     elif role_name == "developer":
         prompt = _build_developer_prompt(snapshot, profiles=profiles, assigned_task=assigned_task)
     elif role_name == "reviewer":
-        prompt = _build_reviewer_prompt(snapshot, profiles=profiles)
+        prompt = _build_reviewer_prompt(
+            snapshot, profiles=profiles, evidence=review_validation_evidence
+        )
     elif role_name == "architect":
         prompt = _build_architect_prompt(snapshot, assigned_milestone=assigned_milestone)
     else:
@@ -717,7 +721,10 @@ def _build_integrator_prompt(snapshot: WorkspaceSnapshot) -> str:
 
 
 def _build_reviewer_prompt(
-    snapshot: WorkspaceSnapshot, *, profiles: dict[str, Profile] | None = None
+    snapshot: WorkspaceSnapshot,
+    *,
+    profiles: dict[str, Profile] | None = None,
+    evidence: TaskValidationEvidence | None = None,
 ) -> str:
     root = snapshot.root
     parts: list[str] = []
@@ -726,9 +733,35 @@ def _build_reviewer_prompt(
         content = read_file(task.path)
         parts.append(f"## Task Awaiting Review ({task.path.name})\n\n{content}")
         parts.extend(_profile_prompt_sections(root, task, profiles))
-        validation_section = _validation_prompt_section(
-            task, _session_profile(root, task, profiles)
-        )
+        if evidence is not None:
+            parts.append(
+                "## Authoritative Task Validation Evidence\n\n"
+                f"DevLab observed the full configured suite passing for {task.id}. "
+                "The tested working-tree content, resolved validation contract, and "
+                "inherited/managed environment matched before this session's environment setup. "
+                "Use this evidence for the configured mechanical checks; do not repeat "
+                "the full suite solely for review approval. Independently inspect acceptance "
+                "criteria and test adequacy, and run focused checks for uncovered risks. "
+                "This does not certify ignored dependencies or current external service state. "
+                "Rerun affected checks when setup, local dependencies, services or other "
+                "environment conditions can invalidate the observed result. Report which "
+                "evidence you reused and which checks you actually ran. DevLab revalidates "
+                "before closure if review changes the identified inputs.\n\n"
+                f"Record: `{evidence.record_path}`\n"
+                f"Session: `{evidence.session_id}`\n"
+                f"Completed: {evidence.completed_at}\n\n"
+                + "\n".join(f"- Log: `{path}`" for path in evidence.log_paths)
+            )
+            validation_section = ""
+        else:
+            validation_section = _validation_prompt_section(
+                task, _session_profile(root, task, profiles)
+            )
+            if validation_section:
+                parts.append(
+                    "No reusable authoritative validation evidence is available. "
+                    "Run the configured checks independently before approving."
+                )
         if validation_section:
             parts.append(validation_section)
     else:

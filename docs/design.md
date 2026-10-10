@@ -175,8 +175,15 @@ Missing tools, timeouts, and execution infrastructure failures remain unverified
 or errored checks and stop before review. Agents may run additional checks, but
 configured validation is the durable workflow gate. Developer and integrator
 prompts assign focused checks to the agent and the full configured suite to the
-orchestrator after handoff, avoiding a mandatory duplicate run. Reviewer checks
-remain independent. See [ADR 0016](adr/0016-own-configured-validation-and-gate-review.md).
+orchestrator after handoff, avoiding a mandatory duplicate run. Reviewers may use
+matching authoritative observations for mechanical checks while independently
+examining acceptance criteria, coverage and environment-sensitive risks. DevLab
+binds reuse to tested workspace content, resolved configuration and inherited/
+managed environment, and revalidates changed inputs before accepting approval.
+External freshness is not inferred from file fingerprints; legacy or mismatched
+evidence falls back to independent reviewer execution. See
+[ADR 0016](adr/0016-own-configured-validation-and-gate-review.md) and
+[ADR 0017](adr/0017-reuse-authoritative-validation-in-review.md).
 
 The [profile and validation reference](operator-guide.md#profiles) explains the
 configuration and operator consequences. Target-owned acceptance tests remain

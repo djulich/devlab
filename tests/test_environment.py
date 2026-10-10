@@ -223,3 +223,169 @@ def test_validation_preserves_output_environment_and_exit_status(
     output = (tmp_path / run.commands[0].log_path).read_text()
     assert "environment preserved" in output
     assert "diagnostic" in output
+
+
+def _validation_evidence_fixture(root: Path):
+    from devlab.environment import reusable_task_validation
+
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    (root / "product.txt").write_text("tested\n")
+    run_validation_commands(
+        root,
+        role_name="developer",
+        task_id="T0001",
+        session_id="001",
+        commands=("test -f product.txt",),
+        source="task",
+        contract_digest="contract",
+    )
+    evidence = reusable_task_validation(root, "T0001", ("test -f product.txt",), "contract")
+    assert evidence is not None
+    return evidence
+
+
+def test_validation_evidence_survives_commit_and_workflow_bookkeeping(tmp_path: Path) -> None:
+    from devlab.environment import reusable_task_validation
+
+    evidence = _validation_evidence_fixture(tmp_path)
+    (tmp_path / ".devlab/tasks").mkdir()
+    (tmp_path / ".devlab/tasks/T0001.md").write_text("review bookkeeping\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.org",
+            "commit",
+            "-qm",
+            "Record tested content",
+        ],
+        check=True,
+    )
+    assert (
+        reusable_task_validation(tmp_path, "T0001", ("test -f product.txt",), "contract")
+        == evidence
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "content",
+        "new_file",
+        "workspace_script",
+        "delete",
+        "mode",
+        "config",
+        "contract",
+        "commands",
+        "runtime",
+        "log",
+        "failure",
+        "malformed",
+        "legacy",
+        "symlink",
+    ],
+)
+def test_validation_evidence_rejects_changed_or_incomplete_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
+) -> None:
+    from devlab.environment import reusable_task_validation
+
+    evidence = _validation_evidence_fixture(tmp_path)
+    commands = ("test -f product.txt",)
+    contract = "contract"
+    if change == "content":
+        (tmp_path / "product.txt").write_text("changed without a commit\n")
+    elif change == "new_file":
+        (tmp_path / "new.py").write_text("new code\n")
+    elif change == "workspace_script":
+        (tmp_path / ".devlab/check.sh").write_text("echo new validation logic\n")
+    elif change == "delete":
+        (tmp_path / "product.txt").unlink()
+    elif change == "mode":
+        (tmp_path / "product.txt").chmod(0o755)
+    elif change == "config":
+        (tmp_path / ".devlab/config").mkdir()
+        (tmp_path / ".devlab/config/tooling.md").write_text("new configuration\n")
+    elif change == "contract":
+        contract = "different"
+    elif change == "commands":
+        commands = ("false",)
+    elif change == "runtime":
+        monkeypatch.setenv("VALIDATION_TEST_INPUT", "changed")
+    elif change == "log":
+        (tmp_path / evidence.log_paths[0]).unlink()
+    elif change in {"failure", "malformed", "legacy"}:
+        newer = tmp_path / ".devlab/verification/tasks/T0001/002.json"
+        newer.write_text(
+            {
+                "failure": '{"outcome":"failed"}',
+                "malformed": "[]",
+                "legacy": '{"outcome":"passed"}',
+            }[change]
+        )
+    elif change == "symlink":
+        (tmp_path / "linked-input").symlink_to(tmp_path / "product.txt")
+    assert reusable_task_validation(tmp_path, "T0001", commands, contract) is None
+
+
+def test_validation_that_changes_inputs_cannot_supply_reusable_evidence(tmp_path: Path) -> None:
+    from devlab.environment import reusable_task_validation
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    run = run_validation_commands(
+        tmp_path,
+        role_name="developer",
+        task_id="T0001",
+        session_id="001",
+        commands=("echo changed > product.txt",),
+        contract_digest="contract",
+    )
+    assert run.outcome == "passed"
+    assert run.workspace_digest == ""
+    assert (
+        reusable_task_validation(tmp_path, "T0001", ("echo changed > product.txt",), "contract")
+        is None
+    )
+
+
+def test_validation_reports_progress_before_execution_and_results_after_logs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import devlab.environment as environment
+
+    messages: list[str] = []
+
+    def info(message: str, *args: object, **kwargs: object) -> None:
+        rendered = message % args
+        if "; log: " in rendered:
+            assert (tmp_path / rendered.split("; log: ", 1)[1]).is_file()
+        messages.append(rendered)
+
+    def command(root: Path, value: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert messages[-1].endswith(f": {value}")
+        return subprocess.CompletedProcess(value, 0 if value == "first" else 1, "output", "")
+
+    monkeypatch.setattr(environment.logger, "info", info)
+    monkeypatch.setattr(environment, "_run_environment_command", command)
+    run = run_validation_commands(
+        tmp_path,
+        role_name="orchestrator",
+        task_id="T0001",
+        session_id="retry",
+        commands=("first", "second", "not-run"),
+    )
+    assert run.outcome == "failed"
+    assert any("command 1/3: first" in message for message in messages)
+    assert any("command 1 passed after" in message for message in messages)
+    assert any("command 2 failed after" in message for message in messages)
+    assert not any("not-run" in message for message in messages)
+    assert messages[-1] == "Validation T0001: failed"

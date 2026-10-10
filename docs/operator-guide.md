@@ -501,7 +501,29 @@ handoff. Developers run focused checks needed for implementation or diagnosis;
 they need not repeat the full suite just to submit a handoff. Their handoffs must
 report actual checks without claiming pending orchestrator results. Integrators
 likewise focus on integration risks before DevLab runs milestone validation.
-Reviewers retain independent validation responsibilities.
+Reviewers independently inspect acceptance criteria and test adequacy. When DevLab
+supplies matching authoritative task validation evidence, they use its mechanical
+results and run focused checks for uncovered risks instead of repeating the full
+suite solely for approval. Without matching evidence, reviewers run configured
+checks independently. Handoffs distinguish reused evidence from newly run checks.
+
+Reusable evidence binds a complete passing run to actual versionable file content
+and modes (including uncommitted files), the resolved profile/validation contract,
+and inherited/managed environment. It requires unchanged inputs during execution
+and available command logs. Old records without this provenance cannot enable
+reuse. Bookkeeping and a commit of identical tested content do not invalidate it.
+Before closing an approval that used supplied evidence, DevLab checks again;
+changed inputs trigger fresh validation and any failure blocks closure.
+
+This does not certify ignored dependencies, installed tools, or current external
+service/device state. Reviewers rerun affected checks when those conditions or
+session setup could invalidate prior observations. Milestone runs and recovery
+retries remain fresh; retries still start the suite from the beginning.
+See [ADR 0017](adr/0017-reuse-authoritative-validation-in-review.md).
+
+Validation reports its task/milestone, command number and command, completion
+time, log path, and result. Subprocess output is captured; command logs become
+available after completion, rather than streaming live output.
 
 Any configured task-command failure, including profile defaults, returns the task
 to development for one bounded correction attempt. Repeated failure routes to the

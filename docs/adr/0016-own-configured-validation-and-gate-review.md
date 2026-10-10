@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. Amends the validation policy used by ADR 0015.
+Accepted. Amends the validation policy used by ADR 0015. Reviewer execution
+policy is amended by [ADR 0017](0017-reuse-authoritative-validation-in-review.md).
 
 ## Context
 

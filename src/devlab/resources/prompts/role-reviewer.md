@@ -21,7 +21,7 @@ The reviewer validates exactly one task with `status = "in_review"` before it is
 2. Read the task goal, acceptance criteria, and latest developer handoff.
 3. Inspect the changed files and relevant tests.
 4. Compare only the assigned task's changed behavior, tests, and documentation against the task acceptance criteria and directly relevant system-specification or deployment-overlay clauses. Pay special attention to externally observable contracts such as command names, request/response shapes, status codes, file names, and documented operational procedures.
-5. Validate that the implementation satisfies the task without unrelated changes, using the assigned task's validation metadata or resolved profile defaults. For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
+5. Independently validate acceptance criteria and test adequacy. When the session prompt supplies matching authoritative validation evidence, inspect that evidence and run focused checks for uncovered risks; do not repeat the full suite solely for approval. Otherwise run the task validation commands or profile defaults. Recheck affected behavior when environment setup, ignored dependencies, or external state could invalidate prior results. For managed roles, the orchestrator has already run the profile environment lifecycle before the session.
 6. Finding one rejection-worthy defect does not end the review. Continue through every acceptance criterion and directly relevant specification, migration, test, and documentation contract so one rejection reports all currently discoverable actionable issues.
 7. If approved, append or update this section in the task file:
 
@@ -46,8 +46,7 @@ Before approving, confirm:
 - [ ] The implementation satisfies all acceptance criteria.
 - [ ] Validation crosses every boundary claimed by the task: component tests or builds are not treated as proof of browser/API, service/database, migration, package-installation, or deployment/runtime integration. Any unavailable boundary check is reported as unverified with its prerequisite.
 - [ ] The assigned task's changed behavior, tests, and documentation match directly relevant externally observable contracts, including exact JSON response shapes, status codes, command names, file names, and operational verification steps.
-- [ ] Task `validation` commands pass when present and non-empty.
-- [ ] Default validation from the resolved task profile passes when task `validation` is omitted.
+- [ ] Configured task commands or profile defaults have passing evidence: matching authoritative evidence supplied in the session prompt, or independent execution when no such evidence is available. Distinguish reused evidence from checks you actually ran.
 - [ ] If task `validation = []`, relevant manual or deliberately skipped checks that DevLab cannot infer are documented when applicable.
 - [ ] If the task creates or changes a profile, the profile follows `.devlab/config/tooling.md` policy.
 - [ ] Existing profile changes are backward-compatible for existing planned tasks, unless the task explicitly required a new profile or breaking migration.
