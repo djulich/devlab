@@ -341,6 +341,34 @@ def test_cli_agent_provider_stops_silent_process_for_inactivity(tmp_path: Path) 
     assert result.inactive_seconds_at_stop >= 1
 
 
+@pytest.mark.parametrize("stream", [1, 2])
+def test_provider_heartbeat_observes_output_without_extending_inactivity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stream: int
+) -> None:
+    messages: list[str] = []
+    monkeypatch.setattr("devlab._logging._heartbeat_interval_seconds", 0.2)
+    monkeypatch.setattr(
+        "devlab._logging.logger.info",
+        lambda message, *args, **kwargs: messages.append(message % args),
+    )
+    provider = CliAgentProvider.from_command(
+        sys.executable,
+        args=("-c", f"import os,time; os.write({stream}, b'partial'); time.sleep(30)"),
+        inactivity_timeout_seconds=1,
+        max_session_duration_seconds=5,
+    )
+    invocation = _invocation(tmp_path)
+    result = provider.invoke(invocation)
+    assert result.timeout_kind == "inactivity"
+    assert result.duration_seconds is not None and result.duration_seconds < 4
+    assert any("output received since last heartbeat" in message for message in messages)
+    assert any("no output for" in message for message in messages)
+    assert all(invocation.invocation_id in message for message in messages)
+    log = invocation.stdout_log if stream == 1 else invocation.stderr_log
+    assert log.read_text().count("partial") == 1
+    assert "heartbeat" not in log.read_text()
+
+
 def test_partial_binary_output_resets_inactivity_until_maximum(tmp_path: Path) -> None:
     script = (
         "import os,time\n"

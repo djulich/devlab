@@ -68,6 +68,16 @@ Rejected reviews do not incur an extra suite merely to record the rejection.
 Milestone validation and failed-validation retries retain their separate fresh
 runs; retries start the suite from the beginning.
 
+### Observational progress reporting
+
+Validation announces each command before execution and its outcome afterward.
+While waiting, validation and provider sessions share a configurable reporting
+interval (60 seconds by default, zero to disable). Heartbeats distinguish
+observed output from silence, without treating output as proof of progress or
+resetting execution/inactivity deadlines. Both streams are drained while waiting;
+reporting requires no additional threads. The interval is an operator logging
+option, not executable workspace configuration or software-workflow policy.
+
 ## Consequences
 
 Targets must scope validation to checks that can pass for the current task. A
@@ -84,4 +94,4 @@ Durable outcomes, validation provenance, progress reporting and bounded recovery
 are reusable mechanics. Choosing which software roles run checks, when reviewers
 can reuse evidence, and how results gate task closure and milestone integration
 remain explicit software-workflow policy. No generic kernel interface or new
-configuration is introduced.
+workflow-policy configuration is introduced.

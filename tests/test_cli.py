@@ -35,6 +35,42 @@ def _mock_default_agent_available(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.mark.parametrize("command", ["plan", "implement", "continue"])
+@pytest.mark.parametrize("value", ["-1", "1.5", "no"])
+def test_cli_rejects_invalid_heartbeat_interval(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: str, value: str
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        _run_cli(monkeypatch, command, "--heartbeat-interval", value)
+    assert caught.value.code == 2
+    assert "heartbeat interval must be a nonnegative integer" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", [None, "0", "120"])
+def test_cli_configures_shared_heartbeat_interval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    from devlab._logging import OutputHeartbeat
+
+    observed: list[int] = []
+
+    def run(*args: object, **kwargs: object) -> object:
+        observed.append(OutputHeartbeat("test").interval)
+
+        class Result:
+            exit_code = 0
+
+        return Result()
+
+    monkeypatch.setattr("devlab.cli.run_loop", run)
+    monkeypatch.setattr("devlab._logging._heartbeat_interval_seconds", 60)
+    options = ("--heartbeat-interval", value) if value is not None else ()
+    _run_cli(
+        monkeypatch, "plan", "--root", str(tmp_path), "--accept-current-exec-config", *options
+    )
+    assert observed == [60 if value is None else int(value)]
+
+
 def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", "-C", root.as_posix(), *args], check=True)
 

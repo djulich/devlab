@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import TextIO
 
@@ -10,6 +11,37 @@ from devlab._console import console_width, wrap_prose
 logger = logging.getLogger("devlab")
 
 _DEVLAB_OWNED = "_devlab_owned"
+DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 60
+_heartbeat_interval_seconds = DEFAULT_HEARTBEAT_INTERVAL_SECONDS
+
+
+class OutputHeartbeat:
+    """Report observed subprocess output without changing execution deadlines."""
+
+    def __init__(self, context: str) -> None:
+        self.context = context
+        self.interval = _heartbeat_interval_seconds
+        self.started = time.monotonic()
+        self.last_output = self.started
+        self.next_report = self.started + self.interval
+        self.output_received = False
+
+    def observe_output(self) -> None:
+        self.last_output = time.monotonic()
+        self.output_received = True
+
+    def report_if_due(self) -> None:
+        now = time.monotonic()
+        if not self.interval or now < self.next_report:
+            return
+        activity = (
+            "output received since last heartbeat"
+            if self.output_received
+            else f"no output for {now - self.last_output:.0f}s"
+        )
+        logger.info("%s: running for %.0fs; %s", self.context, now - self.started, activity)
+        self.output_received = False
+        self.next_report = now + self.interval
 
 
 def configure_logging(
@@ -17,12 +49,21 @@ def configure_logging(
     log_file: Path | None = None,
     *,
     stream: TextIO | None = None,
+    heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
 ) -> None:
     """Configure DevLab CLI logging.
 
     Library callers may skip this function and configure ``logging.getLogger("devlab")``
     themselves. Repeated calls replace only handlers installed by this function.
     """
+    global _heartbeat_interval_seconds
+    if (
+        isinstance(heartbeat_interval_seconds, bool)
+        or not isinstance(heartbeat_interval_seconds, int)
+        or heartbeat_interval_seconds < 0
+    ):
+        raise ValueError("heartbeat interval must be a nonnegative integer")
+    _heartbeat_interval_seconds = heartbeat_interval_seconds
     for handler in list(logger.handlers):
         if getattr(handler, _DEVLAB_OWNED, False):
             logger.removeHandler(handler)

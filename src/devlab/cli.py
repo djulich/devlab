@@ -8,7 +8,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from devlab._console import ConsoleArgumentParser, console_width, print_prose, wrap_prose
-from devlab._logging import configure_logging
+from devlab._logging import DEFAULT_HEARTBEAT_INTERVAL_SECONDS, configure_logging
 from devlab.agent_smoke import (
     AgentSmokeProgressEvent,
     format_agent_smoke_report,
@@ -99,6 +99,18 @@ def _devlab_version() -> str:
         return "unknown"
 
 
+def _heartbeat_interval(value: str) -> int:
+    try:
+        interval = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "heartbeat interval must be a nonnegative integer"
+        ) from exc
+    if interval < 0:
+        raise argparse.ArgumentTypeError("heartbeat interval must be a nonnegative integer")
+    return interval
+
+
 def _run_parent_parser(
     *, max_sessions: int, session_kind: str = "sessions"
 ) -> ConsoleArgumentParser:
@@ -129,6 +141,15 @@ def _run_parent_parser(
         "--effort",
         default=None,
         help="Override effort resolution from the target agents configuration.",
+    )
+    parser.add_argument(
+        "--heartbeat-interval",
+        type=_heartbeat_interval,
+        default=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+        metavar="SECONDS",
+        help=(
+            "Report subprocess output activity every SECONDS (default: 60; 0 disables heartbeats)."
+        ),
     )
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument(
@@ -677,7 +698,11 @@ def _main() -> None:
         _run_continue_command(args, root)
     elif args.command == "implement":
         _require_healthy_operation(root, DoctorOperation.SESSION)
-        configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+        configure_logging(
+            _run_log_level(quiet=args.quiet, verbose=args.verbose),
+            args.log_file,
+            heartbeat_interval_seconds=args.heartbeat_interval,
+        )
         executable_config = _authorized_executable_config(
             root,
             provider=args.provider,
@@ -714,7 +739,11 @@ def _main() -> None:
             raise SystemExit(result.exit_code)
     elif args.command == "plan":
         _require_healthy_operation(root, DoctorOperation.PLANNING)
-        configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+        configure_logging(
+            _run_log_level(quiet=args.quiet, verbose=args.verbose),
+            args.log_file,
+            heartbeat_interval_seconds=args.heartbeat_interval,
+        )
         executable_config = (
             None
             if args.mark_specs_planned
@@ -1023,7 +1052,11 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
     operation = _doctor_operation_for_advice(advice, report)
     _require_healthy_operation(root, operation)
     if advice.action == "resume_workflow":
-        configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+        configure_logging(
+            _run_log_level(quiet=args.quiet, verbose=args.verbose),
+            args.log_file,
+            heartbeat_interval_seconds=args.heartbeat_interval,
+        )
         resumed = resume_workflow(
             root,
             max_sessions=args.max_sessions,
@@ -1049,7 +1082,11 @@ def _run_continue_command(args: argparse.Namespace, root: Path) -> None:
         and report.research is not None
         and report.research.command == "plan"
     )
-    configure_logging(_run_log_level(quiet=args.quiet, verbose=args.verbose), args.log_file)
+    configure_logging(
+        _run_log_level(quiet=args.quiet, verbose=args.verbose),
+        args.log_file,
+        heartbeat_interval_seconds=args.heartbeat_interval,
+    )
     executable_config = _authorized_executable_config(
         root,
         provider=args.provider,

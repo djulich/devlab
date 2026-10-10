@@ -74,6 +74,22 @@ content. Long tokens can exceed the terminal width. Console log continuations
 align below the message after its timestamp; debug records and existing multiline
 diagnostic bodies retain their layout.
 
+Provider sessions, validation commands, and environment lifecycle commands emit
+an INFO heartbeat every 60 seconds while DevLab is waiting. Each heartbeat gives
+the session or command context, elapsed time, and either output received since
+the previous heartbeat or time without output on stdout or stderr. Output
+activity is an observation, not proof of productive work; a healthy command can
+be silent. Heartbeats do not stream command output or change execution deadlines
+or provider inactivity timers. Validation has no new inactivity timeout.
+
+Use `--heartbeat-interval SECONDS` with `continue`, `implement`, or `plan` to
+change the interval for that invocation, for example
+`devlab continue --heartbeat-interval 120`. The value must be a nonnegative
+integer; `0` disables periodic heartbeats while keeping start/completion messages.
+`--quiet` suppresses INFO messages on the console, including heartbeats. Like
+other progress logs, heartbeats go to stderr and to `--log-file` when configured;
+they are not included in captured provider or command output logs.
+
 ## Workflow Termination Summaries
 
 Every bounded continuation command that reaches an orchestrator result prints a

@@ -13,6 +13,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import IO, Literal, Protocol, cast
 
+from devlab._logging import OutputHeartbeat
+
 AgentFailureKind = Literal[
     "none", "nonzero_exit", "timeout", "missing_executable", "provider_error"
 ]
@@ -158,6 +160,9 @@ class CliAgentProvider:
                     inactivity_timeout_seconds=self.inactivity_timeout_seconds,
                     stdout=stdout_handle,
                     stderr=stderr_handle,
+                    heartbeat_context=(
+                        f"Provider {invocation.role_name} ({invocation.invocation_id})"
+                    ),
                 )
         except FileNotFoundError as exc:
             duration = time.monotonic() - started
@@ -274,6 +279,7 @@ def _run_process(
     inactivity_timeout_seconds: int | None,
     stdout: IO[str],
     stderr: IO[str],
+    heartbeat_context: str = "Provider session",
 ) -> _ProcessResult:
     """Run a provider while draining both byte streams and enforcing deadlines."""
     del text, check
@@ -288,6 +294,7 @@ def _run_process(
         start_new_session=(os.name == "posix"),
     )
     last_output = started
+    heartbeat = OutputHeartbeat(heartbeat_context)
     selector = selectors.DefaultSelector()
     streams: dict[int, tuple[IO[bytes], IO[str]]] = {}
     stdin_bytes = input.encode() if input is not None else b""
@@ -331,6 +338,7 @@ def _run_process(
                     elapsed_seconds=now - started,
                 )
 
+            heartbeat.report_if_due()
             wait = _next_wait(
                 now,
                 started=started,
@@ -360,6 +368,7 @@ def _run_process(
                 if chunk:
                     _write_output(target, chunk)
                     last_output = time.monotonic()
+                    heartbeat.observe_output()
                 else:
                     fd = source.fileno()
                     selector.unregister(source)

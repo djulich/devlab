@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import selectors
 import shlex
 import signal
 import subprocess
@@ -68,8 +69,9 @@ def test_validation_uses_running_devlab_interpreter(
 @pytest.mark.parametrize("operation", ["validation", "pre_session", "setup", "post_session"])
 @pytest.mark.parametrize("close_output", [False, True])
 def test_timeout_kills_children_even_after_shell_exit(
-    tmp_path: Path, operation: str, close_output: bool
+    tmp_path: Path, operation: str, close_output: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr("devlab._logging._heartbeat_interval_seconds", 0.2)
     script = tmp_path / "child.py"
     script.write_text(
         "import os, signal, sys, time\n"
@@ -171,21 +173,20 @@ def test_interruption_cleans_up_owned_command(
         "time.sleep(1.8)\n"
         "Path('child-survived').write_text('unexpected write after interruption')\n"
     )
-    communicate = subprocess.Popen.communicate
+    select = selectors.DefaultSelector.select
     interrupted = False
 
     def interrupt_once(
-        process: subprocess.Popen[str], input: str | None = None, timeout: float | None = None
-    ) -> tuple[str, str]:
+        selector: selectors.BaseSelector, timeout: float | None = None
+    ) -> list[tuple[selectors.SelectorKey, int]]:
         nonlocal interrupted
         if not interrupted:
             interrupted = True
-            with pytest.raises(subprocess.TimeoutExpired):
-                communicate(process, timeout=0.2)
+            time.sleep(0.2)
             raise KeyboardInterrupt
-        return communicate(process, input=input, timeout=timeout)
+        return select(selector, timeout)
 
-    monkeypatch.setattr(subprocess.Popen, "communicate", interrupt_once)
+    monkeypatch.setattr(selectors.DefaultSelector, "select", interrupt_once)
     with pytest.raises(KeyboardInterrupt):
         _run_environment_command(
             tmp_path,
@@ -389,3 +390,34 @@ def test_validation_reports_progress_before_execution_and_results_after_logs(
     assert any("command 2 failed after" in message for message in messages)
     assert not any("not-run" in message for message in messages)
     assert messages[-1] == "Validation T0001: failed"
+
+
+@pytest.mark.parametrize("stream", [1, 2])
+def test_validation_heartbeat_observes_both_streams_and_preserves_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stream: int
+) -> None:
+    messages: list[str] = []
+    monkeypatch.setattr("devlab._logging._heartbeat_interval_seconds", 0.2)
+    monkeypatch.setattr(
+        "devlab._logging.logger.info",
+        lambda message, *args, **kwargs: messages.append(message % args),
+    )
+    # More than a pipe buffer, no newline, followed by silence and a nonzero exit.
+    script = f"import os,time; os.write({stream}, b'x' * 100000); time.sleep(.7); exit(7)"
+    run = run_validation_commands(
+        tmp_path,
+        role_name="orchestrator",
+        task_id="T0001",
+        session_id="heartbeat",
+        commands=(f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}",),
+        timeout=3,
+    )
+    assert run.outcome == "failed"
+    heartbeats = [message for message in messages if "running for" in message]
+    assert any("output received since last heartbeat" in message for message in heartbeats)
+    assert any("no output for" in message for message in heartbeats)
+    assert all(message.startswith("Validation T0001: command 1/1:") for message in heartbeats)
+    output = (tmp_path / run.commands[0].log_path).read_text()
+    captured = output.split("## stdout\n", 1)[1].split("\n## stderr\n", 1)
+    assert captured[stream - 1] == "x" * 100000
+    assert captured[2 - stream] == ""

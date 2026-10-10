@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import selectors
 import signal
 import stat
 import subprocess
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from devlab._files import atomic_write_text
-from devlab._logging import logger
+from devlab._logging import OutputHeartbeat, logger
 from devlab.git import VersionControlError, git_ls_files
 from devlab.handoffs import DEVLAB_PYTHON_ENV
 
@@ -628,7 +629,12 @@ def reusable_task_validation(
 
 
 def _run_environment_command(
-    root: Path, command: str, *, environ: Mapping[str, str], timeout: int
+    root: Path,
+    command: str,
+    *,
+    environ: Mapping[str, str],
+    timeout: int,
+    heartbeat_context: str = "Environment command",
 ) -> subprocess.CompletedProcess[str]:
     """Capture a lifecycle/validation command, owning its POSIX group on interruption."""
     process = subprocess.Popen(
@@ -638,27 +644,51 @@ def _run_environment_command(
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
         start_new_session=os.name == "posix",
     )
+    heartbeat = OutputHeartbeat(heartbeat_context)
+    deadline = time.monotonic() + timeout
+    captured = (bytearray(), bytearray())
+    selector = selectors.DefaultSelector()
     try:
-        stdout, stderr = process.communicate(timeout=timeout)
+        assert process.stdout is not None and process.stderr is not None
+        for stream, output in zip((process.stdout, process.stderr), captured, strict=True):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, output)
+        while selector.get_map() or process.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, timeout)
+            heartbeat.report_if_due()
+            for key, _events in selector.select(min(0.1, remaining)):
+                try:
+                    chunk = os.read(key.fd, 65536)
+                except BlockingIOError:
+                    continue
+                if chunk:
+                    key.data.extend(chunk)
+                    heartbeat.observe_output()
+                else:
+                    selector.unregister(key.fileobj)
+        stdout, stderr = (_decode_output(bytes(output)) for output in captured)
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     except subprocess.TimeoutExpired as exc:
         stdout, stderr = _stop_environment_command(process)
-        exc.output, exc.stderr = stdout.encode(), stderr.encode()
+        exc.output = bytes(captured[0]) + stdout
+        exc.stderr = bytes(captured[1]) + stderr
         raise
     except BaseException:
         _stop_environment_command(process)
         raise
     finally:
+        selector.close()
         if process.stdout is not None:
             process.stdout.close()
         if process.stderr is not None:
             process.stderr.close()
 
 
-def _stop_environment_command(process: subprocess.Popen[str]) -> tuple[str, str]:
+def _stop_environment_command(process: subprocess.Popen[bytes]) -> tuple[bytes, bytes]:
     deadline = time.monotonic() + _ENVIRONMENT_TERMINATION_GRACE_SECONDS
     _signal_environment_command(process, kill=False)
     try:
@@ -674,14 +704,14 @@ def _stop_environment_command(process: subprocess.Popen[str]) -> tuple[str, str]
     except subprocess.TimeoutExpired as exc:
         # Detached descendants may retain the pipes. Keep the cumulative output
         # captured so far without waiting indefinitely for their EOF.
-        stdout, stderr = _decode_output(exc.output), _decode_output(exc.stderr)
+        stdout, stderr = exc.output or b"", exc.stderr or b""
     finally:
         with suppress(subprocess.TimeoutExpired):
             process.wait(timeout=_ENVIRONMENT_FINAL_DRAIN_SECONDS)
     return stdout, stderr
 
 
-def _signal_environment_command(process: subprocess.Popen[str], *, kill: bool) -> None:
+def _signal_environment_command(process: subprocess.Popen[bytes], *, kill: bool) -> None:
     with suppress(ProcessLookupError):
         if os.name == "posix":
             os.killpg(process.pid, signal.SIGKILL if kill else signal.SIGTERM)
@@ -761,6 +791,7 @@ def run_validation_commands(
                     DEVLAB_PYTHON_ENV: str(Path(sys.executable).absolute()),
                 },
                 timeout=timeout,
+                heartbeat_context=f"Validation {context_id}: command {index}/{len(commands)}",
             )
         except subprocess.TimeoutExpired as exc:
             outcome = "timeout"
@@ -901,6 +932,9 @@ class EnvironmentManager:
                     command,
                     environ={**os.environ, **self.environ},
                     timeout=timeout,
+                    heartbeat_context=(
+                        f"Environment {role_name} {phase}: command {index}/{len(commands)}"
+                    ),
                 )
             except subprocess.TimeoutExpired as exc:
                 stdout = _decode_output(exc.stdout)

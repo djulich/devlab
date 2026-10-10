@@ -218,6 +218,7 @@ invocation policy for provider smoke tests that are not based on an assigned rol
 ## Session Limits
 
 `max_session_duration_seconds` bounds total provider runtime.
+
 `inactivity_timeout_seconds` independently bounds time with no bytes received on
 either provider stdout or stderr. It is opt-in: omission leaves silence unbounded.
 
@@ -231,6 +232,12 @@ active, while a healthy command that emits nothing can reach the inactivity
 limit. On either limit DevLab terminates the local provider process group with a
 bounded grace period, but detached descendants and remote or container side
 effects may remain and are handled by the existing recovery workflow.
+
+Console heartbeats report observed stdout/stderr activity every 60 seconds by
+default. The invocation-wide `--heartbeat-interval SECONDS` option on `continue`,
+`implement`, and `plan` also controls validation heartbeats; `0` disables them.
+This reporting option is separate from provider configuration and does not reset
+inactivity timers. See [console reporting](operator-guide.md#console-formatting).
 
 ## Prompt Context Thresholds
 
