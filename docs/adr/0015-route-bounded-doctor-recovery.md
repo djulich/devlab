@@ -2,13 +2,13 @@
 
 ## Status
 
-Accepted. The profile-default validation exception is superseded by
+Accepted. Configured validation ownership and review gating are defined in
 [ADR 0016](0016-own-configured-validation-and-gate-review.md).
 
 ## Context
 
 A developer session can fail to advance its task without telling the operator
-why. A repeated explicit task validation failure has the same symptom.
+why. A repeated configured task validation failure has the same symptom.
 Stopping safely preserves evidence, but asking an operator to inspect raw logs
 is an expensive default. Repeating the developer session without new evidence
 can waste sessions or loop indefinitely.
@@ -16,9 +16,10 @@ can waste sessions or loop indefinitely.
 ## Decision
 
 After the first unexplained non-advancing developer session, or after repeated
-explicit task validation failure, DevLab commits the evidence and records one
-durable doctor recovery route for that task. The doctor is a bounded
-auxiliary role. It reads task and session evidence, may use its own configured
+configured task validation failure (task commands or profile defaults), DevLab
+commits the evidence and records one durable doctor recovery route for that
+task. The doctor is a bounded auxiliary role. It reads task and session evidence,
+may use its own configured
 provider, and writes only a strict staged diagnosis with existing file evidence
 and one of three proposed actions: retry the developer with specific guidance,
 send a focused revision to the planner, or stop for the operator.
@@ -29,9 +30,10 @@ next `devlab continue`. A doctor-routed planner may revise only the assigned
 task and workflow bookkeeping. The resulting developer attempt is bounded; a
 further failure stops without invoking another doctor. Clarification and research
 interruptions preserve the diagnosis and remaining recovery route across resume;
-they do not reset the recovery allowance. Successful completion follows existing
-validation policy, including soft profile-default warnings. Recovery belongs to
-its planning generation: specification reconciliation takes precedence, and
+they do not reset the recovery allowance. Successful completion follows the
+configured validation gate in ADR 0016; profile-default failures are blocking,
+just as explicit task-command failures are. Recovery belongs to its planning
+generation: specification reconciliation takes precedence, and
 generation replacement archives and clears the old recovery with its task.
 
 The doctor is prohibited from editing product or workflow files, running

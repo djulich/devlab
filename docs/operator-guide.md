@@ -519,7 +519,7 @@ This does not certify ignored dependencies, installed tools, or current external
 service/device state. Reviewers rerun affected checks when those conditions or
 session setup could invalidate prior observations. Milestone runs and recovery
 retries remain fresh; retries still start the suite from the beginning.
-See [ADR 0017](adr/0017-reuse-authoritative-validation-in-review.md).
+See [ADR 0016](adr/0016-own-configured-validation-and-gate-review.md).
 
 Validation reports its task/milestone, command number and command, completion
 time, log path, and result. Subprocess output is captured; command logs become

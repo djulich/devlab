@@ -59,6 +59,14 @@ issues or temporary [design proposals](proposals/README.md), with accepted
 tradeoffs promoted to ADRs. Remove completed proposals after their contracts
 have moved into current documentation; Git history retains implementation plans.
 
+Accepted ADRs describe current architectural decisions. Refine the existing ADR
+when evolving the same decision; reserve new ADRs for distinct decisions or
+substantial replacements with their own rationale. Keep active decision text
+accurate, label historical rationale explicitly, and update superseded passages
+and incoming links together. The authoritative
+[ADR maintenance policy](../AGENTS.md#adr-maintenance) lives in `AGENTS.md` so
+fresh development agents encounter it directly.
+
 Dated baselines record the versions, environments, and outcomes actually tested.
 They are historical evidence, not instructions for the latest release or a
 promise that every current version has the same coverage. Keep them distinct

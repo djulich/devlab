@@ -49,7 +49,7 @@ not have an override. The researcher inherits the requesting architect,
 planner, or developer configuration unless `[roles.researcher]` is present.
 The doctor inherits the developer configuration unless `[roles.doctor]` is
 present. DevLab invokes it after an unexplained non-advancing developer session
-or repeated explicit task validation failure. The
+or repeated configured task validation failure, including profile defaults. The
 doctor reads session evidence and produces a structured diagnosis; DevLab owns
 the resulting route.
 An explicitly configured doctor is included in `devlab agent-smoke-test`; use

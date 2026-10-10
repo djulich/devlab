@@ -9,8 +9,10 @@ Accepted.
 A declared disposable database can unblock several developer, reviewer, and
 validation operations. Session-level setup/teardown cannot provide reliable
 ownership, restart recovery, or connection settings shared across those
-operations. Prerequisite checks should continue to observe conditions without
-provisioning resources.
+operations. Prerequisite checks observe conditions without provisioning
+resources. Workflow prerequisite resolution may separately prepare a declared
+runtime condition under [ADR 0014](0014-prepare-only-declared-runtime-prerequisites.md);
+owned-service preparation uses the service identity and lifecycle defined here.
 
 ## Decision
 

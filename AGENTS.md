@@ -35,6 +35,14 @@ DevLab is developed and maintained by AI agents. Code and project structure must
 - `docs/adr/`: durable architectural decisions that are hard to reverse, surprising without context, and trade-off based.
 - `docs/design.md`: human-oriented overview; do not make it the only source for agent-critical terms, constraints, or decisions.
 
+### ADR maintenance
+
+- Accepted ADRs are current architectural guidance for agents, not immutable historical transcripts. Before changing a design, read the relevant ADRs and update affected decisions in the same change.
+- Refine an existing ADR when evolving the same decision. Create a new ADR only for a distinct architectural decision or a substantial replacement whose separate rationale matters; do not create an amendment chain for routine refinements.
+- Keep active Decision and Consequences sections accurate and understandable without reconstructing later amendments. Preserve useful earlier rationale in explicitly historical context or a brief historical note; Git retains previous wording.
+- When replacing a decision, update the earlier ADR's status and affected passages together, link to its replacement, and clearly distinguish superseded text from active guidance. For partial replacements, keep the remaining active policy explicit. A status banner alone does not repair contradictory decision text.
+- When consolidating or moving ADRs, update incoming references and relevant guides. Keep one authoritative statement of each decision and use links for related decisions.
+
 ## Ownership boundaries
 
 This map identifies the primary owners of behavior; it is not an exhaustive file inventory.

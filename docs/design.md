@@ -182,8 +182,7 @@ binds reuse to tested workspace content, resolved configuration and inherited/
 managed environment, and revalidates changed inputs before accepting approval.
 External freshness is not inferred from file fingerprints; legacy or mismatched
 evidence falls back to independent reviewer execution. See
-[ADR 0016](adr/0016-own-configured-validation-and-gate-review.md) and
-[ADR 0017](adr/0017-reuse-authoritative-validation-in-review.md).
+[ADR 0016](adr/0016-own-configured-validation-and-gate-review.md).
 
 The [profile and validation reference](operator-guide.md#profiles) explains the
 configuration and operator consequences. Target-owned acceptance tests remain
